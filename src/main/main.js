@@ -31,7 +31,7 @@ import { loadMods, POLARITIES, RARITY_LABELS, searchMods, isAuraMod, isExilusMod
 import { evaluateBuild, combineBuilds, orokinTypeFor } from '../core/builds.js';
 import { fetchWorldState } from '../core/worldstate.js';
 import { getAllResourceGuides, searchResourceGuides } from '../core/farming.js';
-import { getDucatsReferenceList, buildDucatsCatalog, buildInventoryDucats } from '../core/ducats.js';
+import { getDucatsReferenceList, buildPrimeSets, buildDucatsCatalog, buildInventoryDucats } from '../core/ducats.js';
 import { loadInventory } from '../core/inventory.js';
 import { buildInventory, SECTIONS } from '../core/inventory-items.js';
 import { checkAllowed, formatWait } from '../core/ratelimit.js';
@@ -1048,10 +1048,15 @@ ipcMain.handle('ducats:get', async () => {
 
   const catalogData = buildDucatsCatalog(cache.catalog, market, priceCache);
 
+  /* Sets nur aus dem, was man besitzt: eine Liste aller 160 Prime-Sets waere
+     ein Katalog, keine Antwort auf "was fehlt mir noch". */
+  const sets = buildPrimeSets(market, priceCache, inventoryData.items);
+
   return {
     reference: getDucatsReferenceList(),
     inventory: inventoryData,
     catalog: catalogData,
+    sets,
     hasInventory: !!invRes?.inventory,
     source: invRes?.source || 'none',
     fetchedAt: invRes?.fetchedAt || null

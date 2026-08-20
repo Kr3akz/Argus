@@ -1740,7 +1740,7 @@ function openFarmGuideFor(name) {
 let ducatsData = null;
 let sellQuantities = new Map(); // slug -> count
 let currentSelectionPreset = 'all'; // 'all' | 'duplicates' | 'custom' | 'none'
-let ducatsMode = 'inventory';    // 'inventory' | 'catalog'
+let ducatsMode = 'inventory';    // 'inventory' | 'catalog' | 'sets'
 let ducatsFilter = 'all';        // 'all' | 'advice-junk' | 'advice-plat' | '100' | '45' | '15'
 let ducatsSort = 'ducats-desc';   // 'ducats-desc' | 'plat-desc' | 'ratio-desc' | 'count-desc' | 'name-asc'
 let isFetchingDucatPrices = false;
@@ -1777,11 +1777,26 @@ async function loadDucats() {
 async function fetchMissingDucatPrices(forceAll = false) {
   if (isFetchingDucatPrices || !ducatsData) return;
 
-  const targetItems = (ducatsMode === 'inventory' ? ducatsData.inventory?.items : ducatsData.catalog) || [];
-  const missingSlugs = targetItems
-    .filter(it => forceAll || !it.price || it.price.min == null)
-    .map(it => it.slug)
-    .filter(Boolean);
+  let missingSlugs;
+
+  if (ducatsMode === 'sets') {
+    /* Das Set-Item traegt einen eigenen Preis - die Summe der Teile ist etwas
+       anderes und liegt regelmaessig hoeher als das fertige Set. */
+    const wanted = [];
+    for (const set of ducatsData.sets || []) {
+      if (set.setSlug && (forceAll || !set.setPrice)) wanted.push(set.setSlug);
+      for (const p of set.parts) {
+        if (p.count > 0 && (forceAll || !p.price)) wanted.push(p.slug);
+      }
+    }
+    missingSlugs = [...new Set(wanted)].filter(Boolean);
+  } else {
+    const targetItems = (ducatsMode === 'inventory' ? ducatsData.inventory?.items : ducatsData.catalog) || [];
+    missingSlugs = targetItems
+      .filter(it => forceAll || !it.price || it.price.min == null)
+      .map(it => it.slug)
+      .filter(Boolean);
+  }
 
   if (!missingSlugs.length) return;
 
@@ -1931,6 +1946,91 @@ function renderDucatsKPIs() {
 function updateDucatsModeTabs() {
   $('tab-ducats-mode-inv')?.classList.toggle('active', ducatsMode === 'inventory');
   $('tab-ducats-mode-cat')?.classList.toggle('active', ducatsMode === 'catalog');
+  $('tab-ducats-mode-sets')?.classList.toggle('active', ducatsMode === 'sets');
+
+  if ($('ducats-sets-badge-count')) {
+    $('ducats-sets-badge-count').textContent = (ducatsData?.sets || []).length;
+  }
+
+  /* Seltenheits-Chips und Sortierung beziehen sich auf einzelne Teile. In der
+     Set-Ansicht haetten sie nichts zu filtern und stuenden nur im Weg - die
+     Suche bleibt, die trifft auch Set-Namen. */
+  const isSets = ducatsMode === 'sets';
+  document.querySelector('.ducats-filter-badges')?.classList.toggle('hidden', isSets);
+  document.querySelector('.ducats-sort-wrap')?.classList.toggle('hidden', isSets);
+}
+
+/**
+ * Prime-Sets mit Besitzstand.
+ *
+ * Dieselbe Frage wie auf den Relikt-Karten im Spiel, nur in Ruhe: von welchem
+ * Set habe ich schon was, und welches Teil fehlt noch. Eine flache Teileliste
+ * beantwortet das nicht - dort steht "Lex Prime Barrel x1", ohne zu verraten,
+ * ob das das letzte fehlende Teil war oder das dritte Duplikat.
+ */
+function renderDucatsSets() {
+  const container = $('ducats-catalog');
+  if (!container) return;
+
+  const query = ($('ducat-search')?.value || '').trim().toLowerCase();
+  const all = ducatsData?.sets || [];
+  const sets = query
+    ? all.filter(s => s.name.toLowerCase().includes(query)
+        || s.parts.some(p => p.name.toLowerCase().includes(query)))
+    : all;
+
+  if (!sets.length) {
+    container.innerHTML = `
+      <div class="ducats-empty-box">
+        <div class="empty-icon">${Icon.layers(30)}</div>
+        <h3>${all.length ? 'Keine Treffer' : 'Noch keine Prime-Teile'}</h3>
+        <p>${all.length
+          ? 'Zu deiner Suche gibt es kein passendes Set.'
+          : 'Sobald du Prime-Teile besitzt, erscheinen hier die zugehörigen Sets mit dem, was dir noch fehlt.'}</p>
+      </div>`;
+    return;
+  }
+
+  /* Direkt in den Container, ohne eigenes Raster drumherum: die Liste ist
+     bereits ein Raster (.ducats-catalog-list). Ein zweites darin bekaeme eine
+     einzige Spalte zugeteilt - und stapelte die Karten darin untereinander. */
+  container.innerHTML = sets.map(s => {
+    const pct = Math.round((s.ownedParts / s.totalParts) * 100);
+
+    const parts = s.parts.map(p => `
+      <div class="set-part ${p.count > 0 ? 'has' : 'missing'}" title="${esc(p.name)} · ${p.ducats} Dukaten${p.price ? ' · ' + p.price.min + 'p' : ''}">
+        <img class="set-part-img" src="${esc(p.image || '')}" alt=""
+             onerror="this.style.visibility='hidden'">
+        <span class="set-part-name">${esc(p.shortName)}</span>
+        <span class="set-part-count">${p.count > 0 ? '×' + p.count : '–'}</span>
+      </div>`).join('');
+
+    return `
+      <div class="set-card ${s.complete ? 'complete' : ''}">
+        <div class="set-head">
+          <div class="set-title">
+            <b>${esc(s.name)}</b>
+            <span>${s.ownedParts} / ${s.totalParts} Teile${s.complete ? ' · komplett' : ''}</span>
+          </div>
+          <div class="set-progress" title="${pct} % beisammen">
+            <div class="set-progress-fill" style="width: ${pct}%"></div>
+          </div>
+        </div>
+
+        <div class="set-parts">${parts}</div>
+
+        <div class="set-foot">
+          <span class="set-val" title="Dukaten für alle deine Teile dieses Sets, Duplikate mitgezählt">
+            <img class="currency-ic ducat-ic" src="assets/icons/ducats.png" alt="Dukaten">
+            <b>${nf(s.ownedDucats)}</b> <small>Dukaten</small>
+          </span>
+          <span class="set-val">
+            <img class="currency-ic" src="assets/icons/currency/platinum.png" alt="Platin">
+            <b>${s.setPrice ? s.setPrice.min : '–'}</b> <small>Set</small>
+          </span>
+        </div>
+      </div>`;
+  }).join('');
 }
 
 function updateDucatsPriceButtonState(loading) {
@@ -1947,6 +2047,7 @@ function updateDucatsPriceButtonState(loading) {
 
 function renderDucatsCatalog() {
   if (!ducatsData) return;
+  if (ducatsMode === 'sets') return renderDucatsSets();
 
   const q = ($('ducat-search')?.value || '').toLowerCase().trim();
   const rawList = ducatsMode === 'inventory'
@@ -2174,6 +2275,11 @@ function initDucatsEventListeners() {
   });
   $('tab-ducats-mode-cat')?.addEventListener('click', () => {
     ducatsMode = 'catalog';
+    updateDucatsModeTabs();
+    renderDucatsCatalog();
+  });
+  $('tab-ducats-mode-sets')?.addEventListener('click', () => {
+    ducatsMode = 'sets';
     updateDucatsModeTabs();
     renderDucatsCatalog();
   });

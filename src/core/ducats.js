@@ -181,6 +181,97 @@ export function buildInventoryDucats(inventory, catalog, market, priceCache = {}
 /**
  * Liefert den Gesamtkatalog aller bekannten Prime-Items mit Dukatenwert aus dem Markt-Index.
  */
+/**
+ * Prime-Sets mit Besitzstand.
+ *
+ * Beantwortet die Frage, die eine flache Teileliste offen laesst: von welchem
+ * Set habe ich schon was, und was fehlt noch. Ein einzelnes "Lex Prime Barrel"
+ * sagt nichts darueber, ob es das letzte fehlende Teil ist oder das dritte
+ * Duplikat.
+ *
+ * QUELLE DER TEILELISTE ist die Marktliste, nicht das Inventar: nur sie kennt
+ * auch die Teile, die man NICHT hat - und genau die sind hier die Aussage.
+ * Der Katalog waere die naheliegendere Quelle, kennt die Zusammensetzung eines
+ * Sets aber nur ueber Rezepte, die fuer vaulted Teile fehlen.
+ *
+ * Das Set-Item selbst (Tag "set") ist kein Bestandteil, sondern traegt nur den
+ * Gesamtpreis - sonst zaehlte man ein fuenftes Teil, das es nicht gibt.
+ */
+export function buildPrimeSets(market, priceCache = {}, ownedItems = [], { onlyOwned = true } = {}) {
+  if (!market?.list?.length) return [];
+
+  const owned = new Map();
+  for (const it of ownedItems) if (it.slug) owned.set(it.slug, it.count || 0);
+
+  const sets = new Map();
+
+  for (const m of market.list) {
+    const name = m.i18n?.en?.name || '';
+    if (!/\bPrime\b/i.test(name)) continue;
+
+    const parent = getParentPrimeName(name);
+    if (!parent) continue;
+
+    let set = sets.get(parent);
+    if (!set) {
+      set = { name: parent, parts: [], setSlug: null, setPrice: null };
+      sets.set(parent, set);
+    }
+
+    if (m.tags?.includes('set')) {
+      set.setSlug = m.slug;
+      set.setPrice = priceCache[m.slug]?.price || null;
+      continue;
+    }
+    if (m.ducats == null) continue;
+
+    const count = owned.get(m.slug) || 0;
+    set.parts.push({
+      name,
+      /* Der Set-Name steht schon ueber der Karte - in der Teilezeile bleibt
+         nur das, was die Teile unterscheidet. */
+      shortName: name.replace(parent, '').replace(/^\s+/, '') || name,
+      slug: m.slug,
+      ducats: m.ducats,
+      gameRef: m.gameRef || null,
+      /* Bild aus DEs Export, nicht das Thumbnail von warframe.market: die
+         Content-Security-Policy der Oberflaeche laesst nur cdn.jsdelivr.net zu,
+         Marktbilder wuerden wortlos blockiert und blieben leer. */
+      image: m.gameRef ? imageUrl(m.gameRef, 128) : null,
+      price: priceCache[m.slug]?.price || null,
+      count
+    });
+  }
+
+  const out = [];
+  for (const set of sets.values()) {
+    if (!set.parts.length) continue;
+
+    const ownedParts = set.parts.filter(p => p.count > 0).length;
+    if (onlyOwned && !ownedParts) continue;
+
+    set.parts.sort((a, b) => b.ducats - a.ducats || a.name.localeCompare(b.name, 'de'));
+
+    out.push({
+      ...set,
+      totalParts: set.parts.length,
+      ownedParts,
+      complete: ownedParts === set.parts.length,
+      /* Nur was man wirklich hat - der Wert der fehlenden Teile waere eine
+         Zahl ueber Besitz, den es nicht gibt. */
+      ownedDucats: set.parts.reduce((sum, p) => sum + (p.count > 0 ? p.ducats * p.count : 0), 0),
+      totalDucats: set.parts.reduce((sum, p) => sum + p.ducats, 0)
+    });
+  }
+
+  /* Fast vollstaendige Sets zuerst: dort lohnt der naechste Riss am meisten. */
+  return out.sort((a, b) => {
+    const ra = a.ownedParts / a.totalParts;
+    const rb = b.ownedParts / b.totalParts;
+    return rb - ra || b.ownedParts - a.ownedParts || a.name.localeCompare(b.name, 'de');
+  });
+}
+
 export function buildDucatsCatalog(catalog, market, priceCache = {}) {
   if (!market || !market.list) return [];
 
