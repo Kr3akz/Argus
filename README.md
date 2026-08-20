@@ -1,4 +1,6 @@
-# Kr3akz Warframe Guide
+# Cephalon Argus
+
+*Der hundertäugige Wächter der griechischen Mythologie — er schließt nie alle Augen zugleich.*
 
 Mastery-Rank-Planer für Warframe. Zeigt, welche Items dir für MR fehlen, was sich am
 schnellsten lohnt, und schlüsselt Farm-Ziele bis auf die Rohstoffe auf.

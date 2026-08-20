@@ -15,7 +15,7 @@ export async function fetchWorldState({ force = false } = {}) {
 
   try {
     const res = await fetch('https://api.warframestat.us/pc/', {
-      headers: { 'User-Agent': 'Kr3akz-Warframe-Guide/2.0' }
+      headers: { 'User-Agent': 'Cephalon-Argus/2.0' }
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();

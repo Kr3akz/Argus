@@ -19,7 +19,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 const MAP_FILE = () => path.join('data', 'overframe-mods.json');
-export const USER_AGENT = 'Kr3akz-Warframe-Guide/0.1 (persoenlicher Mastery-Planer)';
+export const USER_AGENT = 'Cephalon-Argus/0.1 (persoenlicher Mastery-Planer)';
 
 /** Build-ID aus einer Overframe-URL oder blanken Zahl. */
 export function parseBuildId(input) {

@@ -1,7 +1,7 @@
 {
-  "name": "kr3akz-warframe-guide",
+  "name": "cephalon-argus",
   "version": "0.1.0",
-  "description": "Mastery-Rank Planer fuer Warframe - oeffentliche APIs plus lesender Speicherzugriff auf den Spielprozess fuer den Inventar-Abruf",
+  "description": "Cephalon Argus - Mastery-Planer und Live-Begleiter fuer Warframe: Weltzustand, Inventar, Builds und In-Game-Overlay",
   "type": "module",
   "main": "src/main/main.js",
   "scripts": {

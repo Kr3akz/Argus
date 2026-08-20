@@ -1,4 +1,4 @@
-/* Inline-SVG-Icons für Kr3akz Warframe Guide
+/* Inline-SVG-Icons für Cephalon Argus
    Authentische Vektor-Glyphen im Warframe- / Tenno-Stil */
 
 const svg = (paths, size = 16) =>
@@ -72,6 +72,11 @@ const Icon = {
   
   volume: s => svg('<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>', s),
   
-  sliders: s => svg('<line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>', s)
+  sliders: s => svg('<line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>', s),
+  
+  /* Wortmarke: das Auge des Argus. Die Strahlen stehen fuer die hundert Augen,
+     von denen nie alle zugleich schlafen - das Sinnbild fuer den Waechter, der
+     im Hintergrund den Weltzustand beobachtet. */
+  argus: s => svg('<path d="M12 5.5c5 0 8.4 4 9.3 6.1a1 1 0 0 1 0 .8c-.9 2.1-4.3 6.1-9.3 6.1s-8.4-4-9.3-6.1a1 1 0 0 1 0-.8C3.6 9.5 7 5.5 12 5.5Z"/><circle cx="12" cy="12" r="3.2"/><path d="M12 1.8v1.8M12 20.4v1.8M3.9 4.6l1.3 1.3M18.8 18.1l1.3 1.3M20.1 4.6l-1.3 1.3M5.2 18.1l-1.3 1.3"/>', s)
 };
 

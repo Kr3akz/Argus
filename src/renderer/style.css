@@ -1,4 +1,4 @@
-/* Kr3akz Warframe Guide
+/* Cephalon Argus
    Gestaltung nach PS5-Home-Vorbild: Flaechen trennen sich durch Helligkeit,
    nicht durch Linien. Tiefe entsteht durch Schatten und sanftes Anheben. */
 
@@ -81,7 +81,7 @@ body {
   height: 46px; flex-shrink: 0; position: relative; z-index: 10;
 }
 .drag { -webkit-app-region: drag; display: flex; align-items: center; gap: 11px; padding: 0 22px; flex: 1; height: 100%; }
-.logo { color: var(--accent); font-size: 15px; }
+.logo { color: var(--accent); display: inline-flex; align-items: center; }
 .apptitle { font-weight: 600; font-size: 13.5px; letter-spacing: .2px; color: var(--text-2); }
 .badge {
   background: var(--accent); color: #04121f; font-size: 10px; font-weight: 700;

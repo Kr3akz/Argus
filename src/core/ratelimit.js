@@ -19,7 +19,7 @@ import path from 'node:path';
 
 export const MIN_INTERVAL_MS = 5 * 60 * 1000;        // 5 min zwischen Abrufen
 export const COOLDOWN_MS     = 1 * 60 * 60 * 1000;   // 1 h Sperre nach Drosselung
-export const USER_AGENT      = 'Kr3akz-Warframe-Guide/0.1 (persoenlicher Mastery-Planer)';
+export const USER_AGENT      = 'Cephalon-Argus/0.1 (persoenlicher Mastery-Planer)';
 
 /* Der Zaehler ist absichtlich EIN Topf fuer alle Endpunkte. DE drosselt pro IP,
    nicht pro Endpunkt - Profil- und Inventarabruf teilen sich also dasselbe
