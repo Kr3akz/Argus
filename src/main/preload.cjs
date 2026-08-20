@@ -57,6 +57,7 @@ contextBridge.exposeInMainWorld('api', {
   overlayState:    ()          => ipcRenderer.invoke('window:overlayState'),
   setClickThrough: (on)        => ipcRenderer.invoke('window:clickThrough', on),
   setOverlayHover: (over)      => ipcRenderer.invoke('window:hover', over),
+  setInteract:     (on)        => ipcRenderer.invoke('window:interact', on),
   setOverlayOpacity:(value)    => ipcRenderer.invoke('window:opacity', value),
   onOverlayChanged:(cb)        => {
     const handler = (_e, st) => cb(st);

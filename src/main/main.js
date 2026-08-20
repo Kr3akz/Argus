@@ -36,6 +36,7 @@ import { loadInventory } from '../core/inventory.js';
 import { buildInventory, SECTIONS } from '../core/inventory-items.js';
 import { checkAllowed, formatWait } from '../core/ratelimit.js';
 import { matchesFissureFilter } from '../core/fissure-filter.js';
+import { captureForeground, restoreForeground } from '../core/foreground.js';
 import {
   parseBuildId, fetchBuild, toBuild, loadModMap, saveModMap,
   unknownModIds, mergeNames, USER_AGENT as OF_USER_AGENT
@@ -66,7 +67,19 @@ const OVERLAY_MIN  = { width:  300, height: 260 };
 
 /* Eine Quelle fuer Registrierung und Anzeige - sonst zeigt die Titelleiste
    irgendwann eine Taste, die gar nicht mehr registriert ist. */
-const OVERLAY_HOTKEY = 'Alt+Shift+W';
+const OVERLAY_HOTKEY  = 'Alt+Shift+W';
+const INTERACT_HOTKEY = 'Alt+Shift+E';
+
+/* Zeigermodus: das Overlay holt sich kurz den Eingabefokus.
+   Nicht die App macht den Mauszeiger sichtbar - Warframe haelt ihn gefangen,
+   solange es im Vordergrund ist. Sobald ein anderes Fenster den Fokus
+   bekommt, gibt Windows den Zeiger von selbst wieder frei. Genau das ist
+   dieser Modus, und mehr braucht es nicht. */
+let interacting = false;
+
+/* Fenster, das vor dem Zeigermodus den Fokus hatte - im Spielbetrieb also
+   Warframe. Nur eine Kennung, kein Zugriff auf den fremden Prozess. */
+let interactReturnTo = null;
 const cache = { catalog: null, profile: null, analysis: null, mods: null };
 
 process.chdir(path.resolve(__dirname, '../..'));   // data/ liegt im Projektwurzelverzeichnis
@@ -221,7 +234,25 @@ function createOverlayWindow() {
   };
   overlayWin.on('move', remember);
   overlayWin.on('resize', remember);
-  overlayWin.on('closed', () => { overlayWin = null; broadcastOverlayState(); });
+
+  /* Wer zurueck ins Spiel klickt, statt den Hotkey zu druecken, soll nicht mit
+     abgeschaltetem Durchlass zurueckbleiben - sonst frisst das Overlay beim
+     naechsten Klick den Schuss. */
+  overlayWin.on('blur', () => {
+    if (!interacting) return;
+    interacting = false;
+    /* Der Fokus ist schon weg - wohin, hat der Nutzer selbst entschieden.
+       Die gemerkte Ruecksprungadresse ist damit hinfaellig. */
+    interactReturnTo = null;
+    applyMousePassthrough(clickThrough);
+    broadcastOverlayState();
+  });
+
+  overlayWin.on('closed', () => {
+    overlayWin = null;
+    interacting = false;
+    broadcastOverlayState();
+  });
 
   overlayWin.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
@@ -236,7 +267,54 @@ function overlayVisible() {
 }
 
 function overlayState() {
-  return { overlay: overlayVisible(), clickThrough, opacity: overlayOpacity };
+  return {
+    overlay: overlayVisible(),
+    clickThrough,
+    interacting,
+    opacity: overlayOpacity,
+    hotkeys: { overlay: OVERLAY_HOTKEY, interact: INTERACT_HOTKEY }
+  };
+}
+
+/**
+ * Zeigermodus ein- oder ausschalten.
+ *
+ * An:  Klick-Durchlass aussetzen und den Fokus holen. Warframe verliert den
+ *      Vordergrund und gibt damit den Mauszeiger frei.
+ * Aus: Fokus abgeben - Windows reicht ihn an das Fenster darunter, also das
+ *      Spiel - und den eingestellten Durchlass wiederherstellen.
+ *
+ * Der Durchlass selbst wird NICHT umgeschaltet: er ist eine Einstellung, der
+ * Zeigermodus nur eine kurze Unterbrechung davon. Sonst haette man nach
+ * jedem Ausflug ins Overlay eine andere Einstellung als vorher.
+ */
+function setInteracting(on) {
+  if (on && !overlayVisible()) showOverlay();
+  interacting = !!on;
+
+  if (!overlayWin || overlayWin.isDestroyed()) {
+    interacting = false;
+    return overlayState();
+  }
+
+  if (interacting) {
+    /* Vor dem Fokuswechsel merken, wohin er zurueck soll. Haelt das Overlay
+       ihn schon, waere die Antwort das Overlay selbst - dann lieber nichts
+       merken und den vorherigen Eintrag behalten. */
+    if (!overlayWin.isFocused()) interactReturnTo = captureForeground() || interactReturnTo;
+    applyMousePassthrough(false);
+    overlayWin.focus();
+  } else {
+    const back = interactReturnTo;
+    interactReturnTo = null;
+    applyMousePassthrough(clickThrough);
+    /* Erst gezielt zurueckgeben; klappt das nicht, bleibt blur() als Notnagel
+       - dann landet der Fokus irgendwo, aber jedenfalls nicht mehr hier. */
+    if (!restoreForeground(back) && overlayWin.isFocused()) overlayWin.blur();
+  }
+
+  broadcastOverlayState();
+  return overlayState();
 }
 
 /* Beide Fenster bekommen denselben Zustand: das Hauptfenster, damit die
@@ -286,6 +364,7 @@ function revealOverlay() {
  */
 function hideOverlay() {
   if (!overlayWin || overlayWin.isDestroyed()) return;
+  interacting = false;
   if (overlayWin.isFocused()) overlayWin.blur();
   overlayWin.hide();
   broadcastOverlayState();
@@ -953,7 +1032,9 @@ ipcMain.handle('window:clickThrough', (_e, on) => {
    sich der Durchlass kurzzeitig aufheben, damit die Bedienelemente ueberhaupt
    noch anklickbar sind. */
 ipcMain.handle('window:hover', (_e, over) => {
-  if (clickThrough) applyMousePassthrough(!over);
+  /* Im Zeigermodus ist der Durchlass ohnehin ausgesetzt - ein spaet
+     eintreffendes "Zeiger ist weg" wuerde ihn sonst wieder einschalten. */
+  if (clickThrough && !interacting) applyMousePassthrough(!over);
   return null;
 });
 ipcMain.handle('window:opacity', (_e, value) => {
@@ -963,7 +1044,8 @@ ipcMain.handle('window:opacity', (_e, value) => {
   broadcastOverlayState();
   return overlayState();
 });
-ipcMain.handle('window:hotkey',   () => OVERLAY_HOTKEY);
+ipcMain.handle('window:interact', (_e, on) => setInteracting(on));
+ipcMain.handle('window:hotkey',   () => ({ overlay: OVERLAY_HOTKEY, interact: INTERACT_HOTKEY }));
 ipcMain.handle('window:minimize', () => win && win.minimize());
 ipcMain.handle('window:close',    () => win && win.close());
 
@@ -1128,6 +1210,13 @@ app.whenReady().then(async () => {
   /* Schaltet nur das Overlay. Das Hauptfenster bleibt unberuehrt - es steht
      auf dem zweiten Monitor und soll waehrend des Spielens offen bleiben. */
   globalShortcut.register(OVERLAY_HOTKEY, () => toggleOverlay());
+
+  /* Holt den Mauszeiger ins Overlay und wieder zurueck ins Spiel.
+     Eine Taste und keine Maustaste: globalShortcut kennt nur Tastatur, und
+     das Mausrad waere in Warframe ohnehin belegt - dort wechselt es die
+     Waffe. Wer es trotzdem auf der Maus haben will, legt diese Tastenfolge
+     in der Maussoftware auf eine Daumentaste. */
+  globalShortcut.register(INTERACT_HOTKEY, () => setInteracting(!interacting));
 
   // Hintergrund-Überwachung für Void-Risse starten (alle 45 Sekunden)
   pollFissureTracker();

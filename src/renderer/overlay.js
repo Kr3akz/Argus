@@ -22,7 +22,9 @@ let dashboard = null;             // MR und Ziele
 let world     = null;             // Weltzustand
 let notifSettings = null;         // dieselbe Auswahl wie fuer die Toasts
 let clickThrough = false;
+let interacting = false;
 let visible = true;
+let hotkeys = { overlay: 'Alt+Shift+W', interact: 'Alt+Shift+E' };
 
 let tickTimer = null;
 let pollTimer = null;
@@ -239,7 +241,14 @@ function stopTimers() {
 async function applyState(st) {
   if (!st) return;
   clickThrough = !!st.clickThrough;
+  interacting  = !!st.interacting;
+  if (st.hotkeys) hotkeys = st.hotkeys;
+
+  /* Sichtbare Rueckmeldung: im Zeigermodus nimmt das Overlay Klicks an und
+     das Spiel laeuft ohne Fokus weiter - das darf man nicht raten muessen. */
+  document.getElementById('overlay-view').classList.toggle('interacting', interacting);
   updateClickButton();
+  renderHint();
 
   const slider = $('ov-opacity');
   if (slider && Number.isFinite(st.opacity)) slider.value = String(Math.round(st.opacity * 100));
@@ -275,6 +284,28 @@ $('ov-click').onclick = async () => {
 
 $('ov-opacity').oninput = e => window.api.setOverlayOpacity(Number(e.target.value) / 100);
 
+/**
+ * Erklaert den jeweils unklaren Zustand - und nur den.
+ *
+ * Bei durchgereichten Klicks ist nicht ersichtlich, wie man wieder an die
+ * Bedienung kommt; im Zeigermodus nicht, wie man zurueck ins Spiel kommt.
+ * Sind beide aus, ist alles offensichtlich und die Zeile verschwindet.
+ */
+function renderHint() {
+  const el = $('ov-hint');
+  if (interacting) {
+    el.innerHTML = `<b>Zeigermodus</b> · <kbd>Esc</kbd> zurück ins Spiel`;
+    el.classList.remove('hidden');
+  } else if (clickThrough) {
+    el.innerHTML = `Klicks gehen ans Spiel · ` +
+      hotkeys.interact.split('+').map(k => `<kbd>${esc(k)}</kbd>`).join('') +
+      ` holt den Zeiger`;
+    el.classList.remove('hidden');
+  } else {
+    el.classList.add('hidden');
+  }
+}
+
 function updateClickButton() {
   const btn = $('ov-click');
   btn.classList.toggle('on', clickThrough);
@@ -292,12 +323,20 @@ function updateClickButton() {
  * kommen weiter an, obwohl Klicks durchfallen.
  */
 window.addEventListener('mousemove', e => {
-  if (!clickThrough) return;
+  /* Im Zeigermodus ist der Durchlass ohnehin ausgesetzt - eine Meldung von
+     hier wuerde ihn mitten in der Bedienung wieder einschalten. */
+  if (!clickThrough || interacting) return;
   const bar = $('ov-bar').getBoundingClientRect();
   const overBar = e.clientY <= bar.bottom;
   if (overBar === hoverSent) return;
   hoverSent = overBar;
   window.api.setOverlayHover(overBar);
+});
+
+/* Esc ist der Weg zurueck ins Spiel, ohne die Hand von der Maus zu nehmen
+   und ohne den Hotkey blind zu treffen. */
+window.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && interacting) window.api.setInteract(false);
 });
 
 window.api.onOverlayChanged(applyState);

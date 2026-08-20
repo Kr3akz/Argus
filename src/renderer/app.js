@@ -18,9 +18,9 @@ $('btn-overlay').innerHTML = Icon.pip(15);
    damit hier nie eine andere Taste steht als die registrierte. */
 window.api.overlayHotkey().then(hk => {
   const el = $('hotkey-hint');
-  if (!el || !hk) return;
-  el.innerHTML = hk.split('+').map(k => `<kbd>${esc(k)}</kbd>`).join('');
-  el.title = `Overlay ein- und ausblenden (${hk})`;
+  if (!el || !hk || !hk.overlay) return;
+  el.innerHTML = hk.overlay.split('+').map(k => `<kbd>${esc(k)}</kbd>`).join('');
+  el.title = `${hk.overlay}: Overlay ein- und ausblenden\n${hk.interact}: Mauszeiger ins Overlay holen`;
   el.classList.remove('hidden');
 }).catch(() => {});
 $('btn-min').innerHTML     = Icon.minus(15);

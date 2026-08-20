@@ -22,6 +22,7 @@ npm run report
 | | |
 |---|---|
 | **Alt+Shift+W** | Overlay ein-/ausblenden (global, auch im Spiel) |
+| **Alt+Shift+E** | Mauszeiger ins Overlay holen, **Esc** bringt ihn zurück ins Spiel |
 | **▣** in der Titelleiste | Overlay ein-/ausblenden |
 
 ### Zwei Fenster
@@ -54,6 +55,27 @@ In der Fußleiste stellst du die **Deckkraft** ein (35–100 %). Der Knopf mit d
 Fadenkreuz schaltet den **Klick-Durchlass**: Klicks gehen dann ans Spiel, statt im
 Overlay zu landen. Die Kopfleiste bleibt dabei bedienbar — sonst käme man an den
 Schalter nicht mehr heran, um ihn wieder auszuschalten.
+
+### Zeiger ins Overlay holen
+
+Solange Warframe im Vordergrund ist, hält es den Mauszeiger fest — das Overlay ist
+dann zwar sichtbar, aber nicht bedienbar. **Alt+Shift+E** holt ihn: das Overlay nimmt
+kurz den Eingabefokus, Windows gibt den Zeiger daraufhin von selbst frei. Das Spiel
+läuft im Hintergrund weiter.
+
+Zurück geht es mit **Esc** oder demselben Hotkey. Der Fokus wandert dabei gezielt an
+das Fenster zurück, aus dem du gekommen bist, nicht irgendwohin — dafür merkt sich die
+App vorher dessen Fensterkennung (siehe `src/core/foreground.js`). Klickst du
+stattdessen selbst ins Spiel, endet der Modus ebenso.
+
+Im Zeigermodus ist der Klick-Durchlass ausgesetzt und das Overlay bekommt einen blauen
+Rahmen. Die Einstellung selbst bleibt unangetastet: nach dem Zurückspringen gilt wieder,
+was vorher galt.
+
+**Mausrad oder Maustaste geht dafür nicht.** Electron kann systemweit nur Tasten
+abfangen; für Mausereignisse bräuchte es einen globalen Maus-Hook. In Warframe wäre das
+Rad ohnehin die falsche Wahl — dort wechselt es die Waffe. Wer den Griff zur Tastatur
+sparen möchte, legt Alt+Shift+E in der Software seiner Maus auf eine Daumentaste.
 
 Das Overlay setzt Warframe im **randlosen Fenstermodus** voraus. Echtes Vollbild lässt
 kein fremdes Fenster darüber zu — das ist eine Windows-Eigenheit, keine Einschränkung
@@ -127,6 +149,7 @@ src/core/     Logik, komplett unabhängig von der Oberfläche
   recipes.js      rekursive Materialauflösung
   ratelimit.js    schützt vor dem Login-Lockout
   store.js        Ziele und Notizen
+  foreground.js   gibt den Eingabefokus ans Spiel zurück
 src/main/     Electron-Hauptprozess (Hauptfenster + Overlay-Fenster)
 src/renderer/ Oberfläche
   index.html    Hauptfenster
