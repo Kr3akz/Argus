@@ -3872,3 +3872,41 @@ body.tags-window {
 .tag-duc-val {
   font: 700 14px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
 }
+
+/* ============================================================================
+   Vektorglyphen statt Emoji
+
+   Emoji werden je nach System und Schriftart anders gezeichnet, bringen ihre
+   eigenen Farben in ein abgestimmtes Schema und lassen sich nicht in der
+   Groesse steuern. Diese Klassen setzen die Ersatz-Glyphen auf dieselbe Linie
+   wie den Text daneben.
+   ========================================================================= */
+
+.tip-ic, .btn-ic, .notif-hit-ic {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: -2px;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+.tip-ic svg { width: 14px; height: 14px; }
+.btn-ic svg { width: 14px; height: 14px; }
+.notif-hit-ic svg { width: 13px; height: 13px; }
+
+.tip-ic { color: var(--gold); }
+
+/* Farbpunkt statt farbigem Emoji: nimmt die Textfarbe des Chips an, damit
+   Punkt und Beschriftung immer zusammenpassen. */
+.chip-dot {
+  display: inline-block;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  margin-right: 6px;
+  vertical-align: 1px;
+  flex-shrink: 0;
+}
+
+/* Leerzustaende trugen ein grosses Emoji - jetzt eine gedaempfte Glyphe. */
+.empty-icon svg { width: 30px; height: 30px; }
+.empty-icon { color: var(--text-3); display: flex; justify-content: center; }

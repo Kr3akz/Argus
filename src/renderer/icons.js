@@ -79,6 +79,15 @@ const Icon = {
   /* Wortmarke: das Auge des Argus. Die Strahlen stehen fuer die hundert Augen,
      von denen nie alle zugleich schlafen - das Sinnbild fuer den Waechter, der
      im Hintergrund den Weltzustand beobachtet. */
-  argus: s => svg('<path d="M12 5.5c5 0 8.4 4 9.3 6.1a1 1 0 0 1 0 .8c-.9 2.1-4.3 6.1-9.3 6.1s-8.4-4-9.3-6.1a1 1 0 0 1 0-.8C3.6 9.5 7 5.5 12 5.5Z"/><circle cx="12" cy="12" r="3.2"/><path d="M12 1.8v1.8M12 20.4v1.8M3.9 4.6l1.3 1.3M18.8 18.1l1.3 1.3M20.1 4.6l-1.3 1.3M5.2 18.1l-1.3 1.3"/>', s)
+  argus: s => svg('<path d="M12 5.5c5 0 8.4 4 9.3 6.1a1 1 0 0 1 0 .8c-.9 2.1-4.3 6.1-9.3 6.1s-8.4-4-9.3-6.1a1 1 0 0 1 0-.8C3.6 9.5 7 5.5 12 5.5Z"/><circle cx="12" cy="12" r="3.2"/><path d="M12 1.8v1.8M12 20.4v1.8M3.9 4.6l1.3 1.3M18.8 18.1l1.3 1.3M20.1 4.6l-1.3 1.3M5.2 18.1l-1.3 1.3"/>', s),
+
+  /* Ersetzen Emojis in der Oberflaeche. Emoji werden je nach System und
+     Schriftart anders gezeichnet, tragen fremde Farben in ein abgestimmtes
+     Farbschema und lassen sich nicht in der Groesse steuern - deshalb
+     durchgehend Vektorglyphen wie der Rest der Oberflaeche. */
+  bulb:   s => svg('<path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2Z"/>', s),
+  gem:    s => svg('<path d="M6 3h12l4 6-10 12L2 9Z"/><path d="M2 9h20"/><path d="m11 3-3 6 4 12 4-12-3-6"/>', s),
+  rocket: s => svg('<path d="M4.5 16.5c-1.5 1.3-2 5-2 5s3.7-.5 5-2c.7-.8.7-2.1-.1-2.9a2.2 2.2 0 0 0-2.9-.1Z"/><path d="m12 15-3-3a22 22 0 0 1 2-4A12.9 12.9 0 0 1 22 2c0 2.7-.8 7.5-6 11a22 22 0 0 1-4 2Z"/><path d="M9 12H4s.6-3 2-4c1.6-1.1 5 0 5 0"/><path d="M12 15v5s3-.6 4-2c1.1-1.6 0-5 0-5"/>', s),
+  copy:   s => svg('<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>', s)
 };
 

@@ -75,14 +75,6 @@
           </div>
         </button>
 
-        <button class="nav-item" data-tab="farmguide">
-          <span class="nav-icon" data-icon="starchart"></span>
-          <div class="nav-tooltip">
-            <b>Farm-Guide</b>
-            <span>Ressourcen & beste Drop-Nodes</span>
-          </div>
-        </button>
-
         <button class="nav-item" data-tab="ducats">
           <span class="nav-icon" data-icon="ducat"></span>
           <div class="nav-tooltip">
@@ -97,6 +89,14 @@
           <div class="nav-tooltip">
             <b>Builds & Mods</b>
             <span>Overframe-Import & Modding</span>
+          </div>
+        </button>
+
+        <button class="nav-item" data-tab="farmguide">
+          <span class="nav-icon" data-icon="starchart"></span>
+          <div class="nav-tooltip">
+            <b>Farm-Guide</b>
+            <span>Ressourcen & beste Drop-Nodes</span>
           </div>
         </button>
 
@@ -397,10 +397,10 @@
 
       <div class="fg-pro-tips">
         <div class="pro-tip-item">
-          <b>💎 Loot-Squad Setup:</b> Nekros (Entweihen) + Khora (Plündernde Kuppel) + Speed-Nova + Wisp für maximale Dropchancen.
+          <span class="tip-ic" data-icon="gem"></span><b>Loot-Squad Setup:</b> Nekros (Entweihen) + Khora (Plündernde Kuppel) + Speed-Nova + Wisp für maximale Dropchancen.
         </div>
         <div class="pro-tip-item">
-          <b>🚀 Booster-Effekt:</b> Ressourcen-Verdoppler verdoppelt aufgehobene Mengen (z. B. 2x Orokin Cells), Ressourcen-Chance erhöht Drop-Wahrscheinlichkeit.
+          <span class="tip-ic" data-icon="rocket"></span><b>Booster-Effekt:</b> Ressourcen-Verdoppler verdoppelt aufgehobene Mengen (z. B. 2x Orokin Cells), Ressourcen-Chance erhöht Drop-Wahrscheinlichkeit.
         </div>
       </div>
 
@@ -468,23 +468,23 @@
         <div class="ducats-toolbar-row">
           <div class="ducats-mode-tabs">
             <button class="ducats-tab-btn active" id="tab-ducats-mode-inv" data-mode="inventory">
-              <span>📦 Mein Prime-Inventar</span>
+              <span class="btn-ic" data-icon="crate"></span><span>Mein Prime-Inventar</span>
               <span class="counter-badge" id="ducats-inv-badge-count">0</span>
             </button>
             <button class="ducats-tab-btn" id="tab-ducats-mode-cat" data-mode="catalog">
-              <span>📖 Gesamter Prime-Katalog</span>
+              <span class="btn-ic" data-icon="codex"></span><span>Gesamter Prime-Katalog</span>
             </button>
           </div>
 
           <div class="ducats-quick-actions">
             <button class="btn btn-sm btn-action" id="btn-ducats-select-all" title="Wählt alle verfügbaren Teile aus dem Inventar zum Verkauf aus">
-              ⚡ Alle auswählen
+              <span class="btn-ic" data-icon="bolt"></span>Alle auswählen
             </button>
             <button class="btn btn-sm btn-action" id="btn-ducats-select-dups" title="Behält 1 Exemplar für die Sammlung und wählt alle Duplikate aus">
-              ✨ Nur Duplikate (1 behalten)
+              <span class="btn-ic" data-icon="copy"></span>Nur Duplikate (1 behalten)
             </button>
             <button class="btn btn-sm btn-subtle" id="btn-ducats-clear" title="Setzt alle Verkaufsmengen auf 0 zurück">
-              ✕ Leeren
+              <span class="btn-ic" data-icon="close"></span>Leeren
             </button>
           </div>
         </div>
@@ -498,10 +498,10 @@
           <div class="ducats-filter-badges">
             <button class="filter-chip active" data-filter="all">Alle</button>
             <button class="filter-chip chip-junk" data-filter="advice-junk" title="Dukaten/Plat >= 10: Hoher Schmelzwert">
-              🟢 Prime Junk
+              <span class="chip-dot"></span>Prime Junk
             </button>
             <button class="filter-chip chip-plat" data-filter="advice-plat" title="Platin >= 15p oder Verhältnis < 7: Besser auf Markt verkaufen">
-              🔵 Platin-Tipps
+              <span class="chip-dot"></span>Platin-Tipps
             </button>
             <button class="filter-chip chip-gold" data-filter="100">Gold (100)</button>
             <button class="filter-chip chip-silver" data-filter="45">Silber (45/65)</button>

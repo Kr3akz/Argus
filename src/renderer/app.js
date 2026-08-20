@@ -1715,7 +1715,7 @@ function renderFarmGuide(list) {
 
         ${r.tips ? `
           <div style="font-size: 11.5px; color: var(--gold); background: rgba(240, 184, 73, 0.08); padding: 8px 12px; border-radius: var(--r-sm);">
-            💡 <b>Tipp:</b> ${esc(r.tips)}
+            <span class="tip-ic">${Icon.bulb(13)}</span><b>Tipp:</b> ${esc(r.tips)}
           </div>
         ` : ''}
       </div>
@@ -2003,7 +2003,7 @@ function renderDucatsCatalog() {
     if (ducatsMode === 'inventory' && !ducatsData.inventory?.items?.length) {
       container.innerHTML = `
         <div class="ducats-empty-box">
-          <div class="empty-icon">📦</div>
+          <div class="empty-icon">${Icon.crate(30)}</div>
           <h3>Keine Prime-Teile im Inventar</h3>
           <p>Es wurden noch keine Prime-Teile in deinem Inventar gefunden. Schalte auf den <b>Gesamtkatalog</b> um oder öffne Warframe und führe einen Inventar-Abruf durch.</p>
           <button class="btn btn-sm btn-action" id="btn-ducats-switch-to-cat">Zum Gesamtkatalog wechseln</button>
@@ -2019,7 +2019,7 @@ function renderDucatsCatalog() {
 
     container.innerHTML = `
       <div class="ducats-empty-box">
-        <div class="empty-icon">🔍</div>
+        <div class="empty-icon">${Icon.search(30)}</div>
         <h3>Keine Treffer</h3>
         <p>Zu deinen Filter- und Suchkriterien wurden keine Prime-Teile gefunden.</p>
       </div>
@@ -2053,11 +2053,11 @@ function renderDucatsCatalog() {
     if (it.tradeAdvice && it.tradeAdvice.advice !== 'unknown') {
       const adv = it.tradeAdvice;
       if (adv.advice === 'ducats') {
-        adviceHtml = `<span class="trade-chip chip-junk" title="${esc(adv.reason)}">🟢 Junk (${adv.ratio} Duk/p)</span>`;
+        adviceHtml = `<span class="trade-chip chip-junk" title="${esc(adv.reason)}"><span class="chip-dot"></span>Junk (${adv.ratio} Duk/p)</span>`;
       } else if (adv.advice === 'plat') {
-        adviceHtml = `<span class="trade-chip chip-plat" title="${esc(adv.reason)}">🔵 Markt (${adv.ratio} Duk/p)</span>`;
+        adviceHtml = `<span class="trade-chip chip-plat" title="${esc(adv.reason)}"><span class="chip-dot"></span>Markt (${adv.ratio} Duk/p)</span>`;
       } else {
-        adviceHtml = `<span class="trade-chip chip-neutral" title="${esc(adv.reason)}">⚪ Fair (${adv.ratio} Duk/p)</span>`;
+        adviceHtml = `<span class="trade-chip chip-neutral" title="${esc(adv.reason)}"><span class="chip-dot"></span>Fair (${adv.ratio} Duk/p)</span>`;
       }
     }
 
@@ -2516,7 +2516,7 @@ function updateModalMatchesHint() {
     hintEl.innerHTML = '<span style="color: var(--text-3);">Benachrichtigungen deaktiviert</span>';
   } else if (matches.length) {
     const topMatches = matches.slice(0, 3).map(m => `<b>${esc(m.tier)} ${esc(m.missionType)}</b> (${esc(m.node)})`).join(', ');
-    hintEl.innerHTML = `<span>🎯 <b>${matches.length} passende Risse</b> jetzt aktiv: ${topMatches}</span>`;
+    hintEl.innerHTML = `<span class="notif-hit-ic">${Icon.target(13)}</span><span><b>${matches.length} passende Risse</b> jetzt aktiv: ${topMatches}</span>`;
   } else {
     hintEl.innerHTML = '<span>Aktuell <b>keine Treffer</b> bei den gewählten Filtern</span>';
   }
