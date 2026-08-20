@@ -50,7 +50,19 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('navigate:tab', handler);
     return () => ipcRenderer.removeListener('navigate:tab', handler);
   },
+  /* Overlay: toggleOverlay und overlayState liefern denselben Zustand
+     ({ overlay, clickThrough, opacity }), damit die Oberflaeche nach jedem
+     Wechsel nur eine Quelle auszuwerten hat. */
   toggleOverlay:   ()          => ipcRenderer.invoke('window:overlay'),
+  overlayState:    ()          => ipcRenderer.invoke('window:overlayState'),
+  setClickThrough: (on)        => ipcRenderer.invoke('window:clickThrough', on),
+  setOverlayHover: (over)      => ipcRenderer.invoke('window:hover', over),
+  setOverlayOpacity:(value)    => ipcRenderer.invoke('window:opacity', value),
+  onOverlayChanged:(cb)        => {
+    const handler = (_e, st) => cb(st);
+    ipcRenderer.on('overlay:changed', handler);
+    return () => ipcRenderer.removeListener('overlay:changed', handler);
+  },
   overlayHotkey:   ()          => ipcRenderer.invoke('window:hotkey'),
   minimize:        ()          => ipcRenderer.invoke('window:minimize'),
   close:           ()          => ipcRenderer.invoke('window:close')

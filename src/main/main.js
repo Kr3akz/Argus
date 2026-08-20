@@ -14,7 +14,7 @@
  *     dieselbe Drosselung (siehe ratelimit.js) - DE sperrt pro IP.
  *   - Renderer laeuft ohne Node-Zugriff (contextIsolation an).
  */
-import { app, BrowserWindow, ipcMain, globalShortcut, shell, Notification } from 'electron';
+import { app, BrowserWindow, ipcMain, globalShortcut, shell, Notification, screen } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -25,7 +25,7 @@ import { masteryRankName, progressForMR } from '../core/mastery.js';
 import { classify, CATEGORY_LABELS } from '../core/classify.js';
 import { acquisitionOf } from '../core/acquisition.js';
 import { resolveGoal, combineGoals, formatDuration } from '../core/recipes.js';
-import { loadConfig } from '../core/config.js';
+import { loadConfig, saveConfig } from '../core/config.js';
 import * as store from '../core/store.js';
 import { loadMods, POLARITIES, RARITY_LABELS, searchMods, isAuraMod, isExilusMod } from '../core/mods.js';
 import { evaluateBuild, combineBuilds, orokinTypeFor } from '../core/builds.js';
@@ -46,6 +46,22 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 let win = null;
 let overlayMode = false;
 
+/* Klicks gehen ans Spiel durch, statt im Overlay zu landen. */
+let clickThrough = false;
+let overlayOpacity = 0.94;
+
+/* Zwei getrennte Positionen: das Fenster steht auf dem Arbeitsmonitor, das
+   Overlay ueber dem Spiel. Wer zwischen beiden wechselt, will nicht jedes Mal
+   neu schieben - deshalb merkt sich jeder Modus seine eigene Geometrie. */
+let normalBounds  = null;
+let overlayBounds = null;
+let layoutSaveTimer = null;
+
+const WINDOW_SIZE  = { width: 1480, height: 880 };
+const WINDOW_MIN   = { width: 1020, height: 620 };
+const OVERLAY_SIZE = { width:  380, height: 600 };
+const OVERLAY_MIN  = { width:  300, height: 260 };
+
 /* Eine Quelle fuer Registrierung und Anzeige - sonst zeigt die Titelleiste
    irgendwann eine Taste, die gar nicht mehr registriert ist. */
 const OVERLAY_HOTKEY = 'Alt+Shift+W';
@@ -55,7 +71,8 @@ process.chdir(path.resolve(__dirname, '../..'));   // data/ liegt im Projektwurz
 
 function createWindow() {
   win = new BrowserWindow({
-    width: 1480, height: 880, minWidth: 1020, minHeight: 620,
+    width: WINDOW_SIZE.width, height: WINDOW_SIZE.height,
+    minWidth: WINDOW_MIN.width, minHeight: WINDOW_MIN.height,
     backgroundColor: '#0d1117',
     frame: false,
     show: false,
@@ -70,6 +87,16 @@ function createWindow() {
   win.loadFile(path.join(__dirname, '../renderer/index.html'));
   win.once('ready-to-show', () => win.show());
 
+  /* Nur im Overlay-Modus mitschreiben. Im Fenstermodus wuerde jede Bewegung
+     die gemerkte Overlay-Position ueberschreiben. */
+  const remember = () => {
+    if (!overlayMode || !win) return;
+    overlayBounds = win.getBounds();
+    rememberOverlayLayout();
+  };
+  win.on('move', remember);
+  win.on('resize', remember);
+
   // Externe Links im echten Browser oeffnen, nicht in der App.
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
@@ -77,14 +104,116 @@ function createWindow() {
   });
 }
 
-/** Wechselt zwischen normalem Fenster und transparentem Overlay. */
+/**
+ * Standardplatz des Overlays: oben rechts auf dem PRIMAERbildschirm.
+ *
+ * Bewusst nicht auf dem Bildschirm, auf dem das Fenster gerade steht. Das
+ * Hauptfenster gehoert auf den zweiten Monitor, das Overlay ueber das Spiel -
+ * und das laeuft auf dem Hauptbildschirm. Wer es anders haben will, zieht es
+ * einmal hin; ab dann gilt die gemerkte Position.
+ */
+function defaultOverlayBounds() {
+  const area = screen.getPrimaryDisplay().workArea;
+  const height = Math.min(OVERLAY_SIZE.height, area.height - 96);
+  return {
+    width:  OVERLAY_SIZE.width,
+    height,
+    x: area.x + area.width - OVERLAY_SIZE.width - 24,
+    y: area.y + 64
+  };
+}
+
+/**
+ * Gemerkte Position nur uebernehmen, wenn sie noch auf einem angeschlossenen
+ * Bildschirm liegt. Sonst taucht das Overlay nach dem Abstecken des zweiten
+ * Monitors ausserhalb jedes sichtbaren Bereichs auf und ist nur noch ueber
+ * den Hotkey erreichbar.
+ */
+function usableBounds(b) {
+  if (!b || !Number.isFinite(b.x) || !Number.isFinite(b.y)) return null;
+  const onScreen = screen.getAllDisplays().some(d => {
+    const a = d.workArea;
+    return b.x < a.x + a.width && b.x + b.width > a.x
+        && b.y < a.y + a.height && b.y + b.height > a.y;
+  });
+  return onScreen ? b : null;
+}
+
+/* Unter 35 % ist das Overlay auf hellem Spielhintergrund nicht mehr lesbar -
+   und ein unsichtbares Fenster, das trotzdem Klicks faengt, waere eine Falle. */
+const clampOpacity = v => Math.min(1, Math.max(0.35, Number(v) || 0.94));
+
+/* Position, Deckkraft und Klick-Durchlass ueberleben den Neustart. Gebuendelt,
+   weil beim Ziehen des Fensters Dutzende Ereignisse pro Sekunde kommen. */
+function rememberOverlayLayout() {
+  clearTimeout(layoutSaveTimer);
+  layoutSaveTimer = setTimeout(async () => {
+    try {
+      const cfg = await loadConfig();
+      await saveConfig({ ...cfg, overlayBounds, overlayOpacity, overlayClickThrough: clickThrough });
+    } catch {
+      /* Eine nicht gespeicherte Fensterposition ist ein Schoenheitsfehler,
+         kein Grund, irgendetwas anderes anzuhalten. */
+    }
+  }, 800);
+}
+
+async function loadOverlayPrefs() {
+  try {
+    const cfg = await loadConfig();
+    if (Number.isFinite(cfg.overlayOpacity)) overlayOpacity = clampOpacity(cfg.overlayOpacity);
+    if (cfg.overlayBounds) overlayBounds = cfg.overlayBounds;
+    clickThrough = !!cfg.overlayClickThrough;
+  } catch {
+    /* Ohne Konfiguration gelten die Voreinstellungen. */
+  }
+}
+
+/**
+ * Klicks an das Spiel durchreichen.
+ *
+ * forward: true ist der entscheidende Teil: ohne das kaeme keine Mausbewegung
+ * mehr im Renderer an, und das Overlay koennte nicht bemerken, dass der Zeiger
+ * wieder darueber steht. Der Renderer meldet genau das ueber window:hover
+ * zurueck - sonst waere der Durchlass eine Einbahnstrasse, die sich nur noch
+ * per Hotkey aufheben liesse.
+ */
+function applyMousePassthrough(ignore) {
+  if (!win) return;
+  win.setIgnoreMouseEvents(!!ignore, { forward: true });
+}
+
+function overlayState() {
+  return { overlay: overlayMode, clickThrough, opacity: overlayOpacity };
+}
+
+/** Wechselt zwischen normalem Fenster und kompaktem Overlay. */
 function toggleOverlay() {
-  if (!win) return overlayMode;
-  overlayMode = !overlayMode;
-  win.setAlwaysOnTop(overlayMode, 'screen-saver');
-  win.setOpacity(overlayMode ? 0.94 : 1);
-  win.setSkipTaskbar(overlayMode);
-  win.webContents.send('overlay:changed', overlayMode);
+  return setOverlayMode(!overlayMode);
+}
+
+function setOverlayMode(on) {
+  if (!win || on === overlayMode) return overlayMode;
+  overlayMode = on;
+
+  if (on) {
+    normalBounds = win.getBounds();
+    /* Erst das Minimum senken, dann die Groesse setzen. Andersherum klemmt
+       Windows das Overlay auf die Mindestmasse des Fenstermodus. */
+    win.setMinimumSize(OVERLAY_MIN.width, OVERLAY_MIN.height);
+    win.setBounds(usableBounds(overlayBounds) || defaultOverlayBounds());
+  } else {
+    overlayBounds = win.getBounds();
+    rememberOverlayLayout();
+    win.setMinimumSize(WINDOW_MIN.width, WINDOW_MIN.height);
+    if (normalBounds) win.setBounds(normalBounds);
+  }
+
+  win.setAlwaysOnTop(on, 'screen-saver');
+  win.setOpacity(on ? overlayOpacity : 1);
+  win.setSkipTaskbar(on);
+  applyMousePassthrough(on && clickThrough);
+  win.webContents.send('overlay:changed', overlayState());
   return overlayMode;
 }
 
@@ -98,7 +227,7 @@ function toggleOverlay() {
  */
 function showOverlay() {
   if (!win) return;
-  if (!overlayMode) toggleOverlay();
+  setOverlayMode(true);
   win.showInactive();
 }
 
@@ -758,7 +887,27 @@ ipcMain.handle('mods:setManyOwned', async (_e, list, owned) => {
   return { ok: true, data: await buildsPayload() };
 });
 
-ipcMain.handle('window:overlay',  () => toggleOverlay());
+ipcMain.handle('window:overlay',      () => { toggleOverlay(); return overlayState(); });
+ipcMain.handle('window:overlayState', () => overlayState());
+ipcMain.handle('window:clickThrough', (_e, on) => {
+  clickThrough = !!on;
+  applyMousePassthrough(overlayMode && clickThrough);
+  rememberOverlayLayout();
+  return overlayState();
+});
+/* Der Renderer meldet, ob der Zeiger ueber dem Overlay steht. Nur so laesst
+   sich der Durchlass kurzzeitig aufheben, damit die Bedienelemente ueberhaupt
+   noch anklickbar sind. */
+ipcMain.handle('window:hover', (_e, over) => {
+  if (overlayMode && clickThrough) applyMousePassthrough(!over);
+  return null;
+});
+ipcMain.handle('window:opacity', (_e, value) => {
+  overlayOpacity = clampOpacity(value);
+  if (overlayMode && win) win.setOpacity(overlayOpacity);
+  rememberOverlayLayout();
+  return overlayState();
+});
 ipcMain.handle('window:hotkey',   () => OVERLAY_HOTKEY);
 ipcMain.handle('window:minimize', () => win && win.minimize());
 ipcMain.handle('window:close',    () => win && win.close());
@@ -914,10 +1063,11 @@ ipcMain.handle('notifications:test', async () => {
 /* ---------------------------- App ---------------------------- */
 
 if (process.platform === 'win32') {
-  app.setAppUserModelId('com.kr3akz.warframeguide');
+  app.setAppUserModelId('com.kr3akz.cephalonargus');
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  await loadOverlayPrefs();
   createWindow();
   // Hotkey zum Ein-/Ausblenden waehrend des Spielens
   globalShortcut.register(OVERLAY_HOTKEY, () => {

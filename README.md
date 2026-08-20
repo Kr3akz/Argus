@@ -24,6 +24,32 @@ npm run report
 | **Alt+Shift+W** | Overlay ein-/ausblenden (global, auch im Spiel) |
 | **▣** in der Titelleiste | Zwischen Fenster- und Overlay-Modus wechseln |
 
+### Zwei Modi
+
+**Fenstermodus** ist die volle Oberfläche mit allen acht Bereichen — gedacht für den
+zweiten Monitor.
+
+**Overlay** ist keine geschrumpfte Fassung davon, sondern eine eigene schmale Ansicht
+(380 px) für den Bildschirm mit dem laufenden Spiel. Sie zeigt nur, was sich in den
+nächsten Minuten entscheidet:
+
+- die drei Open-World-Zyklen mit sekundengenauem Countdown
+- aktive Void-Risse — Treffer deiner Benachrichtigungs-Auswahl stehen oben und sind
+  farbig hinterlegt, der Rest bleibt darunter sichtbar
+- deine offenen Farm-Ziele
+
+Restzeiten unter fünf Minuten färben sich golden.
+
+Beide Modi merken sich **eigene** Position und Größe. Das Overlay geht beim ersten Mal
+oben rechts auf dem **Hauptbildschirm** auf — dort läuft in aller Regel das Spiel,
+während das Fenster auf dem zweiten Monitor stehen bleibt. Einmal woandershin gezogen,
+bleibt es dort, auch über einen Neustart hinweg.
+
+In der Fußleiste stellst du die **Deckkraft** ein (35–100 %). Der Knopf mit dem
+Fadenkreuz schaltet den **Klick-Durchlass**: Klicks gehen dann ans Spiel, statt im
+Overlay zu landen. Die Kopfleiste bleibt dabei bedienbar — sonst käme man an den
+Schalter nicht mehr heran, um ihn wieder auszuschalten.
+
 Das Overlay setzt Warframe im **randlosen Fenstermodus** voraus. Echtes Vollbild lässt
 kein fremdes Fenster darüber zu — das ist eine Windows-Eigenheit, keine Einschränkung
 der App.
