@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('api', {
   getWorldState:   (force)     => ipcRenderer.invoke('worldstate:get', force),
   getFarmingGuide: (q)         => ipcRenderer.invoke('farming:get', q),
   getDucatsData:   ()          => ipcRenderer.invoke('ducats:get'),
+  fetchDucatPrices:(slugs)     => ipcRenderer.invoke('ducats:fetchPrices', slugs),
   /* Inventar: get liest nur die lokale Datei, refresh geht als einziger Weg
      ins Netz. Zugangsdaten bleiben im Hauptprozess - hier kommt nie ein
      accountId oder nonce an. */

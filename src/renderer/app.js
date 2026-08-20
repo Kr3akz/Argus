@@ -35,6 +35,7 @@ if ($('ic-buildimport')) $('ic-buildimport').innerHTML  = Icon.link(16);
 if ($('ic-modsearch')) $('ic-modsearch').innerHTML    = Icon.search(16);
 if ($('ic-fgsearch')) $('ic-fgsearch').innerHTML     = Icon.search(16);
 if ($('ic-ducatsearch')) $('ic-ducatsearch').innerHTML  = Icon.search(16);
+if ($('ic-baro-kaufkraft')) $('ic-baro-kaufkraft').innerHTML = Icon.baro(36);
 if ($('ic-invsearch')) $('ic-invsearch').innerHTML    = Icon.search(16);
 if ($('btn-inv-refresh')) $('btn-inv-refresh').innerHTML = Icon.refresh(15) + '<span>Inventar abrufen</span>';
 if ($('btn-refresh')) $('btn-refresh').innerHTML = Icon.refresh(15) + '<span>Profil aktualisieren</span>';
@@ -1298,7 +1299,7 @@ function renderWorldState(d) {
                 <b>${esc(it.item)}</b>
                 <span>${nf(it.credits)} Credits</span>
               </div>
-              <span class="ducat-item-val">${Icon.ducat(13)} <b>${nf(it.ducats)}</b></span>
+              <span class="ducat-item-val"><img class="currency-ic ducat-ic" src="assets/icons/ducats.png" alt="Dukaten"> <b>${nf(it.ducats)}</b></span>
             </div>
           `).join('')}
         </div>
@@ -1737,77 +1738,499 @@ function openFarmGuideFor(name) {
 
 /* ---------------- 3. Baro Dukaten & Relikt-Helper ---------------- */
 let ducatsData = null;
-let ducatQuantities = new Map();
+let sellQuantities = new Map(); // slug -> count
+let currentSelectionPreset = 'all'; // 'all' | 'duplicates' | 'custom' | 'none'
+let ducatsMode = 'inventory';    // 'inventory' | 'catalog'
+let ducatsFilter = 'all';        // 'all' | 'advice-junk' | 'advice-plat' | '100' | '45' | '15'
+let ducatsSort = 'ducats-desc';   // 'ducats-desc' | 'plat-desc' | 'ratio-desc' | 'count-desc' | 'name-asc'
+let isFetchingDucatPrices = false;
+
+function updateSelectionPresetButtons() {
+  $('btn-ducats-select-all')?.classList.toggle('active', currentSelectionPreset === 'all');
+  $('btn-ducats-select-dups')?.classList.toggle('active', currentSelectionPreset === 'duplicates');
+}
 
 async function loadDucats() {
-  if (!ducatsData) {
-    ducatsData = await window.api.getDucatsData();
+  const res = await window.api.getDucatsData();
+  ducatsData = res;
+
+  // Wenn noch keine Mengen gewählt wurden und Inventar vorliegt: alles vorselektieren
+  if (sellQuantities.size === 0 && ducatsData?.inventory?.items?.length > 0) {
+    currentSelectionPreset = 'all';
+    for (const it of ducatsData.inventory.items) {
+      if (it.count > 0) sellQuantities.set(it.slug, it.count);
+    }
   }
+
+  // Modus umschalten, falls kein Inventar vorhanden ist
+  if (!ducatsData?.inventory?.items?.length && ducatsMode === 'inventory') {
+    ducatsMode = 'catalog';
+  }
+
   renderDucats();
+  initDucatsEventListeners();
+
+  // Fehlende Preise im Hintergrund automatisch nachladen
+  fetchMissingDucatPrices();
+}
+
+async function fetchMissingDucatPrices(forceAll = false) {
+  if (isFetchingDucatPrices || !ducatsData) return;
+
+  const targetItems = (ducatsMode === 'inventory' ? ducatsData.inventory?.items : ducatsData.catalog) || [];
+  const missingSlugs = targetItems
+    .filter(it => forceAll || !it.price || it.price.min == null)
+    .map(it => it.slug)
+    .filter(Boolean);
+
+  if (!missingSlugs.length) return;
+
+  isFetchingDucatPrices = true;
+  updateDucatsPriceButtonState(true);
+
+  try {
+    const BATCH_SIZE = 10;
+    for (let i = 0; i < missingSlugs.length; i += BATCH_SIZE) {
+      const batch = missingSlugs.slice(i, i + BATCH_SIZE);
+      const newPrices = await window.api.fetchDucatPrices(batch);
+
+      applyDucatPrices(newPrices);
+      renderDucatsKPIs();
+      renderDucatsCatalog();
+    }
+  } catch (err) {
+    console.error('Fehler beim Nachladen der Platin-Preise:', err);
+  } finally {
+    isFetchingDucatPrices = false;
+    updateDucatsPriceButtonState(false);
+  }
+}
+
+function applyDucatPrices(priceMap) {
+  if (!priceMap || !ducatsData) return;
+
+  function updateItem(it) {
+    if (priceMap[it.slug]) {
+      it.price = priceMap[it.slug];
+      const price = it.price;
+      if (price && typeof price.min === 'number' && price.min > 0) {
+        const ratio = +(it.ducats / price.min).toFixed(1);
+        if (price.min >= 15 || ratio < 7.0) {
+          it.tradeAdvice = { advice: 'plat', ratio, label: 'Platin-Verkauf', reason: `${price.min}p Mindestpreis auf warframe.market` };
+        } else if (ratio >= 10.0) {
+          it.tradeAdvice = { advice: 'ducats', ratio, label: 'Prime Junk', reason: `${ratio} Dukaten pro Platin (hoher Schmelzwert)` };
+        } else {
+          it.tradeAdvice = { advice: 'balanced', ratio, label: 'Ausgeglichen', reason: `${ratio} Dukaten pro Platin` };
+        }
+      }
+    }
+  }
+
+  (ducatsData.inventory?.items || []).forEach(updateItem);
+  (ducatsData.catalog || []).forEach(updateItem);
 }
 
 function renderDucats() {
   if (!ducatsData) return;
+  renderDucatsStatusBar();
+  renderDucatsKPIs();
+  updateDucatsModeTabs();
+  updateSelectionPresetButtons();
   renderDucatsCatalog();
 }
 
-function renderDucatsCatalog() {
-  const q = ($('ducat-search')?.value || '').toLowerCase().trim();
-  const list = (ducatsData?.catalog || []).filter(it =>
-    !q || it.name.toLowerCase().includes(q) || (it.parentItem && it.parentItem.toLowerCase().includes(q))
-  );
+function renderDucatsStatusBar() {
+  const bar = $('ducats-status-bar');
+  if (!bar) return;
 
-  let totalDucats = 0;
-  ducatQuantities.forEach((qty, name) => {
-    const item = ducatsData?.catalog?.find(x => x.name === name);
-    if (item) totalDucats += item.ducats * qty;
-  });
+  const hasInv = ducatsData.hasInventory && ducatsData.inventory?.items?.length > 0;
 
-  if ($('ducats-calc-total')) {
-    $('ducats-calc-total').innerHTML = `${Icon.ducat(16)} <span>${nf(totalDucats)} Dukaten</span>`;
+  /* Nur der Warnfall bekommt einen Balken. Dass ein Inventar DA ist, sieht man
+     an den Zahlen darunter - dafuer braucht es keine gruene Leiste, die auf
+     Dauer nur Platz kostet und nichts entscheidet. */
+  if (hasInv) { bar.className = 'ducats-status-bar hidden'; return; }
+
+  bar.className = 'ducats-status-bar bar-warning';
+  bar.innerHTML = `
+    <span class="status-dot warning"></span>
+    <span><b>Kein aktives Inventar:</b> Starte Warframe und klicke im Inventar-Tab auf „Inventar abrufen“, um dein Konto automatisch zu scannen. Aktuell wird der Gesamtkatalog angezeigt.</span>
+  `;
+}
+
+function renderDucatsKPIs() {
+  if (!ducatsData) return;
+
+  let selectedDucats = 0;
+  let selectedPlatMin = 0;
+  let selectedPlatMed = 0;
+  let selectedItemsCount = 0;
+
+  const allItems = [...(ducatsData.inventory?.items || []), ...(ducatsData.catalog || [])];
+  const itemMap = new Map();
+  for (const it of allItems) {
+    if (!itemMap.has(it.slug)) itemMap.set(it.slug, it);
   }
 
-  if ($('ducats-catalog')) {
-    $('ducats-catalog').innerHTML = list.slice(0, 100).map(it => {
-      const qty = ducatQuantities.get(it.name) || 0;
-      return `
-        <div class="ducat-item-row ${qty > 0 ? 'selected' : ''}">
-          <img class="mat-icon" src="${esc(it.image)}" alt="" onerror="this.style.display='none'">
-          <div class="ducat-item-body">
-            <b>${esc(it.name)}</b>
-            <span>${esc(it.parentItem || 'Prime')} · ${esc(it.rarity || '')}</span>
-          </div>
-          <span class="ducat-item-val">${Icon.ducat(13)} <b>${it.ducats}</b></span>
-          <div class="ducat-item-counter">
-            <button class="ducat-btn-cnt" data-dec="${esc(it.name)}">-</button>
-            <span class="ducat-cnt-num">${qty}</span>
-            <button class="ducat-btn-cnt" data-inc="${esc(it.name)}">+</button>
-          </div>
-        </div>
-      `;
-    }).join('');
+  sellQuantities.forEach((qty, slug) => {
+    if (qty <= 0) return;
+    const item = itemMap.get(slug);
+    if (!item) return;
 
-    $('ducats-catalog').querySelectorAll('[data-inc]').forEach(btn => {
-      btn.onclick = () => {
-        const name = btn.dataset.inc;
-        ducatQuantities.set(name, (ducatQuantities.get(name) || 0) + 1);
-        renderDucatsCatalog();
-      };
-    });
+    selectedDucats += item.ducats * qty;
+    selectedItemsCount += qty;
 
-    $('ducats-catalog').querySelectorAll('[data-dec]').forEach(btn => {
-      btn.onclick = () => {
-        const name = btn.dataset.dec;
-        const cur = ducatQuantities.get(name) || 0;
-        if (cur > 1) ducatQuantities.set(name, cur - 1);
-        else ducatQuantities.delete(name);
-        renderDucatsCatalog();
-      };
-    });
+    if (item.price?.min != null) {
+      selectedPlatMin += item.price.min * qty;
+      selectedPlatMed += (item.price.median || item.price.min) * qty;
+    }
+  });
+
+  // KPI 1: Ausgewählte Dukaten
+  if ($('ducats-selected-total')) $('ducats-selected-total').textContent = nf(selectedDucats);
+  if ($('ducats-selected-sub')) {
+    const totalInv = ducatsData.inventory?.summary?.totalItems || 0;
+    let presetLabel = '';
+    if (currentSelectionPreset === 'all') presetLabel = ' · Alle gewählt';
+    else if (currentSelectionPreset === 'duplicates') presetLabel = ' · Duplikate gewählt';
+    else if (currentSelectionPreset === 'none' || selectedItemsCount === 0) presetLabel = ' · Keine Teile gewählt';
+
+    $('ducats-selected-sub').textContent = `${nf(selectedItemsCount)} Teile gewählt ${totalInv ? `(von ${nf(totalInv)})` : ''}${presetLabel}`;
+  }
+
+  // KPI 2: Platin-Wert
+  if ($('ducats-selected-plat')) $('ducats-selected-plat').textContent = `~${nf(selectedPlatMin)}`;
+  if ($('ducats-selected-plat-sub')) {
+    $('ducats-selected-plat-sub').textContent = `Min. ${nf(selectedPlatMin)}p · Median ${nf(selectedPlatMed)}p`;
+  }
+
+  // KPI 3: Gesamt-Inventar
+  const invSum = ducatsData.inventory?.summary || { totalDucats: 0, totalItems: 0, duplicateDucats: 0, duplicateItems: 0 };
+  if ($('ducats-inv-total-ducats')) $('ducats-inv-total-ducats').textContent = nf(invSum.totalDucats);
+  if ($('ducats-inv-total-sub')) {
+    $('ducats-inv-total-sub').textContent = `${nf(invSum.totalItems)} Teile im Besitz · Duplikate: ${nf(invSum.duplicateDucats)} Duk.`;
+  }
+
+  // KPI 4: Baro Kaufkraft
+  const baroItems = Math.floor(selectedDucats / 375);
+  if ($('ducats-baro-power')) $('ducats-baro-power').textContent = `~${baroItems}`;
+  if ($('ducats-baro-sub')) {
+    $('ducats-baro-sub').textContent = baroItems >= 1
+      ? `Reicht für ca. ${baroItems} Primed Mods`
+      : `Reicht noch für keinen Primed Mod`;
+  }
+  if ($('ic-baro-kaufkraft') && !$('ic-baro-kaufkraft').hasChildNodes()) {
+    $('ic-baro-kaufkraft').innerHTML = Icon.baro(36);
+  }
+
+  // Tab Badge
+  if ($('ducats-inv-badge-count')) {
+    $('ducats-inv-badge-count').textContent = (ducatsData.inventory?.items || []).length;
   }
 }
 
-$('ducat-search').oninput = () => renderDucatsCatalog();
+function updateDucatsModeTabs() {
+  $('tab-ducats-mode-inv')?.classList.toggle('active', ducatsMode === 'inventory');
+  $('tab-ducats-mode-cat')?.classList.toggle('active', ducatsMode === 'catalog');
+}
+
+function updateDucatsPriceButtonState(loading) {
+  const btn = $('btn-ducats-fetch-prices');
+  if (!btn) return;
+  if (loading) {
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner-sm"></span> Preise laden …`;
+  } else {
+    btn.disabled = false;
+    btn.innerHTML = Icon.refresh(15) + ' <span>Preise laden</span>';
+  }
+}
+
+function renderDucatsCatalog() {
+  if (!ducatsData) return;
+
+  const q = ($('ducat-search')?.value || '').toLowerCase().trim();
+  const rawList = ducatsMode === 'inventory'
+    ? (ducatsData.inventory?.items || [])
+    : (ducatsData.catalog || []);
+
+  // Filtern
+  let list = rawList.filter(it => {
+    // Textsuche
+    if (q) {
+      const matchName = it.name.toLowerCase().includes(q);
+      const matchParent = it.parentItem && it.parentItem.toLowerCase().includes(q);
+      if (!matchName && !matchParent) return false;
+    }
+
+    // Filter-Chips
+    if (ducatsFilter === 'advice-junk') return it.tradeAdvice?.advice === 'ducats';
+    if (ducatsFilter === 'advice-plat') return it.tradeAdvice?.advice === 'plat';
+    if (ducatsFilter === '100') return it.ducats >= 100;
+    if (ducatsFilter === '45') return it.ducats >= 45 && it.ducats < 100;
+    if (ducatsFilter === '15') return it.ducats <= 25;
+
+    return true;
+  });
+
+  // Sortieren
+  list.sort((a, b) => {
+    if (ducatsSort === 'ducats-desc') {
+      return b.ducats - a.ducats || (b.count || 0) - (a.count || 0) || a.name.localeCompare(b.name, 'de');
+    }
+    if (ducatsSort === 'plat-desc') {
+      const pA = a.price?.min || 0;
+      const pB = b.price?.min || 0;
+      return pB - pA || b.ducats - a.ducats;
+    }
+    if (ducatsSort === 'ratio-desc') {
+      const rA = a.tradeAdvice?.ratio || 0;
+      const rB = b.tradeAdvice?.ratio || 0;
+      return rB - rA || b.ducats - a.ducats;
+    }
+    if (ducatsSort === 'count-desc') {
+      return (b.count || 0) - (a.count || 0) || b.ducats - a.ducats;
+    }
+    if (ducatsSort === 'name-asc') {
+      return a.name.localeCompare(b.name, 'de');
+    }
+    return 0;
+  });
+
+  const container = $('ducats-catalog');
+  if (!container) return;
+
+  if (list.length === 0) {
+    if (ducatsMode === 'inventory' && !ducatsData.inventory?.items?.length) {
+      container.innerHTML = `
+        <div class="ducats-empty-box">
+          <div class="empty-icon">📦</div>
+          <h3>Keine Prime-Teile im Inventar</h3>
+          <p>Es wurden noch keine Prime-Teile in deinem Inventar gefunden. Schalte auf den <b>Gesamtkatalog</b> um oder öffne Warframe und führe einen Inventar-Abruf durch.</p>
+          <button class="btn btn-sm btn-action" id="btn-ducats-switch-to-cat">Zum Gesamtkatalog wechseln</button>
+        </div>
+      `;
+      $('btn-ducats-switch-to-cat')?.addEventListener('click', () => {
+        ducatsMode = 'catalog';
+        updateDucatsModeTabs();
+        renderDucatsCatalog();
+      });
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="ducats-empty-box">
+        <div class="empty-icon">🔍</div>
+        <h3>Keine Treffer</h3>
+        <p>Zu deinen Filter- und Suchkriterien wurden keine Prime-Teile gefunden.</p>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = list.slice(0, 150).map(it => {
+    const qty = sellQuantities.get(it.slug) || 0;
+    const isSelected = qty > 0;
+    const rarityClass = it.rarity ? `rarity-${it.rarity.toLowerCase()}` : 'rarity-common';
+
+    // Platin-Anzeige
+    let priceHtml = '';
+    if (it.price && typeof it.price.min === 'number') {
+      priceHtml = `
+        <div class="ducat-plat-tag" title="Günstigster Preis (ingame: ${it.price.online ? 'ja' : 'nein'})">
+          <img class="currency-ic" src="assets/icons/currency/platinum.png" alt="Platin">
+          <b>${it.price.min}p</b>
+          <span class="plat-med">Med. ${it.price.median || it.price.min}p</span>
+        </div>
+      `;
+    } else if (isFetchingDucatPrices) {
+      priceHtml = `<div class="ducat-plat-tag plat-loading">lädt …</div>`;
+    } else {
+      priceHtml = `<div class="ducat-plat-tag plat-none" title="Kein Angebot auf warframe.market">-</div>`;
+    }
+
+    // Trade-Advice Badge
+    let adviceHtml = '';
+    if (it.tradeAdvice && it.tradeAdvice.advice !== 'unknown') {
+      const adv = it.tradeAdvice;
+      if (adv.advice === 'ducats') {
+        adviceHtml = `<span class="trade-chip chip-junk" title="${esc(adv.reason)}">🟢 Junk (${adv.ratio} Duk/p)</span>`;
+      } else if (adv.advice === 'plat') {
+        adviceHtml = `<span class="trade-chip chip-plat" title="${esc(adv.reason)}">🔵 Markt (${adv.ratio} Duk/p)</span>`;
+      } else {
+        adviceHtml = `<span class="trade-chip chip-neutral" title="${esc(adv.reason)}">⚪ Fair (${adv.ratio} Duk/p)</span>`;
+      }
+    }
+
+    // Inventar-Besitz-Badge
+    const ownedHtml = it.count != null ? `
+      <span class="ducat-owned-badge ${it.count > 1 ? 'has-dups' : ''}">
+        Besitz: <b>${it.count}x</b> ${it.count > 1 ? `<small>(${it.count - 1} Dup.)</small>` : ''}
+      </span>
+    ` : '';
+
+    return `
+      <div class="ducat-card ${isSelected ? 'selected' : ''} ${rarityClass}">
+        <div class="ducat-card-left">
+          <img class="mat-icon" src="${esc(it.image || 'assets/icons/relic.png')}" alt="" onerror="this.src='assets/icons/relic.png'">
+        </div>
+
+        <div class="ducat-card-body">
+          <div class="ducat-card-title-row">
+            <b class="ducat-item-name" title="${esc(it.name)}">${esc(it.name)}</b>
+          </div>
+          <div class="ducat-card-sub">
+            <span>${esc(it.parentItem || 'Prime')}</span>
+            ${ownedHtml}
+          </div>
+          <div class="ducat-card-badges">
+            <span class="ducat-badge ducat-val-badge">
+              <img class="currency-ic ducat-ic" src="assets/icons/ducats.png" alt="Dukaten">
+              <b>${it.ducats}</b> <small>Duk.</small>
+            </span>
+            ${priceHtml}
+            ${adviceHtml}
+          </div>
+        </div>
+
+        <div class="ducat-card-right">
+          <div class="ducat-card-counter">
+            <button class="ducat-btn-cnt" data-dec="${esc(it.slug)}" title="Menge verringern">-</button>
+            <span class="ducat-cnt-num ${qty > 0 ? 'active' : ''}">${qty}${it.count != null ? `<small>/${it.count}</small>` : ''}</span>
+            <button class="ducat-btn-cnt" data-inc="${esc(it.slug)}" title="Menge erhöhen">+</button>
+          </div>
+          ${it.count != null && it.count > 0 ? `
+            <button class="btn-max-cnt ${qty === it.count ? 'is-max' : ''}" data-max="${esc(it.slug)}" title="Auf maximale Inventarmenge setzen">
+              MAX
+            </button>
+          ` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Event-Handler für Zähler
+  container.querySelectorAll('[data-inc]').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const slug = btn.dataset.inc;
+      const it = rawList.find(x => x.slug === slug);
+      const cur = sellQuantities.get(slug) || 0;
+      const max = it?.count != null ? it.count : 999;
+      if (cur < max) {
+        sellQuantities.set(slug, cur + 1);
+        currentSelectionPreset = 'custom';
+        updateSelectionPresetButtons();
+        renderDucatsKPIs();
+        renderDucatsCatalog();
+      }
+    };
+  });
+
+  container.querySelectorAll('[data-dec]').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const slug = btn.dataset.dec;
+      const cur = sellQuantities.get(slug) || 0;
+      if (cur > 1) sellQuantities.set(slug, cur - 1);
+      else sellQuantities.delete(slug);
+      currentSelectionPreset = 'custom';
+      updateSelectionPresetButtons();
+      renderDucatsKPIs();
+      renderDucatsCatalog();
+    };
+  });
+
+  container.querySelectorAll('[data-max]').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const slug = btn.dataset.max;
+      const it = rawList.find(x => x.slug === slug);
+      if (it && it.count > 0) {
+        const cur = sellQuantities.get(slug) || 0;
+        if (cur === it.count) sellQuantities.delete(slug);
+        else sellQuantities.set(slug, it.count);
+        currentSelectionPreset = 'custom';
+        updateSelectionPresetButtons();
+        renderDucatsKPIs();
+        renderDucatsCatalog();
+      }
+    };
+  });
+}
+
+let ducatsEventsInitialized = false;
+function initDucatsEventListeners() {
+  if (ducatsEventsInitialized) return;
+  ducatsEventsInitialized = true;
+
+  // Suche
+  $('ducat-search')?.addEventListener('input', () => renderDucatsCatalog());
+
+  // Modus-Umschalter
+  $('tab-ducats-mode-inv')?.addEventListener('click', () => {
+    ducatsMode = 'inventory';
+    updateDucatsModeTabs();
+    renderDucatsCatalog();
+  });
+  $('tab-ducats-mode-cat')?.addEventListener('click', () => {
+    ducatsMode = 'catalog';
+    updateDucatsModeTabs();
+    renderDucatsCatalog();
+  });
+
+  // Schnell-Aktionen
+  $('btn-ducats-select-all')?.addEventListener('click', () => {
+    if (!ducatsData?.inventory?.items) return;
+    currentSelectionPreset = 'all';
+    updateSelectionPresetButtons();
+    for (const it of ducatsData.inventory.items) {
+      if (it.count > 0) sellQuantities.set(it.slug, it.count);
+    }
+    renderDucatsKPIs();
+    renderDucatsCatalog();
+  });
+
+  $('btn-ducats-select-dups')?.addEventListener('click', () => {
+    if (!ducatsData?.inventory?.items) return;
+    currentSelectionPreset = 'duplicates';
+    updateSelectionPresetButtons();
+    sellQuantities.clear();
+    for (const it of ducatsData.inventory.items) {
+      const dups = Math.max(0, it.count - 1);
+      if (dups > 0) sellQuantities.set(it.slug, dups);
+    }
+    renderDucatsKPIs();
+    renderDucatsCatalog();
+  });
+
+  $('btn-ducats-clear')?.addEventListener('click', () => {
+    currentSelectionPreset = 'none';
+    updateSelectionPresetButtons();
+    sellQuantities.clear();
+    renderDucatsKPIs();
+    renderDucatsCatalog();
+  });
+
+  $('btn-ducats-fetch-prices')?.addEventListener('click', () => {
+    fetchMissingDucatPrices(true);
+  });
+
+  // Filter-Chips
+  document.querySelectorAll('.ducats-filter-badges .filter-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.ducats-filter-badges .filter-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      ducatsFilter = chip.dataset.filter || 'all';
+      renderDucatsCatalog();
+    });
+  });
+
+  // Sortierung
+  $('ducats-sort')?.addEventListener('change', (e) => {
+    ducatsSort = e.target.value;
+    renderDucatsCatalog();
+  });
+}
 
 /* ---------------- Inventar ---------------- */
 
@@ -1841,7 +2264,6 @@ async function loadInventoryTab() {
 /** Ein Zustand statt einer Liste: nie abgerufen, Spiel aus, Drosselung, Fehler. */
 function showInventoryState(code, text) {
   $('inv-body').classList.add('hidden');
-  $('inv-source').classList.add('hidden');
   $('inv-notice').classList.add('hidden');
   const box = $('inv-state');
   box.classList.remove('hidden');
@@ -1865,23 +2287,21 @@ function renderInventory() {
   $('inv-state').classList.add('hidden');
   $('inv-body').classList.remove('hidden');
 
-  /* Herkunft. Eine acht Tage alte Behelfsdatei darf nicht wie ein frischer
-     Abruf aussehen - deshalb eigene Warnfarbe statt nur anderem Text. */
+  /* Herkunft und Alter stehen bereits neben dem Aktualisieren-Knopf - ein
+     eigener Balken darueber sagte dasselbe ein zweites Mal und kostete bei
+     jedem Blick eine Zeile.
+
+     Was NICHT verloren gehen darf, ist die Drosselung: dass ein Abruf gerade
+     nicht moeglich ist, gehoert an den Knopf, den man sonst vergeblich
+     drueckt. */
   const q = QUELLEN[d.source] || QUELLEN.api;
-  const src = $('inv-source');
-  src.classList.remove('hidden');
-  src.className = 'inv-source' + (q.stale ? ' is-stale' : '');
-  src.innerHTML = `
-    <span class="inv-source-ic">${q.stale ? Icon.warning(15) : Icon.check(15)}</span>
-    <div>
-      <b>${esc(q.label)}</b>
-      <span>Stand ${esc(relativeAge(d.fetchedAt))}${d.fetchedAt
-        ? ' · ' + new Date(d.fetchedAt).toLocaleDateString('de-DE',
-            { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''}${
-        q.stale ? ' · zeigt nicht deinen aktuellen Bestand' : ''}</span>
-    </div>
-    ${d.gate.allowed ? '' :
-      `<span class="inv-gate">${Icon.clock(13)} Nächster Abruf in ${esc(d.gate.waitText)}</span>`}`;
+  const refreshBtn = $('btn-inv-refresh');
+  if (refreshBtn) {
+    refreshBtn.classList.toggle('is-gated', !d.gate.allowed);
+    refreshBtn.title = d.gate.allowed
+      ? `${q.label} · Stand ${relativeAge(d.fetchedAt)}`
+      : `Nächster Abruf in ${d.gate.waitText}`;
+  }
 
   /* Ein Abruf, der wegen der Drosselung nicht stattgefunden hat, darf nicht
      wortlos ins Leere laufen - sonst wirkt der Knopf kaputt. */

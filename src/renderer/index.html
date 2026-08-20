@@ -409,26 +409,115 @@
 
     <!-- ---------------- 5. Baro-Dukaten & Relikt-Helper ---------------- -->
     <section id="tab-ducats" class="tabpane">
-      <div class="section-head">
-        <h2>Baro Ki’Teer Dukaten- & Trade-Helper</h2>
-        <p>Dukaten-Werte für Prime-Teile und Relikt-Ausbeute kalkulieren</p>
+      <div class="section-head section-head-row">
+        <div>
+          <h2>Baro Ki’Teer Dukaten- & Trade-Helper</h2>
+          <p>Prime-Inventar analysieren, Dukaten-Ertrag berechnen und Platin-Marktpreise vergleichen</p>
+        </div>
+        <div class="head-actions">
+          <button class="btn btn-subtle" id="btn-ducats-fetch-prices" title="Marktpreise von warframe.market aktualisieren">
+            <span data-icon="refresh"></span> <span>Preise laden</span>
+          </button>
+        </div>
       </div>
 
-      <div class="ducats-calc-box">
-        <div class="ducats-calc-head">
-          <div>
-            <h3>Dukaten-Kalkulator & Schnellauswahl</h3>
-            <p>Füge Prime-Teile hinzu, um deinen Baro-Dukaten-Ertrag zu berechnen</p>
-          </div>
-          <div class="ducats-total-badge">
-            <span>Gesamtwert:</span>
-            <b id="ducats-calc-total">0 Dukaten</b>
+      <!-- Herkunft und Status des Inventar-Stands -->
+      <div class="ducats-status-bar" id="ducats-status-bar"></div>
+
+      <!-- Dashboard KPI Karten -->
+      <div class="ducats-stats-grid">
+        <div class="ducats-stat-card card-primary">
+          <img class="stat-card-ic" src="assets/icons/ducats.png" alt="Dukaten">
+          <div class="stat-content">
+            <span class="stat-label">Ausgewählte Dukaten</span>
+            <div class="stat-value"><b id="ducats-selected-total">0</b> <small>Dukaten</small></div>
+            <span class="stat-sub" id="ducats-selected-sub">0 Teile zum Verkauf gewählt</span>
           </div>
         </div>
 
-        <div class="searchbox" style="margin: 14px 0;">
-          <span class="ic" id="ic-ducatsearch"></span>
-          <input id="ducat-search" type="text" placeholder="Prime-Teil suchen … z. B. Braton Prime, Gauss Prime">
+        <div class="ducats-stat-card card-plat">
+          <img class="stat-card-ic" src="assets/icons/currency/platinum.png" alt="Platin">
+          <div class="stat-content">
+            <span class="stat-label">Geschätzter Platin-Wert</span>
+            <div class="stat-value"><b id="ducats-selected-plat">0</b> <small>Platin</small></div>
+            <span class="stat-sub" id="ducats-selected-plat-sub">Min. 0p · Median 0p</span>
+          </div>
+        </div>
+
+        <div class="ducats-stat-card card-inv">
+          <img class="stat-card-ic" src="assets/icons/ducats.png" alt="Dukaten">
+          <div class="stat-content">
+            <span class="stat-label">Gesamtes Inventar</span>
+            <div class="stat-value"><b id="ducats-inv-total-ducats">0</b> <small>Dukaten</small></div>
+            <span class="stat-sub" id="ducats-inv-total-sub">0 Prime-Teile im Besitz</span>
+          </div>
+        </div>
+
+        <div class="ducats-stat-card card-baro">
+          <span class="stat-card-svg" id="ic-baro-kaufkraft"></span>
+          <div class="stat-content">
+            <span class="stat-label">Baro Ki’Teer Kaufkraft</span>
+            <div class="stat-value"><b id="ducats-baro-power">~0</b> <small>Items</small></div>
+            <span class="stat-sub" id="ducats-baro-sub">Reicht für ~0 Primed Mods</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hauptbox mit Tabs, Aktionen, Filtern und Liste -->
+      <div class="ducats-main-box">
+        <div class="ducats-toolbar-row">
+          <div class="ducats-mode-tabs">
+            <button class="ducats-tab-btn active" id="tab-ducats-mode-inv" data-mode="inventory">
+              <span>📦 Mein Prime-Inventar</span>
+              <span class="counter-badge" id="ducats-inv-badge-count">0</span>
+            </button>
+            <button class="ducats-tab-btn" id="tab-ducats-mode-cat" data-mode="catalog">
+              <span>📖 Gesamter Prime-Katalog</span>
+            </button>
+          </div>
+
+          <div class="ducats-quick-actions">
+            <button class="btn btn-sm btn-action" id="btn-ducats-select-all" title="Wählt alle verfügbaren Teile aus dem Inventar zum Verkauf aus">
+              ⚡ Alle auswählen
+            </button>
+            <button class="btn btn-sm btn-action" id="btn-ducats-select-dups" title="Behält 1 Exemplar für die Sammlung und wählt alle Duplikate aus">
+              ✨ Nur Duplikate (1 behalten)
+            </button>
+            <button class="btn btn-sm btn-subtle" id="btn-ducats-clear" title="Setzt alle Verkaufsmengen auf 0 zurück">
+              ✕ Leeren
+            </button>
+          </div>
+        </div>
+
+        <div class="ducats-filter-row">
+          <div class="searchbox flex-search">
+            <span class="ic" id="ic-ducatsearch"></span>
+            <input id="ducat-search" type="text" placeholder="Prime-Teil suchen … z. B. Braton, Orthos, Chassis, Glaive">
+          </div>
+
+          <div class="ducats-filter-badges">
+            <button class="filter-chip active" data-filter="all">Alle</button>
+            <button class="filter-chip chip-junk" data-filter="advice-junk" title="Dukaten/Plat >= 10: Hoher Schmelzwert">
+              🟢 Prime Junk
+            </button>
+            <button class="filter-chip chip-plat" data-filter="advice-plat" title="Platin >= 15p oder Verhältnis < 7: Besser auf Markt verkaufen">
+              🔵 Platin-Tipps
+            </button>
+            <button class="filter-chip chip-gold" data-filter="100">Gold (100)</button>
+            <button class="filter-chip chip-silver" data-filter="45">Silber (45/65)</button>
+            <button class="filter-chip chip-bronze" data-filter="15">Bronze (15/25)</button>
+          </div>
+
+          <div class="ducats-sort-wrap">
+            <label for="ducats-sort">Sortieren:</label>
+            <select id="ducats-sort" class="select-sm">
+              <option value="ducats-desc">Dukaten (Höchste)</option>
+              <option value="plat-desc">Platin-Preis (Höchste)</option>
+              <option value="ratio-desc">Dukaten/Plat Effizienz</option>
+              <option value="count-desc">Inventar-Menge</option>
+              <option value="name-asc">Name (A–Z)</option>
+            </select>
+          </div>
         </div>
 
         <div class="ducats-catalog-list" id="ducats-catalog"></div>
@@ -444,9 +533,6 @@
         </div>
         <button class="btn" id="btn-inv-refresh">Inventar abrufen</button>
       </div>
-
-      <!-- Herkunft und Alter des Stands - steht bewusst ueber allem anderen -->
-      <div class="inv-source hidden" id="inv-source"></div>
 
       <!-- Antwort auf einen Abruf, der nicht stattgefunden hat -->
       <div class="inv-notice hidden" id="inv-notice"></div>

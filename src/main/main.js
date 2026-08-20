@@ -31,14 +31,14 @@ import { loadMods, POLARITIES, RARITY_LABELS, searchMods, isAuraMod, isExilusMod
 import { evaluateBuild, combineBuilds, orokinTypeFor } from '../core/builds.js';
 import { fetchWorldState } from '../core/worldstate.js';
 import { getAllResourceGuides, searchResourceGuides } from '../core/farming.js';
-import { getDucatsReferenceList, buildDucatsCatalog } from '../core/ducats.js';
+import { getDucatsReferenceList, buildDucatsCatalog, buildInventoryDucats } from '../core/ducats.js';
 import { loadInventory } from '../core/inventory.js';
 import { buildInventory, SECTIONS } from '../core/inventory-items.js';
 import { checkAllowed, formatWait } from '../core/ratelimit.js';
 import { matchesFissureFilter } from '../core/fissure-filter.js';
 import { captureForeground, restoreForeground } from '../core/foreground.js';
 import { LogWatcher } from '../core/logwatch.js';
-import { loadMarketItems, findMarketItem, getPrice } from '../core/market.js';
+import { loadMarketItems, findMarketItem, getPrice, getPrices } from '../core/market.js';
 import { loadRelicTables, allRewardNames } from '../core/relics.js';
 import { scanRewardScreen, buildRewardIndex } from '../core/rewardscan.js';
 import {
@@ -78,10 +78,11 @@ let tagTimer = null;
 
 /* Senkrechter Abstand der Preisschilder unter dem Namen, als Anteil der
    Bildschirmhoehe - so sitzt es auf 1080p wie auf 1440p an derselben Stelle
-   des Bildes. 0.083 sind auf einem 27-Zoll-Schirm rund drei Zentimeter.
+   des Bildes. 0.23 platziert die Karten mit reichlich Platz unter allen
+   vier Spielernamen.
    Ueber data/config.json feinjustierbar, ohne dass es dafuer einen Schalter
    in der Oberflaeche braucht. */
-let relicTagOffset = 0.083;
+let relicTagOffset = 0.23;
 /* Nur ein selbst eingeblendetes Overlay wird danach auch selbst wieder
    ausgeblendet - wer es vorher offen hatte, soll es behalten. */
 let overlayShownForRelic = false;
@@ -445,6 +446,10 @@ function showTags(rewards, region) {
     price: r.price,
     isOwn: r.isOwn,
     position: r.position,
+    isCrafted: r.isCrafted ?? false,
+    currentOwned: r.currentOwned ?? 0,
+    currentRequired: r.currentRequired ?? 1,
+    setParts: r.setParts || [],
     /* Mitte des Namens, direkt darunter. */
     cx:  (originX + r.box.x + r.box.w / 2) / scale - display.bounds.x,
     top: (originY + r.box.y + r.box.h) / scale - display.bounds.y + dropPx
@@ -516,7 +521,12 @@ function overlayState() {
  * jedem Ausflug ins Overlay eine andere Einstellung als vorher.
  */
 function setInteracting(on) {
-  if (on && !overlayVisible()) showOverlay();
+  /* Zeigermodus darf nur aktiviert werden, wenn das Overlay bereits sichtbar ist.
+     Strg + E soll das Overlay nicht von selbst einblenden. */
+  if (on && !overlayVisible()) {
+    interacting = false;
+    return overlayState();
+  }
   interacting = !!on;
 
   if (!overlayWin || overlayWin.isDestroyed()) {
@@ -1009,10 +1019,49 @@ ipcMain.handle('farming:get', async (_e, query) => {
 
 ipcMain.handle('ducats:get', async () => {
   if (!cache.catalog) await ensureData({ refresh: false });
+  const market = await loadMarketItems().catch(() => null);
+  const invRes = await loadInventory({ refresh: false }).catch(() => null);
+
+  let priceCache = {};
+  try {
+    const pPath = path.join('data', 'market-prices.json');
+    if (existsSync(pPath)) {
+      priceCache = JSON.parse(await readFile(pPath, 'utf8')) || {};
+    }
+  } catch {}
+
+  const inventoryData = invRes?.inventory
+    ? buildInventoryDucats(invRes.inventory, cache.catalog, market, priceCache)
+    : {
+        items: [],
+        summary: {
+          totalDucats: 0,
+          totalItems: 0,
+          uniqueParts: 0,
+          duplicateDucats: 0,
+          duplicateItems: 0,
+          totalPlatMin: 0,
+          totalPlatMedian: 0,
+          pricedRatio: 0
+        }
+      };
+
+  const catalogData = buildDucatsCatalog(cache.catalog, market, priceCache);
+
   return {
     reference: getDucatsReferenceList(),
-    catalog: buildDucatsCatalog(cache.catalog)
+    inventory: inventoryData,
+    catalog: catalogData,
+    hasInventory: !!invRes?.inventory,
+    source: invRes?.source || 'none',
+    fetchedAt: invRes?.fetchedAt || null
   };
+});
+
+ipcMain.handle('ducats:fetchPrices', async (_e, slugs = []) => {
+  if (!Array.isArray(slugs) || !slugs.length) return {};
+  const prices = await getPrices(slugs);
+  return prices;
 });
 
 /* ---------------------------- Inventar ---------------------------- */
@@ -1313,7 +1362,132 @@ async function ensureRewardIndex() {
   return rewardIndex;
 }
 
-/** Erkannter Name -> Anzeige mit Bild, Dukaten und Markt-Kennung. */
+/**
+ * Löst ein Prime-Teil oder Belohnung in das übergeordnete Set auf:
+ * Set-Komponenten, Besitzanzahl im Inventar und ob das Hauptitem gemeistert/gebaut wurde.
+ */
+async function resolveSetDetails(name, uniqueName) {
+  let isCrafted = false;
+  let currentOwned = 0;
+  let currentRequired = 1;
+  let setParts = [];
+
+  try {
+    const catalog = await loadCatalog().catch(() => null);
+    let inv = null;
+    try {
+      const invRes = await loadInventory({ refresh: false }).catch(() => null);
+      inv = invRes?.inventory || null;
+    } catch {}
+
+    const ownedCounts = new Map();
+    const masteredTypes = new Set();
+
+    if (inv) {
+      for (const row of inv.MiscItems || []) {
+        if (row.ItemType) ownedCounts.set(row.ItemType, (ownedCounts.get(row.ItemType) || 0) + (row.ItemCount || 1));
+      }
+      for (const row of inv.Recipes || []) {
+        if (row.ItemType) ownedCounts.set(row.ItemType, (ownedCounts.get(row.ItemType) || 0) + (row.ItemCount || 1));
+      }
+      for (const xp of inv.XPInfo || []) {
+        if (xp.ItemType) masteredTypes.add(xp.ItemType);
+      }
+      for (const list of [inv.Suits, inv.LongGuns, inv.Pistols, inv.Melee, inv.SpaceSuits, inv.SpaceGuns, inv.SpaceMelee, inv.Sentinels, inv.SentinelWeapons]) {
+        for (const item of list || []) {
+          if (item.ItemType) masteredTypes.add(item.ItemType);
+        }
+      }
+    }
+
+    if (catalog) {
+      let primeItem = null;
+      const match = name.match(/^(.+?\s+Prime)\b/i);
+      const baseName = match ? match[1] : null;
+
+      if (baseName) {
+        primeItem = catalog.items.find(it => it.name?.toLowerCase() === baseName.toLowerCase());
+      }
+      if (!primeItem && uniqueName) {
+        primeItem = catalog.byUniqueName.get(uniqueName);
+      }
+
+      if (primeItem) {
+        isCrafted = masteredTypes.has(primeItem.uniqueName);
+        const recipe = catalog.recipeFor.get(primeItem.uniqueName);
+
+        if (recipe) {
+          // 1. Haupt-Blueprint
+          const bpUnique = recipe.uniqueName;
+          const bpCount = ownedCounts.get(bpUnique) || 0;
+          const bpName = primeItem.name + ' Blueprint';
+          const isBpCur = name.toLowerCase() === bpName.toLowerCase() || name.toLowerCase() === 'blueprint' || bpUnique === uniqueName;
+          if (isBpCur) {
+            currentOwned = bpCount;
+            currentRequired = 1;
+          }
+
+          setParts.push({
+            name: bpName,
+            shortName: 'Blueprint',
+            uniqueName: bpUnique,
+            image: imageUrl(bpUnique, 64),
+            count: bpCount,
+            required: 1,
+            isCurrent: isBpCur
+          });
+
+          // 2. Zutaten / Unter-Komponenten
+          for (const ing of recipe.ingredients || []) {
+            const ingUnique = ing.ItemType;
+            const subRec = catalog.recipeFor.get(ingUnique);
+            const ingItem = catalog.byUniqueName.get(ingUnique);
+            let targetUnique = ingUnique;
+            let count = (ownedCounts.get(ingUnique) || 0);
+
+            if (subRec) {
+              targetUnique = subRec.uniqueName;
+              count += (ownedCounts.get(subRec.uniqueName) || 0);
+            }
+
+            let partName = ingItem?.name || ingUnique.split('/').pop();
+            if (subRec && !partName.includes('Blueprint')) {
+              partName += ' Blueprint';
+            }
+            const shortName = partName.replace(primeItem.name, '').replace('Blueprint', '').trim() || partName;
+
+            const isCur = name.toLowerCase().includes(shortName.toLowerCase()) || targetUnique === uniqueName || ingUnique === uniqueName;
+            if (isCur) {
+              currentOwned = count;
+              currentRequired = ing.ItemCount || 1;
+            }
+
+            setParts.push({
+              name: partName,
+              shortName: shortName,
+              uniqueName: targetUnique,
+              image: imageUrl(targetUnique, 64),
+              count: count,
+              required: ing.ItemCount || 1,
+              isCurrent: isCur
+            });
+          }
+        }
+      } else {
+        if (uniqueName) {
+          isCrafted = masteredTypes.has(uniqueName);
+          currentOwned = ownedCounts.get(uniqueName) || 0;
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[Relikt] Fehler beim Auflösen des Sets:', err.message);
+  }
+
+  return { isCrafted, currentOwned, currentRequired, setParts };
+}
+
+/** Erkannter Name -> Anzeige mit Bild, Dukaten, Markt-Kennung und Set-Details. */
 async function describeScanned(name) {
   let image = null, ducats = null, slug = null, uniqueName = null;
   try {
@@ -1328,7 +1502,20 @@ async function describeScanned(name) {
       if (uniqueName) image = imageUrl(uniqueName, 128);
     }
   } catch { /* Name allein ist besser als nichts. */ }
-  return { name, image, ducats, slug, uniqueName };
+
+  const setInfo = await resolveSetDetails(name, uniqueName);
+
+  return {
+    name,
+    image,
+    ducats,
+    slug,
+    uniqueName,
+    isCrafted: setInfo.isCrafted,
+    currentOwned: setInfo.currentOwned,
+    currentRequired: setInfo.currentRequired,
+    setParts: setInfo.setParts
+  };
 }
 
 /** Aktuellen Stand an das Overlay schicken. Immer vollstaendig, nie in Teilen. */
