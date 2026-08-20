@@ -503,6 +503,9 @@
             <input id="ducat-search" type="text" placeholder="Prime-Teil suchen … z. B. Braton, Orthos, Chassis, Glaive">
           </div>
 
+          <!-- Aera-Filter des Planers, gleiche Optik wie im Inventar. -->
+          <div class="inv-tier-filter hidden" id="plan-tier-filter"></div>
+
           <div class="ducats-filter-badges">
             <button class="filter-chip active" data-filter="all">Alle</button>
             <button class="filter-chip chip-junk" data-filter="advice-junk" title="Dukaten/Plat >= 10: Hoher Schmelzwert">
@@ -514,6 +517,19 @@
             <button class="filter-chip chip-gold" data-filter="100">Gold (100)</button>
             <button class="filter-chip chip-silver" data-filter="45">Silber (45/65)</button>
             <button class="filter-chip chip-bronze" data-filter="15">Bronze (15/25)</button>
+          </div>
+
+          <!-- Eigene Sortierung fuer den Planer: dort wird nach Erwartungswert
+               entschieden, nicht nach Dukaten je Teil. -->
+          <div class="ducats-sort-wrap hidden" id="plan-sort-wrap">
+            <label for="plan-sort">Sortieren:</label>
+            <select id="plan-sort" class="select-sm">
+              <option value="plat-desc">Platin-Erwartung (Höchste)</option>
+              <option value="ducats-desc">Dukaten-Erwartung (Höchste)</option>
+              <option value="count-desc">Anzahl im Bestand</option>
+              <option value="priced-desc">Preis-Abdeckung</option>
+              <option value="name-asc">Relikt (A–Z)</option>
+            </select>
           </div>
 
           <div class="ducats-sort-wrap">

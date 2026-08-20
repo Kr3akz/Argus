@@ -16,6 +16,8 @@
  */
 import { app, BrowserWindow, ipcMain, globalShortcut, shell, Notification, screen } from 'electron';
 import path from 'node:path';
+import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 import { loadCatalog, imageUrl } from '../core/catalog.js';
@@ -1022,13 +1024,21 @@ ipcMain.handle('ducats:get', async () => {
   const market = await loadMarketItems().catch(() => null);
   const invRes = await loadInventory({ refresh: false }).catch(() => null);
 
+  /* Gecachte Marktpreise. Ohne sie zeigt der Tab zwar Dukaten - die stehen in
+     der Marktliste -, aber keinen einzigen Platinpreis.
+
+     Der leere catch hier hat frueher genau das verdeckt: existsSync und
+     readFile waren nicht importiert, der ReferenceError verschwand wortlos,
+     und der Cache blieb leer. Deshalb wird der Fehlschlag jetzt gemeldet. */
   let priceCache = {};
   try {
     const pPath = path.join('data', 'market-prices.json');
     if (existsSync(pPath)) {
       priceCache = JSON.parse(await readFile(pPath, 'utf8')) || {};
     }
-  } catch {}
+  } catch (err) {
+    console.error('[Dukaten] Preis-Cache nicht lesbar:', err.message);
+  }
 
   const inventoryData = invRes?.inventory
     ? buildInventoryDucats(invRes.inventory, cache.catalog, market, priceCache)

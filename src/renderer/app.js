@@ -1741,6 +1741,8 @@ let ducatsData = null;
 let sellQuantities = new Map(); // slug -> count
 let currentSelectionPreset = 'all'; // 'all' | 'duplicates' | 'custom' | 'none'
 let ducatsMode = 'inventory';    // 'inventory' | 'catalog' | 'sets' | 'plan'
+let planTier = 'all';            // Aera-Filter des Planers
+let planSort = 'plat-desc';      // Sortierung des Planers
 let ducatsFilter = 'all';        // 'all' | 'advice-junk' | 'advice-plat' | '100' | '45' | '15'
 let ducatsSort = 'ducats-desc';   // 'ducats-desc' | 'plat-desc' | 'ratio-desc' | 'count-desc' | 'name-asc'
 let isFetchingDucatPrices = false;
@@ -1970,8 +1972,14 @@ function updateDucatsModeTabs() {
      Set-Ansicht haetten sie nichts zu filtern und stuenden nur im Weg - die
      Suche bleibt, die trifft auch Set-Namen. */
   const flat = ducatsMode === 'inventory' || ducatsMode === 'catalog';
+  const isPlan = ducatsMode === 'plan';
+
   document.querySelector('.ducats-filter-badges')?.classList.toggle('hidden', !flat);
-  document.querySelector('.ducats-sort-wrap')?.classList.toggle('hidden', !flat);
+  /* Der erste Treffer ist die Sortierung des Planers - deshalb gezielt ueber
+     die Kennung, nicht ueber die Klasse. */
+  $('ducats-sort')?.closest('.ducats-sort-wrap')?.classList.toggle('hidden', !flat);
+  $('plan-sort-wrap')?.classList.toggle('hidden', !isPlan);
+  $('plan-tier-filter')?.classList.toggle('hidden', !isPlan);
 }
 
 /**
@@ -1982,16 +1990,59 @@ function updateDucatsModeTabs() {
  * Mittelwert wuerde das seltene Teil genauso zaehlen wie ein haeufiges und
  * jedes Relikt wertvoller aussehen lassen, als es ist.
  */
+/** Aera-Filter des Planers - dieselbe Optik wie im Inventar. */
+function renderPlanTierFilter(all) {
+  const box = $('plan-tier-filter');
+  if (!box) return;
+
+  const counts = new Map();
+  for (const r of all) counts.set(r.tier, (counts.get(r.tier) || 0) + 1);
+
+  const order = ['Lith', 'Meso', 'Neo', 'Axi', 'Requiem', 'Omnia'];
+  const tiers = order.filter(t => counts.has(t));
+  if (!tiers.length) { box.innerHTML = ''; return; }
+
+  box.innerHTML =
+    `<button class="tier-chip ${planTier === 'all' ? 'active' : ''}" data-tier="all">
+       Alle <span>${all.length}</span>
+     </button>` +
+    tiers.map(t => `
+      <button class="tier-chip tier-${t.toLowerCase()} ${planTier === t ? 'active' : ''}" data-tier="${t}">
+        ${t} <span>${counts.get(t)}</span>
+      </button>`).join('');
+
+  box.querySelectorAll('[data-tier]').forEach(btn => {
+    btn.onclick = () => { planTier = btn.dataset.tier; renderDucatsRelicPlan(); };
+  });
+}
+
 function renderDucatsRelicPlan() {
   const container = $('ducats-catalog');
   if (!container) return;
 
   const query = ($('ducat-search')?.value || '').trim().toLowerCase();
   const all = ducatsData?.relicPlan || [];
-  const plan = query
+
+  renderPlanTierFilter(all);
+
+  let plan = query
     ? all.filter(r => (r.tier + ' ' + r.name).toLowerCase().includes(query)
         || r.rewards.some(w => w.name.toLowerCase().includes(query)))
     : all;
+
+  if (planTier !== 'all') plan = plan.filter(r => r.tier === planTier);
+
+  /* Sortiert wird auf einer Kopie: die Reihenfolge aus dem Hauptprozess bleibt
+     erhalten, sonst wuerde jede Umsortierung die naechste beeinflussen. */
+  plan = [...plan].sort((a, b) => {
+    switch (planSort) {
+      case 'ducats-desc': return b.expDucats - a.expDucats || b.expPlat - a.expPlat;
+      case 'count-desc':  return b.count - a.count || b.expPlat - a.expPlat;
+      case 'priced-desc': return b.pricedShare - a.pricedShare || b.expPlat - a.expPlat;
+      case 'name-asc':    return (a.tier + a.name).localeCompare(b.tier + b.name, 'de', { numeric: true });
+      default:            return b.expPlat - a.expPlat || b.expDucats - a.expDucats;
+    }
+  });
 
   if (!plan.length) {
     container.innerHTML = `
@@ -2377,6 +2428,11 @@ function initDucatsEventListeners() {
     ducatsMode = 'plan';
     updateDucatsModeTabs();
     renderDucatsCatalog();
+  });
+
+  $('plan-sort')?.addEventListener('change', e => {
+    planSort = e.target.value;
+    renderDucatsRelicPlan();
   });
 
   // Schnell-Aktionen

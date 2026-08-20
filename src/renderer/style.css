@@ -4046,7 +4046,11 @@ body.tags-window {
 
 .tier-chip {
   display: inline-flex;
-  align-items: center;
+  /* Beschriftung und Zahl stehen in verschiedenen Schriften und Groessen.
+     Zentriert wuerden ihre Kaesten ausgerichtet, nicht die Schrift - die
+     Ziffern saessen sichtbar tiefer. An der Grundlinie sitzen sie richtig. */
+  align-items: baseline;
+  line-height: 1;
   gap: 6px;
   padding: 6px 11px;
   border-radius: 999px;
