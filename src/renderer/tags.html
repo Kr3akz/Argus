@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' https://cdn.jsdelivr.net data:; style-src 'self' 'unsafe-inline';">
+  <title>Argus Preisschilder</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<!--
+  Preisschilder direkt im Spiel.
+
+  Ein durchsichtiges, klickdurchlaessiges Fenster ueber dem ganzen Bildschirm -
+  nicht vier einzelne Fenster: das waeren vier Renderer fuer dieselbe Sache,
+  vier Mal Fensterrahmen-Verwaltung und vier Gelegenheiten, dass eines haengt.
+  Die Schilder werden darin absolut positioniert, an den Koordinaten, die die
+  Texterkennung fuer die vier Namen geliefert hat.
+-->
+<body class="tags-window">
+  <div id="tags"></div>
+  <script src="tags.js"></script>
+</body>
+</html>

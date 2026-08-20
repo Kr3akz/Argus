@@ -111,8 +111,18 @@ export function extractRewards(ocr, index) {
   for (const line of ocr.lines || []) {
     const hit = matchReward(line.text, index);
     if (!hit) continue;
-    const first = line.words?.[0];
-    hits.push({ ...hit, x: first?.x ?? 0, y: first?.y ?? 0 });
+
+    /* Der ganze Rahmen der Zeile, nicht nur das erste Wort: darunter soll
+       spaeter ein Preisschild sitzen, und das gehoert unter die Mitte des
+       Namens - nicht unter dessen linken Rand. */
+    const words = line.words || [];
+    if (!words.length) continue;
+    const x = Math.min(...words.map(w => w.x));
+    const y = Math.min(...words.map(w => w.y));
+    const right = Math.max(...words.map(w => w.x + w.w));
+    const bottom = Math.max(...words.map(w => w.y + w.h));
+
+    hits.push({ ...hit, x, y, w: right - x, h: bottom - y });
   }
 
   /* Nach Zeilen gruppieren und die groesste Gruppe nehmen: ein Prime-Name kann
@@ -127,9 +137,15 @@ export function extractRewards(ocr, index) {
   const rewards = best
     .sort((a, b) => a.x - b.x)
     .slice(0, 4)
-    .map((h, i) => ({ position: i + 1, name: h.name, score: h.score }));
+    .map((h, i) => ({
+      position: i + 1, name: h.name, score: h.score,
+      /* Bildschirmkoordinaten in echten Pixeln, wie aufgenommen. Die
+         Umrechnung in Fensterkoordinaten passiert dort, wo die
+         Bildschirmskalierung bekannt ist - im Hauptprozess. */
+      box: { x: h.x, y: h.y, w: h.w, h: h.h }
+    }));
 
-  return { rewards, language: ocr.language, lines: (ocr.lines || []).length };
+  return { rewards, language: ocr.language, lines: (ocr.lines || []).length, region: ocr.region || null };
 }
 
 /**

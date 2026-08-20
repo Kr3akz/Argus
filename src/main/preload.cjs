@@ -71,6 +71,18 @@ contextBridge.exposeInMainWorld('api', {
   setHotkeys:      (patch)     => ipcRenderer.invoke('settings:hotkeys', patch),
   setRelicAutoShow:(on)        => ipcRenderer.invoke('settings:relicAutoShow', on),
   setRelicScan:    (on)        => ipcRenderer.invoke('settings:relicScan', on),
+  setRelicTags:    (on)        => ipcRenderer.invoke('settings:relicTags', on),
+  /* Preisschilder im Spiel - nur das Schilder-Fenster hoert darauf. */
+  onTags:          (cb)        => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on('tags:show', handler);
+    return () => ipcRenderer.removeListener('tags:show', handler);
+  },
+  onTagsHide:      (cb)        => {
+    const handler = () => cb();
+    ipcRenderer.on('tags:hide', handler);
+    return () => ipcRenderer.removeListener('tags:hide', handler);
+  },
   /* Relikt-Belohnungen aus EE.log. Nur der Item-Pfad kommt hier an -
      AccountIds bleiben in logwatch.js und werden dort verworfen. */
   getCurrentRelic: ()          => ipcRenderer.invoke('relic:current'),

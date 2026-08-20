@@ -70,7 +70,10 @@ let relicAutoShow = true;
 /* Bildschirmerkennung der vier Belohnungen. Abschaltbar, weil dafuer ein
    Bildschirmfoto entsteht - auch wenn es den Rechner nie verlaesst. */
 let relicScan = true;
+/* Preisschilder direkt im Spiel, unter den vier Karten. */
+let relicTags = true;
 let rewardIndex = null;
+let tagWin = null;
 /* Nur ein selbst eingeblendetes Overlay wird danach auch selbst wieder
    ausgeblendet - wer es vorher offen hatte, soll es behalten. */
 let overlayShownForRelic = false;
@@ -128,6 +131,8 @@ function createWindow() {
     win = null;
     if (overlayWin && !overlayWin.isDestroyed()) overlayWin.destroy();
     overlayWin = null;
+    if (tagWin && !tagWin.isDestroyed()) tagWin.destroy();
+    tagWin = null;
   });
 
   // Externe Links im echten Browser oeffnen, nicht in der App.
@@ -183,7 +188,7 @@ function rememberOverlayLayout() {
   layoutSaveTimer = setTimeout(async () => {
     try {
       const cfg = await loadConfig();
-      await saveConfig({ ...cfg, overlayBounds, overlayOpacity, overlayClickThrough: clickThrough, relicAutoShow, relicScan });
+      await saveConfig({ ...cfg, overlayBounds, overlayOpacity, overlayClickThrough: clickThrough, relicAutoShow, relicScan, relicTags });
     } catch {
       /* Eine nicht gespeicherte Fensterposition ist ein Schoenheitsfehler,
          kein Grund, irgendetwas anderes anzuhalten. */
@@ -246,6 +251,7 @@ async function loadOverlayPrefs() {
     if (cfg.hotkeys) hotkeys = { ...DEFAULT_HOTKEYS, ...cfg.hotkeys };
     if (typeof cfg.relicAutoShow === 'boolean') relicAutoShow = cfg.relicAutoShow;
     if (typeof cfg.relicScan === 'boolean') relicScan = cfg.relicScan;
+    if (typeof cfg.relicTags === 'boolean') relicTags = cfg.relicTags;
     if (Number.isFinite(cfg.overlayOpacity)) overlayOpacity = clampOpacity(cfg.overlayOpacity);
     if (cfg.overlayBounds) overlayBounds = cfg.overlayBounds;
     clickThrough = !!cfg.overlayClickThrough;
@@ -298,6 +304,11 @@ function createOverlayWindow() {
   overlayWin.setOpacity(overlayOpacity);
   overlayWin.loadFile(path.join(__dirname, '../renderer/overlay.html'));
 
+  /* ARGUS_DEVTOOLS oeffnet die Entwicklerwerkzeuge des Overlays. Ohne sie ist
+     ein Fehler im Overlay-Renderer unsichtbar: das Fenster hat keine
+     Menueleiste und keinen Tastenweg dorthin. */
+  if (process.env.ARGUS_DEVTOOLS) overlayWin.webContents.openDevTools({ mode: 'detach' });
+
   const remember = () => {
     if (!overlayWin || overlayWin.isDestroyed()) return;
     overlayBounds = overlayWin.getBounds();
@@ -331,6 +342,119 @@ function createOverlayWindow() {
   });
 
   return overlayWin;
+}
+
+/**
+ * Durchsichtiges Fenster ueber dem ganzen Bildschirm, in dem die Preisschilder
+ * sitzen.
+ *
+ * EIN Fenster statt vier: vier Fenster waeren vier Renderer fuer dieselbe
+ * Sache, vier Mal Fensterverwaltung und vier Gelegenheiten, dass eines haengen
+ * bleibt. Die Schilder werden darin absolut positioniert.
+ *
+ * focusable: false und setIgnoreMouseEvents(true) sind hier nicht Komfort,
+ * sondern Bedingung: das Fenster liegt genau ueber den Karten, die man
+ * anklicken will. Wuerde es einen Klick abfangen, waere die Belohnung weg.
+ */
+function createTagWindow() {
+  const display = screen.getPrimaryDisplay();
+
+  tagWin = new BrowserWindow({
+    x: display.bounds.x, y: display.bounds.y,
+    width: display.bounds.width, height: display.bounds.height,
+    transparent: true,
+    backgroundColor: '#00000000',
+    frame: false,
+    show: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    focusable: false,
+    hasShadow: false,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    title: 'Argus Preisschilder',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  });
+
+  tagWin.setIgnoreMouseEvents(true);
+  tagWin.setAlwaysOnTop(true, 'screen-saver');
+  tagWin.loadFile(path.join(__dirname, '../renderer/tags.html'));
+  if (process.env.ARGUS_DEVTOOLS) tagWin.webContents.openDevTools({ mode: 'detach' });
+  tagWin.on('closed', () => { tagWin = null; });
+
+  return tagWin;
+}
+
+/**
+ * Schilder anzeigen.
+ *
+ * Die Texterkennung liefert ECHTE Bildschirmpixel, Fenster rechnen in
+ * geraetunabhaengigen Punkten. Bei einer Bildschirmskalierung von 125 % laegen
+ * die Schilder sonst ein Viertel zu weit rechts und unten.
+ */
+function showTags(rewards, region) {
+  if (!relicTags || !rewards?.length) {
+    console.log('[Relikt] Schilder uebersprungen - Schalter:', relicTags,
+                'Treffer:', rewards?.length ?? 0);
+    return;
+  }
+  if (!tagWin || tagWin.isDestroyed()) createTagWindow();
+
+  const display = screen.getPrimaryDisplay();
+  const scale = display.scaleFactor || 1;
+  const originX = region?.x ?? 0;
+  const originY = region?.y ?? 0;
+
+  /* Ohne Rahmen laesst sich kein Schild setzen - solche Eintraege werden
+     uebergangen, statt die ganze Anzeige mitzureissen. */
+  const placeable = rewards.filter(r => r.box);
+  if (!placeable.length) {
+    console.log('[Relikt] Schilder: kein Eintrag mit Bildschirmposition');
+    return;
+  }
+
+  const tags = placeable.map(r => ({
+    name: r.name,
+    ducats: r.ducats,
+    price: r.price,
+    isOwn: r.isOwn,
+    position: r.position,
+    /* Mitte des Namens, direkt darunter. */
+    cx:  (originX + r.box.x + r.box.w / 2) / scale - display.bounds.x,
+    top: (originY + r.box.y + r.box.h) / scale - display.bounds.y + 6
+  }));
+
+  const send = () => {
+    if (tagWin && !tagWin.isDestroyed()) tagWin.webContents.send('tags:show', { tags });
+  };
+
+  if (tagWin.webContents.isLoading()) tagWin.webContents.once('did-finish-load', send);
+  else send();
+
+  /* show() statt showInactive(): das Fenster ist focusable: false, kann den
+     Fokus also gar nicht nehmen. showInactive() dagegen liess das Fenster
+     zusammen mit transparent: true unter Windows unsichtbar - nachgemessen,
+     das Fenster existierte mit WS_VISIBLE = false. */
+  /* Nur beim ersten Mal protokollieren: die Preise werden einzeln
+     nachgereicht, und jede Nachlieferung zeichnet die Schilder neu. */
+  if (!tagWin.isVisible()) {
+    tagWin.show();
+    console.log('[Relikt] Schilder gezeigt:', tags.length, '| sichtbar:', tagWin.isVisible());
+  }
+}
+
+function hideTags() {
+  if (!tagWin || tagWin.isDestroyed()) return;
+  tagWin.webContents.send('tags:hide');
+  tagWin.hide();
 }
 
 function overlayVisible() {
@@ -1183,7 +1307,34 @@ function pushRelic() {
 function startLogWatcher() {
   logWatcher = new LogWatcher();
 
-  logWatcher.on('relic-reward', async ev => {
+  logWatcher.on('relic-reward', ev => { handleRelicReward(ev).catch(err => {
+    console.error('[Relikt] Ablauf abgebrochen:', err.message);
+  }); });
+
+  logWatcher.on('relic-timer', ev => sendToOverlay('relic:timer', ev));
+
+  logWatcher.on('relic-closed', () => {
+    currentRelic = null;
+    hideTags();
+    sendToOverlay('relic:closed', {});
+    if (overlayShownForRelic) {
+      overlayShownForRelic = false;
+      hideOverlay();
+    }
+  });
+
+  logWatcher.start();
+}
+
+/**
+ * Der Ablauf einer Relikt-Belohnung, von der Logzeile bis zu den Preisen.
+ *
+ * Eigene Funktion und nicht der Ereignisbehandler selbst: ein async-Handler
+ * meldet seine Ausnahmen niemandem. Ein vergessenes Feld liess hier die halbe
+ * Anzeige stillschweigend ausfallen - sichtbar wurde es erst im stderr des
+ * Hauptprozesses.
+ */
+async function handleRelicReward(ev) {
     const own = ev.uniqueName ? await describeReward(ev.uniqueName) : null;
 
     /* Sofort zeigen, was ohne Netz und ohne Bildschirm feststeht: der eigene
@@ -1192,9 +1343,17 @@ function startLogWatcher() {
       seconds: ev.seconds, at: Date.now(),
       own, rewards: [], scanning: relicScan, scanError: null
     };
+    /* Knappe Protokollzeilen: ohne sie ist bei einem Fehlschlag nicht
+       unterscheidbar, ob das Log nichts hergab, die Erkennung nichts fand
+       oder die Anzeige klemmt. */
+    console.log('[Relikt] Fund aus Log:', own ? own.name : '-',
+                '| Erkennung:', relicScan ? 'an' : 'aus',
+                '| Schilder:', relicTags ? 'an' : 'aus');
     pushRelic();
 
-    if (relicAutoShow && !overlayVisible()) {
+    /* Sind die Schilder an, sitzt die Information schon im Spiel - dann muss
+       nicht zusaetzlich das grosse Fenster aufspringen. */
+    if (relicAutoShow && !relicTags && !overlayVisible()) {
       overlayShownForRelic = true;
       showOverlay();
     }
@@ -1216,6 +1375,9 @@ function startLogWatcher() {
     const scan = await scanRewardScreen(await ensureRewardIndex());
     if (currentRelic !== started) return;   // inzwischen kam eine neue Runde
 
+    console.log('[Relikt] Erkennung:',
+                scan.ok ? scan.rewards.length + ' Treffer' : 'Fehler ' + scan.error);
+
     if (!scan.ok) {
       currentRelic.scanning = false;
       currentRelic.scanError = scan.error;
@@ -1228,42 +1390,44 @@ function startLogWatcher() {
       ...(await describeScanned(r.name)),
       position: r.position,
       score: r.score,
+      /* box muss mit: daran haengt die Position der Preisschilder im Spiel.
+         Ohne diese Zeile bekommt showTags Eintraege ohne Rahmen. */
+      box: r.box,
       isOwn: !!ownName && r.name === ownName,
       price: null
     })));
     currentRelic.scanning = false;
+    currentRelic.region = scan.region || null;
     pushRelic();
+    showTags(currentRelic.rewards, currentRelic.region);
 
-    /* Preise einzeln nachreichen, damit die Liste nicht auf den letzten
-       Abruf wartet. */
+    /* Preise einzeln nachreichen, damit weder Liste noch Schilder auf den
+       letzten Abruf warten. */
     for (const reward of currentRelic.rewards) {
       if (!reward.slug) continue;
       const price = await getPrice(reward.slug).catch(() => null);
       if (currentRelic !== started) return;
       reward.price = price;
       pushRelic();
+      showTags(currentRelic.rewards, currentRelic.region);
     }
-  });
-
-  logWatcher.on('relic-timer', ev => sendToOverlay('relic:timer', ev));
-
-  logWatcher.on('relic-closed', () => {
-    currentRelic = null;
-    sendToOverlay('relic:closed', {});
-    if (overlayShownForRelic) {
-      overlayShownForRelic = false;
-      hideOverlay();
-    }
-  });
-
-  logWatcher.start();
 }
 
 /* -------------------------- Einstellungen -------------------------- */
 
 ipcMain.handle('settings:get', async () => {
   const st = await store.load();
-  return { ok: true, hotkeys: { ...hotkeys }, notifications: st.notifications, relicAutoShow, relicScan };
+  return { ok: true, hotkeys: { ...hotkeys }, notifications: st.notifications, relicAutoShow, relicScan, relicTags };
+});
+
+ipcMain.handle('settings:relicTags', async (_e, on) => {
+  relicTags = !!on;
+  if (!relicTags) hideTags();
+  try {
+    const cfg = await loadConfig();
+    await saveConfig({ ...cfg, relicTags });
+  } catch { /* nicht gespeichert, aber aktiv */ }
+  return { ok: true, relicTags };
 });
 
 ipcMain.handle('settings:relicScan', async (_e, on) => {
@@ -1469,6 +1633,10 @@ app.whenReady().then(async () => {
   createWindow();
   // Hotkey zum Ein-/Ausblenden waehrend des Spielens
   applyHotkeys();
+
+  /* Schon beim Start anlegen, versteckt: beim ersten Fund soll das Fenster
+     fertig geladen sein und nur noch gezeigt werden muessen. */
+  createTagWindow();
 
   /* Liest ab jetzt EE.log mit - beginnt am Dateiende, damit nicht die
      Belohnung von vorgestern als frischer Fund erscheint. */

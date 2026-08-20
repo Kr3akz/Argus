@@ -107,6 +107,31 @@ RELIKT-BELOHNUNGEN                        9s
 von links nach rechts. Du liest die Zahl und klickst die Karte — kein Namensvergleich
 unter Zeitdruck.
 
+### Preisschilder direkt im Spiel
+
+Noch schneller geht es ohne Liste: Argus setzt unter jede der vier Karten ein kleines
+Schild mit Platinpreis und Dukatenwert. Das teuerste Teil bekommt einen grünen Rahmen,
+dein eigenes die Beschriftung *deins*.
+
+Möglich wird das, weil die Texterkennung nicht nur Namen liefert, sondern auch deren
+**Bildschirmkoordinaten**. Jedes Schild sitzt mittig unter dem Namen, zu dem es gehört.
+
+Technisch ist es **ein** durchsichtiges Fenster über dem ganzen Bildschirm, nicht vier
+einzelne: vier Fenster wären vier Renderer für dieselbe Sache und vier Gelegenheiten,
+dass eines hängen bleibt. Es ist **klickdurchlässig** und nicht fokussierbar — es kann
+keinen Klick abfangen, der der Karte darunter gilt, und nimmt dem Spiel nie die
+Eingabe.
+
+Zwei Fallstricke stecken darin, beide gelöst:
+
+- Bildschirmkoordinaten sind echte Pixel, Fensterkoordinaten sind geräteunabhängige
+  Punkte. Bei 125 % Skalierung säßen die Schilder sonst ein Viertel zu weit rechts.
+- `showInactive()` lässt ein Fenster mit `transparent: true` und `focusable: false`
+  unter Windows unsichtbar — nachgemessen. Deshalb `show()`, was hier gefahrlos ist:
+  ein nicht fokussierbares Fenster kann den Fokus nicht nehmen.
+
+Abschaltbar in den **Einstellungen**. Ohne Schilder erscheint die Liste im Overlay.
+
 ### Woher die Daten kommen
 
 Aus zwei Quellen, die nacheinander eintreffen:
@@ -355,3 +380,15 @@ Zwei Umgebungsvariablen für Tests ohne laufendes Spiel:
 |---|---|
 | `ARGUS_EE_LOG` | andere Logdatei — auch für Installationen mit abweichendem Datenpfad |
 | `ARGUS_SCAN_IMAGE` | wertet ein gespeichertes Bild aus, statt den Bildschirm aufzunehmen |
+| `ARGUS_DEVTOOLS` | öffnet die Entwicklerwerkzeuge von Overlay und Preisschildern |
+
+Der Hauptprozess protokolliert jede Relikt-Belohnung knapp mit:
+
+```
+[Relikt] Fund aus Log: Pyrana Prime Barrel | Erkennung: an | Schilder: an
+[Relikt] Erkennung: 4 Treffer
+[Relikt] Schilder gezeigt: 4 | sichtbar: true
+```
+
+Damit ist bei einem Fehlschlag unterscheidbar, ob das Log nichts hergab, die Erkennung
+nichts fand oder die Anzeige klemmt.

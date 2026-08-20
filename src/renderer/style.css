@@ -3160,3 +3160,61 @@ label.setting-row { cursor: pointer; user-select: none; }
   color: var(--gold); text-align: right;
 }
 .ov-relic-note { padding: 6px 10px 2px; font-size: 9.5px; color: var(--text-3); }
+
+/* ============================================================================
+   Preisschilder im Spiel (tags.html)
+
+   Eigenes, durchsichtiges Fenster ueber dem ganzen Bildschirm. Der Hintergrund
+   MUSS durchsichtig bleiben - style.css setzt am body sonst einen Verlauf, und
+   der wuerde das Spiel zudecken.
+   ========================================================================= */
+
+body.tags-window {
+  background: transparent !important;
+  overflow: hidden;
+  height: 100vh;
+  margin: 0;
+  pointer-events: none;
+}
+
+.tag {
+  position: absolute;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 5px 10px 6px;
+  border-radius: 9px;
+  background: rgba(8, 11, 17, 0.88);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12), 0 6px 18px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+  white-space: nowrap;
+  animation: tagIn .18s var(--ease);
+}
+@keyframes tagIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(-4px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* Das teuerste Teil der Runde - die eine Zahl, auf die es ankommt. */
+.tag.best { box-shadow: inset 0 0 0 1.5px var(--green), 0 6px 20px rgba(74, 222, 128, 0.3); }
+/* Das eigene Teil: unauffaellig markiert, es ist ja ohnehin sicher. */
+.tag.mine { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3), 0 6px 18px rgba(0, 0, 0, 0.6); }
+
+.tag-price {
+  font: 700 19px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  color: #f2f5f9;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+.tag-price.good { color: #4ade80; }
+
+.tag-meta { display: flex; align-items: baseline; gap: 6px; }
+.tag-duc {
+  font: 600 11px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  color: #f0b849;
+}
+.tag-mine {
+  font-size: 9.5px; font-weight: 600; letter-spacing: .4px;
+  color: #a8b3c2; text-transform: uppercase;
+}
