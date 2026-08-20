@@ -507,10 +507,19 @@ function startRelicCountdown(seconds) {
 function tickRelic() {
   const el = $('ov-relic-timer');
   if (!el) return;
+
   const left = Math.max(0, Math.ceil((relicDeadline - Date.now()) / 1000));
   el.textContent = left + 's';
   el.classList.toggle('urgent', left <= 5);
-  if (left <= 0) clearInterval(relicTicker);
+
+  if (left > 0) return;
+  clearInterval(relicTicker);
+
+  /* Wie bei den Schildern: bleibt die Schluss-Zeile im Log aus, verschwindet
+     die Anzeige trotzdem. Der Vergleich der Frist faengt den Fall ab, dass
+     inzwischen eine neue Belohnung kam. */
+  const deadlineAtStop = relicDeadline;
+  setTimeout(() => { if (relicDeadline === deadlineAtStop) hideRelicReward(); }, 2000);
 }
 
 function hideRelicReward() {

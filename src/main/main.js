@@ -74,6 +74,14 @@ let relicScan = true;
 let relicTags = true;
 let rewardIndex = null;
 let tagWin = null;
+let tagTimer = null;
+
+/* Senkrechter Abstand der Preisschilder unter dem Namen, als Anteil der
+   Bildschirmhoehe - so sitzt es auf 1080p wie auf 1440p an derselben Stelle
+   des Bildes. 0.083 sind auf einem 27-Zoll-Schirm rund drei Zentimeter.
+   Ueber data/config.json feinjustierbar, ohne dass es dafuer einen Schalter
+   in der Oberflaeche braucht. */
+let relicTagOffset = 0.083;
 /* Nur ein selbst eingeblendetes Overlay wird danach auch selbst wieder
    ausgeblendet - wer es vorher offen hatte, soll es behalten. */
 let overlayShownForRelic = false;
@@ -252,6 +260,11 @@ async function loadOverlayPrefs() {
     if (typeof cfg.relicAutoShow === 'boolean') relicAutoShow = cfg.relicAutoShow;
     if (typeof cfg.relicScan === 'boolean') relicScan = cfg.relicScan;
     if (typeof cfg.relicTags === 'boolean') relicTags = cfg.relicTags;
+    if (Number.isFinite(cfg.relicTagOffset)) {
+      /* Zwischen 0 und einem Drittel der Hoehe - alles andere schoebe die
+         Schilder aus dem Bild. */
+      relicTagOffset = Math.min(0.33, Math.max(0, cfg.relicTagOffset));
+    }
     if (Number.isFinite(cfg.overlayOpacity)) overlayOpacity = clampOpacity(cfg.overlayOpacity);
     if (cfg.overlayBounds) overlayBounds = cfg.overlayBounds;
     clickThrough = !!cfg.overlayClickThrough;
@@ -421,6 +434,11 @@ function showTags(rewards, region) {
     return;
   }
 
+  /* Nicht direkt unter den Namen: dort verdeckt das Schild die Karte. Ein
+     Stueck tiefer sitzt es unter dem Bild und bleibt trotzdem eindeutig
+     zugeordnet. */
+  const dropPx = Math.round(display.bounds.height * relicTagOffset);
+
   const tags = placeable.map(r => ({
     name: r.name,
     ducats: r.ducats,
@@ -429,7 +447,7 @@ function showTags(rewards, region) {
     position: r.position,
     /* Mitte des Namens, direkt darunter. */
     cx:  (originX + r.box.x + r.box.w / 2) / scale - display.bounds.x,
-    top: (originY + r.box.y + r.box.h) / scale - display.bounds.y + 6
+    top: (originY + r.box.y + r.box.h) / scale - display.bounds.y + dropPx
   }));
 
   const send = () => {
@@ -449,9 +467,23 @@ function showTags(rewards, region) {
     tagWin.show();
     console.log('[Relikt] Schilder gezeigt:', tags.length, '| sichtbar:', tagWin.isVisible());
   }
+
+  /* Zwangsabschaltung. Bisher hing das Verschwinden allein an der Schluss-
+     Zeile im Log - bleibt die aus, weil das Spiel abstuerzt, die Zeile sich
+     aendert oder der Abruf haengt, klebten die Schilder dauerhaft ueber dem
+     Bild. Ueber einem laufenden Spiel ist das die schlechteste aller
+     Eigenschaften, deshalb entscheidet ab jetzt die Uhr mit.
+
+     Gerechnet ab dem Zeitpunkt des Fundes, nicht ab jetzt: die Preise werden
+     einzeln nachgereicht, und jede Nachlieferung ruft hier erneut an. */
+  const endsAt = (currentRelic?.at ?? Date.now()) + (currentRelic?.seconds ?? 15) * 1000 + 2000;
+  clearTimeout(tagTimer);
+  tagTimer = setTimeout(hideTags, Math.max(1000, endsAt - Date.now()));
 }
 
 function hideTags() {
+  clearTimeout(tagTimer);
+  tagTimer = null;
   if (!tagWin || tagWin.isDestroyed()) return;
   tagWin.webContents.send('tags:hide');
   tagWin.hide();

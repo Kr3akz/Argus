@@ -130,6 +130,15 @@ Zwei Fallstricke stecken darin, beide gelöst:
   unter Windows unsichtbar — nachgemessen. Deshalb `show()`, was hier gefahrlos ist:
   ein nicht fokussierbares Fenster kann den Fokus nicht nehmen.
 
+Sie verschwinden, sobald das Log den Auswahlbildschirm als geschlossen meldet -
+und spaetestens zwei Sekunden nach Ablauf des Countdowns, auch wenn diese Meldung
+ausbleibt. Ein Schild, das ueber dem laufenden Spiel kleben bleibt, waere die
+schlechteste denkbare Eigenschaft, deshalb entscheidet die Uhr mit.
+
+Der senkrechte Abstand unter dem Namen betraegt 8,3 % der Bildschirmhoehe (rund drei
+Zentimeter auf 27 Zoll). Wer ihn anders will, setzt in :
+
+\
 Abschaltbar in den **Einstellungen**. Ohne Schilder erscheint die Liste im Overlay.
 
 ### Woher die Daten kommen
