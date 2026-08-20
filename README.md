@@ -130,15 +130,20 @@ Zwei Fallstricke stecken darin, beide gelöst:
   unter Windows unsichtbar — nachgemessen. Deshalb `show()`, was hier gefahrlos ist:
   ein nicht fokussierbares Fenster kann den Fokus nicht nehmen.
 
-Sie verschwinden, sobald das Log den Auswahlbildschirm als geschlossen meldet -
-und spaetestens zwei Sekunden nach Ablauf des Countdowns, auch wenn diese Meldung
-ausbleibt. Ein Schild, das ueber dem laufenden Spiel kleben bleibt, waere die
-schlechteste denkbare Eigenschaft, deshalb entscheidet die Uhr mit.
+Sie verschwinden, sobald das Log den Auswahlbildschirm als geschlossen meldet — und
+spätestens zwei Sekunden nach Ablauf des Countdowns, auch wenn diese Meldung ausbleibt.
+Ein Schild, das über dem laufenden Spiel kleben bleibt, wäre die schlechteste denkbare
+Eigenschaft; deshalb entscheidet die Uhr mit.
 
-Der senkrechte Abstand unter dem Namen betraegt 8,3 % der Bildschirmhoehe (rund drei
-Zentimeter auf 27 Zoll). Wer ihn anders will, setzt in :
+Der senkrechte Abstand unter dem Namen beträgt 8,3 % der Bildschirmhöhe — 120 px bei
+1440p, rund drei Zentimeter auf 27 Zoll. Als Anteil der Höhe und nicht als feste
+Pixelzahl, damit es auf 1080p an derselben Stelle des Bildes sitzt. Wer ihn anders
+haben will, setzt in `data/config.json`:
 
-\
+```json
+{ "relicTagOffset": 0.083 }
+```
+
 Abschaltbar in den **Einstellungen**. Ohne Schilder erscheint die Liste im Overlay.
 
 ### Woher die Daten kommen
