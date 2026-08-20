@@ -1,0 +1,941 @@
+/**
+ * Electron-Hauptprozess.
+ *
+ * SICHERHEIT:
+ *   - Lesender Zugriff auf den Warframe-Prozess NUR fuer den Inventar-Abruf und
+ *     nur auf Knopfdruck: procmem.js oeffnet den Prozess mit PROCESS_VM_READ und
+ *     PROCESS_QUERY_INFORMATION, um die temporaeren API-Zugangsdaten zu lesen.
+ *     Kein Schreibzugriff, keine Injektion, keine Veraenderung am Spiel.
+ *     (Frueher galt hier "kein Kontakt zum Spielprozess" - das stimmt seit dem
+ *     Inventar-Tab nicht mehr und waere ein irrefuehrender Kommentar.)
+ *   - accountId und nonce bleiben im Hauptprozess: nicht geloggt, nicht
+ *     gespeichert, nicht ueber preload.cjs erreichbar.
+ *   - Netzwerkabruf von Profil und Inventar NUR auf Knopfdruck und nur durch
+ *     dieselbe Drosselung (siehe ratelimit.js) - DE sperrt pro IP.
+ *   - Renderer laeuft ohne Node-Zugriff (contextIsolation an).
+ */
+import { app, BrowserWindow, ipcMain, globalShortcut, shell, Notification } from 'electron';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { loadCatalog, imageUrl } from '../core/catalog.js';
+import { loadProfile, displayName, starChart } from '../core/profile.js';
+import { analyze, recommend, diversify, STATUS } from '../core/analyze.js';
+import { masteryRankName, progressForMR } from '../core/mastery.js';
+import { classify, CATEGORY_LABELS } from '../core/classify.js';
+import { acquisitionOf } from '../core/acquisition.js';
+import { resolveGoal, combineGoals, formatDuration } from '../core/recipes.js';
+import { loadConfig } from '../core/config.js';
+import * as store from '../core/store.js';
+import { loadMods, POLARITIES, RARITY_LABELS, searchMods, isAuraMod, isExilusMod } from '../core/mods.js';
+import { evaluateBuild, combineBuilds, orokinTypeFor } from '../core/builds.js';
+import { fetchWorldState } from '../core/worldstate.js';
+import { getAllResourceGuides, searchResourceGuides } from '../core/farming.js';
+import { getDucatsReferenceList, buildDucatsCatalog } from '../core/ducats.js';
+import { loadInventory } from '../core/inventory.js';
+import { buildInventory, SECTIONS } from '../core/inventory-items.js';
+import { checkAllowed, formatWait } from '../core/ratelimit.js';
+import { matchesFissureFilter } from '../core/fissure-filter.js';
+import {
+  parseBuildId, fetchBuild, toBuild, loadModMap, saveModMap,
+  unknownModIds, mergeNames, USER_AGENT as OF_USER_AGENT
+} from '../core/overframe.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+let win = null;
+let overlayMode = false;
+
+/* Eine Quelle fuer Registrierung und Anzeige - sonst zeigt die Titelleiste
+   irgendwann eine Taste, die gar nicht mehr registriert ist. */
+const OVERLAY_HOTKEY = 'Alt+Shift+W';
+const cache = { catalog: null, profile: null, analysis: null, mods: null };
+
+process.chdir(path.resolve(__dirname, '../..'));   // data/ liegt im Projektwurzelverzeichnis
+
+function createWindow() {
+  win = new BrowserWindow({
+    width: 1480, height: 880, minWidth: 1020, minHeight: 620,
+    backgroundColor: '#0d1117',
+    frame: false,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  });
+
+  win.loadFile(path.join(__dirname, '../renderer/index.html'));
+  win.once('ready-to-show', () => win.show());
+
+  // Externe Links im echten Browser oeffnen, nicht in der App.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+}
+
+/** Wechselt zwischen normalem Fenster und transparentem Overlay. */
+function toggleOverlay() {
+  if (!win) return overlayMode;
+  overlayMode = !overlayMode;
+  win.setAlwaysOnTop(overlayMode, 'screen-saver');
+  win.setOpacity(overlayMode ? 0.94 : 1);
+  win.setSkipTaskbar(overlayMode);
+  win.webContents.send('overlay:changed', overlayMode);
+  return overlayMode;
+}
+
+/**
+ * Overlay per Hotkey einblenden.
+ *
+ * showInactive() statt show(): Warframe behaelt den Eingabefokus, waehrend das
+ * Overlay darueber auftaucht. Mit show() aktiviert Windows das Overlay-Fenster,
+ * und beim Ausblenden reicht es den Fokus nicht von selbst ans Spiel zurueck -
+ * man muesste erst wieder ins Spielfenster klicken.
+ */
+function showOverlay() {
+  if (!win) return;
+  if (!overlayMode) toggleOverlay();
+  win.showInactive();
+}
+
+/**
+ * Overlay per Hotkey ausblenden.
+ *
+ * Wer zwischendurch ins Overlay geklickt hat, hat den Fokus hierher geholt.
+ * Dann erst abgeben, damit Windows ihn an das Fenster darunter - das Spiel -
+ * zurueckreicht, und danach verstecken.
+ */
+function hideOverlay() {
+  if (!win) return;
+  if (win.isFocused()) win.blur();
+  win.hide();
+}
+
+/* ---------------------------- Daten ---------------------------- */
+
+async function ensureData({ refresh = false } = {}) {
+  const cfg = await loadConfig();
+  if (!cache.catalog) cache.catalog = await loadCatalog();
+  if (!cache.mods)    cache.mods    = await loadMods();
+
+  const res = await loadProfile(cfg.accountId, cfg.platform, { refresh });
+  cache.profile = res.profile;
+  cache.analysis = analyze(res.profile, cache.catalog);
+  return { ...res, cfg };
+}
+
+function decorate(entry) {
+  const item = cache.catalog.byUniqueName.get(entry.uniqueName) || {};
+  return {
+    ...entry,
+    label: CATEGORY_LABELS[entry.category] || entry.category,
+    image: imageUrl(entry.uniqueName, 128),
+    description: item.description || ''
+  };
+}
+
+const FOCUS_NAMES = {
+  AP_ATTACK: 'Madurai', AP_DEFENSE: 'Vazarin', AP_TACTIC: 'Naramon',
+  AP_POWER: 'Zenurik', AP_WARD: 'Unairu'
+};
+
+/** Zusatzinfos fuer den Profilkopf - alles bereits im Profil vorhanden. */
+function profileExtras(profile) {
+  const preset = profile.LoadOutPreset || {};
+
+  // Der Preset nennt nur den Warframe-Namen; das Bild kommt ueber den Katalog.
+  let loadout = null;
+  if (preset.n) {
+    const frame = cache.catalog.items.find(
+      i => i.name === preset.n && i.productCategory === 'Suits'
+    );
+    loadout = {
+      name: preset.n,
+      image: frame ? imageUrl(frame.uniqueName, 512) : null,
+      focus: FOCUS_NAMES[preset.FocusSchool] || null
+    };
+  }
+
+  const createdMs = Number(profile.Created?.$date?.$numberLong) || null;
+  const chart = starChart(profile);
+
+  return {
+    loadout,
+    clan: profile.GuildName || null,
+    createdMs,
+    yearsPlayed: createdMs ? ((Date.now() - createdMs) / 3.156e10).toFixed(1) : null,
+    nodes: chart.nodes,
+    junctions: chart.junctions,
+    challenges: (profile.ChallengeProgress || []).length,
+    syndicates: (profile.Affiliations || []).length
+  };
+}
+
+async function buildDashboard(meta) {
+  const a = cache.analysis;
+  const s = a.summary;
+  const rec = recommend(a, cache.catalog, { limit: 200 });
+  const st = await store.load();
+
+  const goals = st.goals.map(g => {
+    const entry = a.entries.find(e => e.uniqueName === g.uniqueName);
+    const owned = entry ? entry.status === STATUS.PARTIAL : false;
+    const rank = entry ? entry.rank : 0;
+    const maxLvl = entry ? entry.maxLvl : 30;
+    const ranksLeft = Math.max(0, maxLvl - rank);
+    const r = owned ? null : resolveGoal(g.uniqueName, cache.catalog);
+    return {
+      ...g,
+      image: imageUrl(g.uniqueName, 128),
+      gain: entry ? entry.gain : 0,
+      status: entry ? entry.status : 'missing',
+      owned,
+      kind: owned ? 'level' : 'farm',
+      rank,
+      maxLvl,
+      ranksLeft,
+      components: r ? r.components.map(c => ({
+        ...c,
+        image: imageUrl(c.uniqueName, 128),
+        ingredients: c.ingredients.map(ing => ({
+          ...ing,
+          image: imageUrl(ing.uniqueName, 128)
+        }))
+      })) : [],
+      materials: r ? r.materials.slice(0, 14).map(m => ({
+        ...m,
+        image: imageUrl(m.uniqueName, 128)
+      })) : [],
+      credits: r ? r.totalCredits : 0,
+      buildTime: r ? formatDuration(r.totalBuildSeconds) : '',
+      note: st.notes[g.uniqueName] || ''
+    };
+  });
+
+  const openFarmGoals = goals.filter(g => !g.done && !g.owned).map(g => g.uniqueName);
+  const shopping = openFarmGoals.length
+    ? combineGoals(openFarmGoals, cache.catalog)
+    : { materials: [], totalCredits: 0, totalBuildSeconds: 0 };
+
+  const byCategory = {};
+  for (const e of a.entries) {
+    const g = byCategory[e.category] || (byCategory[e.category] = { done: 0, total: 0, gain: 0 });
+    g.total++; g.gain += e.gain;
+    if (e.status === STATUS.DONE) g.done++;
+  }
+
+  return {
+    player: {
+      name: displayName(cache.profile),
+      mr: s.mr, mrName: masteryRankName(s.mr), reportedMR: s.reportedMR,
+      computedMR: s.computedMR, hiddenXP: s.hiddenXP,
+      /* Fortschritt gegen den gemeldeten Rang, nicht gegen den errechneten. */
+      progress: progressForMR(s.totalXP, s.mr),
+      totalXP: s.totalXP, breakdown: s.breakdown,
+      counts: s.counts, openGain: s.openGain, potentialMR: s.potentialMR,
+      ...profileExtras(cache.profile)
+    },
+    meta: {
+      fetchedAt: meta && meta.fetchedAt ? meta.fetchedAt : null,
+      fromCache: !!(meta && meta.fromCache),
+      message: (meta && meta.message) || null
+    },
+    quickWins: rec.quickWins.slice(0, 8).map(decorate),
+    easyGains: diversify(rec.easyGains, 2, 8).map(decorate),
+    warframes: rec.all.filter(r => r.category === 'Suits' && !r.owned).slice(0, 8).map(decorate),
+    categories: Object.entries(byCategory)
+      .map(([k, v]) => ({ key: k, label: CATEGORY_LABELS[k] || k, ...v }))
+      .sort((x, y) => y.gain - x.gain),
+    goals,
+    shopping: {
+      materials: shopping.materials.slice(0, 20).map(m => ({
+        ...m,
+        image: imageUrl(m.uniqueName, 128)
+      })),
+      credits: shopping.totalCredits,
+      buildTime: formatDuration(shopping.totalBuildSeconds)
+    },
+    generalNotes: st.generalNotes
+  };
+}
+
+/* ------------------------- Overframe-Import ------------------------- */
+
+/**
+ * Liest die Mod-Namen einer Overframe-Build-Seite.
+ *
+ * Noetig, weil die API nur interne Mod-IDs liefert und Overframe kein
+ * oeffentliches Mapping anbietet. Das Fenster bleibt unsichtbar, laedt nur die
+ * eine Seite und wird sofort wieder geschlossen.
+ */
+function scrapeModNames(buildUrl) {
+  return new Promise((resolve, reject) => {
+    const w = new BrowserWindow({
+      show: false,
+      webPreferences: { offscreen: true, javascript: true, images: false }
+    });
+
+    const done = (fn, arg) => { try { w.destroy(); } catch {} fn(arg); };
+    const timer = setTimeout(() => done(reject, new Error('Zeitüberschreitung beim Laden der Seite.')), 25000);
+
+    w.webContents.on('did-finish-load', async () => {
+      try {
+        // Die Slots werden clientseitig gerendert - kurz warten.
+        await new Promise(r => setTimeout(r, 2500));
+        const names = await w.webContents.executeJavaScript(`(() => {
+          const box = document.querySelector('[class*="buildSlots"]');
+          if (!box) return null;
+          const all = [...box.querySelectorAll('[class*="Mod_"]')];
+          const cards = [];
+          all.forEach(c => { if (!cards.some(u => u.contains(c) || c.contains(u))) cards.push(c); });
+          return cards.map(c => {
+            const lines = c.innerText.split('\\n').map(s => s.trim()).filter(Boolean);
+            const hasDrain = /^[\\u2191\\u2193]?\\d+$/.test(lines[0] || '');
+            return {
+              drain: hasDrain ? lines[0] : null,
+              name:  hasDrain ? lines[1] : lines[0]
+            };
+          });
+        })()`);
+        clearTimeout(timer);
+        done(resolve, names);
+      } catch (err) {
+        clearTimeout(timer);
+        done(reject, err);
+      }
+    });
+
+    w.webContents.on('did-fail-load', (_e, code, desc) => {
+      clearTimeout(timer);
+      done(reject, new Error(`Seite nicht erreichbar (${desc || code}).`));
+    });
+
+    w.loadURL(buildUrl, { userAgent: OF_USER_AGENT });
+  });
+}
+
+/**
+ * Prueft die Zuordnung: der drain aus der API muss zum drain im DOM passen.
+ * Stimmt das nicht, hat Overframe die Reihenfolge geaendert - dann lieber
+ * abbrechen als falsche Mods speichern.
+ */
+function verifyAlignment(raw, scraped) {
+  const slots = raw.slots || [];
+  let checked = 0, ok = 0;
+  for (let i = 0; i < Math.min(slots.length, scraped.length); i++) {
+    const dom = scraped[i]?.drain;
+    if (dom == null) continue;
+    checked++;
+    if (Math.abs(Number(String(dom).replace(/[^\d]/g, ''))) === Math.abs(slots[i].drain)) ok++;
+  }
+  return { checked, ok, reliable: checked === 0 ? false : ok / checked >= 0.8 };
+}
+
+async function importOverframeBuild(input) {
+  const id = parseBuildId(input);
+  if (!id) throw new Error('Keine gültige Overframe-Build-URL oder -ID.');
+
+  const raw = await fetchBuild(id);
+  let modMap = await loadModMap();
+
+  const unknown = unknownModIds(raw, modMap);
+  let scrapeNote = null;
+
+  if (unknown.length) {
+    const url = raw.url?.startsWith('http') ? raw.url : `https://overframe.gg/build/${id}/`;
+    const scraped = await scrapeModNames(url);
+    if (!scraped || !scraped.length) {
+      throw new Error('Die Mod-Namen liessen sich nicht auslesen - Overframe hat vermutlich '
+                    + 'die Seitenstruktur geändert.');
+    }
+    const check = verifyAlignment(raw, scraped);
+    if (!check.reliable) {
+      throw new Error(`Zuordnung unsicher (${check.ok}/${check.checked} Prüfwerte stimmen) - `
+                    + 'Import abgebrochen, damit keine falschen Mods gespeichert werden.');
+    }
+    const merged = mergeNames(raw, scraped.map(s => s.name), modMap);
+    modMap = merged.map;
+    await saveModMap(modMap);
+    scrapeNote = `${merged.added} neue Mod-Namen gelernt (${check.ok}/${check.checked} Prüfwerte ok)`;
+  }
+
+  const build = toBuild(raw, modMap, cache.mods, cache.catalog);
+  return { build, scrapeNote };
+}
+
+/* ---------------------------- IPC ---------------------------- */
+
+ipcMain.handle('dashboard:get', async () => {
+  try {
+    const meta = await ensureData({ refresh: false });
+    return { ok: true, data: await buildDashboard(meta) };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('profile:refresh', async () => {
+  try {
+    const meta = await ensureData({ refresh: true });
+    return { ok: true, data: await buildDashboard(meta), message: meta.message || null };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('goal:resolve', async (_e, uniqueName) => {
+  const r = resolveGoal(uniqueName, cache.catalog);
+  return { ...r, buildTimeText: formatDuration(r.totalBuildSeconds) };
+});
+
+const rebuilt = async () => ({ ok: true, data: await buildDashboard({ fromCache: true }) });
+
+ipcMain.handle('goal:add',     async (_e, u, n) => { await store.addGoal(u, n); return rebuilt(); });
+ipcMain.handle('goal:remove',  async (_e, u)    => { await store.removeGoal(u); return rebuilt(); });
+ipcMain.handle('goal:toggle',  async (_e, u)    => { await store.toggleGoal(u); return rebuilt(); });
+ipcMain.handle('note:set',     async (_e, u, t) => { await store.setNote(u, t); return rebuilt(); });
+ipcMain.handle('note:general', async (_e, t)    => { await store.setGeneralNotes(t); return { ok: true }; });
+
+ipcMain.handle('items:search', async (_e, query) => {
+  const q = String(query || '').toLowerCase().trim();
+  if (q.length < 2) return [];
+  return cache.analysis.entries
+    .filter(e => (e.name || '').toLowerCase().includes(q))
+    .slice(0, 30)
+    .map(decorate);
+});
+
+ipcMain.handle('item:details', async (_e, uniqueName) => {
+  try {
+    if (!cache.catalog || !cache.analysis) await ensureData({ refresh: false });
+    const item = cache.catalog.byUniqueName.get(uniqueName);
+    if (!item) return { ok: false, error: 'Item nicht im Katalog gefunden.' };
+
+    const entry = cache.analysis.entries.find(e => e.uniqueName === uniqueName);
+    const cls = classify(item);
+    const acq = acquisitionOf(item);
+    const st = await store.load();
+    const isGoal = st.goals.some(g => g.uniqueName === uniqueName && !g.done);
+    const isGoalDone = st.goals.some(g => g.uniqueName === uniqueName && g.done);
+
+    // Recipe
+    const recipe = resolveGoal(uniqueName, cache.catalog);
+    const components = (recipe.components || []).map(c => ({
+      ...c,
+      image: imageUrl(c.uniqueName, 128),
+      ingredients: (c.ingredients || []).map(ing => ({
+        ...ing,
+        image: imageUrl(ing.uniqueName, 128)
+      }))
+    }));
+    const materials = recipe.materials.map(m => ({
+      ...m,
+      image: imageUrl(m.uniqueName, 128)
+    }));
+
+    // Stats formatting
+    let stats = [];
+    if (item.productCategory === 'Suits') {
+      stats = [
+        { label: 'Gesundheit', val: item.health ?? '—' },
+        { label: 'Schild', val: item.shield ?? '—' },
+        { label: 'Rüstung', val: item.armor ?? '—' },
+        { label: 'Energie', val: item.power ?? '—' },
+        { label: 'Sprint-Tempo', val: item.sprintSpeed ? item.sprintSpeed.toFixed(2) : '—' }
+      ];
+    } else {
+      if (item.totalDamage !== undefined) stats.push({ label: 'Gesamtschaden', val: item.totalDamage });
+      if (item.criticalChance !== undefined) stats.push({ label: 'Krit. Chance', val: `${(item.criticalChance * 100).toFixed(1)}%` });
+      if (item.criticalMultiplier !== undefined) stats.push({ label: 'Krit. Multiplikator', val: `${item.criticalMultiplier.toFixed(1)}x` });
+      if (item.procChance !== undefined) stats.push({ label: 'Status-Chance', val: `${(item.procChance * 100).toFixed(1)}%` });
+      if (item.fireRate !== undefined) stats.push({ label: 'Feuerrate', val: item.fireRate.toFixed(2) });
+      if (item.magazineSize !== undefined) stats.push({ label: 'Magazin', val: item.magazineSize });
+      if (item.reloadTime !== undefined) stats.push({ label: 'Nachladezeit', val: `${item.reloadTime.toFixed(1)}s` });
+      if (item.trigger !== undefined) stats.push({ label: 'Feuermodus', val: item.trigger });
+    }
+
+    const cleanGameText = str => {
+      if (!str) return '';
+      return String(str)
+        .replace(/<[^>]*>/g, '')           // remove <DT_SLASH_COLOR>, </>, etc.
+        .replace(/\|[A-Z0-9_]+\|/g, '')     // remove |BASE|, |HPS|, |MAX|, etc.
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+    };
+
+    return {
+      ok: true,
+      data: {
+        uniqueName: item.uniqueName,
+        name: item.name,
+        category: cls.category,
+        categoryLabel: CATEGORY_LABELS[cls.category] || cls.category,
+        image: imageUrl(item.uniqueName, 256),
+        description: cleanGameText(item.description),
+        masteryReq: item.masteryReq || 0,
+        potentialXP: entry ? entry.potential : (cls.xpPerRank * (item.maxLevelCap || 30)),
+        status: entry ? entry.status : 'missing',
+        rank: entry ? entry.rank : 0,
+        maxLvl: entry ? entry.maxLvl : 30,
+        gain: entry ? entry.gain : 0,
+        source: acq.label,
+        sourceNote: acq.note,
+        isGoal,
+        isGoalDone,
+        stats,
+        passiveDescription: cleanGameText(item.passiveDescription),
+        abilities: (item.abilities || []).map(ab => ({
+          name: cleanGameText(ab.abilityName),
+          description: cleanGameText(ab.description)
+        })),
+        components,
+        materials,
+        credits: recipe.totalCredits,
+        buildTime: formatDuration(recipe.totalBuildSeconds),
+        hasRecipe: recipe.materials.length > 0 || recipe.totalCredits > 0 || components.length > 0
+      }
+    };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('checklist:get', async (_e, category) => {
+  return cache.analysis.entries
+    .filter(e => !category || e.category === category)
+    .sort((x, y) => (x.name || '').localeCompare(y.name || ''))
+    .map(decorate);
+});
+
+ipcMain.handle('worldstate:get', async (_e, force) => {
+  return await fetchWorldState({ force: !!force });
+});
+
+ipcMain.handle('farming:get', async (_e, query) => {
+  return searchResourceGuides(query);
+});
+
+ipcMain.handle('ducats:get', async () => {
+  if (!cache.catalog) await ensureData({ refresh: false });
+  return {
+    reference: getDucatsReferenceList(),
+    catalog: buildDucatsCatalog(cache.catalog)
+  };
+});
+
+/* ---------------------------- Inventar ---------------------------- */
+
+/**
+ * Fehlercodes aus der Speichersuche in Saetze uebersetzen.
+ * Der Nutzer soll lesen, was zu tun ist, nicht wie der Code heisst.
+ */
+const INVENTORY_ERRORS = {
+  no_process:    'Warframe läuft nicht. Starte das Spiel, logge dich ein und versuche es dann erneut.',
+  not_found:     'Im Speicher des Spiels waren keine Zugangsdaten zu finden. Das passiert, '
+               + 'wenn du noch im Anmeldebildschirm stehst – geh einmal ins Orbit und probier es nochmal.',
+  open_failed:   'Der Warframe-Prozess ließ sich nicht öffnen. Läuft das Spiel als Administrator, '
+               + 'muss dieses Fenster ebenfalls als Administrator laufen.',
+  timeout:       'Die Suche im Spielspeicher hat zu lange gedauert. Versuch es noch einmal.',
+  unsupported:   'Der Inventar-Abruf funktioniert nur unter Windows (64 Bit).',
+  koffi_missing: 'Das Speicher-Modul fehlt. Einmal "npm install" im Projektordner ausführen.',
+  scan_failed:   'Die Suche im Spielspeicher ist fehlgeschlagen.'
+};
+
+/** Gemeinsamer Aufbau fuer get und refresh. */
+async function inventoryPayload({ refresh }) {
+  if (!cache.catalog) await ensureData({ refresh: false });
+
+  const res = await loadInventory({ refresh });
+  const view = buildInventory(res.inventory, cache.catalog);
+  const gate = await checkAllowed({});
+
+  return {
+    ok: true,
+    data: {
+      ...view,
+      sectionMeta: SECTIONS,
+      source: res.source || 'api',
+      fetchedAt: res.fetchedAt,
+      /* Wartezeit gehoert in die Oberflaeche, damit der Knopf erklaeren kann,
+         warum er gerade nichts tut. */
+      gate: {
+        allowed: gate.allowed,
+        reason: gate.reason || null,
+        message: gate.message || null,
+        waitText: gate.allowed ? null : formatWait(gate.waitMs)
+      },
+      message: res.message || null
+    }
+  };
+}
+
+ipcMain.handle('inventory:get', async () => {
+  try {
+    return await inventoryPayload({ refresh: false });
+  } catch (err) {
+    /* "Noch nie abgerufen" ist kein Fehler, sondern ein Zustand. */
+    return { ok: false, code: err.code || 'empty', error: err.message };
+  }
+});
+
+ipcMain.handle('inventory:refresh', async () => {
+  try {
+    return await inventoryPayload({ refresh: true });
+  } catch (err) {
+    const code = err.code || (err.rateLimited ? 'rate_limited' : 'unknown');
+    return { ok: false, code, error: INVENTORY_ERRORS[code] || err.message };
+  }
+});
+
+/* ---------------------------- Builds ---------------------------- */
+
+async function buildsPayload() {
+  const st = await store.load();
+  const owned = new Set(st.ownedMods);
+  const lookup = u => cache.catalog.byUniqueName.get(u) || null;
+  const combined = combineBuilds(st.builds, cache.mods, owned, lookup);
+
+  return {
+    builds: combined.perBuild.map(({ build, evaluation }) => ({
+      id: build.id,
+      name: build.name,
+      itemName: build.itemName,
+      itemUniqueName: build.itemUniqueName,
+      image: build.itemUniqueName ? imageUrl(build.itemUniqueName, 128) : null,
+      source: build.source,
+      sourceUrl: build.sourceUrl,
+      author: build.author,
+      unresolved: build.unresolved || 0,
+      capacity: evaluation.capacity,
+      used: evaluation.used,
+      free: evaluation.free,
+      overCapacity: evaluation.overCapacity,
+      requirements: evaluation.requirements,
+      mods: {
+        total: evaluation.mods.total,
+        owned: evaluation.mods.owned,
+        missing: evaluation.mods.missing
+      },
+      slots: evaluation.slots
+    })),
+    totals: combined.totals,
+    missingMods: combined.missingMods.map(m => ({
+      uniqueName: m.uniqueName, name: m.name, rank: m.rank, maxRank: m.maxRank,
+      rarity: m.rarity, rarityLabel: RARITY_LABELS[m.rarity] || m.rarity,
+      usedIn: m.usedIn
+    })),
+    ownedCount: st.ownedMods.length
+  };
+}
+
+ipcMain.handle('builds:get', async () => {
+  try {
+    if (!cache.mods) await ensureData({ refresh: false });
+    return { ok: true, data: await buildsPayload() };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('builds:import', async (_e, input) => {
+  try {
+    if (!cache.mods) await ensureData({ refresh: false });
+    const { build, scrapeNote } = await importOverframeBuild(input);
+    await store.addBuild(build);
+    return { ok: true, data: await buildsPayload(), note: scrapeNote, unresolved: build.unresolved };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('builds:remove', async (_e, id) => {
+  await store.removeBuild(id);
+  return { ok: true, data: await buildsPayload() };
+});
+
+/** Eigener Build: 8 normale Slots plus Aura/Stance und Exilus. */
+const EMPTY_SLOTS = () => Array.from({ length: 10 }, () => null);
+
+ipcMain.handle('builds:create', async (_e, itemUniqueName, name) => {
+  try {
+    if (!cache.mods) await ensureData({ refresh: false });
+    const item = cache.catalog.byUniqueName.get(itemUniqueName);
+    if (!item) return { ok: false, error: 'Item nicht gefunden.' };
+
+    await store.addBuild({
+      name: name || `${item.name}-Build`,
+      itemUniqueName: item.uniqueName,
+      itemName: item.name,
+      itemRank: item.maxLevelCap || 30,
+      orokin: true,
+      slots: EMPTY_SLOTS(),
+      source: 'manual'
+    });
+    return { ok: true, data: await buildsPayload() };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('builds:setSlot', async (_e, buildId, slotIndex, slot) => {
+  try {
+    const st = await store.load();
+    const b = st.builds.find(x => x.id === buildId);
+    if (!b) return { ok: false, error: 'Build nicht gefunden.' };
+
+    const slots = Array.isArray(b.slots) ? [...b.slots] : EMPTY_SLOTS();
+    while (slots.length < 10) slots.push(null);
+    slots[slotIndex] = slot;                        // null loescht den Slot
+
+    await store.updateBuild(buildId, { slots });
+    return { ok: true, data: await buildsPayload() };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('builds:setMeta', async (_e, buildId, patch) => {
+  await store.updateBuild(buildId, patch);
+  return { ok: true, data: await buildsPayload() };
+});
+
+/** Mod-Suche fuer den Editor - passende Mods des Items zuerst. */
+ipcMain.handle('mods:search', async (_e, query, itemUniqueName) => {
+  if (!cache.mods) await ensureData({ refresh: false });
+  const item = itemUniqueName ? cache.catalog.byUniqueName.get(itemUniqueName) : null;
+  const found = searchMods(cache.mods, query, { category: item?.productCategory || null });
+  const st = await store.load();
+  const owned = new Set(st.ownedMods);
+
+  return found.map(m => ({
+    uniqueName: m.uniqueName,
+    name: m.name,
+    compatName: m.compatName || null,
+    baseDrain: m.baseDrain ?? 0,
+    maxRank: m.fusionLimit ?? 0,
+    polarity: m.polarity || null,
+    polaritySymbol: m.polarity ? POLARITIES[m.polarity]?.symbol : null,
+    rarity: m.rarity,
+    rarityLabel: RARITY_LABELS[m.rarity] || m.rarity,
+    isAura: isAuraMod(m),
+    isExilus: isExilusMod(m),
+    owned: owned.has(m.uniqueName),
+    description: m.description || ''
+  }));
+});
+
+/** Item-Suche fuer "neuen Build anlegen". */
+ipcMain.handle('items:forBuild', async (_e, query) => {
+  if (!cache.analysis) await ensureData({ refresh: false });
+  const q = String(query || '').toLowerCase().trim();
+  if (q.length < 2) return [];
+  return cache.analysis.entries
+    .filter(e => (e.name || '').toLowerCase().includes(q))
+    .slice(0, 25)
+    .map(e => ({
+      uniqueName: e.uniqueName,
+      name: e.name,
+      label: CATEGORY_LABELS[e.category] || e.category,
+      image: imageUrl(e.uniqueName, 128)
+    }));
+});
+
+/** Alle Polaritaeten fuer die Auswahl im Editor. */
+ipcMain.handle('mods:polarities', () =>
+  Object.entries(POLARITIES).map(([key, v]) => ({ key, ...v })));
+
+ipcMain.handle('mods:setOwned', async (_e, uniqueName, owned) => {
+  await store.setModOwned(uniqueName, owned);
+  return { ok: true, data: await buildsPayload() };
+});
+
+ipcMain.handle('mods:setManyOwned', async (_e, list, owned) => {
+  await store.setManyModsOwned(list, owned);
+  return { ok: true, data: await buildsPayload() };
+});
+
+ipcMain.handle('window:overlay',  () => toggleOverlay());
+ipcMain.handle('window:hotkey',   () => OVERLAY_HOTKEY);
+ipcMain.handle('window:minimize', () => win && win.minimize());
+ipcMain.handle('window:close',    () => win && win.close());
+
+/* -------------------- Void-Riss Benachrichtigungen -------------------- */
+
+const seenFissureIds = new Set();
+let trackerInitialized = false;
+let notificationPollerTimer = null;
+
+async function triggerFissureNotification(fissure, settings) {
+  const iconPath = path.join(__dirname, '../renderer/assets/icons/worldstate/fissure.png');
+  const title = `Void-Riss aktiv: ${fissure.tier} · ${fissure.missionType}`;
+  const body = `${fissure.node} (${fissure.enemy || 'Befallen/Korrumpiert'})${fissure.isHard ? ' · [Steel Path]' : ''}\nRestzeit: ${fissure.eta || 'jetzt live'}`;
+
+  // Native Windows Notification Toast
+  if (settings.desktopToast !== false && Notification.isSupported()) {
+    try {
+      const n = new Notification({
+        title,
+        body,
+        icon: iconPath,
+        silent: !settings.sound
+      });
+      n.on('click', () => {
+        if (win) {
+          if (win.isMinimized()) win.restore();
+          win.show();
+          win.focus();
+          win.webContents.send('navigate:tab', 'worldstate', 'fissures');
+        }
+      });
+      n.show();
+    } catch (err) {
+      console.error('Fehler beim Anzeigen der Benachrichtigung:', err);
+    }
+  }
+
+  // IPC Event an Renderer senden (für In-App Toast & Badge)
+  if (win && win.webContents) {
+    win.webContents.send('notification:event', {
+      type: 'fissure',
+      title,
+      body,
+      fissure
+    });
+  }
+}
+
+async function pollFissureTracker() {
+  try {
+    const ws = await fetchWorldState({ force: false });
+    if (!ws || !ws.fissures) return;
+
+    const st = await store.load();
+    const settings = st.notifications;
+
+    const currentFissureIds = new Set(ws.fissures.map(f => f.id));
+
+    if (!trackerInitialized) {
+      // Beim ersten Start merken wir uns die bereits aktiven Risse, damit nicht sofort 15 Toasts aufpoppen
+      ws.fissures.forEach(f => seenFissureIds.add(f.id));
+      trackerInitialized = true;
+      return;
+    }
+
+    // Prüfen, ob neue Risse dazugekommen sind
+    for (const f of ws.fissures) {
+      if (!seenFissureIds.has(f.id)) {
+        seenFissureIds.add(f.id);
+        if (matchesFissureFilter(f, settings)) {
+          await triggerFissureNotification(f, settings);
+        }
+      }
+    }
+
+    // Alte Riss-IDs aus seenFissureIds aufräumen
+    for (const id of seenFissureIds) {
+      if (!currentFissureIds.has(id)) {
+        seenFissureIds.delete(id);
+      }
+    }
+  } catch {
+    // Fehler bei Hintergrundabruf stillschweigend ignorieren
+  }
+}
+
+ipcMain.handle('notifications:get', async () => {
+  const st = await store.load();
+  return st.notifications;
+});
+
+ipcMain.handle('notifications:save', async (_e, patch) => {
+  const st = await store.updateNotificationSettings(patch);
+  // Sofort prüfen, ob die neuen Einstellungen matchen
+  pollFissureTracker();
+  return { ok: true, data: st.notifications };
+});
+
+ipcMain.handle('notifications:test', async () => {
+  const st = await store.load();
+  const settings = st.notifications || {};
+  const iconPath = path.join(__dirname, '../renderer/assets/icons/worldstate/fissure.png');
+
+  const testFissure = {
+    id: 'test-fissure-' + Date.now(),
+    tier: 'Axi',
+    missionType: 'Void Cascade',
+    node: 'Teshub (Zariman)',
+    enemy: 'Grineer',
+    isHard: true,
+    isStorm: false,
+    eta: '54m'
+  };
+
+  const title = `[Test] Void-Riss aktiv: Axi · Void Cascade`;
+  const body = `Teshub (Zariman) · [Steel Path]\nRestzeit: 54m (Test-Benachrichtigung)`;
+
+  if (Notification.isSupported()) {
+    try {
+      const n = new Notification({
+        title,
+        body,
+        icon: iconPath,
+        silent: !settings.sound
+      });
+      n.on('click', () => {
+        if (win) {
+          if (win.isMinimized()) win.restore();
+          win.show();
+          win.focus();
+          win.webContents.send('navigate:tab', 'worldstate', 'fissures');
+        }
+      });
+      n.show();
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  }
+
+  if (win && win.webContents) {
+    win.webContents.send('notification:event', {
+      type: 'test',
+      title,
+      body,
+      fissure: testFissure
+    });
+  }
+
+  return { ok: true };
+});
+
+/* ---------------------------- App ---------------------------- */
+
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.kr3akz.warframeguide');
+}
+
+app.whenReady().then(() => {
+  createWindow();
+  // Hotkey zum Ein-/Ausblenden waehrend des Spielens
+  globalShortcut.register(OVERLAY_HOTKEY, () => {
+    if (!win) return;
+    if (win.isVisible() && overlayMode) hideOverlay();
+    else showOverlay();
+  });
+
+  // Hintergrund-Überwachung für Void-Risse starten (alle 45 Sekunden)
+  pollFissureTracker();
+  notificationPollerTimer = setInterval(pollFissureTracker, 45000);
+
+  app.on('activate', () => { if (!BrowserWindow.getAllWindows().length) createWindow(); });
+});
+
+app.on('will-quit', () => {
+  if (notificationPollerTimer) clearInterval(notificationPollerTimer);
+  globalShortcut.unregisterAll();
+});
+app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+

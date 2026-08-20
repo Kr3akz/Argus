@@ -1,0 +1,51 @@
+# ---------------------------------------------------------------------------
+# Abhaengigkeiten
+# ---------------------------------------------------------------------------
+node_modules/
+
+# ---------------------------------------------------------------------------
+# Persoenliche Daten - NIEMALS committen.
+#
+# data/ enthaelt die accountId, das abgerufene Profil und das komplette
+# Inventar des Spielkontos. Deshalb wird der gesamte Ordner ignoriert und
+# einzeln freigegeben, was oeffentlich sein darf - nicht umgekehrt. Eine neue
+# Cache-Datei ist damit automatisch ignoriert, statt aus Versehen im Commit
+# zu landen.
+#
+#   config.json      accountId
+#   profile-*.json   Profildaten, Dateiname enthaelt die accountId
+#   inventory*.json  vollstaendiges Inventar des Kontos
+#   goals.json       Ziele, Notizen, Builds
+#   scan-hint.json   Speicheradresse des Spielprozesses
+#   ratelimit.json   lokaler Drosselungsstand
+#   catalog.json     9 MB oeffentlicher Cache, wird neu geladen
+#   mods.json        2,5 MB oeffentlicher Cache, wird neu geladen
+# ---------------------------------------------------------------------------
+data/*
+!data/config.example.json
+
+# ---------------------------------------------------------------------------
+# IDE und Betriebssystem
+# ---------------------------------------------------------------------------
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# ---------------------------------------------------------------------------
+# Builds und Logs
+# ---------------------------------------------------------------------------
+dist/
+out/
+build/
+release/
+*.log
+npm-debug.log*
+
+# ---------------------------------------------------------------------------
+# Zugangsdaten
+# ---------------------------------------------------------------------------
+.env
+.env.*
+*.pem
+*.key

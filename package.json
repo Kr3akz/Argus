@@ -1,0 +1,22 @@
+{
+  "name": "kr3akz-warframe-guide",
+  "version": "0.1.0",
+  "description": "Mastery-Rank Planer fuer Warframe - oeffentliche APIs plus lesender Speicherzugriff auf den Spielprozess fuer den Inventar-Abruf",
+  "type": "module",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "sync": "node src/cli/sync.js",
+    "report": "node src/cli/report.js",
+    "scan-test": "node src/cli/scan-test.js",
+    "inventory": "node src/cli/inventory-fetch.js",
+    "inventory-test": "node src/cli/inventory-test.js",
+    "notif-test": "node src/cli/notif-test.js"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  },
+  "dependencies": {
+    "koffi": "^3.1.5"
+  }
+}

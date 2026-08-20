@@ -1,0 +1,739 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' https://cdn.jsdelivr.net data:; style-src 'self' 'unsafe-inline';">
+  <title>Kr3akz Warframe Guide</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="titlebar">
+  <div class="drag">
+    <span class="logo">◈</span>
+    <span class="apptitle">Warframe Guide</span>
+    <span id="overlay-badge" class="badge hidden">Overlay</span>
+  </div>
+  <div class="winbtns">
+    <span id="hotkey-hint" class="hotkey-hint hidden"></span>
+    <button id="btn-overlay" title="Overlay-Modus (Alt+Shift+W)"></button>
+    <button id="btn-min" title="Minimieren"></button>
+    <button id="btn-close" class="danger" title="Schliessen"></button>
+  </div>
+</header>
+
+<div id="loading" class="loading">
+  <div class="spinner"></div>
+  <p>Lade Daten aus dem lokalen Cache …</p>
+</div>
+
+<div id="error" class="error hidden"></div>
+
+<main id="app" class="app-layout hidden">
+
+  <!-- Feste kompakte Icon-Sidebar links -->
+  <aside class="sidebar">
+    <div class="sidebar-top">
+      <div class="sidebar-brand">
+        <span class="sb-logo" data-icon="lotus"></span>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button class="nav-item active" data-tab="dashboard">
+          <span class="nav-icon" data-icon="dashboard"></span>
+          <div class="nav-tooltip">
+            <b>Dashboard</b>
+            <span>Übersicht & Empfehlungen</span>
+          </div>
+        </button>
+
+        <button class="nav-item" data-tab="worldstate">
+          <span class="nav-icon" data-icon="alert"></span>
+          <span class="nav-pill live-dot"></span>
+          <div class="nav-tooltip">
+            <b>Live-Tracker</b>
+            <span>Zyklen, Baro & Risse</span>
+          </div>
+        </button>
+
+        <button class="nav-item" data-tab="goals">
+          <span class="nav-icon" data-icon="target"></span>
+          <span id="goal-count" class="nav-pill">0</span>
+          <div class="nav-tooltip">
+            <b>Farm-Ziele & Checkliste</b>
+            <span>Aktive Ziele, Rohstoffe & Items</span>
+          </div>
+        </button>
+
+        <button class="nav-item" data-tab="inventory">
+          <span class="nav-icon" data-icon="crate"></span>
+          <div class="nav-tooltip">
+            <b>Inventar</b>
+            <span>Relikte, Mods, Arcanes & Material</span>
+          </div>
+        </button>
+
+        <button class="nav-item" data-tab="farmguide">
+          <span class="nav-icon" data-icon="starchart"></span>
+          <div class="nav-tooltip">
+            <b>Farm-Guide</b>
+            <span>Ressourcen & beste Drop-Nodes</span>
+          </div>
+        </button>
+
+        <button class="nav-item" data-tab="ducats">
+          <span class="nav-icon" data-icon="ducat"></span>
+          <div class="nav-tooltip">
+            <b>Baro & Dukaten</b>
+            <span>Prime-Teile & Relikt-Rechner</span>
+          </div>
+        </button>
+
+        <button class="nav-item" data-tab="builds">
+          <span class="nav-icon" data-icon="forma"></span>
+          <span id="build-count" class="nav-pill">0</span>
+          <div class="nav-tooltip">
+            <b>Builds & Mods</b>
+            <span>Overframe-Import & Modding</span>
+          </div>
+        </button>
+
+        <button class="nav-item" data-tab="notes">
+          <span class="nav-icon" data-icon="codex"></span>
+          <div class="nav-tooltip">
+            <b>Notizen</b>
+            <span>Lokales Notizbuch</span>
+          </div>
+        </button>
+      </nav>
+    </div>
+
+    <div class="sidebar-foot">
+      <button id="sb-btn-refresh" class="sb-action-btn">
+        <span class="nav-icon" data-icon="refresh"></span>
+        <div class="nav-tooltip" id="sb-refresh-tooltip">
+          <b id="sb-refresh-title">Aktualisieren</b>
+          <span id="sb-refresh-sub">Profil & Daten neu laden</span>
+        </div>
+      </button>
+    </div>
+  </aside>
+
+  <!-- Haupt-Inhaltsbereich mit eigenem Scrollbar -->
+  <div class="main-content">
+
+    <section class="hero">
+      <!-- Linke Spalte: Warframe Charakter bündig am unteren Rand -->
+      <div class="hero-character-col" id="hero-character-col" hidden>
+        <div class="hero-warframe-art" id="hero-warframe-art">
+          <div class="hero-warframe-glow"></div>
+          <img id="hero-warframe-img" alt="">
+        </div>
+      </div>
+
+      <!-- Rechte Spalte: Alle Spieler- und Fortschrittsdaten -->
+      <div class="hero-main-col">
+        <div class="hero-top">
+          <div class="hero-id">
+            <h1 id="player-name">—</h1>
+            <span id="mr-name" class="mr-name">—</span>
+            <div class="hero-tags" id="hero-tags"></div>
+          </div>
+
+          <div class="mr-block">
+            <div class="mr-big"><span id="mr-value">–</span><small>MR</small></div>
+            <span class="mr-max">von max. <b id="stat-potential">–</b></span>
+          </div>
+        </div>
+
+        <div class="progress">
+          <div class="progress-track"><div id="progress-fill" class="progress-fill"></div></div>
+          <div class="progress-labels">
+            <span id="progress-text">—</span>
+            <span id="progress-next">—</span>
+          </div>
+        </div>
+
+        <div class="hero-split">
+          <div class="stats">
+            <div class="stat"><b id="stat-done">–</b><span>Fertig</span></div>
+            <div class="stat"><b id="stat-partial">–</b><span>Angefangen</span></div>
+            <div class="stat"><b id="stat-missing">–</b><span>Offen</span></div>
+            <div class="stat"><b id="stat-open">–</b><span>MR-XP offen</span></div>
+          </div>
+
+          <div class="xpsplit">
+            <span class="xpsplit-label">Woher deine MR-XP stammt</span>
+            <div class="xpbar" id="xpbar"></div>
+            <div class="xplegend" id="xplegend"></div>
+          </div>
+        </div>
+
+        <div class="hero-foot">
+          <span id="meta-info" class="meta">—</span>
+          <button id="btn-refresh" class="btn">Profil aktualisieren</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------------- 1. Dashboard ---------------- -->
+    <section id="tab-dashboard" class="tabpane active">
+      <div id="active-goals-wrap" class="hidden">
+        <div class="section-head section-head-row">
+          <div>
+            <h2>Woran du gerade farmst</h2>
+            <p>Deine offenen Ziele mit den nächsten Materialien</p>
+          </div>
+          <button class="btn-sm" id="btn-to-goals">Alle Ziele</button>
+        </div>
+        <div id="active-goals" class="activegoals"></div>
+      </div>
+
+      <div class="section-head">
+        <h2>Quick Wins</h2>
+        <p>Gegenstände in deinem Besitz, die noch gelevelt werden müssen</p>
+      </div>
+      <div id="quick-wins" class="cards"></div>
+
+      <div class="section-head">
+        <h2>Günstig zu holen</h2>
+        <p>Direkt aus Markt oder Dojo-Labor, keine langen Farm-Voraussetzungen</p>
+      </div>
+      <div id="easy-gains" class="cards"></div>
+
+      <div class="section-head">
+        <h2>Fehlende Warframes</h2>
+        <p>Jeder Frame bringt 6.000 Meisterschaftspunkte</p>
+      </div>
+      <div id="warframes" class="cards"></div>
+
+      <div class="section-head"><h2>Fortschritt nach Kategorie</h2></div>
+      <div id="categories" class="cats"></div>
+    </section>
+
+    <!-- ---------------- 2. Live World-State Tracker ---------------- -->
+    <section id="tab-worldstate" class="tabpane">
+      <div class="section-head section-head-row">
+        <div>
+          <h2>Live Weltstatus & Zyklen</h2>
+          <p>Echtzeit-Timer für Open Worlds, Relikt-Risse, Baro Ki’Teer und Einsätze</p>
+        </div>
+        <button class="btn-sm" id="btn-refresh-worldstate">
+          <span data-icon="refresh"></span> <span>Neu laden</span>
+        </button>
+      </div>
+
+      <!-- Zustand der Datenquelle. Steht ueber allen Unterseiten, weil eine
+           veraltete oder ausgefallene Quelle jede einzelne betrifft. -->
+      <div id="ws-source" class="ws-source hidden"></div>
+
+      <!-- Unterseiten-Navigation mit Anzahl je Bereich -->
+      <div id="ws-nav" class="ws-nav"></div>
+
+      <!-- ---- Unterseite: Übersicht ---- -->
+      <div class="ws-pane active" data-ws-pane="overview">
+        <div class="section-head"><h2>Open-World-Zyklen</h2></div>
+        <div class="ws-cycles-grid" id="ws-cycles"></div>
+
+        <div class="section-head"><h2>Baro Ki’Teer (Void-Händler)</h2></div>
+        <div id="ws-voidtrader" class="ws-trader-box"></div>
+      </div>
+
+      <!-- ---- Unterseite: Void-Risse ---- -->
+      <div class="ws-pane" data-ws-pane="fissures">
+        <div class="section-head section-head-row">
+          <div>
+            <h2>Aktive Void-Risse (Relikte)</h2>
+            <p>Finde die schnellsten Missionen zum Öffnen deiner Relikte</p>
+          </div>
+          <div class="ws-fissure-actions">
+            <button id="btn-fissure-notif" class="btn-sm btn-fissure-notif" title="Benachrichtigungen für Void-Risse anpassen">
+              <span data-icon="bell"></span>
+              <span id="fissure-notif-btn-label">Benachrichtigungen</span>
+              <span id="fissure-notif-btn-badge" class="notif-active-badge">Aktiv</span>
+            </button>
+            <div class="ws-fissure-filters" id="ws-fissure-filters">
+              <button class="fissure-tab active" data-tier="all">Alle</button>
+              <button class="fissure-tab" data-tier="Lith">Lith</button>
+              <button class="fissure-tab" data-tier="Meso">Meso</button>
+              <button class="fissure-tab" data-tier="Neo">Neo</button>
+              <button class="fissure-tab" data-tier="Axi">Axi</button>
+              <button class="fissure-tab" data-tier="Requiem">Requiem</button>
+              <button class="fissure-tab" data-tier="Omnia">Omnia</button>
+            </div>
+          </div>
+        </div>
+        <div id="ws-fissures" class="ws-fissures-grid"></div>
+      </div>
+
+      <!-- ---- Unterseite: Einsätze (Sortie & Archon) ---- -->
+      <div class="ws-pane" data-ws-pane="missions">
+        <div class="ws-missions-grid">
+          <div class="ws-box">
+            <div class="section-head"><h2>Tages-Einsatz (Sortie)</h2></div>
+            <div id="ws-sortie"></div>
+          </div>
+          <div class="ws-box">
+            <div class="section-head"><h2>Archon-Jagd</h2></div>
+            <div id="ws-archon"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---- Unterseite: Alerts & zeitlich begrenzte Missionen ---- -->
+      <div class="ws-pane" data-ws-pane="alerts">
+        <div class="section-head">
+          <h2>Alerts & zeitlich begrenzte Missionen</h2>
+          <p>Kuva-Siphons, Schlichtung, Nightwave und klassische Alerts</p>
+        </div>
+        <div id="ws-alerts" class="ws-alert-list"></div>
+      </div>
+
+      <!-- ---- Unterseite: Laufende Operationen ---- -->
+      <div class="ws-pane" data-ws-pane="events">
+        <div class="section-head"><h2>Laufende Operationen</h2></div>
+        <div id="ws-events" class="ws-event-list"></div>
+      </div>
+
+      <!-- ---- Unterseite: Steel Path ---- -->
+      <div class="ws-pane" data-ws-pane="steelpath">
+        <div class="section-head"><h2>Steel Path</h2></div>
+        <div id="ws-steelpath" class="ws-steelpath-box"></div>
+      </div>
+
+      <!-- ---- Unterseite: Invasionen ---- -->
+      <div class="ws-pane" data-ws-pane="invasions">
+        <div class="section-head">
+          <h2>Invasionen</h2>
+          <p>Wähle eine Seite und schließe 3 Missionen ab für die Belohnung</p>
+        </div>
+        <div id="ws-invasions" class="ws-invasion-grid"></div>
+      </div>
+
+      <!-- ---- Unterseite: Syndikate ---- -->
+      <div class="ws-pane" data-ws-pane="syndicates">
+        <div class="section-head">
+          <h2>Syndikats-Aufträge</h2>
+          <p>Aktive Bounties und Missionen der Syndikate</p>
+        </div>
+        <div id="ws-syndicates" class="ws-syndicate-grid"></div>
+      </div>
+    </section>
+
+    <!-- ---------------- 3. Farm-Ziele & Checkliste ---------------- -->
+    <section id="tab-goals" class="tabpane">
+      <div class="section-head section-head-row">
+        <div>
+          <h2>Farm-Ziele & Checkliste</h2>
+          <p>Verwalte deine aktiven Ziele oder wähle Gegenstände aus dem gesamten Warframe-Katalog</p>
+        </div>
+      </div>
+
+      <!-- Gemeinsame Einkaufsliste -->
+      <div id="shopping" class="shopping hidden">
+        <div class="shopping-head">
+          <div>
+            <h3>Gemeinsame Einkaufsliste</h3>
+            <p>Gesamte Rohstoffe für alle deine offenen Ziele zusammen</p>
+          </div>
+          <div class="shopping-meta">
+            <span>Credits: <b id="shop-credits">0</b></span>
+            <span>Gesamte Bauzeit: <b id="shop-time">0h</b></span>
+          </div>
+        </div>
+        <div id="shopping-mats" class="matgrid"></div>
+      </div>
+
+      <!-- Deine aktiven Ziele -->
+      <div class="section-head" style="margin-top: 18px;">
+        <h2>Deine aktiven Ziele</h2>
+        <p>Gegenstände, an denen du aktuell arbeitest oder levelst</p>
+      </div>
+      <div id="goals" class="goals"></div>
+
+      <!-- Gegenstands-Katalog & Mastery-Checkliste -->
+      <div class="section-head" style="margin-top: 36px;">
+        <h2>Gegenstands-Katalog & Mastery-Checkliste</h2>
+        <p>Alle Warframe-Items nach Kategorie & Status filtern – klicke auf eine Kachel für Drop-Quellen und um sie als Ziel zu setzen</p>
+      </div>
+      <div class="filters">
+        <select id="filter-category"></select>
+        <select id="filter-status">
+          <option value="">Alle Status</option>
+          <option value="missing">Nur fehlende</option>
+          <option value="partial">Nur angefangene</option>
+          <option value="done">Nur fertige</option>
+        </select>
+        <div class="searchbox">
+          <span class="ic" id="ic-filtersearch"></span>
+          <input id="filter-search" type="text" placeholder="Item suchen … z. B. Wisp, Ignis Wraith, Torid, Stropha">
+        </div>
+        <span id="checklist-count" class="meta"></span>
+      </div>
+      <div id="checklist" class="grid"></div>
+    </section>
+
+    <!-- ---------------- 4. Farm-Routen & Ressourcen Guide ---------------- -->
+    <section id="tab-farmguide" class="tabpane">
+      <div class="section-head">
+        <h2>Ressourcen & Farm-Routen Guide</h2>
+        <p>Die besten Planeten, Missionen und Warframe-Setups für alle Ressourcen</p>
+      </div>
+
+      <div class="searchbox" style="margin-bottom: 20px;">
+        <span class="ic" id="ic-fgsearch"></span>
+        <input id="fg-search" type="text" placeholder="Ressource oder Planet suchen … z. B. Orokin Cell, Tellurium, Saturn, Uranus">
+      </div>
+
+      <div class="fg-pro-tips">
+        <div class="pro-tip-item">
+          <b>💎 Loot-Squad Setup:</b> Nekros (Entweihen) + Khora (Plündernde Kuppel) + Speed-Nova + Wisp für maximale Dropchancen.
+        </div>
+        <div class="pro-tip-item">
+          <b>🚀 Booster-Effekt:</b> Ressourcen-Verdoppler verdoppelt aufgehobene Mengen (z. B. 2x Orokin Cells), Ressourcen-Chance erhöht Drop-Wahrscheinlichkeit.
+        </div>
+      </div>
+
+      <div id="fg-grid" class="fg-grid"></div>
+    </section>
+
+    <!-- ---------------- 5. Baro-Dukaten & Relikt-Helper ---------------- -->
+    <section id="tab-ducats" class="tabpane">
+      <div class="section-head">
+        <h2>Baro Ki’Teer Dukaten- & Trade-Helper</h2>
+        <p>Dukaten-Werte für Prime-Teile und Relikt-Ausbeute kalkulieren</p>
+      </div>
+
+      <div class="ducats-calc-box">
+        <div class="ducats-calc-head">
+          <div>
+            <h3>Dukaten-Kalkulator & Schnellauswahl</h3>
+            <p>Füge Prime-Teile hinzu, um deinen Baro-Dukaten-Ertrag zu berechnen</p>
+          </div>
+          <div class="ducats-total-badge">
+            <span>Gesamtwert:</span>
+            <b id="ducats-calc-total">0 Dukaten</b>
+          </div>
+        </div>
+
+        <div class="searchbox" style="margin: 14px 0;">
+          <span class="ic" id="ic-ducatsearch"></span>
+          <input id="ducat-search" type="text" placeholder="Prime-Teil suchen … z. B. Braton Prime, Gauss Prime">
+        </div>
+
+        <div class="ducats-catalog-list" id="ducats-catalog"></div>
+      </div>
+    </section>
+
+    <!-- ---------------- 6. Inventar ---------------- -->
+    <section id="tab-inventory" class="tabpane">
+      <div class="section-head section-head-row">
+        <div>
+          <h2>Inventar</h2>
+          <p>Relikte, Mods, Arcanes, Materialien und Blueprints aus deinem Spielkonto</p>
+        </div>
+        <button class="btn" id="btn-inv-refresh">Inventar abrufen</button>
+      </div>
+
+      <!-- Herkunft und Alter des Stands - steht bewusst ueber allem anderen -->
+      <div class="inv-source hidden" id="inv-source"></div>
+
+      <!-- Antwort auf einen Abruf, der nicht stattgefunden hat -->
+      <div class="inv-notice hidden" id="inv-notice"></div>
+
+      <!-- Fehler- und Leerzustaende (kein Abruf, Drosselung, Spiel laeuft nicht) -->
+      <div class="inv-state hidden" id="inv-state"></div>
+
+      <div class="hidden" id="inv-body">
+        <div class="inv-currencies" id="inv-currencies"></div>
+
+        <div class="inv-tabs" id="inv-tabs"></div>
+
+        <div class="searchbox">
+          <span class="ic" id="ic-invsearch"></span>
+          <input id="inv-search" type="text"
+                 placeholder="Im Inventar suchen … z. B. Rubedo, Lith, Arcane Energize">
+        </div>
+
+        <div class="inv-meta" id="inv-meta"></div>
+        <div class="inv-grid" id="inv-grid"></div>
+      </div>
+    </section>
+
+    <!-- ---------------- 7. Builds ---------------- -->
+    <section id="tab-builds" class="tabpane">
+      <div class="section-head">
+        <h2>Overframe-Build importieren</h2>
+        <p>URL eines Builds von overframe.gg einfügen oder eigenen Build erstellen</p>
+      </div>
+
+      <div class="build-import-row">
+        <div class="searchbox flex-1">
+          <span class="ic" id="ic-buildimport"></span>
+          <input id="build-url" type="text" placeholder="https://overframe.gg/build/12345/...">
+        </div>
+        <button id="btn-import" class="btn btn-primary">Importieren</button>
+        <button id="btn-new-build" class="btn btn-secondary">+ Eigener Build</button>
+      </div>
+      <div id="import-status" class="hint hidden"></div>
+
+      <!-- Panel: Eigener Build erstellen -->
+      <div id="newbuild-panel" class="newbuild-panel hidden" style="margin-top: 14px;">
+        <div class="searchbox">
+          <span class="ic" id="ic-itemsearch"></span>
+          <input id="newbuild-item" type="text" placeholder="Gegenstand für Build suchen … z. B. Torid, Wisp, Glaive Prime">
+          <div id="newbuild-results" class="results hidden"></div>
+        </div>
+      </div>
+
+      <!-- Summen über alle Builds -->
+      <div id="build-totals" class="build-totals hidden">
+        <div class="totals-head">
+          <h3>Bedarf über alle deine aktiven Builds</h3>
+          <p>Gesamte Formas, Katalysatoren und Endo für deine Builds</p>
+        </div>
+        <div id="totals-grid" class="totals-grid"></div>
+      </div>
+
+      <!-- Fehlende Mods -->
+      <div id="missing-mods-wrap" class="missing-mods-wrap hidden">
+        <div class="missing-head">
+          <div>
+            <h3>Fehlende Mods für deine Builds</h3>
+            <p>Klicke auf einen Eintrag, wenn du die Mod besitzt</p>
+          </div>
+          <button id="btn-all-owned" class="btn-sm">Alle als vorhanden markieren</button>
+        </div>
+        <div id="missing-mods" class="missing-mods-grid"></div>
+      </div>
+
+      <div class="section-head"><h2>Deine Builds</h2></div>
+      <div id="builds" class="buildlist"></div>
+    </section>
+
+    <!-- ---------------- 8. Notizen ---------------- -->
+    <section id="tab-notes" class="tabpane">
+      <div class="section-head">
+        <h2>Notizbuch</h2>
+        <p>Wird automatisch lokal gespeichert</p>
+      </div>
+      <textarea id="general-notes" placeholder="Pläne, Relikt-Listen, was auch immer …"></textarea>
+      <div class="section-head"><h2>Notizen an Items</h2></div>
+      <div id="item-notes" class="itemnotes"></div>
+    </section>
+
+  </div>
+</main>
+
+<!-- Slot-Editor Modal -->
+<div id="slot-modal" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head">
+      <div>
+        <h3 id="slot-modal-title">Mod wählen</h3>
+        <p id="slot-modal-sub" class="hint"></p>
+      </div>
+      <button id="slot-modal-close" class="btn-sm">Schließen</button>
+    </div>
+
+    <div class="searchbox">
+      <span class="ic" id="ic-modsearch"></span>
+      <input id="modsearch" type="text" placeholder="Mod suchen … z. B. Serration, Vitality">
+    </div>
+    <div id="modsearch-results" class="modsearch-results"></div>
+
+    <div id="slot-config" class="slot-config hidden">
+      <div class="sc-head">
+        <b id="sc-name">—</b>
+        <span id="sc-meta" class="hint"></span>
+      </div>
+      <label class="sc-row">
+        <span>Rang</span>
+        <input id="sc-rank" type="range" min="0" max="10" value="10">
+        <b id="sc-rank-val">10</b>
+      </label>
+      <div class="sc-row">
+        <span>Polarität</span>
+        <div id="sc-polarities" class="polrow"></div>
+      </div>
+      <div class="sc-foot">
+        <span id="sc-drain" class="hint">—</span>
+        <div class="sc-actions">
+          <button id="sc-clear" class="btn-sm danger">Slot leeren</button>
+          <button id="sc-apply" class="btn btn-primary">Übernehmen</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Item-Detail Modal -->
+<div id="item-modal" class="modal hidden">
+  <div class="modal-box item-modal-box">
+    <div id="item-modal-content"></div>
+  </div>
+</div>
+
+<!-- Void-Riss Benachrichtigungs-Modal -->
+<div id="fissure-notif-modal" class="modal hidden">
+  <div class="modal-box notif-modal-box">
+    <div class="modal-head">
+      <div class="modal-title-wrap">
+        <span class="modal-icon-badge" data-icon="bellRing"></span>
+        <div>
+          <h3>Void-Riss Benachrichtigungen</h3>
+          <p class="hint">Wähle aus, bei welchen Missionen und Relikten du per Desktop-Toast informiert werden möchtest</p>
+        </div>
+      </div>
+      <button id="fissure-notif-close" class="modal-close-icon" title="Schließen">&times;</button>
+    </div>
+
+    <div class="notif-modal-scroll">
+      <!-- Master Toggles -->
+      <div class="notif-card-group">
+        <label class="notif-toggle-row">
+          <div class="toggle-info">
+            <b>Void-Riss Benachrichtigungen</b>
+            <span>Prüft alle 45s auf neue Risse und sendet Windows-Benachrichtigungen</span>
+          </div>
+          <input type="checkbox" id="notif-fissures-enabled" class="toggle-checkbox">
+          <span class="toggle-switch"></span>
+        </label>
+
+        <div class="notif-sub-toggles">
+          <label class="notif-mini-toggle">
+            <input type="checkbox" id="notif-sound-enabled">
+            <span class="mini-toggle-box"></span>
+            <span>Ton abspielen</span>
+          </label>
+          <label class="notif-mini-toggle">
+            <input type="checkbox" id="notif-desktop-enabled">
+            <span class="mini-toggle-box"></span>
+            <span>Windows Desktop-Toast</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Presets / Schnellfilter -->
+      <div class="notif-section">
+        <div class="notif-sec-title">Schnell-Presets</div>
+        <div class="notif-presets-grid">
+          <button class="preset-chip" data-preset="cascade">
+            <div class="preset-chip-head">
+              <span class="preset-icon" data-icon="bolt"></span>
+              <b>Void Cascade</b>
+            </div>
+            <small>Zariman Kaskade</small>
+          </button>
+          <button class="preset-chip" data-preset="speed">
+            <div class="preset-chip-head">
+              <span class="preset-icon" data-icon="target"></span>
+              <b>Speedruns</b>
+            </div>
+            <small>Capture & Auslöschung</small>
+          </button>
+          <button class="preset-chip" data-preset="endless">
+            <div class="preset-chip-head">
+              <span class="preset-icon" data-icon="clock"></span>
+              <b>Endlos-Missionen</b>
+            </div>
+            <small>Überleben, Defense, Störung</small>
+          </button>
+          <button class="preset-chip" data-preset="all">
+            <div class="preset-chip-head">
+              <span class="preset-icon" data-icon="layers"></span>
+              <b>Alle Typen</b>
+            </div>
+            <small>Jeder neue Riss</small>
+          </button>
+        </div>
+      </div>
+
+      <!-- Relikt-Stufen (Tiers) -->
+      <div class="notif-section">
+        <div class="notif-sec-title">Relikt-Stufen (Tiers)</div>
+        <div class="notif-tiers-grid">
+          <label class="tier-checkbox-tile" data-tier="Lith">
+            <input type="checkbox" value="Lith" class="notif-tier-cb">
+            <span class="tier-badge Lith">Lith</span>
+          </label>
+          <label class="tier-checkbox-tile" data-tier="Meso">
+            <input type="checkbox" value="Meso" class="notif-tier-cb">
+            <span class="tier-badge Meso">Meso</span>
+          </label>
+          <label class="tier-checkbox-tile" data-tier="Neo">
+            <input type="checkbox" value="Neo" class="notif-tier-cb">
+            <span class="tier-badge Neo">Neo</span>
+          </label>
+          <label class="tier-checkbox-tile" data-tier="Axi">
+            <input type="checkbox" value="Axi" class="notif-tier-cb">
+            <span class="tier-badge Axi">Axi</span>
+          </label>
+          <label class="tier-checkbox-tile" data-tier="Requiem">
+            <input type="checkbox" value="Requiem" class="notif-tier-cb">
+            <span class="tier-badge Requiem">Requiem</span>
+          </label>
+          <label class="tier-checkbox-tile" data-tier="Omnia">
+            <input type="checkbox" value="Omnia" class="notif-tier-cb">
+            <span class="tier-badge Omnia">Omnia</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Missionstypen Auswahl -->
+      <div class="notif-section">
+        <div class="notif-sec-head">
+          <div class="notif-sec-title">Missionstypen</div>
+          <button id="notif-toggle-all-types" class="btn-link">Alle an/abwählen</button>
+        </div>
+        <div class="notif-types-grid" id="notif-types-grid"></div>
+      </div>
+
+      <!-- Modus-Optionen -->
+      <div class="notif-section">
+        <div class="notif-sec-title">Modus-Filter</div>
+        <div class="notif-mode-options">
+          <label class="notif-mini-toggle">
+            <input type="checkbox" id="notif-steel-path-only">
+            <span class="mini-toggle-box"></span>
+            <span>Nur Steel Path (Stählerner Pfad)</span>
+          </label>
+          <label class="notif-mini-toggle">
+            <input type="checkbox" id="notif-include-steel-path">
+            <span class="mini-toggle-box"></span>
+            <span>Steel Path Risse einbeziehen</span>
+          </label>
+          <label class="notif-mini-toggle">
+            <input type="checkbox" id="notif-include-storms">
+            <span class="mini-toggle-box"></span>
+            <span>Railjack Void-Stürme einbeziehen</span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Match Preview & Footer Actions -->
+    <div class="notif-footer-summary">
+      <div class="notif-matches-hint" id="notif-matches-hint">
+        <span>Lade passende Risse …</span>
+      </div>
+      <div class="notif-footer-actions">
+        <button id="btn-notif-test" class="btn btn-secondary">
+          <span data-icon="bell"></span> <span>Test senden</span>
+        </button>
+        <button id="btn-notif-save" class="btn btn-primary">Speichern & Schließen</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- In-App Toast Container -->
+<div id="app-toast-container" class="toast-container"></div>
+
+<script src="icons.js"></script>
+<script src="fissure-filter.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
+
