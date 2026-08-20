@@ -25,7 +25,7 @@ import { masteryRankName, progressForMR } from '../core/mastery.js';
 import { classify, CATEGORY_LABELS } from '../core/classify.js';
 import { acquisitionOf } from '../core/acquisition.js';
 import { resolveGoal, combineGoals, formatDuration } from '../core/recipes.js';
-import { loadConfig, saveConfig } from '../core/config.js';
+import { loadConfig, saveConfig, DEFAULT_HOTKEYS } from '../core/config.js';
 import * as store from '../core/store.js';
 import { loadMods, POLARITIES, RARITY_LABELS, searchMods, isAuraMod, isExilusMod } from '../core/mods.js';
 import { evaluateBuild, combineBuilds, orokinTypeFor } from '../core/builds.js';
@@ -66,9 +66,9 @@ const OVERLAY_SIZE = { width:  380, height: 600 };
 const OVERLAY_MIN  = { width:  300, height: 260 };
 
 /* Eine Quelle fuer Registrierung und Anzeige - sonst zeigt die Titelleiste
-   irgendwann eine Taste, die gar nicht mehr registriert ist. */
-const OVERLAY_HOTKEY  = 'Alt+Shift+W';
-const INTERACT_HOTKEY = 'Alt+Shift+E';
+   irgendwann eine Taste, die gar nicht mehr registriert ist. Aenderbar zur
+   Laufzeit ueber den Einstellungs-Tab, gespeichert in data/config.json. */
+let hotkeys = { ...DEFAULT_HOTKEYS };
 
 /* Zeigermodus: das Overlay holt sich kurz den Eingabefokus.
    Nicht die App macht den Mauszeiger sichtbar - Warframe haelt ihn gefangen,
@@ -172,9 +172,59 @@ function rememberOverlayLayout() {
   }, 800);
 }
 
+/* Was das jeweilige Kuerzel ausloest. Eine Stelle, damit Erstregistrierung
+   und spaetere Aenderung nicht auseinanderlaufen koennen. */
+const HOTKEY_ACTIONS = {
+  /* Schaltet nur das Overlay. Das Hauptfenster bleibt unberuehrt - es steht
+     auf dem zweiten Monitor und soll waehrend des Spielens offen bleiben. */
+  overlay:  () => toggleOverlay(),
+  /* Holt den Mauszeiger ins Overlay und wieder zurueck ins Spiel. Eine Taste
+     und keine Maustaste: globalShortcut kennt nur Tastatur. */
+  interact: () => setInteracting(!interacting)
+};
+
+/* register() wirft bei ungueltigen Zeichenfolgen, statt false zu liefern -
+   und eine Zeichenfolge kommt hier aus der Oberflaeche. */
+function tryRegister(accelerator, action) {
+  if (!accelerator) return false;
+  try {
+    return globalShortcut.register(accelerator, action);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Registriert die globalen Tastenkuerzel neu und meldet, was nicht ging.
+ *
+ * Windows vergibt eine Kombination nur einmal systemweit. Ist sie schon
+ * belegt - Discord, GeForce Experience, ein anderes Overlay -, liefert
+ * register() false. Dann gilt weiter das vorherige Kuerzel: lieber ein altes
+ * als gar keines, und die Oberflaeche kann sagen warum.
+ */
+function applyHotkeys(next = {}) {
+  const wanted = { ...hotkeys, ...next };
+  const failed = [];
+
+  globalShortcut.unregisterAll();
+
+  for (const name of Object.keys(HOTKEY_ACTIONS)) {
+    const accelerator = String(wanted[name] || '').trim();
+    if (tryRegister(accelerator, HOTKEY_ACTIONS[name])) {
+      hotkeys[name] = accelerator;
+      continue;
+    }
+    failed.push({ name, accelerator });
+    tryRegister(hotkeys[name], HOTKEY_ACTIONS[name]);
+  }
+
+  return { hotkeys: { ...hotkeys }, failed };
+}
+
 async function loadOverlayPrefs() {
   try {
     const cfg = await loadConfig();
+    if (cfg.hotkeys) hotkeys = { ...DEFAULT_HOTKEYS, ...cfg.hotkeys };
     if (Number.isFinite(cfg.overlayOpacity)) overlayOpacity = clampOpacity(cfg.overlayOpacity);
     if (cfg.overlayBounds) overlayBounds = cfg.overlayBounds;
     clickThrough = !!cfg.overlayClickThrough;
@@ -272,7 +322,7 @@ function overlayState() {
     clickThrough,
     interacting,
     opacity: overlayOpacity,
-    hotkeys: { overlay: OVERLAY_HOTKEY, interact: INTERACT_HOTKEY }
+    hotkeys: { ...hotkeys }
   };
 }
 
@@ -1045,7 +1095,28 @@ ipcMain.handle('window:opacity', (_e, value) => {
   return overlayState();
 });
 ipcMain.handle('window:interact', (_e, on) => setInteracting(on));
-ipcMain.handle('window:hotkey',   () => ({ overlay: OVERLAY_HOTKEY, interact: INTERACT_HOTKEY }));
+ipcMain.handle('window:hotkey',   () => ({ ...hotkeys }));
+
+/* -------------------------- Einstellungen -------------------------- */
+
+ipcMain.handle('settings:get', async () => {
+  const st = await store.load();
+  return { ok: true, hotkeys: { ...hotkeys }, notifications: st.notifications };
+});
+
+ipcMain.handle('settings:hotkeys', async (_e, patch) => {
+  const res = applyHotkeys(patch || {});
+  try {
+    const cfg = await loadConfig();
+    await saveConfig({ ...cfg, hotkeys: { ...hotkeys } });
+  } catch {
+    /* Nicht gespeichert, aber aktiv - nach dem naechsten Start gilt wieder
+       der alte Wert. Besser als der Abbruch einer laufenden Aenderung. */
+  }
+  /* Das Overlay zeigt das Kuerzel in seiner Hinweiszeile an. */
+  broadcastOverlayState();
+  return { ok: true, ...res };
+});
 ipcMain.handle('window:minimize', () => win && win.minimize());
 ipcMain.handle('window:close',    () => win && win.close());
 
@@ -1207,16 +1278,7 @@ app.whenReady().then(async () => {
   await loadOverlayPrefs();
   createWindow();
   // Hotkey zum Ein-/Ausblenden waehrend des Spielens
-  /* Schaltet nur das Overlay. Das Hauptfenster bleibt unberuehrt - es steht
-     auf dem zweiten Monitor und soll waehrend des Spielens offen bleiben. */
-  globalShortcut.register(OVERLAY_HOTKEY, () => toggleOverlay());
-
-  /* Holt den Mauszeiger ins Overlay und wieder zurueck ins Spiel.
-     Eine Taste und keine Maustaste: globalShortcut kennt nur Tastatur, und
-     das Mausrad waere in Warframe ohnehin belegt - dort wechselt es die
-     Waffe. Wer es trotzdem auf der Maus haben will, legt diese Tastenfolge
-     in der Maussoftware auf eine Daumentaste. */
-  globalShortcut.register(INTERACT_HOTKEY, () => setInteracting(!interacting));
+  applyHotkeys();
 
   // Hintergrund-Überwachung für Void-Risse starten (alle 45 Sekunden)
   pollFissureTracker();

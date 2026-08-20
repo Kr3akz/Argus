@@ -107,6 +107,14 @@
             <span>Lokales Notizbuch</span>
           </div>
         </button>
+
+        <button class="nav-item" data-tab="settings">
+          <span class="nav-icon" data-icon="sliders"></span>
+          <div class="nav-tooltip">
+            <b>Einstellungen</b>
+            <span>Tastenkürzel & Benachrichtigungen</span>
+          </div>
+        </button>
       </nav>
     </div>
 
@@ -524,6 +532,81 @@
       <div id="item-notes" class="itemnotes"></div>
     </section>
 
+    <!-- ---------------- 9. Einstellungen ---------------- -->
+    <section id="tab-settings" class="tabpane">
+      <div class="section-head">
+        <h2>Einstellungen</h2>
+        <p>Tastenkürzel und Benachrichtigungen</p>
+      </div>
+
+      <div class="settings-group">
+        <div class="settings-group-head">
+          <h3>Globale Tastenkürzel</h3>
+          <p>Gelten systemweit — auch während Warframe im Vordergrund ist. Windows
+             reicht die Kombination dann nicht mehr ans Spiel weiter, wähle also
+             nichts, was du im Spiel brauchst.</p>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <b>Overlay ein-/ausblenden</b>
+            <span>Blendet das Overlay über dem Spiel ein und wieder aus</span>
+          </div>
+          <button class="hotkey-btn" data-hotkey="overlay" id="hk-overlay"></button>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <b>Mauszeiger ins Overlay holen</b>
+            <span>Gibt den Zeiger frei; Esc bringt ihn zurück ins Spiel</span>
+          </div>
+          <button class="hotkey-btn" data-hotkey="interact" id="hk-interact"></button>
+        </div>
+
+        <div id="hk-status" class="settings-note hidden"></div>
+      </div>
+
+      <div class="settings-group">
+        <div class="settings-group-head">
+          <h3>Benachrichtigungen</h3>
+          <p>Argus prüft alle 45 Sekunden auf neue Void-Risse</p>
+        </div>
+
+        <label class="setting-row">
+          <div class="setting-info">
+            <b>Void-Riss-Benachrichtigungen</b>
+            <span>Meldet neue Risse, die zu deiner Auswahl passen</span>
+          </div>
+          <input type="checkbox" id="set-notif-enabled" class="toggle-checkbox">
+          <span class="toggle-switch"></span>
+        </label>
+
+        <label class="setting-row">
+          <div class="setting-info">
+            <b>Ton abspielen</b>
+            <span>Hinweiston zur Meldung</span>
+          </div>
+          <input type="checkbox" id="set-notif-sound" class="toggle-checkbox">
+          <span class="toggle-switch"></span>
+        </label>
+
+        <label class="setting-row">
+          <div class="setting-info">
+            <b>Windows Desktop-Toast</b>
+            <span>Systemmeldung außerhalb der App — der Kanal, der dich im Spiel erreicht</span>
+          </div>
+          <input type="checkbox" id="set-notif-toast" class="toggle-checkbox">
+          <span class="toggle-switch"></span>
+        </label>
+
+        <div class="settings-note settings-note-row">
+          <span>Welche Risse gemeldet werden — Stufen, Missionstypen, Steel Path —
+                stellst du im Live-Tracker unter <b>Void-Risse</b> ein.</span>
+          <button class="btn-sm" id="set-open-fissure-notif">Filter öffnen</button>
+        </div>
+      </div>
+    </section>
+
   </div>
 </main>
 
@@ -591,29 +674,11 @@
     </div>
 
     <div class="notif-modal-scroll">
-      <!-- Master Toggles -->
-      <div class="notif-card-group">
-        <label class="notif-toggle-row">
-          <div class="toggle-info">
-            <b>Void-Riss Benachrichtigungen</b>
-            <span>Prüft alle 45s auf neue Risse und sendet Windows-Benachrichtigungen</span>
-          </div>
-          <input type="checkbox" id="notif-fissures-enabled" class="toggle-checkbox">
-          <span class="toggle-switch"></span>
-        </label>
-
-        <div class="notif-sub-toggles">
-          <label class="notif-mini-toggle">
-            <input type="checkbox" id="notif-sound-enabled">
-            <span class="mini-toggle-box"></span>
-            <span>Ton abspielen</span>
-          </label>
-          <label class="notif-mini-toggle">
-            <input type="checkbox" id="notif-desktop-enabled">
-            <span class="mini-toggle-box"></span>
-            <span>Windows Desktop-Toast</span>
-          </label>
-        </div>
+      <!-- Die drei Hauptschalter stehen jetzt unter Einstellungen. Hier bleibt
+           die Auswahl, WELCHE Risse gemeldet werden. -->
+      <div class="notif-moved-note">
+        Ein- und Ausschalten, Ton und Desktop-Toast findest du unter
+        <b>Einstellungen</b> in der Seitenleiste.
       </div>
 
       <!-- Presets / Schnellfilter -->

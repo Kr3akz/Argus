@@ -2951,3 +2951,102 @@ body.overlay-window { background: #0b0f16; }
   border: 1px solid rgba(255, 255, 255, .07); border-bottom-width: 2px;
   padding: 2px 4px; border-radius: 4px;
 }
+
+/* ============================================================================
+   Einstellungen
+   ========================================================================= */
+
+.settings-group {
+  background: var(--surface);
+  border-radius: var(--r-md);
+  padding: 2px 20px 18px;
+  margin-bottom: 18px;
+  max-width: 780px;
+}
+
+.settings-group-head { padding: 18px 0 6px; }
+.settings-group-head h3 { font-size: 15px; font-weight: 600; }
+.settings-group-head p {
+  font-size: 12px; color: var(--text-3); margin-top: 4px; max-width: 60ch; line-height: 1.5;
+}
+
+.setting-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 18px; padding: 13px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+/* Nur die Umschalt-Zeilen sind als Ganzes anklickbar - bei den Tastenkuerzeln
+   waere ein klickbarer Zeilenhintergrund eine Falle, dort gilt der Knopf. */
+label.setting-row { cursor: pointer; user-select: none; }
+
+.setting-info b { display: block; font-size: 13px; font-weight: 600; }
+.setting-info span {
+  display: block; font-size: 11.5px; color: var(--text-3);
+  margin-top: 3px; line-height: 1.45; max-width: 62ch;
+}
+
+/* ---------- Tastenkuerzel ---------- */
+.hotkey-btn {
+  display: flex; align-items: center; gap: 4px;
+  min-width: 132px; min-height: 34px;
+  justify-content: center;
+  padding: 5px 12px;
+  background: var(--surface-2);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background .16s var(--ease), border-color .16s var(--ease), color .16s var(--ease);
+}
+.hotkey-btn:hover { background: var(--surface-3); border-color: rgba(255, 255, 255, 0.14); }
+
+/* Waehrend der Aufnahme: eindeutig anders, sonst tippt man ins Leere und
+   wundert sich, warum nichts passiert. */
+.hotkey-btn.capturing {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-sf);
+  font-style: italic;
+}
+
+.hotkey-btn kbd {
+  font: 600 11px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom-width: 2px;
+  padding: 4px 6px;
+  border-radius: 5px;
+}
+.hk-plus { color: var(--text-3); font-size: 10px; }
+
+/* ---------- Hinweise ---------- */
+.settings-note {
+  margin-top: 14px;
+  padding: 11px 13px;
+  border-radius: var(--r-sm);
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 11.5px;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+.settings-note.ok   { color: var(--green); background: rgba(74, 222, 128, 0.08); }
+.settings-note.warn { color: var(--gold);  background: rgba(240, 184, 73, 0.09); }
+
+.settings-note-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+}
+.settings-note-row .btn-sm { flex-shrink: 0; }
+
+/* Ersetzt die drei Hauptschalter, die in die Einstellungen gewandert sind. */
+.notif-moved-note {
+  padding: 11px 13px;
+  border-radius: var(--r-sm);
+  background: rgba(255, 255, 255, 0.03);
+  border-left: 2px solid var(--accent);
+  font-size: 11.5px;
+  color: var(--text-2);
+  margin-bottom: 16px;
+}

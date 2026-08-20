@@ -16,13 +16,17 @@ $('btn-overlay').innerHTML = Icon.pip(15);
 
 /* Hotkey-Anzeige in der Titelleiste. Der Wert kommt aus dem Main-Prozess,
    damit hier nie eine andere Taste steht als die registrierte. */
-window.api.overlayHotkey().then(hk => {
+/* Wird nach jeder Aenderung im Einstellungs-Tab erneut aufgerufen - sonst
+   zeigt die Leiste eine Taste an, die gar nicht mehr registriert ist. */
+function renderHotkeyHint(hk) {
   const el = $('hotkey-hint');
   if (!el || !hk || !hk.overlay) return;
   el.innerHTML = hk.overlay.split('+').map(k => `<kbd>${esc(k)}</kbd>`).join('');
   el.title = `${hk.overlay}: Overlay ein- und ausblenden\n${hk.interact}: Mauszeiger ins Overlay holen`;
   el.classList.remove('hidden');
-}).catch(() => {});
+}
+
+window.api.overlayHotkey().then(renderHotkeyHint).catch(() => {});
 $('btn-min').innerHTML     = Icon.minus(15);
 $('btn-close').innerHTML   = Icon.close(15);
 if ($('ic-goalsearch')) $('ic-goalsearch').innerHTML   = Icon.search(16);
@@ -76,6 +80,7 @@ function showTab(name) {
   if (name === 'farmguide') loadFarmGuide();
   if (name === 'ducats') loadDucats();
   if (name === 'inventory') loadInventoryTab();
+  if (name === 'settings') loadSettingsTab();
 }
 
 document.querySelectorAll('.nav-item').forEach(tab => {
@@ -2098,9 +2103,13 @@ function updateModalMatchesHint() {
 }
 
 function getModalSettingsForm() {
-  const enabled = $('notif-fissures-enabled')?.checked ?? true;
-  const sound = $('notif-sound-enabled')?.checked ?? true;
-  const desktopToast = $('notif-desktop-enabled')?.checked ?? true;
+  /* Die drei Hauptschalter stehen jetzt im Einstellungs-Tab. Sie werden hier
+     unveraendert mitgefuehrt, weil updateModalMatchesHint sie braucht: die
+     Vorschau soll dasselbe Ergebnis zeigen wie der spaetere Toast, und der
+     prueft zuerst enabled. */
+  const enabled = notificationSettings?.enabled !== false;
+  const sound = notificationSettings?.sound !== false;
+  const desktopToast = notificationSettings?.desktopToast !== false;
 
   const selectedTiers = Array.from(document.querySelectorAll('.notif-tier-cb:checked')).map(cb => cb.value);
   const selectedTypes = Array.from(document.querySelectorAll('.notif-type-cb:checked')).map(cb => cb.value);
@@ -2114,7 +2123,7 @@ function getModalSettingsForm() {
     sound,
     desktopToast,
     fissures: {
-      enabled,
+      enabled: notificationSettings?.fissures?.enabled !== false,
       allMissionTypes: false,
       missionTypes: selectedTypes,
       tiers: selectedTiers,
@@ -2130,10 +2139,6 @@ function openNotificationModal() {
   if (!modal) return;
 
   const fCfg = notificationSettings?.fissures || {};
-
-  if ($('notif-fissures-enabled')) $('notif-fissures-enabled').checked = notificationSettings?.enabled !== false && fCfg.enabled !== false;
-  if ($('notif-sound-enabled')) $('notif-sound-enabled').checked = notificationSettings?.sound !== false;
-  if ($('notif-desktop-enabled')) $('notif-desktop-enabled').checked = notificationSettings?.desktopToast !== false;
 
   if ($('notif-steel-path-only')) $('notif-steel-path-only').checked = !!fCfg.steelPathOnly;
   if ($('notif-include-steel-path')) $('notif-include-steel-path').checked = fCfg.includeSteelPath !== false;
@@ -2213,7 +2218,6 @@ $('notif-toggle-all-types')?.addEventListener('click', () => {
   updateModalMatchesHint();
 });
 
-$('notif-fissures-enabled')?.addEventListener('change', updateModalMatchesHint);
 $('notif-steel-path-only')?.addEventListener('change', updateModalMatchesHint);
 $('notif-include-steel-path')?.addEventListener('change', updateModalMatchesHint);
 $('notif-include-storms')?.addEventListener('change', updateModalMatchesHint);
@@ -2297,3 +2301,183 @@ loadNotificationSettings();
 boot();
 
 
+
+/* ============================================================================
+   Einstellungen
+
+   Tastenkuerzel und die drei Hauptschalter der Benachrichtigungen. Die Auswahl,
+   WELCHE Risse gemeldet werden, bleibt bewusst im Live-Tracker: sie gehoert zu
+   der Liste, die sie filtert, und wird dort gegengeprueft ("3 passende Risse
+   jetzt aktiv"). Hier stehen nur Schalter, die immer gelten.
+   ========================================================================= */
+
+let hotkeyState = null;
+let capturingHotkey = null;
+
+const HOTKEY_LABELS = {
+  overlay:  'Overlay ein-/ausblenden',
+  interact: 'Mauszeiger ins Overlay holen'
+};
+
+/* Sondertasten, deren e.key nicht der Schreibweise von Electron entspricht. */
+const ACCEL_NAMED = {
+  ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right',
+  ' ': 'Space', Enter: 'Return', Backspace: 'Backspace', Delete: 'Delete',
+  Insert: 'Insert', Home: 'Home', End: 'End', PageUp: 'PageUp',
+  PageDown: 'PageDown', Tab: 'Tab'
+};
+
+function accelKeyName(e) {
+  if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return null;
+  if (ACCEL_NAMED[e.key]) return ACCEL_NAMED[e.key];
+  if (/^F\d{1,2}$/.test(e.key)) return e.key;
+  if (/^[a-z0-9]$/i.test(e.key)) return e.key.toUpperCase();
+  /* Bei allem anderen haengt e.key vom Tastaturlayout ab - e.code benennt die
+     physische Taste, und die registriert Windows. */
+  const m = /^(?:Digit|Key)([A-Z0-9])$/.exec(e.code || '');
+  return m ? m[1] : null;
+}
+
+/** Electron-Schreibweise ("Ctrl+Shift+R"), oder null wenn unbrauchbar. */
+function accelFromEvent(e) {
+  const key = accelKeyName(e);
+  if (!key) return null;
+
+  const mods = [];
+  if (e.ctrlKey)  mods.push('Ctrl');
+  if (e.altKey)   mods.push('Alt');
+  if (e.shiftKey) mods.push('Shift');
+  if (e.metaKey)  mods.push('Super');
+
+  /* Ohne Modifikator waere die Taste systemweit weg - auch im Chat, auch im
+     Spiel. Das ist kein Kuerzel mehr, das ist ein Ausfall. */
+  if (!mods.length) return null;
+
+  return [...mods, key].join('+');
+}
+
+function renderHotkeys() {
+  for (const name of Object.keys(HOTKEY_LABELS)) {
+    const btn = document.querySelector(`.hotkey-btn[data-hotkey="${name}"]`);
+    if (!btn) continue;
+
+    if (capturingHotkey === name) {
+      btn.classList.add('capturing');
+      btn.textContent = 'Taste drücken …';
+      continue;
+    }
+
+    btn.classList.remove('capturing');
+    const accel = (hotkeyState && hotkeyState[name]) || '—';
+    btn.innerHTML = accel.split('+')
+      .map(k => `<kbd>${esc(k)}</kbd>`)
+      .join('<span class="hk-plus">+</span>');
+  }
+  renderHotkeyHint(hotkeyState);
+}
+
+function setHotkeyStatus(kind, text) {
+  const el = $('hk-status');
+  if (!el) return;
+  el.className = 'settings-note ' + (kind || '');
+  el.textContent = text || '';
+  el.classList.toggle('hidden', !text);
+}
+
+function startHotkeyCapture(name) {
+  capturingHotkey = name;
+  renderHotkeys();
+  setHotkeyStatus('', 'Kombination drücken — mindestens Strg, Alt oder Shift muss dabei sein. Esc bricht ab.');
+}
+
+function cancelHotkeyCapture() {
+  capturingHotkey = null;
+  renderHotkeys();
+  setHotkeyStatus('', '');
+}
+
+async function saveHotkey(name, accelerator) {
+  capturingHotkey = null;
+  const res = await window.api.setHotkeys({ [name]: accelerator });
+  hotkeyState = (res && res.hotkeys) || hotkeyState;
+  renderHotkeys();
+
+  const rejected = ((res && res.failed) || []).some(f => f.name === name);
+  if (rejected) {
+    setHotkeyStatus('warn',
+      `${accelerator} ließ sich nicht registrieren — die Kombination ist systemweit `
+      + `schon vergeben (häufig Discord, GeForce Experience oder ein anderes Overlay). `
+      + `Es gilt weiter ${hotkeyState[name]}.`);
+  } else {
+    setHotkeyStatus('ok', `${HOTKEY_LABELS[name]}: ${accelerator}`);
+  }
+}
+
+document.querySelectorAll('.hotkey-btn').forEach(btn => {
+  btn.onclick = () => startHotkeyCapture(btn.dataset.hotkey);
+});
+
+/* Erfassungsphase: sonst schluckt der gerade angeklickte Knopf die Leertaste
+   oder ein Eingabefeld den Buchstaben, bevor er hier ankommt. */
+window.addEventListener('keydown', e => {
+  if (!capturingHotkey) return;
+  e.preventDefault();
+  e.stopPropagation();
+
+  if (e.key === 'Escape') { cancelHotkeyCapture(); return; }
+
+  const accel = accelFromEvent(e);
+  if (!accel) return;              // nur Modifikatoren - weiter warten
+  saveHotkey(capturingHotkey, accel);
+}, true);
+
+/* ---------------- Benachrichtigungs-Schalter ---------------- */
+
+function renderNotifToggles() {
+  const s = notificationSettings || {};
+  const on = s.enabled !== false && s.fissures?.enabled !== false;
+  if ($('set-notif-enabled')) $('set-notif-enabled').checked = on;
+  if ($('set-notif-sound'))   $('set-notif-sound').checked   = s.sound !== false;
+  if ($('set-notif-toast'))   $('set-notif-toast').checked   = s.desktopToast !== false;
+}
+
+async function saveNotifToggles() {
+  const enabled = $('set-notif-enabled').checked;
+  /* Ein Schalter, zwei Ebenen: enabled und fissures.enabled hingen schon im
+     alten Modal an derselben Zeile. */
+  const res = await window.api.saveNotifications({
+    enabled,
+    sound: $('set-notif-sound').checked,
+    desktopToast: $('set-notif-toast').checked,
+    fissures: { enabled }
+  });
+  if (res.ok) {
+    notificationSettings = res.data;
+    updateNotificationButtonState();
+    renderNotifToggles();
+  }
+}
+
+['set-notif-enabled', 'set-notif-sound', 'set-notif-toast'].forEach(id => {
+  $(id)?.addEventListener('change', saveNotifToggles);
+});
+
+$('set-open-fissure-notif')?.addEventListener('click', () => {
+  showTab('worldstate');
+  showWsPane('fissures');
+  openNotificationModal();
+});
+
+async function loadSettingsTab() {
+  try {
+    const res = await window.api.getSettings();
+    if (res && res.ok) {
+      hotkeyState = res.hotkeys;
+      if (res.notifications) notificationSettings = res.notifications;
+    }
+  } catch (err) {
+    setHotkeyStatus('warn', 'Einstellungen konnten nicht gelesen werden: ' + err.message);
+  }
+  renderHotkeys();
+  renderNotifToggles();
+}

@@ -65,6 +65,10 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('overlay:changed', handler);
   },
   overlayHotkey:   ()          => ipcRenderer.invoke('window:hotkey'),
+  /* Einstellungs-Tab: Tastenkuerzel lesen und aendern. setHotkeys meldet
+     zurueck, welche Kombination das System nicht hergegeben hat. */
+  getSettings:     ()          => ipcRenderer.invoke('settings:get'),
+  setHotkeys:      (patch)     => ipcRenderer.invoke('settings:hotkeys', patch),
   minimize:        ()          => ipcRenderer.invoke('window:minimize'),
   close:           ()          => ipcRenderer.invoke('window:close')
 });

@@ -21,13 +21,20 @@ npm run report
 
 | | |
 |---|---|
-| **Alt+Shift+W** | Overlay ein-/ausblenden (global, auch im Spiel) |
+| **Strg+R** | Overlay ein-/ausblenden (global, auch im Spiel) |
 | **Alt+Shift+E** | Mauszeiger ins Overlay holen, **Esc** bringt ihn zurück ins Spiel |
 | **▣** in der Titelleiste | Overlay ein-/ausblenden |
 
+Beide Kürzel sind im Tab **Einstellungen** frei belegbar.
+
+> **Zu Strg+R:** Ein global registriertes Kürzel reicht Windows **nicht mehr ans Spiel
+> weiter**. In Warframe liegt auf Strg das Ducken und auf R das Nachladen — wer im
+> Gleiten nachlädt, blendet damit das Overlay ein, statt nachzuladen. Wenn dich das
+> stört, stell es in den Einstellungen um, etwa auf Strg+Alt+R.
+
 ### Zwei Fenster
 
-Das **Hauptfenster** ist die volle Oberfläche mit allen acht Bereichen — gedacht für
+Das **Hauptfenster** ist die volle Oberfläche mit allen neun Bereichen — gedacht für
 den zweiten Monitor. Es bleibt offen, wenn das Overlay erscheint: beides läuft
 gleichzeitig, auf getrennten Bildschirmen.
 
@@ -80,6 +87,21 @@ sparen möchte, legt Alt+Shift+E in der Software seiner Maus auf eine Daumentast
 Das Overlay setzt Warframe im **randlosen Fenstermodus** voraus. Echtes Vollbild lässt
 kein fremdes Fenster darüber zu — das ist eine Windows-Eigenheit, keine Einschränkung
 der App.
+
+## Einstellungen
+
+Im Tab **Einstellungen** stehen die Dinge, die immer gelten:
+
+- **Tastenkürzel.** Auf die Schaltfläche klicken, Kombination drücken, fertig. Mindestens
+  Strg, Alt oder Shift muss dabei sein — eine Taste allein würde Argus systemweit
+  abfangen, auch im Chat. Ist die Kombination schon von einem anderen Programm belegt
+  (Discord, GeForce Experience, ein weiteres Overlay), sagt die App das und behält das
+  bisherige Kürzel.
+- **Benachrichtigungen an/aus**, Ton und Windows-Desktop-Toast.
+
+**Welche** Risse gemeldet werden — Stufen, Missionstypen, Steel Path, Railjack — bleibt
+im **Live-Tracker** unter *Void-Risse → Benachrichtigungen*. Diese Auswahl gehört zu der
+Liste, die sie filtert: dort zeigt die Vorschau direkt, wie viele Risse gerade passen.
 
 ## Ist das sicher?
 
