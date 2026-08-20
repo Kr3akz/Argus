@@ -69,6 +69,30 @@ contextBridge.exposeInMainWorld('api', {
      zurueck, welche Kombination das System nicht hergegeben hat. */
   getSettings:     ()          => ipcRenderer.invoke('settings:get'),
   setHotkeys:      (patch)     => ipcRenderer.invoke('settings:hotkeys', patch),
+  setRelicAutoShow:(on)        => ipcRenderer.invoke('settings:relicAutoShow', on),
+  /* Relikt-Belohnungen aus EE.log. Nur der Item-Pfad kommt hier an -
+     AccountIds bleiben in logwatch.js und werden dort verworfen. */
+  getCurrentRelic: ()          => ipcRenderer.invoke('relic:current'),
+  onRelicReward:   (cb)        => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on('relic:reward', handler);
+    return () => ipcRenderer.removeListener('relic:reward', handler);
+  },
+  onRelicPrice:    (cb)        => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on('relic:price', handler);
+    return () => ipcRenderer.removeListener('relic:price', handler);
+  },
+  onRelicTimer:    (cb)        => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on('relic:timer', handler);
+    return () => ipcRenderer.removeListener('relic:timer', handler);
+  },
+  onRelicClosed:   (cb)        => {
+    const handler = () => cb();
+    ipcRenderer.on('relic:closed', handler);
+    return () => ipcRenderer.removeListener('relic:closed', handler);
+  },
   minimize:        ()          => ipcRenderer.invoke('window:minimize'),
   close:           ()          => ipcRenderer.invoke('window:close')
 });

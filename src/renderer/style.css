@@ -3050,3 +3050,58 @@ label.setting-row { cursor: pointer; user-select: none; }
   color: var(--text-2);
   margin-bottom: 16px;
 }
+
+/* ---------- Relikt-Belohnung im Overlay ---------- */
+
+/* Deutlich abgesetzt: dieser Block ist der Grund, warum das Overlay gerade
+   aufgegangen ist, und hat 15 Sekunden Zeit, gelesen zu werden. */
+.ov-relic {
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, rgba(74, 158, 255, 0.16), rgba(74, 158, 255, 0.05));
+  box-shadow: inset 0 0 0 1px rgba(74, 158, 255, 0.28);
+  overflow: hidden;
+}
+
+.ov-relic-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 7px 10px 5px;
+}
+.ov-relic-head span:first-child {
+  font-size: 9.5px; font-weight: 700; letter-spacing: 1px;
+  text-transform: uppercase; color: var(--accent);
+}
+.ov-relic-timer {
+  font: 700 12px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  color: var(--text-2); font-variant-numeric: tabular-nums;
+}
+.ov-relic-timer.urgent { color: var(--red); }
+
+.ov-relic-body { display: flex; align-items: center; gap: 10px; padding: 0 10px 10px; }
+.ov-relic-img { width: 42px; height: 42px; object-fit: contain; flex-shrink: 0; }
+.ov-relic-info { min-width: 0; flex: 1; }
+.ov-relic-info b {
+  display: block; font-size: 13px; line-height: 1.25;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ov-relic-values { display: flex; align-items: baseline; gap: 9px; margin-top: 3px; }
+.ov-relic-plat {
+  font: 700 12px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  color: var(--text);
+}
+.ov-relic-plat.good  { color: var(--green); }
+.ov-relic-plat.muted { color: var(--text-3); font-weight: 400; }
+.ov-relic-duc { font-size: 10.5px; color: var(--gold); }
+.ov-relic-empty { padding: 2px 0 8px; font-size: 10.5px; color: var(--text-3); }
+
+/* Hinweis auf eine haengende Datenquelle im Overlay. */
+.ov-stale {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 9px;
+  border-radius: var(--r-sm);
+  background: rgba(240, 184, 73, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(240, 184, 73, 0.22);
+  color: var(--gold);
+  font-size: 10px;
+  line-height: 1.4;
+}
+.ov-stale svg { flex-shrink: 0; }

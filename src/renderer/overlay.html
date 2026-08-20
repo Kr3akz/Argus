@@ -33,6 +33,20 @@
   </header>
 
   <div class="ov-body">
+    <!-- Steht nur da, wenn die Datenquelle hinterherhinkt. Ohne diesen
+         Hinweis sieht eine leere Rissliste wie ein Fehler der App aus. -->
+    <div id="ov-stale" class="ov-stale hidden"></div>
+
+    <!-- Relikt-Belohnung. Steht ganz oben und nur, solange der
+         Auswahlbildschirm offen ist - danach verschwindet sie wieder. -->
+    <section class="ov-relic hidden" id="ov-relic">
+      <div class="ov-relic-head">
+        <span>Dein Fund</span>
+        <span class="ov-relic-timer" id="ov-relic-timer">–</span>
+      </div>
+      <div class="ov-relic-body" id="ov-relic-body"></div>
+    </section>
+
     <section class="ov-sec">
       <div class="ov-sec-head"><span>Zyklen</span></div>
       <div id="ov-cycles" class="ov-cycles"></div>

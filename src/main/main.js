@@ -37,6 +37,8 @@ import { buildInventory, SECTIONS } from '../core/inventory-items.js';
 import { checkAllowed, formatWait } from '../core/ratelimit.js';
 import { matchesFissureFilter } from '../core/fissure-filter.js';
 import { captureForeground, restoreForeground } from '../core/foreground.js';
+import { LogWatcher } from '../core/logwatch.js';
+import { loadMarketItems, findMarketItem, getPrice } from '../core/market.js';
 import {
   parseBuildId, fetchBuild, toBuild, loadModMap, saveModMap,
   unknownModIds, mergeNames, USER_AGENT as OF_USER_AGENT
@@ -59,6 +61,17 @@ let overlayOpacity = 0.94;
 /* Nur das Overlay merkt sich seine Lage; das Hauptfenster bleibt, wo es ist. */
 let overlayBounds = null;
 let layoutSaveTimer = null;
+
+/* Relikt-Beobachtung: liest Warframes EE.log mit. Siehe core/logwatch.js. */
+let logWatcher = null;
+let relicAutoShow = true;
+/* Nur ein selbst eingeblendetes Overlay wird danach auch selbst wieder
+   ausgeblendet - wer es vorher offen hatte, soll es behalten. */
+let overlayShownForRelic = false;
+/* Der zuletzt gemeldete Fund. Das Overlay-Fenster entsteht oft erst, WEIL
+   dieser Fund kam - eine Nachricht an ein Fenster, dessen Renderer noch laedt,
+   verpufft. Deshalb wird der Stand hier gehalten und beim Start abgefragt. */
+let currentRelic = null;
 
 const WINDOW_SIZE  = { width: 1480, height: 880 };
 const WINDOW_MIN   = { width: 1020, height: 620 };
@@ -164,7 +177,7 @@ function rememberOverlayLayout() {
   layoutSaveTimer = setTimeout(async () => {
     try {
       const cfg = await loadConfig();
-      await saveConfig({ ...cfg, overlayBounds, overlayOpacity, overlayClickThrough: clickThrough });
+      await saveConfig({ ...cfg, overlayBounds, overlayOpacity, overlayClickThrough: clickThrough, relicAutoShow });
     } catch {
       /* Eine nicht gespeicherte Fensterposition ist ein Schoenheitsfehler,
          kein Grund, irgendetwas anderes anzuhalten. */
@@ -225,6 +238,7 @@ async function loadOverlayPrefs() {
   try {
     const cfg = await loadConfig();
     if (cfg.hotkeys) hotkeys = { ...DEFAULT_HOTKEYS, ...cfg.hotkeys };
+    if (typeof cfg.relicAutoShow === 'boolean') relicAutoShow = cfg.relicAutoShow;
     if (Number.isFinite(cfg.overlayOpacity)) overlayOpacity = clampOpacity(cfg.overlayOpacity);
     if (cfg.overlayBounds) overlayBounds = cfg.overlayBounds;
     clickThrough = !!cfg.overlayClickThrough;
@@ -1097,11 +1111,102 @@ ipcMain.handle('window:opacity', (_e, value) => {
 ipcMain.handle('window:interact', (_e, on) => setInteracting(on));
 ipcMain.handle('window:hotkey',   () => ({ ...hotkeys }));
 
+/* ----------------------- Relikt-Belohnungen ----------------------- */
+
+/**
+ * Log-Pfad einer Belohnung in etwas Anzeigbares verwandeln.
+ *
+ * Das Log schreibt unter /Lotus/StoreItems/..., der Katalog fuehrt dieselbe
+ * Sache ohne diesen Abschnitt - ohne das Abschneiden findet man nichts.
+ */
+async function describeReward(uniqueName) {
+  const clean = uniqueName.replace('/StoreItems', '');
+  if (!cache.catalog) cache.catalog = await loadCatalog();
+
+  const item = cache.catalog.byUniqueName.get(clean);
+  const name = item?.name || clean.split('/').pop();
+
+  let ducats = null, slug = null;
+  try {
+    const market = await loadMarketItems();
+    const hit = findMarketItem(market, { uniqueName: clean, name });
+    if (hit) { ducats = hit.ducats ?? null; slug = hit.slug; }
+  } catch {
+    /* Ohne Marktliste bleiben Name und Bild - besser als gar keine Anzeige. */
+  }
+
+  return { uniqueName: clean, name, image: imageUrl(clean, 128), ducats, slug };
+}
+
+function sendToOverlay(channel, payload) {
+  if (overlayWin && !overlayWin.isDestroyed()) overlayWin.webContents.send(channel, payload);
+}
+
+function startLogWatcher() {
+  logWatcher = new LogWatcher();
+
+  logWatcher.on('relic-reward', async ev => {
+    const item = ev.uniqueName ? await describeReward(ev.uniqueName) : null;
+
+    /* Erst der Name, dann der Preis: der Name steht sofort aus lokalen Daten
+       fest, der Preis braucht einen Netzabruf. Bei 15 Sekunden Bedenkzeit
+       zaehlt jede davon. */
+    currentRelic = { seconds: ev.seconds, item, price: null, at: Date.now() };
+    sendToOverlay('relic:reward', currentRelic);
+
+    if (relicAutoShow && !overlayVisible()) {
+      overlayShownForRelic = true;
+      showOverlay();
+    }
+
+    if (item?.slug) {
+      try {
+        const price = await getPrice(item.slug);
+        /* Nur uebernehmen, wenn inzwischen kein neuer Fund kam. */
+        if (currentRelic?.item?.uniqueName === item.uniqueName) currentRelic.price = price;
+        sendToOverlay('relic:price', { uniqueName: item.uniqueName, price });
+      } catch { /* Ohne Preis bleibt der Name stehen. */ }
+    }
+  });
+
+  logWatcher.on('relic-timer', ev => sendToOverlay('relic:timer', ev));
+
+  logWatcher.on('relic-closed', () => {
+    currentRelic = null;
+    sendToOverlay('relic:closed', {});
+    if (overlayShownForRelic) {
+      overlayShownForRelic = false;
+      hideOverlay();
+    }
+  });
+
+  logWatcher.start();
+}
+
 /* -------------------------- Einstellungen -------------------------- */
 
 ipcMain.handle('settings:get', async () => {
   const st = await store.load();
-  return { ok: true, hotkeys: { ...hotkeys }, notifications: st.notifications };
+  return { ok: true, hotkeys: { ...hotkeys }, notifications: st.notifications, relicAutoShow };
+});
+
+/* Wird beim Start des Overlay-Renderers abgefragt. Die Restzeit wird neu
+   gerechnet: zwischen Fund und fertig geladenem Fenster vergeht knapp eine
+   Sekunde, und von fuenfzehn ist das spuerbar. */
+ipcMain.handle('relic:current', () => {
+  if (!currentRelic) return null;
+  const left = currentRelic.seconds - (Date.now() - currentRelic.at) / 1000;
+  if (left <= 0) return null;
+  return { ...currentRelic, seconds: left };
+});
+
+ipcMain.handle('settings:relicAutoShow', async (_e, on) => {
+  relicAutoShow = !!on;
+  try {
+    const cfg = await loadConfig();
+    await saveConfig({ ...cfg, relicAutoShow });
+  } catch { /* nicht gespeichert, aber aktiv */ }
+  return { ok: true, relicAutoShow };
 });
 
 ipcMain.handle('settings:hotkeys', async (_e, patch) => {
@@ -1280,6 +1385,10 @@ app.whenReady().then(async () => {
   // Hotkey zum Ein-/Ausblenden waehrend des Spielens
   applyHotkeys();
 
+  /* Liest ab jetzt EE.log mit - beginnt am Dateiende, damit nicht die
+     Belohnung von vorgestern als frischer Fund erscheint. */
+  startLogWatcher();
+
   // Hintergrund-Überwachung für Void-Risse starten (alle 45 Sekunden)
   pollFissureTracker();
   notificationPollerTimer = setInterval(pollFissureTracker, 45000);
@@ -1288,6 +1397,7 @@ app.whenReady().then(async () => {
 });
 
 app.on('will-quit', () => {
+  if (logWatcher) logWatcher.stop();
   if (notificationPollerTimer) clearInterval(notificationPollerTimer);
   globalShortcut.unregisterAll();
 });

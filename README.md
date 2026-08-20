@@ -88,6 +88,42 @@ Das Overlay setzt Warframe im **randlosen Fenstermodus** voraus. Echtes Vollbild
 kein fremdes Fenster darüber zu — das ist eine Windows-Eigenheit, keine Einschränkung
 der App.
 
+## Relikt-Belohnungen
+
+Sobald der Auswahlbildschirm nach einer Riss-Mission aufgeht, blendet Argus dein
+gefundenes Teil ein — mit **Platinpreis** und **Dukatenwert**, samt Countdown der
+15 Sekunden Bedenkzeit. Danach verschwindet die Anzeige von selbst.
+
+Die Quelle ist Warframes eigene Logdatei `EE.log`. Dort steht in genau diesem Moment:
+
+```
+VoidProjections: <accountId> gets reward /Lotus/StoreItems/.../PrimeBowGrip
+ProjectionRewardChoice.lua: Got rewards
+```
+
+Der Item-Pfad steht also exakt da — **keine Texterkennung, kein Speicherzugriff, kein
+Anfassen des Spielprozesses**. Die AccountIds aus diesen Zeilen werden verworfen und
+nie weitergereicht.
+
+### Was nicht geht
+
+**Die Funde der drei Mitspieler stehen nicht im Log.** Ihre Daten kommen zwar über das
+Netz an (`Client got reward info from …`), werden aber nie mit Item protokolliert. Wer
+alle vier Namen will, wie AlecaFrame sie zeigt, braucht Texterkennung auf dem
+Bildschirm oder Lesezugriff auf den Spielspeicher.
+
+Der eigene Fund allein beantwortet die halbe Frage: ob du deinen behältst. Ob einer der
+anderen mehr wert ist, siehst du weiterhin nur mit den Augen.
+
+### Preise
+
+Von **warframe.market**, über die v2-API — v1 ist abgeschaltet (`/v1/items` antwortet
+404). Gezählt werden nur Angebote von Verkäufern, die **gerade im Spiel** sind: das
+billigste Angebot von jemandem, der seit drei Tagen offline ist, ist kein Preis,
+sondern eine Zahl.
+
+Das automatische Einblenden lässt sich in den **Einstellungen** abschalten.
+
 ## Einstellungen
 
 Im Tab **Einstellungen** stehen die Dinge, die immer gelten:
@@ -105,19 +141,30 @@ Liste, die sie filtert: dort zeigt die Vorschau direkt, wie viele Risse gerade p
 
 ## Ist das sicher?
 
-Ja, und zwar aus einem strukturellen Grund: **Die App fasst das Spiel nicht an.**
+**Am Spiel verändert die App nichts.** Was sie tut, vollständig:
 
-- Kein Speicherzugriff, keine Injection, kein DLL-Hook
-- Keine Netzwerk-Interception (von Warframes EULA ausdrücklich verboten)
-- Keine Automatisierung, keine Eingabesimulation
-- Keine Zugangsdaten — die App *kann* sich technisch nicht einloggen
+- **Keine Injection, kein DLL-Hook, kein Schreibzugriff** auf den Spielprozess
+- **Keine Netzwerk-Interception** — von Warframes EULA ausdrücklich verboten
+- **Keine Automatisierung, keine Eingabesimulation**
+- **Lesender Speicherzugriff** auf den Spielprozess, ausschließlich für den
+  Inventar-Abruf und nur auf Knopfdruck: `gamecreds.js` sucht die temporären
+  API-Zugangsdaten der laufenden Sitzung im Heap. Nur lesen, nichts schreiben.
+- **Lesender Zugriff auf `EE.log`**, Warframes eigene Logdatei, für die
+  Relikt-Belohnungen. Ab dem zuletzt gelesenen Byte, ohne die Datei zu sperren.
+- **Fokuswechsel** über `SetForegroundWindow` für den Zeigermodus — eine
+  Fensteroperation, kein Zugriff auf das Spiel.
 
-Sie liest ausschließlich zwei öffentliche HTTP-Endpunkte, genau wie ein Browser:
+Abgerufen werden diese Endpunkte:
 
 | Endpunkt | Zweck |
 |---|---|
 | `api.warframe.com/cdn/getProfileViewingData.php` | dein öffentliches Profil |
+| `api.warframe.com/api/inventory.php` | dein Inventar (nur auf Knopfdruck) |
 | `cdn.jsdelivr.net/.../warframe-exports-data` | DEs Item-Katalog + Bilder |
+| `api.warframestat.us` | Weltzustand, Zyklen, Risse |
+| `drops.warframestat.us` | DEs Droptabellen für Relikte |
+| `api.warframe.market/v2` | Platinpreise und Dukatenwerte |
+| `overframe.gg` | Build-Import, nur auf Knopfdruck |
 
 ### ⚠️ Wichtig: Nicht zu oft aktualisieren
 
@@ -172,6 +219,9 @@ src/core/     Logik, komplett unabhängig von der Oberfläche
   ratelimit.js    schützt vor dem Login-Lockout
   store.js        Ziele und Notizen
   foreground.js   gibt den Eingabefokus ans Spiel zurück
+  logwatch.js     liest Warframes EE.log mit (Relikt-Belohnungen)
+  relics.js       Relikt-Belohnungstabellen aus DEs Droptabellen
+  market.js       Preise und Dukatenwerte von warframe.market
 src/main/     Electron-Hauptprozess (Hauptfenster + Overlay-Fenster)
 src/renderer/ Oberfläche
   index.html    Hauptfenster
@@ -245,4 +295,21 @@ andere im Tool läuft weiter.
 node src/cli/dashboard-test.js
 ```
 
-Prüft die gesamte Datenkette ohne Electron.
+Prüft die gesamte Datenkette ohne Electron. Dazu:
+
+```bash
+npm run relic-test "Meso H1"
+```
+
+Belohnungen eines Relikts mit Platinpreis und Dukaten, plus eine Probe über die
+Reliktpfade im eigenen Inventar.
+
+```bash
+node src/cli/log-test.js
+```
+
+Spielt die vorhandene `EE.log` ab und zeigt, was Argus daraus erkannt hätte. Mit
+`--live` wartet der Test auf die nächste Riss-Mission.
+
+Die Umgebungsvariable `ARGUS_EE_LOG` zeigt auf eine andere Logdatei — für
+Installationen mit abweichendem Datenpfad und zum Testen ohne echte Mission.

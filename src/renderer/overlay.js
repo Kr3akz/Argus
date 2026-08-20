@@ -31,6 +31,9 @@ let pollTimer = null;
 let hoverSent = null;
 
 const SOON_MS   = 5 * 60 * 1000;  // ab hier faerbt sich die Restzeit
+/* Dieselbe Schwelle wie im Hauptfenster (renderWsSource): ab einer
+   Viertelstunde Rueckstand ist die Quelle nicht mehr brauchbar. */
+const STALE_MS  = 15 * 60 * 1000;
 const POLL_MS   = 60000;
 const MAX_FISS  = 8;
 const MAX_GOALS = 4;
@@ -79,8 +82,18 @@ function relativeAge(ts) {
 /* Laeuft jede Sekunde und fasst nur die Uhren an - kein Neuaufbau der Listen,
    sonst reisst jede Sekunde die Scrollposition und jeder Hover ab. */
 function tickClocks() {
+  /* Bei haengender Quelle keine Zahlen erfinden: eine Restzeit, die vor zwei
+     Stunden abgelaufen ist, als "jetzt" anzuzeigen ist schlicht falsch. */
+  const stale = sourceIsStale();
+
   document.querySelectorAll('[data-until]').forEach(el => {
     const ms = msUntil(el.dataset.until);
+    if (stale && ms !== null && ms <= 0) {
+      el.textContent = '—';
+      el.classList.remove('soon');
+      el.classList.add('gone');
+      return;
+    }
     el.textContent = fmtCountdown(ms);
     el.classList.toggle('soon', ms !== null && ms > 0 && ms < SOON_MS);
     el.classList.toggle('gone', ms !== null && ms <= 0);
@@ -112,7 +125,36 @@ async function loadNotifSettings() {
 
 /* ---------------- Anzeige ---------------- */
 
+/** Rueckstand der Datenquelle in Millisekunden, oder null. */
+function sourceLag() {
+  const ts = world?.sourceTimestamp ? new Date(world.sourceTimestamp).getTime() : null;
+  return Number.isFinite(ts) ? Date.now() - ts : null;
+}
+
+const sourceIsStale = () => (sourceLag() ?? 0) > STALE_MS;
+
+/**
+ * Hinweis bei haengender Quelle.
+ *
+ * warframestat.us liefert zeitweise stundenalte Staende. Dann sind alle Risse
+ * abgelaufen und alle Zyklen laengst umgeschlagen - die Anzeige waere nicht
+ * falsch, aber wertlos, und sieht ohne Hinweis nach einem Fehler der App aus.
+ */
+function renderStale() {
+  const el = $('ov-stale');
+  if (!el) return;
+
+  const lag = sourceLag();
+  if (!sourceIsStale()) { el.classList.add('hidden'); return; }
+
+  const min = Math.round(lag / 60000);
+  const h = Math.floor(min / 60), m = min % 60;
+  el.innerHTML = `${Icon.warning(12)}<span>Datenquelle hängt ${h ? h + ' h ' : ''}${m} min hinterher — abgelaufene Einträge fehlen</span>`;
+  el.classList.remove('hidden');
+}
+
 function render() {
+  renderStale();
   renderHead();
   renderCycles();
   renderFissures();
@@ -170,7 +212,9 @@ function renderFissures() {
   const isHit = f => !!notifSettings && FissureFilter.matches(f, notifSettings);
 
   if (!all.length) {
-    box.innerHTML = '<div class="ov-empty">Keine aktiven Risse.</div>';
+    box.innerHTML = sourceIsStale()
+      ? '<div class="ov-empty">Keine Daten — die Quelle hängt (siehe oben).</div>'
+      : '<div class="ov-empty">Keine aktiven Risse.</div>';
     note.textContent = '';
     return;
   }
@@ -346,6 +390,109 @@ window.api.onOverlayChanged(applyState);
 (async function boot() {
   await Promise.all([loadDashboard(), loadWorld(false), loadNotifSettings()]);
   render();
+
+  /* Das Fenster entsteht oft erst, WEIL gerade ein Fund gemeldet wurde - die
+     zugehoerige Nachricht kam dann an, bevor dieser Renderer zuhoerte. */
+  try {
+    const cur = await window.api.getCurrentRelic();
+    if (cur) {
+      showRelicReward(cur);
+      if (cur.price) updateRelicPrice(cur.item?.uniqueName, cur.price);
+    }
+  } catch { /* dann eben ohne */ }
   try { await applyState(await window.api.overlayState()); }
   catch { startTimers(); }
 })();
+
+/* ============================================================================
+   Relikt-Belohnung
+
+   Kommt aus Warframes EE.log (siehe core/logwatch.js): sobald der
+   Auswahlbildschirm aufgeht, steht dort der Pfad des eigenen Fundes. Name und
+   Dukaten stehen sofort fest, der Platinpreis kommt Sekundenbruchteile spaeter
+   nach - bei 15 Sekunden Bedenkzeit wird deshalb zweistufig angezeigt statt
+   auf das Netz zu warten.
+
+   Die Funde der drei Mitspieler stehen nicht im Log. Das ist eine Grenze der
+   Quelle, keine Nachlaessigkeit - siehe Kommentar in logwatch.js.
+   ========================================================================= */
+
+let relicDeadline = 0;
+let relicTicker = null;
+let relicItem = null;
+
+/* Ab hier lohnt der eigene Fund mehr als der uebliche Prime-Schrott und die
+   Zahl wird hervorgehoben. */
+const RELIC_GOOD_PLAT = 20;
+
+function showRelicReward(data) {
+  const box = $('ov-relic');
+  const body = $('ov-relic-body');
+  if (!box || !body) return;
+
+  relicItem = data?.item || null;
+
+  if (!relicItem) {
+    body.innerHTML = '<div class="ov-relic-empty">Auswahl läuft — dein Fund stand nicht im Log.</div>';
+  } else {
+    body.innerHTML = `
+      <img class="ov-relic-img" src="${esc(relicItem.image)}" alt=""
+           onerror="this.style.visibility='hidden'">
+      <div class="ov-relic-info">
+        <b>${esc(relicItem.name)}</b>
+        <div class="ov-relic-values">
+          <span class="ov-relic-plat" id="ov-relic-plat">Preis wird geholt …</span>
+          ${relicItem.ducats != null ? `<span class="ov-relic-duc">${nf(relicItem.ducats)} Dukaten</span>` : ''}
+        </div>
+      </div>`;
+  }
+
+  box.classList.remove('hidden');
+  startRelicCountdown(data?.seconds || 15);
+}
+
+function updateRelicPrice(uniqueName, price) {
+  /* Ein spaet eintreffender Preis darf nicht die naechste Belohnung
+     ueberschreiben - deshalb der Abgleich auf dasselbe Item. */
+  if (!relicItem || relicItem.uniqueName !== uniqueName) return;
+
+  const el = $('ov-relic-plat');
+  if (!el) return;
+
+  if (!price) { el.textContent = 'kein Angebot'; el.classList.add('muted'); return; }
+
+  el.textContent = `${price.min}p · Median ${price.median}`;
+  el.classList.toggle('good', price.min >= RELIC_GOOD_PLAT);
+  el.classList.toggle('muted', false);
+  el.title = price.online
+    ? `${price.offers} Angebote von Spielern, die gerade im Spiel sind`
+    : 'Niemand mit diesem Angebot ist gerade im Spiel - Preis mit Vorsicht';
+}
+
+function startRelicCountdown(seconds) {
+  relicDeadline = Date.now() + seconds * 1000;
+  clearInterval(relicTicker);
+  tickRelic();
+  relicTicker = setInterval(tickRelic, 250);
+}
+
+function tickRelic() {
+  const el = $('ov-relic-timer');
+  if (!el) return;
+  const left = Math.max(0, Math.ceil((relicDeadline - Date.now()) / 1000));
+  el.textContent = left + 's';
+  el.classList.toggle('urgent', left <= 5);
+  if (left <= 0) clearInterval(relicTicker);
+}
+
+function hideRelicReward() {
+  clearInterval(relicTicker);
+  relicTicker = null;
+  relicItem = null;
+  $('ov-relic')?.classList.add('hidden');
+}
+
+window.api.onRelicReward(showRelicReward);
+window.api.onRelicPrice(d => updateRelicPrice(d?.uniqueName, d?.price));
+window.api.onRelicTimer(d => { if (d?.seconds) startRelicCountdown(d.seconds); });
+window.api.onRelicClosed(hideRelicReward);

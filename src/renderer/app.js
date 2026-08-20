@@ -2441,6 +2441,17 @@ function renderNotifToggles() {
   if ($('set-notif-toast'))   $('set-notif-toast').checked   = s.desktopToast !== false;
 }
 
+/* Eigener Schalter, eigene Ablage: das Einblenden bei Relikt-Funden haengt am
+   Overlay, nicht an den Benachrichtigungen, und liegt deshalb in config.json
+   statt bei den Melde-Einstellungen. */
+function renderRelicToggle(on) {
+  if ($('set-relic-autoshow')) $('set-relic-autoshow').checked = on !== false;
+}
+
+$('set-relic-autoshow')?.addEventListener('change', e => {
+  window.api.setRelicAutoShow(e.target.checked).catch(() => {});
+});
+
 async function saveNotifToggles() {
   const enabled = $('set-notif-enabled').checked;
   /* Ein Schalter, zwei Ebenen: enabled und fissures.enabled hingen schon im
@@ -2474,6 +2485,7 @@ async function loadSettingsTab() {
     if (res && res.ok) {
       hotkeyState = res.hotkeys;
       if (res.notifications) notificationSettings = res.notifications;
+      renderRelicToggle(res.relicAutoShow);
     }
   } catch (err) {
     setHotkeyStatus('warn', 'Einstellungen konnten nicht gelesen werden: ' + err.message);
