@@ -12,7 +12,8 @@
     "inventory": "node src/cli/inventory-fetch.js",
     "inventory-test": "node src/cli/inventory-test.js",
     "notif-test": "node src/cli/notif-test.js",
-    "relic-test": "node src/cli/relic-test.js"
+    "relic-test": "node src/cli/relic-test.js",
+    "ocr-probe": "node src/cli/ocr-probe.js"
   },
   "devDependencies": {
     "electron": "^33.0.0"
