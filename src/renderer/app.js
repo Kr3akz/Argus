@@ -1740,7 +1740,7 @@ function openFarmGuideFor(name) {
 let ducatsData = null;
 let sellQuantities = new Map(); // slug -> count
 let currentSelectionPreset = 'all'; // 'all' | 'duplicates' | 'custom' | 'none'
-let ducatsMode = 'inventory';    // 'inventory' | 'catalog' | 'sets'
+let ducatsMode = 'inventory';    // 'inventory' | 'catalog' | 'sets' | 'plan'
 let ducatsFilter = 'all';        // 'all' | 'advice-junk' | 'advice-plat' | '100' | '45' | '15'
 let ducatsSort = 'ducats-desc';   // 'ducats-desc' | 'plat-desc' | 'ratio-desc' | 'count-desc' | 'name-asc'
 let isFetchingDucatPrices = false;
@@ -1779,7 +1779,17 @@ async function fetchMissingDucatPrices(forceAll = false) {
 
   let missingSlugs;
 
-  if (ducatsMode === 'sets') {
+  if (ducatsMode === 'plan') {
+    /* Ohne Preise ist der Erwartungswert nur die halbe Auskunft - hier wird
+       deshalb genau das nachgeladen, was in den Tabellen steht. */
+    const wanted = [];
+    for (const relic of ducatsData.relicPlan || []) {
+      for (const w of relic.rewards) {
+        if (w.slug && (forceAll || w.plat == null)) wanted.push(w.slug);
+      }
+    }
+    missingSlugs = [...new Set(wanted)];
+  } else if (ducatsMode === 'sets') {
     /* Das Set-Item traegt einen eigenen Preis - die Summe der Teile ist etwas
        anderes und liegt regelmaessig hoeher als das fertige Set. */
     const wanted = [];
@@ -1947,17 +1957,96 @@ function updateDucatsModeTabs() {
   $('tab-ducats-mode-inv')?.classList.toggle('active', ducatsMode === 'inventory');
   $('tab-ducats-mode-cat')?.classList.toggle('active', ducatsMode === 'catalog');
   $('tab-ducats-mode-sets')?.classList.toggle('active', ducatsMode === 'sets');
+  $('tab-ducats-mode-plan')?.classList.toggle('active', ducatsMode === 'plan');
 
   if ($('ducats-sets-badge-count')) {
     $('ducats-sets-badge-count').textContent = (ducatsData?.sets || []).length;
+  }
+  if ($('ducats-plan-badge-count')) {
+    $('ducats-plan-badge-count').textContent = (ducatsData?.relicPlan || []).length;
   }
 
   /* Seltenheits-Chips und Sortierung beziehen sich auf einzelne Teile. In der
      Set-Ansicht haetten sie nichts zu filtern und stuenden nur im Weg - die
      Suche bleibt, die trifft auch Set-Namen. */
-  const isSets = ducatsMode === 'sets';
-  document.querySelector('.ducats-filter-badges')?.classList.toggle('hidden', isSets);
-  document.querySelector('.ducats-sort-wrap')?.classList.toggle('hidden', isSets);
+  const flat = ducatsMode === 'inventory' || ducatsMode === 'catalog';
+  document.querySelector('.ducats-filter-badges')?.classList.toggle('hidden', !flat);
+  document.querySelector('.ducats-sort-wrap')?.classList.toggle('hidden', !flat);
+}
+
+/**
+ * Relikt-Planer: welches der eigenen Relikte lohnt sich zu oeffnen?
+ *
+ * Gezeigt wird der Erwartungswert - Chance mal Wert, nicht der Mittelwert der
+ * sechs Belohnungen. Die Chancen sind sehr ungleich (25,33 % gegen 2 %); ein
+ * Mittelwert wuerde das seltene Teil genauso zaehlen wie ein haeufiges und
+ * jedes Relikt wertvoller aussehen lassen, als es ist.
+ */
+function renderDucatsRelicPlan() {
+  const container = $('ducats-catalog');
+  if (!container) return;
+
+  const query = ($('ducat-search')?.value || '').trim().toLowerCase();
+  const all = ducatsData?.relicPlan || [];
+  const plan = query
+    ? all.filter(r => (r.tier + ' ' + r.name).toLowerCase().includes(query)
+        || r.rewards.some(w => w.name.toLowerCase().includes(query)))
+    : all;
+
+  if (!plan.length) {
+    container.innerHTML = `
+      <div class="ducats-empty-box">
+        <div class="empty-icon">${Icon.relic(30)}</div>
+        <h3>${all.length ? 'Keine Treffer' : 'Keine Relikte im Bestand'}</h3>
+        <p>${all.length
+          ? 'Zu deiner Suche gibt es kein passendes Relikt.'
+          : 'Sobald Relikte im Inventar liegen, rechnet Argus hier aus, welches sich zu öffnen lohnt.'}</p>
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = plan.slice(0, 60).map(r => {
+    const thin = r.pricedShare < 0.9;
+
+    const rewards = [...r.rewards]
+      .sort((a, b) => (b.plat ?? -1) - (a.plat ?? -1) || b.chance - a.chance)
+      .map(w => `
+        <div class="plan-rw rarity-${esc(String(w.rarity || '').toLowerCase())}">
+          <span class="plan-rw-name">${esc(w.name)}</span>
+          <span class="plan-rw-chance">${w.chance}%</span>
+          <span class="plan-rw-plat">${w.plat != null ? w.plat + 'p' : '–'}</span>
+          <span class="plan-rw-duc">${w.ducats != null ? w.ducats : '–'}</span>
+        </div>`).join('');
+
+    return `
+      <div class="plan-card tier-${esc(r.tier.toLowerCase())}">
+        <div class="plan-head">
+          <div class="plan-title">
+            <span class="plan-tier">${esc(r.tier)}</span>
+            <b>${esc(r.name)}</b>
+            <span class="plan-state">${esc(r.state)}${r.count > 1 ? ' · ×' + r.count : ''}</span>
+          </div>
+          <div class="plan-exp">
+            <span class="plan-exp-val" title="Erwarteter Platin-Erlös je Öffnung">
+              <img class="currency-ic" src="assets/icons/currency/platinum.png" alt="Platin">
+              <b>${r.expPlat}</b>
+            </span>
+            <span class="plan-exp-val" title="Erwarteter Dukaten-Wert je Öffnung">
+              <img class="currency-ic ducat-ic" src="assets/icons/ducats.png" alt="Dukaten">
+              <b>${nf(r.expDucats)}</b>
+            </span>
+          </div>
+        </div>
+
+        ${thin ? `<div class="plan-thin" title="Für Teile ohne bekannten Preis wird nichts angenommen">
+            ${Icon.warning(12)} Preise für ${Math.round(r.pricedShare * 100)} % der Chance bekannt — Platinwert ist eine Untergrenze
+          </div>` : ''}
+
+        <div class="plan-rewards">${rewards}</div>
+      </div>`;
+  }).join('') + (plan.length > 60
+    ? `<div class="inv-more">… und ${nf(plan.length - 60)} weitere. Nutze die Suche.</div>`
+    : '');
 }
 
 /**
@@ -2048,6 +2137,7 @@ function updateDucatsPriceButtonState(loading) {
 function renderDucatsCatalog() {
   if (!ducatsData) return;
   if (ducatsMode === 'sets') return renderDucatsSets();
+  if (ducatsMode === 'plan') return renderDucatsRelicPlan();
 
   const q = ($('ducat-search')?.value || '').toLowerCase().trim();
   const rawList = ducatsMode === 'inventory'
@@ -2283,6 +2373,11 @@ function initDucatsEventListeners() {
     updateDucatsModeTabs();
     renderDucatsCatalog();
   });
+  $('tab-ducats-mode-plan')?.addEventListener('click', () => {
+    ducatsMode = 'plan';
+    updateDucatsModeTabs();
+    renderDucatsCatalog();
+  });
 
   // Schnell-Aktionen
   $('btn-ducats-select-all')?.addEventListener('click', () => {
@@ -2342,6 +2437,7 @@ function initDucatsEventListeners() {
 
 let inventoryData = null;
 let invSection = 'relics';
+let invTier = 'all';        // Aera-Filter, nur im Relikt-Bereich
 
 const QUELLEN = {
   api:        { label: 'Live-Abruf aus dem Spiel', stale: false },
@@ -2445,17 +2541,68 @@ function renderInventory() {
     </button>`).join('');
 
   $('inv-tabs').querySelectorAll('[data-inv]').forEach(btn => {
-    btn.onclick = () => { invSection = btn.dataset.inv; renderInventory(); };
+    btn.onclick = () => { invSection = btn.dataset.inv; invTier = 'all'; renderInventory(); };
   });
 
   renderInventoryGrid();
+}
+
+/**
+ * Aera-Filter fuer Relikte.
+ *
+ * Nur die Aeren anzeigen, die im Bestand auch vorkommen - eine Schaltflaeche
+ * fuer Omnia, wenn man kein einziges hat, waere eine Sackgasse. Die Anzahl
+ * steht dabei, weil sie die eigentliche Auskunft ist.
+ */
+function renderInvTierFilter(all) {
+  const box = $('inv-tier-filter');
+  if (!box) return;
+
+  if (invSection !== 'relics') {
+    box.classList.add('hidden');
+    return;
+  }
+
+  const counts = new Map();
+  for (const e of all) {
+    if (!e.tier) continue;
+    counts.set(e.tier, (counts.get(e.tier) || 0) + (e.count || 0));
+  }
+
+  const order = ['Lith', 'Meso', 'Neo', 'Axi', 'Requiem', 'Omnia'];
+  const tiers = order.filter(t => counts.has(t));
+  if (!tiers.length) { box.classList.add('hidden'); return; }
+
+  const total = [...counts.values()].reduce((a, b) => a + b, 0);
+  box.classList.remove('hidden');
+  box.innerHTML =
+    `<button class="tier-chip ${invTier === 'all' ? 'active' : ''}" data-tier="all">
+       Alle <span>${nf(total)}</span>
+     </button>` +
+    tiers.map(t => `
+      <button class="tier-chip tier-${t.toLowerCase()} ${invTier === t ? 'active' : ''}" data-tier="${t}">
+        ${t} <span>${nf(counts.get(t))}</span>
+      </button>`).join('');
+
+  box.querySelectorAll('[data-tier]').forEach(btn => {
+    btn.onclick = () => {
+      invTier = btn.dataset.tier;
+      renderInventoryGrid();
+    };
+  });
 }
 
 function renderInventoryGrid() {
   const d = inventoryData;
   const query = ($('inv-search')?.value || '').toLowerCase().trim();
   const all = d.sections[invSection] || [];
-  const list = query ? all.filter(e => e.name.toLowerCase().includes(query)) : all;
+
+  renderInvTierFilter(all);
+
+  let list = query ? all.filter(e => e.name.toLowerCase().includes(query)) : all;
+  if (invSection === 'relics' && invTier !== 'all') {
+    list = list.filter(e => e.tier === invTier);
+  }
 
   const total = d.totals[invSection];
   const alt = (QUELLEN[d.source] || QUELLEN.api).stale && d.fetchedAt

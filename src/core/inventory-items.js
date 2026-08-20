@@ -111,11 +111,26 @@ function collect(rows, catalog, { ranked = false } = {}) {
   return [...byItem.values()];
 }
 
-/** Relikte bekommen Stufe und einen Namen ohne das angehaengte "Relic". */
+/* Aera als Ziffer im Pfad: T1VoidProjection... ist Lith, T4 ist Axi. */
+const TIER_BY_NUM = { 1: 'Lith', 2: 'Meso', 3: 'Neo', 4: 'Axi', 5: 'Requiem', 6: 'Omnia' };
+const TIERS = new Set(Object.values(TIER_BY_NUM));
+
+/** Relikte bekommen Stufe, Aera und einen Namen ohne das angehaengte "Relic". */
 function decorateRelic(entry) {
   const m = /(Bronze|Silver|Gold|Platinum)$/.exec(entry.uniqueName);
   entry.quality = m ? RELIC_QUALITY[m[1]] : null;
   entry.name = entry.name.replace(/\s*Relic$/i, '');
+
+  /* Aera fuer den Filter. Zuerst aus dem Namen ("Axi A22"), weil der bereits
+     aufgeloest ist; faellt der Name aus, bleibt die Ziffer im Pfad - die
+     steht auch dann, wenn das Relikt nirgends benannt ist. */
+  const first = entry.name.split(' ')[0];
+  if (TIERS.has(first)) {
+    entry.tier = first;
+  } else {
+    const t = /Projections\/T(\d)/.exec(entry.uniqueName);
+    entry.tier = t ? (TIER_BY_NUM[Number(t[1])] || null) : null;
+  }
   return entry;
 }
 

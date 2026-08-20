@@ -39,7 +39,7 @@ import { matchesFissureFilter } from '../core/fissure-filter.js';
 import { captureForeground, restoreForeground } from '../core/foreground.js';
 import { LogWatcher } from '../core/logwatch.js';
 import { loadMarketItems, findMarketItem, getPrice, getPrices } from '../core/market.js';
-import { loadRelicTables, allRewardNames } from '../core/relics.js';
+import { loadRelicTables, allRewardNames, planRelics, resolveInventoryRelic } from '../core/relics.js';
 import { scanRewardScreen, buildRewardIndex } from '../core/rewardscan.js';
 import {
   parseBuildId, fetchBuild, toBuild, loadModMap, saveModMap,
@@ -1052,11 +1052,41 @@ ipcMain.handle('ducats:get', async () => {
      ein Katalog, keine Antwort auf "was fehlt mir noch". */
   const sets = buildPrimeSets(market, priceCache, inventoryData.items);
 
+  /* Relikt-Planer: was bringt das Oeffnen im Schnitt. Faellt er aus, laeuft
+     der Rest des Tabs weiter - er ist eine Zugabe, keine Voraussetzung. */
+  let relicPlan = [];
+  try {
+    const relicIdx = await loadRelicTables();
+
+    /* Bestand je Relikt UND Zustand: strahlend und intakt sind dasselbe
+       Relikt, aber nicht dieselbe Entscheidung. */
+    const ownedMap = new Map();
+    for (const row of invRes?.inventory?.MiscItems || []) {
+      if (typeof row.ItemType !== 'string' || !row.ItemType.includes('/Projections/')) continue;
+      const res = resolveInventoryRelic(market, row.ItemType);
+      if (!res?.key) continue;
+
+      const k = res.key + '|' + res.state;
+      const prev = ownedMap.get(k);
+      if (prev) prev.count += row.ItemCount || 1;
+      else ownedMap.set(k, { key: res.key, state: res.state, count: row.ItemCount || 1 });
+    }
+
+    const lookup = name => {
+      const m = market ? findMarketItem(market, { name }) : null;
+      if (!m) return null;
+      return { ducats: m.ducats ?? null, plat: priceCache[m.slug]?.price?.min ?? null, slug: m.slug };
+    };
+
+    relicPlan = planRelics(relicIdx, [...ownedMap.values()], lookup);
+  } catch { /* ohne Planer laeuft der Rest weiter */ }
+
   return {
     reference: getDucatsReferenceList(),
     inventory: inventoryData,
     catalog: catalogData,
     sets,
+    relicPlan,
     hasInventory: !!invRes?.inventory,
     source: invRes?.source || 'none',
     fetchedAt: invRes?.fetchedAt || null

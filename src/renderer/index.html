@@ -478,6 +478,10 @@
               <span class="btn-ic" data-icon="layers"></span><span>Meine Sets</span>
               <span class="counter-badge" id="ducats-sets-badge-count">0</span>
             </button>
+            <button class="ducats-tab-btn" id="tab-ducats-mode-plan" data-mode="plan">
+              <span class="btn-ic" data-icon="relic"></span><span>Relikt-Planer</span>
+              <span class="counter-badge" id="ducats-plan-badge-count">0</span>
+            </button>
           </div>
 
           <div class="ducats-quick-actions">
@@ -554,6 +558,9 @@
           <input id="inv-search" type="text"
                  placeholder="Im Inventar suchen … z. B. Rubedo, Lith, Arcane Energize">
         </div>
+
+        <!-- Nur fuer Relikte sichtbar: die anderen Bereiche haben keine Aera. -->
+        <div class="inv-tier-filter hidden" id="inv-tier-filter"></div>
 
         <div class="inv-meta" id="inv-meta"></div>
         <div class="inv-grid" id="inv-grid"></div>

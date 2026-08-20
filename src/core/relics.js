@@ -129,6 +129,95 @@ export function rewardsFor(idx, key, state = 'Intact') {
 }
 
 /**
+ * Erwartungswert eines Relikts.
+ *
+ * NICHT der Durchschnitt der sechs Belohnungen: die Chancen sind sehr
+ * ungleich verteilt (25,33 % gegen 2 %), und ein Mittelwert wuerde das seltene
+ * Teil genauso stark gewichten wie ein haeufiges. Gerechnet wird deshalb
+ * Chance mal Wert - das ist, was ein Oeffnen im Schnitt einbringt.
+ *
+ * Der Zustand des Relikts aendert genau diese Chancen: strahlend hebt die
+ * seltene Belohnung von 2 % auf 10 %. Deshalb wird je Zustand gerechnet und
+ * nicht je Relikt.
+ *
+ * PREISE fehlen fuer Teile, die noch nie abgefragt wurden. Statt sie als 0
+ * einzurechnen - was den Erwartungswert stillschweigend nach unten zoege -
+ * wird mitgezaehlt, welcher Anteil der Chancen ueberhaupt einen Preis hat.
+ * Die Oberflaeche kann daraus "noch unvollstaendig" ableiten.
+ */
+export function relicExpectation(rewards, lookup) {
+  let expDucats = 0, expPlat = 0, pricedChance = 0, totalChance = 0;
+  let bestPlat = null, bestDucats = null;
+
+  const detailed = rewards.map(r => {
+    const info = lookup(r.itemName) || {};
+    const chance = r.chance || 0;
+    totalChance += chance;
+
+    if (info.ducats != null) expDucats += chance / 100 * info.ducats;
+    if (info.plat != null) {
+      expPlat += chance / 100 * info.plat;
+      pricedChance += chance;
+      if (!bestPlat || info.plat > bestPlat.plat) bestPlat = { name: r.itemName, plat: info.plat };
+    }
+    if (info.ducats != null && (!bestDucats || info.ducats > bestDucats.ducats)) {
+      bestDucats = { name: r.itemName, ducats: info.ducats };
+    }
+
+    return {
+      name: r.itemName,
+      rarity: r.rarity,
+      chance,
+      ducats: info.ducats ?? null,
+      plat: info.plat ?? null,
+      slug: info.slug ?? null
+    };
+  });
+
+  return {
+    rewards: detailed,
+    expDucats: Math.round(expDucats),
+    expPlat: Math.round(expPlat * 10) / 10,
+    /* Anteil der Chance, fuer den ein Preis vorliegt. Unter 1 ist der
+       Platin-Erwartungswert eine Untergrenze, keine Schaetzung. */
+    pricedShare: totalChance ? pricedChance / totalChance : 0,
+    bestPlat,
+    bestDucats
+  };
+}
+
+/**
+ * Planer: welches der eigenen Relikte lohnt sich zu oeffnen?
+ *
+ * owned ist eine Liste { key, state, count } aus dem Inventar.
+ */
+export function planRelics(idx, owned, lookup) {
+  const out = [];
+
+  for (const entry of owned) {
+    const relic = idx?.byKey?.get(entry.key);
+    if (!relic) continue;
+
+    const rewards = relic.states[entry.state] || relic.states.Intact;
+    if (!rewards?.length) continue;
+
+    const value = relicExpectation(rewards, lookup);
+    out.push({
+      key: relic.key,
+      tier: relic.tier,
+      name: relic.name,
+      state: entry.state,
+      count: entry.count,
+      ...value
+    });
+  }
+
+  /* Nach dem, wonach entschieden wird: was bringt ein Oeffnen im Schnitt. */
+  return out.sort((a, b) =>
+    b.expPlat - a.expPlat || b.expDucats - a.expDucats || a.key.localeCompare(b.key));
+}
+
+/**
  * Relikt aus einem Inventarpfad aufloesen.
  *
  * WARUM UEBER DIE MARKTLISTE:
