@@ -11,7 +11,8 @@
     "scan-test": "node src/cli/scan-test.js",
     "inventory": "node src/cli/inventory-fetch.js",
     "inventory-test": "node src/cli/inventory-test.js",
-    "notif-test": "node src/cli/notif-test.js"
+    "notif-test": "node src/cli/notif-test.js",
+    "relic-test": "node src/cli/relic-test.js"
   },
   "devDependencies": {
     "electron": "^33.0.0"
