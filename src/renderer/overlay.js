@@ -395,78 +395,106 @@ window.api.onOverlayChanged(applyState);
      zugehoerige Nachricht kam dann an, bevor dieser Renderer zuhoerte. */
   try {
     const cur = await window.api.getCurrentRelic();
-    if (cur) {
-      showRelicReward(cur);
-      if (cur.price) updateRelicPrice(cur.item?.uniqueName, cur.price);
-    }
+    if (cur) showRelicReward(cur);
   } catch { /* dann eben ohne */ }
   try { await applyState(await window.api.overlayState()); }
   catch { startTimers(); }
 })();
 
 /* ============================================================================
-   Relikt-Belohnung
+   Relikt-Belohnungen
 
-   Kommt aus Warframes EE.log (siehe core/logwatch.js): sobald der
-   Auswahlbildschirm aufgeht, steht dort der Pfad des eigenen Fundes. Name und
-   Dukaten stehen sofort fest, der Platinpreis kommt Sekundenbruchteile spaeter
-   nach - bei 15 Sekunden Bedenkzeit wird deshalb zweistufig angezeigt statt
-   auf das Netz zu warten.
+   Zwei Quellen laufen hier zusammen:
+     - EE.log liefert sofort den EIGENEN Fund (siehe core/logwatch.js)
+     - der Bildschirm liefert nach gut einer Sekunde alle vier Namen
+       (siehe core/rewardscan.js)
 
-   Die Funde der drei Mitspieler stehen nicht im Log. Das ist eine Grenze der
-   Quelle, keine Nachlaessigkeit - siehe Kommentar in logwatch.js.
+   Die Nummerierung ist der Sinn der Sache: sie entspricht der Reihenfolge auf
+   dem Bildschirm, von links nach rechts. Ohne sie muesste man die Namen
+   vergleichen, statt einfach die dritte Karte anzuklicken.
    ========================================================================= */
 
+let relicState = null;
 let relicDeadline = 0;
 let relicTicker = null;
-let relicItem = null;
 
-/* Ab hier lohnt der eigene Fund mehr als der uebliche Prime-Schrott und die
-   Zahl wird hervorgehoben. */
+/* Ab hier lohnt ein Teil mehr als der uebliche Prime-Schrott. */
 const RELIC_GOOD_PLAT = 20;
 
-function showRelicReward(data) {
-  const box = $('ov-relic');
-  const body = $('ov-relic-body');
-  if (!box || !body) return;
-
-  relicItem = data?.item || null;
-
-  if (!relicItem) {
-    body.innerHTML = '<div class="ov-relic-empty">Auswahl läuft — dein Fund stand nicht im Log.</div>';
-  } else {
-    body.innerHTML = `
-      <img class="ov-relic-img" src="${esc(relicItem.image)}" alt=""
-           onerror="this.style.visibility='hidden'">
-      <div class="ov-relic-info">
-        <b>${esc(relicItem.name)}</b>
-        <div class="ov-relic-values">
-          <span class="ov-relic-plat" id="ov-relic-plat">Preis wird geholt …</span>
-          ${relicItem.ducats != null ? `<span class="ov-relic-duc">${nf(relicItem.ducats)} Dukaten</span>` : ''}
-        </div>
-      </div>`;
-  }
-
-  box.classList.remove('hidden');
-  startRelicCountdown(data?.seconds || 15);
+function priceText(price) {
+  if (price === null || price === undefined) return '…';
+  if (!price) return '–';
+  return price.min + 'p';
 }
 
-function updateRelicPrice(uniqueName, price) {
-  /* Ein spaet eintreffender Preis darf nicht die naechste Belohnung
-     ueberschreiben - deshalb der Abgleich auf dasselbe Item. */
-  if (!relicItem || relicItem.uniqueName !== uniqueName) return;
+function rewardRow(r, bestPlat) {
+  const plat = priceText(r.price);
+  const good = r.price && r.price.min >= RELIC_GOOD_PLAT;
+  const best = r.price && bestPlat && r.price.min === bestPlat;
 
-  const el = $('ov-relic-plat');
-  if (!el) return;
+  return `
+    <div class="ov-rw ${r.isOwn ? 'mine' : ''} ${best ? 'best' : ''}">
+      <span class="ov-rw-pos">${r.position}</span>
+      <img class="ov-rw-img" src="${esc(r.image || '')}" alt=""
+           onerror="this.style.visibility='hidden'">
+      <div class="ov-rw-body">
+        <b>${esc(r.name)}</b>
+        <span>${r.isOwn ? 'dein Relikt' : ''}${r.score < 1 ? (r.isOwn ? ' · ' : '') + 'unscharf erkannt' : ''}</span>
+      </div>
+      <span class="ov-rw-plat ${good ? 'good' : ''}">${plat}</span>
+      <span class="ov-rw-duc">${r.ducats != null ? r.ducats : '–'}</span>
+    </div>`;
+}
 
-  if (!price) { el.textContent = 'kein Angebot'; el.classList.add('muted'); return; }
+function renderRelic() {
+  const box = $('ov-relic');
+  const body = $('ov-relic-body');
+  const head = $('ov-relic-title');
+  if (!box || !body) return;
 
-  el.textContent = `${price.min}p · Median ${price.median}`;
-  el.classList.toggle('good', price.min >= RELIC_GOOD_PLAT);
-  el.classList.toggle('muted', false);
-  el.title = price.online
-    ? `${price.offers} Angebote von Spielern, die gerade im Spiel sind`
-    : 'Niemand mit diesem Angebot ist gerade im Spiel - Preis mit Vorsicht';
+  if (!relicState) { box.classList.add('hidden'); return; }
+
+  const list = relicState.rewards || [];
+  head.textContent = list.length ? 'Relikt-Belohnungen' : 'Dein Fund';
+
+  if (list.length) {
+    /* Der hoechste Platinpreis wird hervorgehoben - aber erst, wenn alle
+       Preise da sind. Vorher waere die Auszeichnung eine Behauptung. */
+    const prices = list.map(r => r.price?.min).filter(n => Number.isFinite(n));
+    const complete = prices.length === list.length;
+    const bestPlat = complete ? Math.max(...prices) : null;
+
+    body.innerHTML = `<div class="ov-rw-head">
+        <span></span><span></span><span>Belohnung</span><span>Platin</span><span>Duk.</span>
+      </div>` + list.map(r => rewardRow(r, bestPlat)).join('');
+    return;
+  }
+
+  /* Noch keine Bildschirmerkennung: wenigstens der eigene Fund steht fest. */
+  const own = relicState.own;
+  const note = relicState.scanError
+    ? `<div class="ov-relic-note">Bildschirm nicht lesbar: ${esc(relicState.scanError)}</div>`
+    : relicState.scanning
+      ? '<div class="ov-relic-note">Lese die anderen drei vom Bildschirm …</div>'
+      : '';
+
+  body.innerHTML = (own
+    ? `<div class="ov-rw mine">
+         <span class="ov-rw-pos">•</span>
+         <img class="ov-rw-img" src="${esc(own.image || '')}" alt=""
+              onerror="this.style.visibility='hidden'">
+         <div class="ov-rw-body"><b>${esc(own.name)}</b><span>dein Relikt</span></div>
+         <span class="ov-rw-plat">${priceText(own.price)}</span>
+         <span class="ov-rw-duc">${own.ducats != null ? own.ducats : '–'}</span>
+       </div>`
+    : '<div class="ov-relic-note">Auswahl läuft — dein Fund stand nicht im Log.</div>') + note;
+}
+
+function showRelicReward(data) {
+  relicState = data || null;
+  renderRelic();
+  $('ov-relic')?.classList.remove('hidden');
+  startRelicCountdown(data?.seconds || 15);
 }
 
 function startRelicCountdown(seconds) {
@@ -488,11 +516,10 @@ function tickRelic() {
 function hideRelicReward() {
   clearInterval(relicTicker);
   relicTicker = null;
-  relicItem = null;
+  relicState = null;
   $('ov-relic')?.classList.add('hidden');
 }
 
 window.api.onRelicReward(showRelicReward);
-window.api.onRelicPrice(d => updateRelicPrice(d?.uniqueName, d?.price));
 window.api.onRelicTimer(d => { if (d?.seconds) startRelicCountdown(d.seconds); });
 window.api.onRelicClosed(hideRelicReward);

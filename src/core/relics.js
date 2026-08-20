@@ -98,6 +98,20 @@ export async function loadRelicTables({ refresh = false } = {}) {
   return index;
 }
 
+/**
+ * Alle Namen, die ueberhaupt als Reliktbelohnung auftauchen koennen.
+ * Das Kandidatenfeld fuer die Bildschirmerkennung - rund 600 Eintraege.
+ */
+export function allRewardNames(idx) {
+  const names = new Set();
+  for (const relic of idx?.relics || []) {
+    for (const rewards of Object.values(relic.states || {})) {
+      for (const r of rewards) if (r.itemName) names.add(r.itemName);
+    }
+  }
+  return [...names];
+}
+
 /** Belohnungen eines Relikts in einem Zustand, beste Seltenheit zuerst. */
 export function rewardsFor(idx, key, state = 'Intact') {
   const relic = idx?.byKey.get(key);

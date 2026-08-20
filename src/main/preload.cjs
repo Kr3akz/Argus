@@ -70,6 +70,7 @@ contextBridge.exposeInMainWorld('api', {
   getSettings:     ()          => ipcRenderer.invoke('settings:get'),
   setHotkeys:      (patch)     => ipcRenderer.invoke('settings:hotkeys', patch),
   setRelicAutoShow:(on)        => ipcRenderer.invoke('settings:relicAutoShow', on),
+  setRelicScan:    (on)        => ipcRenderer.invoke('settings:relicScan', on),
   /* Relikt-Belohnungen aus EE.log. Nur der Item-Pfad kommt hier an -
      AccountIds bleiben in logwatch.js und werden dort verworfen. */
   getCurrentRelic: ()          => ipcRenderer.invoke('relic:current'),
@@ -77,11 +78,6 @@ contextBridge.exposeInMainWorld('api', {
     const handler = (_e, data) => cb(data);
     ipcRenderer.on('relic:reward', handler);
     return () => ipcRenderer.removeListener('relic:reward', handler);
-  },
-  onRelicPrice:    (cb)        => {
-    const handler = (_e, data) => cb(data);
-    ipcRenderer.on('relic:price', handler);
-    return () => ipcRenderer.removeListener('relic:price', handler);
   },
   onRelicTimer:    (cb)        => {
     const handler = (_e, data) => cb(data);

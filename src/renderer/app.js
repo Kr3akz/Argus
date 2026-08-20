@@ -2444,12 +2444,17 @@ function renderNotifToggles() {
 /* Eigener Schalter, eigene Ablage: das Einblenden bei Relikt-Funden haengt am
    Overlay, nicht an den Benachrichtigungen, und liegt deshalb in config.json
    statt bei den Melde-Einstellungen. */
-function renderRelicToggle(on) {
+function renderRelicToggle(on, scan) {
   if ($('set-relic-autoshow')) $('set-relic-autoshow').checked = on !== false;
+  if ($('set-relic-scan'))     $('set-relic-scan').checked     = scan !== false;
 }
 
 $('set-relic-autoshow')?.addEventListener('change', e => {
   window.api.setRelicAutoShow(e.target.checked).catch(() => {});
+});
+
+$('set-relic-scan')?.addEventListener('change', e => {
+  window.api.setRelicScan(e.target.checked).catch(() => {});
 });
 
 async function saveNotifToggles() {
@@ -2485,7 +2490,7 @@ async function loadSettingsTab() {
     if (res && res.ok) {
       hotkeyState = res.hotkeys;
       if (res.notifications) notificationSettings = res.notifications;
-      renderRelicToggle(res.relicAutoShow);
+      renderRelicToggle(res.relicAutoShow, res.relicScan);
     }
   } catch (err) {
     setHotkeyStatus('warn', 'Einstellungen konnten nicht gelesen werden: ' + err.message);

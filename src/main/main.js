@@ -39,6 +39,8 @@ import { matchesFissureFilter } from '../core/fissure-filter.js';
 import { captureForeground, restoreForeground } from '../core/foreground.js';
 import { LogWatcher } from '../core/logwatch.js';
 import { loadMarketItems, findMarketItem, getPrice } from '../core/market.js';
+import { loadRelicTables, allRewardNames } from '../core/relics.js';
+import { scanRewardScreen, buildRewardIndex } from '../core/rewardscan.js';
 import {
   parseBuildId, fetchBuild, toBuild, loadModMap, saveModMap,
   unknownModIds, mergeNames, USER_AGENT as OF_USER_AGENT
@@ -65,6 +67,10 @@ let layoutSaveTimer = null;
 /* Relikt-Beobachtung: liest Warframes EE.log mit. Siehe core/logwatch.js. */
 let logWatcher = null;
 let relicAutoShow = true;
+/* Bildschirmerkennung der vier Belohnungen. Abschaltbar, weil dafuer ein
+   Bildschirmfoto entsteht - auch wenn es den Rechner nie verlaesst. */
+let relicScan = true;
+let rewardIndex = null;
 /* Nur ein selbst eingeblendetes Overlay wird danach auch selbst wieder
    ausgeblendet - wer es vorher offen hatte, soll es behalten. */
 let overlayShownForRelic = false;
@@ -177,7 +183,7 @@ function rememberOverlayLayout() {
   layoutSaveTimer = setTimeout(async () => {
     try {
       const cfg = await loadConfig();
-      await saveConfig({ ...cfg, overlayBounds, overlayOpacity, overlayClickThrough: clickThrough, relicAutoShow });
+      await saveConfig({ ...cfg, overlayBounds, overlayOpacity, overlayClickThrough: clickThrough, relicAutoShow, relicScan });
     } catch {
       /* Eine nicht gespeicherte Fensterposition ist ein Schoenheitsfehler,
          kein Grund, irgendetwas anderes anzuhalten. */
@@ -239,6 +245,7 @@ async function loadOverlayPrefs() {
     const cfg = await loadConfig();
     if (cfg.hotkeys) hotkeys = { ...DEFAULT_HOTKEYS, ...cfg.hotkeys };
     if (typeof cfg.relicAutoShow === 'boolean') relicAutoShow = cfg.relicAutoShow;
+    if (typeof cfg.relicScan === 'boolean') relicScan = cfg.relicScan;
     if (Number.isFinite(cfg.overlayOpacity)) overlayOpacity = clampOpacity(cfg.overlayOpacity);
     if (cfg.overlayBounds) overlayBounds = cfg.overlayBounds;
     clickThrough = !!cfg.overlayClickThrough;
@@ -1142,30 +1149,99 @@ function sendToOverlay(channel, payload) {
   if (overlayWin && !overlayWin.isDestroyed()) overlayWin.webContents.send(channel, payload);
 }
 
+/** Kandidatenfeld fuer die Bildschirmerkennung, einmal gebaut. */
+async function ensureRewardIndex() {
+  if (rewardIndex) return rewardIndex;
+  const relics = await loadRelicTables();
+  rewardIndex = buildRewardIndex(allRewardNames(relics));
+  return rewardIndex;
+}
+
+/** Erkannter Name -> Anzeige mit Bild, Dukaten und Markt-Kennung. */
+async function describeScanned(name) {
+  let image = null, ducats = null, slug = null, uniqueName = null;
+  try {
+    const market = await loadMarketItems();
+    const hit = findMarketItem(market, { name });
+    if (hit) {
+      slug = hit.slug;
+      ducats = hit.ducats ?? null;
+      /* gameRef ist DEs uniqueName - damit kommt man an dasselbe Bild, das
+         der Katalog fuer dieses Teil fuehrt. */
+      uniqueName = hit.gameRef || null;
+      if (uniqueName) image = imageUrl(uniqueName, 128);
+    }
+  } catch { /* Name allein ist besser als nichts. */ }
+  return { name, image, ducats, slug, uniqueName };
+}
+
+/** Aktuellen Stand an das Overlay schicken. Immer vollstaendig, nie in Teilen. */
+function pushRelic() {
+  sendToOverlay('relic:reward', currentRelic);
+}
+
 function startLogWatcher() {
   logWatcher = new LogWatcher();
 
   logWatcher.on('relic-reward', async ev => {
-    const item = ev.uniqueName ? await describeReward(ev.uniqueName) : null;
+    const own = ev.uniqueName ? await describeReward(ev.uniqueName) : null;
 
-    /* Erst der Name, dann der Preis: der Name steht sofort aus lokalen Daten
-       fest, der Preis braucht einen Netzabruf. Bei 15 Sekunden Bedenkzeit
-       zaehlt jede davon. */
-    currentRelic = { seconds: ev.seconds, item, price: null, at: Date.now() };
-    sendToOverlay('relic:reward', currentRelic);
+    /* Sofort zeigen, was ohne Netz und ohne Bildschirm feststeht: der eigene
+       Fund aus dem Log. Alles andere kommt in den naechsten Sekunden dazu. */
+    currentRelic = {
+      seconds: ev.seconds, at: Date.now(),
+      own, rewards: [], scanning: relicScan, scanError: null
+    };
+    pushRelic();
 
     if (relicAutoShow && !overlayVisible()) {
       overlayShownForRelic = true;
       showOverlay();
     }
 
-    if (item?.slug) {
-      try {
-        const price = await getPrice(item.slug);
-        /* Nur uebernehmen, wenn inzwischen kein neuer Fund kam. */
-        if (currentRelic?.item?.uniqueName === item.uniqueName) currentRelic.price = price;
-        sendToOverlay('relic:price', { uniqueName: item.uniqueName, price });
-      } catch { /* Ohne Preis bleibt der Name stehen. */ }
+    /* Der eigene Fund zuerst - er ist schon bekannt, der Preis fehlt nur noch. */
+    if (own?.slug) {
+      const price = await getPrice(own.slug).catch(() => null);
+      if (currentRelic?.own?.uniqueName === own.uniqueName) {
+        currentRelic.own.price = price;
+        pushRelic();
+      }
+    }
+
+    if (!relicScan) return;
+
+    /* Und jetzt der Bildschirm: die drei Funde der Mitspieler stehen nirgends
+       sonst. Rund 1,3 s fuer Aufnahme und Erkennung. */
+    const started = currentRelic;
+    const scan = await scanRewardScreen(await ensureRewardIndex());
+    if (currentRelic !== started) return;   // inzwischen kam eine neue Runde
+
+    if (!scan.ok) {
+      currentRelic.scanning = false;
+      currentRelic.scanError = scan.error;
+      pushRelic();
+      return;
+    }
+
+    const ownName = own?.name || null;
+    currentRelic.rewards = await Promise.all(scan.rewards.map(async r => ({
+      ...(await describeScanned(r.name)),
+      position: r.position,
+      score: r.score,
+      isOwn: !!ownName && r.name === ownName,
+      price: null
+    })));
+    currentRelic.scanning = false;
+    pushRelic();
+
+    /* Preise einzeln nachreichen, damit die Liste nicht auf den letzten
+       Abruf wartet. */
+    for (const reward of currentRelic.rewards) {
+      if (!reward.slug) continue;
+      const price = await getPrice(reward.slug).catch(() => null);
+      if (currentRelic !== started) return;
+      reward.price = price;
+      pushRelic();
     }
   });
 
@@ -1187,7 +1263,16 @@ function startLogWatcher() {
 
 ipcMain.handle('settings:get', async () => {
   const st = await store.load();
-  return { ok: true, hotkeys: { ...hotkeys }, notifications: st.notifications, relicAutoShow };
+  return { ok: true, hotkeys: { ...hotkeys }, notifications: st.notifications, relicAutoShow, relicScan };
+});
+
+ipcMain.handle('settings:relicScan', async (_e, on) => {
+  relicScan = !!on;
+  try {
+    const cfg = await loadConfig();
+    await saveConfig({ ...cfg, relicScan });
+  } catch { /* nicht gespeichert, aber aktiv */ }
+  return { ok: true, relicScan };
 });
 
 /* Wird beim Start des Overlay-Renderers abgefragt. Die Restzeit wird neu

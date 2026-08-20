@@ -19,7 +19,10 @@
 param(
   [Parameter(Mandatory = $true)][string]$Png,
   [Parameter(Mandatory = $true)][string]$Json,
-  [int]$X = 0, [int]$Y = 0, [int]$W = 0, [int]$H = 0
+  [int]$X = 0, [int]$Y = 0, [int]$W = 0, [int]$H = 0,
+  # Vorhandenes Bild auswerten, statt den Bildschirm aufzunehmen. Fuer Tests
+  # ohne laufendes Spiel - und um eine Erkennung spaeter nachzustellen.
+  [string]$Source = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -48,11 +51,15 @@ $dir = Split-Path -Parent $Png
 if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
 
 # ---------- 2. Aufnehmen ----------
-$bmp = New-Object System.Drawing.Bitmap $W, $H
-$g = [System.Drawing.Graphics]::FromImage($bmp)
-$g.CopyFromScreen($X, $Y, 0, 0, (New-Object System.Drawing.Size($W, $H)))
-$bmp.Save($Png, [System.Drawing.Imaging.ImageFormat]::Png)
-$g.Dispose(); $bmp.Dispose()
+if ($Source) {
+  Copy-Item -Path $Source -Destination $Png -Force
+} else {
+  $bmp = New-Object System.Drawing.Bitmap $W, $H
+  $g = [System.Drawing.Graphics]::FromImage($bmp)
+  $g.CopyFromScreen($X, $Y, 0, 0, (New-Object System.Drawing.Size($W, $H)))
+  $bmp.Save($Png, [System.Drawing.Imaging.ImageFormat]::Png)
+  $g.Dispose(); $bmp.Dispose()
+}
 
 # ---------- 3. Erkennen ----------
 # WinRT-Aufrufe sind asynchron; in Windows PowerShell braucht es diesen

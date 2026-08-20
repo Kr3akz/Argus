@@ -3076,7 +3076,10 @@ label.setting-row { cursor: pointer; user-select: none; }
 }
 .ov-relic-timer.urgent { color: var(--red); }
 
-.ov-relic-body { display: flex; align-items: center; gap: 10px; padding: 0 10px 10px; }
+/* Untereinander, nicht nebeneinander: hier stehen bis zu vier Zeilen.
+   Der Einzel-Item-Entwurf hatte hier flex stehen - damit quetschte die Liste
+   alle Zeilen in eine Reihe. */
+.ov-relic-body { display: block; padding: 0 0 8px; }
 .ov-relic-img { width: 42px; height: 42px; object-fit: contain; flex-shrink: 0; }
 .ov-relic-info { min-width: 0; flex: 1; }
 .ov-relic-info b {
@@ -3105,3 +3108,55 @@ label.setting-row { cursor: pointer; user-select: none; }
   line-height: 1.4;
 }
 .ov-stale svg { flex-shrink: 0; }
+
+/* ---------- Belohnungsliste im Overlay ---------- */
+
+.ov-rw-head, .ov-rw {
+  display: grid;
+  grid-template-columns: 14px 26px 1fr 42px 28px;
+  align-items: center;
+  gap: 7px;
+}
+.ov-rw-head {
+  padding: 0 10px 4px;
+  font-size: 8.5px; font-weight: 700; letter-spacing: .8px;
+  text-transform: uppercase; color: var(--text-3);
+}
+.ov-rw-head span:nth-child(4), .ov-rw-head span:nth-child(5) { text-align: right; }
+
+.ov-rw {
+  padding: 5px 10px;
+  border-left: 2px solid transparent;
+  margin-left: -2px;
+}
+/* Das eigene Teil kennzeichnen: es ist das einzige, das man behaelt, wenn
+   niemand etwas Besseres hat. */
+.ov-rw.mine { background: rgba(255, 255, 255, 0.05); border-left-color: var(--text-3); }
+/* Der hoechste Platinpreis der Runde. */
+.ov-rw.best { background: rgba(74, 222, 128, 0.1); border-left-color: var(--green); }
+
+/* Die Nummer ist die Bruecke zum Bildschirm: erste Karte von links ist 1. */
+.ov-rw-pos {
+  font: 700 10px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  color: var(--text-3); text-align: center;
+}
+.ov-rw-img { width: 24px; height: 24px; object-fit: contain; }
+.ov-rw-body { min-width: 0; line-height: 1.2; }
+.ov-rw-body b {
+  display: block; font-size: 11px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ov-rw-body span {
+  display: block; font-size: 8.5px; color: var(--text-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ov-rw-plat {
+  font: 700 11px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  color: var(--text); text-align: right;
+}
+.ov-rw-plat.good { color: var(--green); }
+.ov-rw-duc {
+  font: 600 10px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  color: var(--gold); text-align: right;
+}
+.ov-relic-note { padding: 6px 10px 2px; font-size: 9.5px; color: var(--text-3); }

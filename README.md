@@ -90,30 +90,55 @@ der App.
 
 ## Relikt-Belohnungen
 
-Sobald der Auswahlbildschirm nach einer Riss-Mission aufgeht, blendet Argus dein
-gefundenes Teil ein — mit **Platinpreis** und **Dukatenwert**, samt Countdown der
-15 Sekunden Bedenkzeit. Danach verschwindet die Anzeige von selbst.
-
-Die Quelle ist Warframes eigene Logdatei `EE.log`. Dort steht in genau diesem Moment:
+Sobald der Auswahlbildschirm nach einer Riss-Mission aufgeht, blendet Argus **alle vier
+zur Auswahl stehenden Teile** ein — jeweils mit Platinpreis und Dukatenwert, samt
+Countdown der 15 Sekunden Bedenkzeit. Danach verschwindet die Anzeige von selbst.
 
 ```
-VoidProjections: <accountId> gets reward /Lotus/StoreItems/.../PrimeBowGrip
+RELIKT-BELOHNUNGEN                        9s
+   BELOHNUNG                   PLATIN  DUK.
+1  Pyrana Prime Barrel            4p     15   ← dein Relikt
+2  Vadarya Prime Receiver         2p     45
+3  Dual Zoren Prime Handle        2p     15
+4  Perigale Prime Stock           1p     15
+```
+
+**Die Nummerierung ist der Kern:** sie entspricht der Reihenfolge auf dem Bildschirm,
+von links nach rechts. Du liest die Zahl und klickst die Karte — kein Namensvergleich
+unter Zeitdruck.
+
+### Woher die Daten kommen
+
+Aus zwei Quellen, die nacheinander eintreffen:
+
+**Der eigene Fund** steht sofort fest. Warframes Logdatei `EE.log` schreibt im Moment
+des Auswahlbildschirms:
+
+```
+VoidProjections: <accountId> gets reward /Lotus/StoreItems/.../PyranaPrimeBarrel
 ProjectionRewardChoice.lua: Got rewards
 ```
 
-Der Item-Pfad steht also exakt da — **keine Texterkennung, kein Speicherzugriff, kein
-Anfassen des Spielprozesses**. Die AccountIds aus diesen Zeilen werden verworfen und
-nie weitergereicht.
+Die AccountIds aus diesen Zeilen werden verworfen und nie weitergereicht.
 
-### Was nicht geht
+**Die anderen drei** stehen dort nicht — DE protokolliert nur den eigenen. Sie werden
+per **Texterkennung** vom Bildschirm gelesen: ein Bildschirmfoto, die Windows-eigene
+OCR (`Windows.Media.Ocr`, kein Zusatzpaket, läuft offline), danach wird das Bild
+gelöscht. Es verlässt den Rechner nie.
 
-**Die Funde der drei Mitspieler stehen nicht im Log.** Ihre Daten kommen zwar über das
-Netz an (`Client got reward info from …`), werden aber nie mit Item protokolliert. Wer
-alle vier Namen will, wie AlecaFrame sie zeigt, braucht Texterkennung auf dem
-Bildschirm oder Lesezugriff auf den Spielspeicher.
+Zuverlässig wird das durch den Abgleich: nicht der erkannte Text zählt, sondern der
+Treffer in der Menge der **rund 600 möglichen Reliktbelohnungen** aus DEs Droptabellen.
+Aus einem verlesenen „kris Prime Grip" wird so wieder *Paris Prime Grip*. Erkannt werden
+muss nur genug, um im Kandidatenfeld eindeutig zu sein.
 
-Der eigene Fund allein beantwortet die halbe Frage: ob du deinen behältst. Ob einer der
-anderen mehr wert ist, siehst du weiterhin nur mit den Augen.
+Nachgemessen bei 2560×1440 mit englischem Client und deutscher Windows-Erkennung: alle
+vier Namen fehlerfrei, Aufnahme und Erkennung in 1,3 Sekunden — von 15 Sekunden
+Bedenkzeit. Wer die **englische** Texterkennung nachinstalliert (Windows-Einstellungen →
+Sprache → optionale Features), gibt der Erkennung zusätzlich das passende Sprachmodell;
+Argus nimmt es automatisch, sobald es da ist.
+
+Das Lesen vom Bildschirm lässt sich in den **Einstellungen** abschalten. Dann bleibt der
+eigene Fund aus dem Log — ganz ohne Bildschirmfoto.
 
 ### Preise
 
@@ -123,6 +148,15 @@ billigste Angebot von jemandem, der seit drei Tagen offline ist, ist kein Preis,
 sondern eine Zahl.
 
 Das automatische Einblenden lässt sich in den **Einstellungen** abschalten.
+
+### Grenzen
+
+- Erkannt wird, was auf dem **Hauptbildschirm** steht. Läuft Warframe auf einem anderen
+  Monitor, findet die Erkennung nichts.
+- Bricht die Erkennung ab, bleibt der eigene Fund stehen — die Anzeige fällt also nie
+  ganz aus.
+- Sehr kleine Auflösungen sind ungetestet; der Abgleich fängt einiges ab, aber unter
+  1080p kann die Schrift zu klein werden.
 
 ## Einstellungen
 
@@ -151,6 +185,9 @@ Liste, die sie filtert: dort zeigt die Vorschau direkt, wie viele Risse gerade p
   API-Zugangsdaten der laufenden Sitzung im Heap. Nur lesen, nichts schreiben.
 - **Lesender Zugriff auf `EE.log`**, Warframes eigene Logdatei, für die
   Relikt-Belohnungen. Ab dem zuletzt gelesenen Byte, ohne die Datei zu sperren.
+- **Bildschirmfoto** während des Belohnungsbildschirms, um die vier Teile per
+  Texterkennung zu lesen. Es wird sofort nach dem Auswerten gelöscht, verlässt den
+  Rechner nicht und lässt sich in den Einstellungen ganz abschalten.
 - **Fokuswechsel** über `SetForegroundWindow` für den Zeigermodus — eine
   Fensteroperation, kein Zugriff auf das Spiel.
 
@@ -220,6 +257,7 @@ src/core/     Logik, komplett unabhängig von der Oberfläche
   store.js        Ziele und Notizen
   foreground.js   gibt den Eingabefokus ans Spiel zurück
   logwatch.js     liest Warframes EE.log mit (Relikt-Belohnungen)
+  rewardscan.js   erkennt die vier Belohnungen auf dem Bildschirm
   relics.js       Relikt-Belohnungstabellen aus DEs Droptabellen
   market.js       Preise und Dukatenwerte von warframe.market
 src/main/     Electron-Hauptprozess (Hauptfenster + Overlay-Fenster)
@@ -311,5 +349,9 @@ node src/cli/log-test.js
 Spielt die vorhandene `EE.log` ab und zeigt, was Argus daraus erkannt hätte. Mit
 `--live` wartet der Test auf die nächste Riss-Mission.
 
-Die Umgebungsvariable `ARGUS_EE_LOG` zeigt auf eine andere Logdatei — für
-Installationen mit abweichendem Datenpfad und zum Testen ohne echte Mission.
+Zwei Umgebungsvariablen für Tests ohne laufendes Spiel:
+
+| Variable | Wirkung |
+|---|---|
+| `ARGUS_EE_LOG` | andere Logdatei — auch für Installationen mit abweichendem Datenpfad |
+| `ARGUS_SCAN_IMAGE` | wertet ein gespeichertes Bild aus, statt den Bildschirm aufzunehmen |
