@@ -22,16 +22,17 @@ npm run report
 | | |
 |---|---|
 | **Alt+Shift+W** | Overlay ein-/ausblenden (global, auch im Spiel) |
-| **▣** in der Titelleiste | Zwischen Fenster- und Overlay-Modus wechseln |
+| **▣** in der Titelleiste | Overlay ein-/ausblenden |
 
-### Zwei Modi
+### Zwei Fenster
 
-**Fenstermodus** ist die volle Oberfläche mit allen acht Bereichen — gedacht für den
-zweiten Monitor.
+Das **Hauptfenster** ist die volle Oberfläche mit allen acht Bereichen — gedacht für
+den zweiten Monitor. Es bleibt offen, wenn das Overlay erscheint: beides läuft
+gleichzeitig, auf getrennten Bildschirmen.
 
-**Overlay** ist keine geschrumpfte Fassung davon, sondern eine eigene schmale Ansicht
-(380 px) für den Bildschirm mit dem laufenden Spiel. Sie zeigt nur, was sich in den
-nächsten Minuten entscheidet:
+Das **Overlay** ist ein eigenes Fenster mit eigener Oberfläche (`overlay.html`), keine
+geschrumpfte Fassung des Dashboards. 380 px schmal, für den Bildschirm mit dem
+laufenden Spiel, und es zeigt nur, was sich in den nächsten Minuten entscheidet:
 
 - die drei Open-World-Zyklen mit sekundengenauem Countdown
 - aktive Void-Risse — Treffer deiner Benachrichtigungs-Auswahl stehen oben und sind
@@ -40,10 +41,14 @@ nächsten Minuten entscheidet:
 
 Restzeiten unter fünf Minuten färben sich golden.
 
-Beide Modi merken sich **eigene** Position und Größe. Das Overlay geht beim ersten Mal
-oben rechts auf dem **Hauptbildschirm** auf — dort läuft in aller Regel das Spiel,
-während das Fenster auf dem zweiten Monitor stehen bleibt. Einmal woandershin gezogen,
-bleibt es dort, auch über einen Neustart hinweg.
+Das Overlay merkt sich seine Position und Größe getrennt vom Hauptfenster. Beim ersten
+Mal geht es oben rechts auf dem **Hauptbildschirm** auf — dort läuft in aller Regel das
+Spiel, während das Hauptfenster auf dem zweiten Monitor stehen bleibt. Einmal
+woandershin gezogen, bleibt es dort, auch über einen Neustart hinweg.
+
+Ausblenden schließt das Overlay nicht, es versteckt es nur — der nächste Tastendruck
+ist deshalb sofort da. Erst wenn das Hauptfenster geschlossen wird, verschwindet auch
+das Overlay und die App beendet sich.
 
 In der Fußleiste stellst du die **Deckkraft** ein (35–100 %). Der Knopf mit dem
 Fadenkreuz schaltet den **Klick-Durchlass**: Klicks gehen dann ans Spiel, statt im
@@ -122,8 +127,11 @@ src/core/     Logik, komplett unabhängig von der Oberfläche
   recipes.js      rekursive Materialauflösung
   ratelimit.js    schützt vor dem Login-Lockout
   store.js        Ziele und Notizen
-src/main/     Electron-Hauptprozess
+src/main/     Electron-Hauptprozess (Hauptfenster + Overlay-Fenster)
 src/renderer/ Oberfläche
+  index.html    Hauptfenster
+  overlay.html  Overlay-Fenster, eigene schlanke Oberfläche
+  style.css     beide Fenster
 data/         lokaler Cache, Konfiguration, deine Ziele
 ```
 

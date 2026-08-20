@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' https://cdn.jsdelivr.net data:; style-src 'self' 'unsafe-inline';">
+  <title>Argus Overlay</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<!--
+  Eigenes Dokument fuer das Overlay-Fenster (siehe createOverlayWindow in
+  main.js). Bewusst nicht index.html mit versteckten Bereichen: das Overlay
+  laeuft neben dem Hauptfenster, und ein zweiter Renderer, der das ganze
+  Dashboard mit aufbaut, waere waehrend des Spielens verschenkte Arbeit.
+
+  Gezeigt wird nur, was sich in den naechsten Minuten entscheidet.
+-->
+<body class="overlay-window">
+
+<div id="overlay-view" class="ov">
+
+  <header class="ov-bar" id="ov-bar">
+    <span class="ov-logo" data-icon="argus"></span>
+    <div class="ov-id">
+      <b>Argus</b>
+      <span id="ov-mr" class="ov-mr">MR –</span>
+    </div>
+    <div class="ov-bar-actions">
+      <button id="ov-refresh" class="ov-btn" title="Weltzustand neu laden"></button>
+      <button id="ov-click" class="ov-btn" title="Klicks ans Spiel durchreichen"></button>
+      <button id="ov-exit" class="ov-btn" title="Overlay ausblenden (Alt+Shift+W)"></button>
+    </div>
+  </header>
+
+  <div class="ov-body">
+    <section class="ov-sec">
+      <div class="ov-sec-head"><span>Zyklen</span></div>
+      <div id="ov-cycles" class="ov-cycles"></div>
+    </section>
+
+    <section class="ov-sec">
+      <div class="ov-sec-head">
+        <span>Void-Risse</span>
+        <span id="ov-fissure-note" class="ov-sec-note"></span>
+      </div>
+      <div id="ov-fissures" class="ov-list"></div>
+    </section>
+
+    <section class="ov-sec" id="ov-goals-sec">
+      <div class="ov-sec-head"><span>Offene Ziele</span></div>
+      <div id="ov-goals" class="ov-list"></div>
+    </section>
+  </div>
+
+  <footer class="ov-foot">
+    <label class="ov-opacity" title="Deckkraft des Overlays">
+      <span data-icon="sliders"></span>
+      <input id="ov-opacity" type="range" min="35" max="100" step="5" value="94">
+    </label>
+    <span id="ov-age" class="ov-age">—</span>
+  </footer>
+</div>
+
+<script src="icons.js"></script>
+<script src="fissure-filter.js"></script>
+<script src="overlay.js"></script>
+</body>
+</html>

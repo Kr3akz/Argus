@@ -44,16 +44,18 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let win = null;
-let overlayMode = false;
+
+/* Das Overlay ist ein EIGENES Fenster, kein zweiter Zustand des Hauptfensters.
+   Zuerst war es dasselbe Fenster, das die Gestalt wechselt - das hiess aber:
+   wer das Overlay einblendet, verliert die volle Oberflaeche auf dem zweiten
+   Monitor. Genau die soll waehrend des Spielens stehen bleiben. */
+let overlayWin = null;
 
 /* Klicks gehen ans Spiel durch, statt im Overlay zu landen. */
 let clickThrough = false;
 let overlayOpacity = 0.94;
 
-/* Zwei getrennte Positionen: das Fenster steht auf dem Arbeitsmonitor, das
-   Overlay ueber dem Spiel. Wer zwischen beiden wechselt, will nicht jedes Mal
-   neu schieben - deshalb merkt sich jeder Modus seine eigene Geometrie. */
-let normalBounds  = null;
+/* Nur das Overlay merkt sich seine Lage; das Hauptfenster bleibt, wo es ist. */
 let overlayBounds = null;
 let layoutSaveTimer = null;
 
@@ -87,15 +89,14 @@ function createWindow() {
   win.loadFile(path.join(__dirname, '../renderer/index.html'));
   win.once('ready-to-show', () => win.show());
 
-  /* Nur im Overlay-Modus mitschreiben. Im Fenstermodus wuerde jede Bewegung
-     die gemerkte Overlay-Position ueberschreiben. */
-  const remember = () => {
-    if (!overlayMode || !win) return;
-    overlayBounds = win.getBounds();
-    rememberOverlayLayout();
-  };
-  win.on('move', remember);
-  win.on('resize', remember);
+  /* Ohne Hauptfenster hat das Overlay keinen Zweck. Und ein nur verstecktes
+     Overlay wuerde app.quit() verhindern: die App liefe unsichtbar weiter,
+     ohne Fenster und ohne Taskleisteneintrag. */
+  win.on('closed', () => {
+    win = null;
+    if (overlayWin && !overlayWin.isDestroyed()) overlayWin.destroy();
+    overlayWin = null;
+  });
 
   // Externe Links im echten Browser oeffnen, nicht in der App.
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -179,46 +180,76 @@ async function loadOverlayPrefs() {
  * per Hotkey aufheben liesse.
  */
 function applyMousePassthrough(ignore) {
-  if (!win) return;
-  win.setIgnoreMouseEvents(!!ignore, { forward: true });
+  if (!overlayWin || overlayWin.isDestroyed()) return;
+  overlayWin.setIgnoreMouseEvents(!!ignore, { forward: true });
+}
+
+/* Das Overlay laedt ein eigenes, schlankes Dokument statt index.html: es
+   braucht weder Sidebar noch die acht Bereiche, und ein zweiter Renderer, der
+   das ganze Dashboard aufbaut, waere waehrend des Spielens verschenkte Zeit. */
+function createOverlayWindow() {
+  overlayWin = new BrowserWindow({
+    ...(usableBounds(overlayBounds) || defaultOverlayBounds()),
+    minWidth: OVERLAY_MIN.width, minHeight: OVERLAY_MIN.height,
+    title: 'Argus Overlay',
+    backgroundColor: '#0b0f16',
+    frame: false,
+    show: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    fullscreenable: false,
+    maximizable: false,
+    minimizable: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  });
+
+  /* 'screen-saver' liegt ueber randlosen Vollbildfenstern - die normale
+     alwaysOnTop-Stufe reicht dafuer nicht. */
+  overlayWin.setAlwaysOnTop(true, 'screen-saver');
+  overlayWin.setOpacity(overlayOpacity);
+  overlayWin.loadFile(path.join(__dirname, '../renderer/overlay.html'));
+
+  const remember = () => {
+    if (!overlayWin || overlayWin.isDestroyed()) return;
+    overlayBounds = overlayWin.getBounds();
+    rememberOverlayLayout();
+  };
+  overlayWin.on('move', remember);
+  overlayWin.on('resize', remember);
+  overlayWin.on('closed', () => { overlayWin = null; broadcastOverlayState(); });
+
+  overlayWin.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
+  return overlayWin;
+}
+
+function overlayVisible() {
+  return !!(overlayWin && !overlayWin.isDestroyed() && overlayWin.isVisible());
 }
 
 function overlayState() {
-  return { overlay: overlayMode, clickThrough, opacity: overlayOpacity };
+  return { overlay: overlayVisible(), clickThrough, opacity: overlayOpacity };
 }
 
-/** Wechselt zwischen normalem Fenster und kompaktem Overlay. */
-function toggleOverlay() {
-  return setOverlayMode(!overlayMode);
-}
-
-function setOverlayMode(on) {
-  if (!win || on === overlayMode) return overlayMode;
-  overlayMode = on;
-
-  if (on) {
-    normalBounds = win.getBounds();
-    /* Erst das Minimum senken, dann die Groesse setzen. Andersherum klemmt
-       Windows das Overlay auf die Mindestmasse des Fenstermodus. */
-    win.setMinimumSize(OVERLAY_MIN.width, OVERLAY_MIN.height);
-    win.setBounds(usableBounds(overlayBounds) || defaultOverlayBounds());
-  } else {
-    overlayBounds = win.getBounds();
-    rememberOverlayLayout();
-    win.setMinimumSize(WINDOW_MIN.width, WINDOW_MIN.height);
-    if (normalBounds) win.setBounds(normalBounds);
+/* Beide Fenster bekommen denselben Zustand: das Hauptfenster, damit die
+   Titelleiste den Schalter richtig zeigt, das Overlay fuer seine Fussleiste. */
+function broadcastOverlayState() {
+  const st = overlayState();
+  for (const w of [win, overlayWin]) {
+    if (w && !w.isDestroyed()) w.webContents.send('overlay:changed', st);
   }
-
-  win.setAlwaysOnTop(on, 'screen-saver');
-  win.setOpacity(on ? overlayOpacity : 1);
-  win.setSkipTaskbar(on);
-  applyMousePassthrough(on && clickThrough);
-  win.webContents.send('overlay:changed', overlayState());
-  return overlayMode;
 }
 
 /**
- * Overlay per Hotkey einblenden.
+ * Overlay einblenden.
  *
  * showInactive() statt show(): Warframe behaelt den Eingabefokus, waehrend das
  * Overlay darueber auftaucht. Mit show() aktiviert Windows das Overlay-Fenster,
@@ -226,22 +257,44 @@ function setOverlayMode(on) {
  * man muesste erst wieder ins Spielfenster klicken.
  */
 function showOverlay() {
-  if (!win) return;
-  setOverlayMode(true);
-  win.showInactive();
+  if (!overlayWin || overlayWin.isDestroyed()) {
+    createOverlayWindow();
+    /* Beim ersten Mal erst zeigen, wenn Inhalt da ist - sonst blitzt ein
+       leeres Fenster ueber dem Spiel auf. Danach wird nur noch versteckt und
+       wieder gezeigt, das ist sofort da. */
+    overlayWin.once('ready-to-show', revealOverlay);
+    return;
+  }
+  revealOverlay();
+}
+
+function revealOverlay() {
+  if (!overlayWin || overlayWin.isDestroyed()) return;
+  overlayWin.showInactive();
+  overlayWin.setAlwaysOnTop(true, 'screen-saver');
+  applyMousePassthrough(clickThrough);
+  broadcastOverlayState();
 }
 
 /**
- * Overlay per Hotkey ausblenden.
+ * Overlay ausblenden - nur verstecken, nicht schliessen: der naechste Aufruf
+ * soll sofort da sein, ohne dass Fenster und Renderer neu hochfahren.
  *
  * Wer zwischendurch ins Overlay geklickt hat, hat den Fokus hierher geholt.
  * Dann erst abgeben, damit Windows ihn an das Fenster darunter - das Spiel -
  * zurueckreicht, und danach verstecken.
  */
 function hideOverlay() {
-  if (!win) return;
-  if (win.isFocused()) win.blur();
-  win.hide();
+  if (!overlayWin || overlayWin.isDestroyed()) return;
+  if (overlayWin.isFocused()) overlayWin.blur();
+  overlayWin.hide();
+  broadcastOverlayState();
+}
+
+function toggleOverlay() {
+  if (overlayVisible()) hideOverlay();
+  else showOverlay();
+  return overlayState();
 }
 
 /* ---------------------------- Daten ---------------------------- */
@@ -887,25 +940,27 @@ ipcMain.handle('mods:setManyOwned', async (_e, list, owned) => {
   return { ok: true, data: await buildsPayload() };
 });
 
-ipcMain.handle('window:overlay',      () => { toggleOverlay(); return overlayState(); });
+ipcMain.handle('window:overlay',      () => toggleOverlay());
 ipcMain.handle('window:overlayState', () => overlayState());
 ipcMain.handle('window:clickThrough', (_e, on) => {
   clickThrough = !!on;
-  applyMousePassthrough(overlayMode && clickThrough);
+  applyMousePassthrough(clickThrough);
   rememberOverlayLayout();
+  broadcastOverlayState();
   return overlayState();
 });
 /* Der Renderer meldet, ob der Zeiger ueber dem Overlay steht. Nur so laesst
    sich der Durchlass kurzzeitig aufheben, damit die Bedienelemente ueberhaupt
    noch anklickbar sind. */
 ipcMain.handle('window:hover', (_e, over) => {
-  if (overlayMode && clickThrough) applyMousePassthrough(!over);
+  if (clickThrough) applyMousePassthrough(!over);
   return null;
 });
 ipcMain.handle('window:opacity', (_e, value) => {
   overlayOpacity = clampOpacity(value);
-  if (overlayMode && win) win.setOpacity(overlayOpacity);
+  if (overlayWin && !overlayWin.isDestroyed()) overlayWin.setOpacity(overlayOpacity);
   rememberOverlayLayout();
+  broadcastOverlayState();
   return overlayState();
 });
 ipcMain.handle('window:hotkey',   () => OVERLAY_HOTKEY);
@@ -1070,11 +1125,9 @@ app.whenReady().then(async () => {
   await loadOverlayPrefs();
   createWindow();
   // Hotkey zum Ein-/Ausblenden waehrend des Spielens
-  globalShortcut.register(OVERLAY_HOTKEY, () => {
-    if (!win) return;
-    if (win.isVisible() && overlayMode) hideOverlay();
-    else showOverlay();
-  });
+  /* Schaltet nur das Overlay. Das Hauptfenster bleibt unberuehrt - es steht
+     auf dem zweiten Monitor und soll waehrend des Spielens offen bleiben. */
+  globalShortcut.register(OVERLAY_HOTKEY, () => toggleOverlay());
 
   // Hintergrund-Überwachung für Void-Risse starten (alle 45 Sekunden)
   pollFissureTracker();

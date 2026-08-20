@@ -2762,13 +2762,9 @@ select option { background: #161b25; color: var(--text); }
    Zahlen und Zustaende ab - dafuer ist jede Zierde verlorener Platz.
    ========================================================================= */
 
-body.overlay-mode .titlebar,
-body.overlay-mode #app,
-body.overlay-mode #loading,
-body.overlay-mode #error,
-/* Der In-App-Toast ist 320 px breit und wuerde das halbe Overlay verdecken.
-   Waehrend des Spielens ist ohnehin die Windows-Benachrichtigung der Kanal. */
-body.overlay-mode #app-toast-container { display: none !important; }
+/* Das Overlay ist ein eigenes Dokument in einem eigenen Fenster
+   (overlay.html). Diese Klasse steht nur an dessen body. */
+body.overlay-window { background: #0b0f16; }
 
 .ov {
   position: fixed;
