@@ -45,12 +45,15 @@ function render(tags) {
 
     // Status-Badge
     let badgeHtml = '';
+    const req = t.currentRequired || 1;
     if (t.isCrafted) {
       badgeHtml = `<div class="tag-status-badge crafted"><span class="badge-check">✓</span> Item crafted</div>`;
+    } else if (t.currentOwned >= req) {
+      badgeHtml = `<div class="tag-status-badge owned">${t.currentOwned} / ${req} owned</div>`;
     } else if (t.currentOwned > 0) {
-      badgeHtml = `<div class="tag-status-badge owned">${t.currentOwned} / ${t.currentRequired || 1} owned</div>`;
+      badgeHtml = `<div class="tag-status-badge partial">${t.currentOwned} / ${req} owned</div>`;
     } else {
-      badgeHtml = `<div class="tag-status-badge missing">0 / ${t.currentRequired || 1} owned</div>`;
+      badgeHtml = `<div class="tag-status-badge missing">0 / ${req} owned</div>`;
     }
 
     // Set-Komponenten-Reihe
@@ -58,12 +61,16 @@ function render(tags) {
     if (t.setParts && t.setParts.length) {
       partsHtml = `
         <div class="tag-parts-row">
-          ${t.setParts.map(p => `
-            <div class="tag-part-box ${p.isCurrent ? 'current' : ''} ${p.count === 0 ? 'zero' : ''}" title="${esc(p.name)} (${p.count} im Besitz)">
+          ${t.setParts.map(p => {
+            const pReq = p.required || 1;
+            const hasEnough = p.count >= pReq;
+            const qtyText = pReq > 1 ? `${p.count}/${pReq}` : fmtQty(p.count);
+            return `
+            <div class="tag-part-box ${p.isCurrent ? 'current' : ''} ${p.count === 0 ? 'zero' : (!hasEnough ? 'partial' : '')}" title="${esc(p.name)} (${p.count}/${pReq} im Besitz)">
               <img class="tag-part-img" src="${esc(p.image)}" alt="" onerror="this.style.visibility='hidden'">
-              <span class="tag-part-qty">${fmtQty(p.count)}</span>
-            </div>
-          `).join('')}
+              <span class="tag-part-qty">${qtyText}</span>
+            </div>`;
+          }).join('')}
         </div>
       `;
     }

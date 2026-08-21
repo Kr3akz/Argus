@@ -69,12 +69,17 @@ window.api.overlayState().then(syncOverlayBadge).catch(() => {});
 
 /* ---------------- Sidebar Navigation ---------------- */
 function showTab(name) {
-  if (name === 'checklist') name = 'goals';
+  /* Mastery Manager und Farm-Ziele sind ein Reiter mit zwei Modi. Aeltere
+     Namen zeigen weiter dorthin, damit Aufrufe von aussen nicht ins Leere
+     laufen - 'checklist' und 'goals' schalten dabei auf den Katalog. */
+  if (name === 'checklist' || name === 'goals') { name = 'mastery'; masteryMode = 'catalog'; }
+  if (name === 'dashboard') { name = 'mastery'; masteryMode = 'manager'; }
   document.querySelectorAll('.nav-item').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
   document.querySelectorAll('.tabpane').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
-  if (name === 'goals') {
+  if (name === 'mastery') {
     if (!checklistCache.length) loadChecklist();
     if (state) renderGoals(state);
+    applyMasteryMode();
   }
   if (name === 'builds' && !buildsLoaded) loadBuilds();
   if (name === 'worldstate') loadWorldState();
@@ -88,7 +93,53 @@ document.querySelectorAll('.nav-item').forEach(tab => {
   tab.onclick = () => showTab(tab.dataset.tab);
 });
 
-if ($('btn-to-goals')) $('btn-to-goals').onclick = () => showTab('goals');
+/* ---------------- Mastery: Manager <-> Katalog ---------------- */
+let masteryMode = 'manager';   // 'manager' | 'catalog'
+
+const MASTERY_HINTS = {
+  manager: 'Ziele, Rohstoffe & Mastery-Empfehlungen',
+  catalog: 'Alle Items durchsuchen und als Ziel setzen'
+};
+
+function applyMasteryMode() {
+  $('tab-mastery-mode-manager')?.classList.toggle('active', masteryMode === 'manager');
+  $('tab-mastery-mode-catalog')?.classList.toggle('active', masteryMode === 'catalog');
+  $('mastery-pane-manager')?.classList.toggle('active', masteryMode === 'manager');
+  $('mastery-pane-catalog')?.classList.toggle('active', masteryMode === 'catalog');
+  const hint = $('mastery-mode-hint');
+  if (hint) hint.textContent = MASTERY_HINTS[masteryMode] || '';
+  if (masteryMode === 'catalog' && !checklistCache.length) loadChecklist();
+}
+
+function setMasteryMode(mode) {
+  masteryMode = mode;
+  applyMasteryMode();
+}
+
+$('tab-mastery-mode-manager')?.addEventListener('click', () => setMasteryMode('manager'));
+$('tab-mastery-mode-catalog')?.addEventListener('click', () => setMasteryMode('catalog'));
+
+/* Der Knopf im Kopf springt zu den ausfuehrlichen Zielkarten - die liegen im
+   Manager, also erst umschalten und dann dorthin scrollen. */
+function setGoalDetailsOpen(open) {
+  $('btn-goal-details')?.setAttribute('aria-expanded', String(open));
+  $('goals')?.classList.toggle('hidden', !open);
+}
+
+$('btn-goal-details')?.addEventListener('click', () => {
+  const open = $('btn-goal-details').getAttribute('aria-expanded') === 'true';
+  setGoalDetailsOpen(!open);
+});
+
+function jumpToGoalDetails() {
+  masteryMode = 'manager';
+  showTab('mastery');
+  setGoalDetailsOpen(true);
+  /* Erst wenn der Manager wirklich sichtbar ist, hat das Ziel eine Position. */
+  requestAnimationFrame(() =>
+    $('goal-details-head')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+}
+if ($('btn-to-goals')) $('btn-to-goals').onclick = jumpToGoalDetails;
 
 /* ---------------- Laden & Refresh ---------------- */
 async function boot() {
@@ -101,6 +152,7 @@ async function boot() {
   }
   $('app').classList.remove('hidden');
   render(res.data);
+  loadWorldState();
 }
 
 let refreshTimer = null;
@@ -207,8 +259,14 @@ function render(data) {
   renderCategories(data.categories);
   renderGoals(data);
   renderNotes(data);
-
-  if ($('goal-count')) $('goal-count').textContent = data.goals.filter(g => !g.done).length;
+  const goalDetailsCount = $('goal-details-count');
+  if (goalDetailsCount) goalDetailsCount.textContent = (data.goals || []).length;
+  const openGoalCount = (data.goals || []).filter(g => !g.done).length;
+  const goalCountEl = $('goal-count');
+  if (goalCountEl) {
+    goalCountEl.textContent = openGoalCount;
+    goalCountEl.classList.toggle('hidden', openGoalCount === 0);
+  }
 }
 
 /* ---------------- Profilkopf ---------------- */
@@ -346,7 +404,6 @@ function renderActiveGoals(data) {
   });
 }
 
-if ($('btn-to-goals')) $('btn-to-goals').onclick = () => showTab('goals');
 
 function renderCards(target, list) {
   const el = $(target);
@@ -392,11 +449,32 @@ function renderCards(target, list) {
   });
 }
 
+const CAT_ICONS = {
+  Suits: 'catWarframe',
+  SpaceSuits: 'catArchwing',
+  MechSuits: 'catNecramech',
+  Sentinels: 'catCompanion',
+  KubrowPets: 'catCompanion',
+  KDrive: 'catArchwing',
+  Plexus: 'catWarframe',
+  LongGuns: 'catPrimary',
+  Pistols: 'catSecondary',
+  Melee: 'catMelee',
+  SpaceGuns: 'catPrimary',
+  SpaceMelee: 'catMelee',
+  SentinelWeapons: 'catCompanion',
+  AmpPrism: 'catAmp',
+  ZawStrike: 'catMelee',
+  KitgunChamber: 'catSecondary'
+};
+
 function renderCategories(cats) {
   $('categories').innerHTML = cats.map(c => {
     const pct = c.total ? (c.done / c.total * 100) : 0;
+    const icKey = CAT_ICONS[c.category] || 'catWarframe';
+    const ic = Icon[icKey] ? Icon[icKey](16) : '';
     return `<div class="catrow">
-      <span>${esc(c.label)}</span>
+      <span class="cat-label-wrap">${ic}<span>${esc(c.label)}</span></span>
       <div class="catbar"><div style="width:${pct.toFixed(1)}%"></div></div>
       <span class="catnum">${c.done} / ${c.total}</span>
       <span class="catgain">${nf(c.gain)} offen</span>
@@ -410,7 +488,10 @@ function renderGoals(data) {
   if (!el) return;
 
   if (!data.goals || !data.goals.length) {
-    el.innerHTML = '<div class="empty">Noch keine Ziele gesetzt. Wähle unten im Katalog ein beliebiges Item und klicke auf „Als Ziel setzen“.</div>';
+    el.innerHTML = '<div class="empty">Noch keine Ziele gesetzt. Wechsle oben auf <b>Katalog</b>, wähle ein Item und klicke auf „Als Ziel setzen“.</div>';
+    /* Ohne Ziele ist dieser Hinweis der einzige Wegweiser - der darf nicht
+       hinter einem zugeklappten Abschnitt verschwinden. */
+    setGoalDetailsOpen(true);
     if ($('shopping')) $('shopping').classList.add('hidden');
     if (checklistCache.length) drawChecklist();
     return;
@@ -607,7 +688,7 @@ $('btn-import').onclick = async () => {
 $('build-url').addEventListener('keydown', e => { if (e.key === 'Enter') $('btn-import').click(); });
 
 function renderBuilds(data) {
-  $('build-count').textContent = data.builds.length;
+  if ($('build-count')) $('build-count').textContent = data.builds.length;
   renderTotals(data.totals, data.builds);
   renderMissingMods(data.missingMods);
 
@@ -1191,6 +1272,8 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     closeItemModal();
     closeSlotEditor();
+    closeUpgradeModal();
+    closeRelicModal();
   }
 });
 
@@ -1368,6 +1451,7 @@ function renderWorldState(d) {
   // 6. Neue Weltzustands-Abschnitte
   renderWsSource(d);
   renderWsNav(d.counts || {});
+  renderNightwave(d.nightwave || []);
   renderAlerts(d);
   renderEvents(d.events || []);
   renderSteelPath(d.steelPath);
@@ -1398,11 +1482,10 @@ const WS_PANES = [
   { key: 'overview',   label: 'Übersicht',   icon: 'svg:globe',     count: null },
   { key: 'fissures',   label: 'Void-Risse',  icon: 'img:fissure',   count: 'fissures' },
   { key: 'missions',   label: 'Einsätze',    icon: 'img:sortie',    count: 'missions' },
+  { key: 'nightwave',  label: 'Nightwave',   icon: 'img:nightwave', count: 'nightwave' },
   { key: 'alerts',     label: 'Alerts',      icon: 'img:quest',     count: 'alerts' },
   { key: 'events',     label: 'Operationen', icon: 'img:event',     count: 'events' },
-  // Das Original-Asset (EliteAlertIcon) ist zu filigran und matscht bei 24px zu -
-  // die Vektorglyphe zeigt dasselbe Symbol und bleibt scharf.
-  { key: 'steelpath',  label: 'Steel Path',  icon: 'svg:alert',     count: 'steelPath' },
+  { key: 'steelpath',  label: 'Steel Path',  icon: 'img:steelpath', count: 'steelPath' },
   { key: 'invasions',  label: 'Invasionen',  icon: 'img:invasion',  count: 'invasions' },
   { key: 'syndicates', label: 'Syndikate',   icon: 'img:syndicate', count: 'syndicates' }
 ];
@@ -1487,14 +1570,46 @@ $('ws-statusbar')?.addEventListener('click', e => {
 
 /* Farbe und Kurzname je Art. Kuva-Fluten und Elite-Aufgaben stechen heraus,
    weil sie die lohnendsten und seltensten Eintraege der Liste sind. */
+/* ---------------- Nightwave ---------------- */
+
+const NW_ARTEN = {
+  'nightwave-elite':    { label: 'Elite-Wochenaufgabe', klasse: 'is-accent' },
+  'nightwave':          { label: 'Wochenaufgabe',       klasse: 'is-gold' },
+  'nightwave-taeglich': { label: 'Tagesaufgabe',        klasse: '' }
+};
+
+function renderNightwave(list) {
+  const box = $('ws-nightwave');
+  if (!box) return;
+
+  const items = Array.isArray(list) ? list : [];
+  if (!items.length) {
+    box.innerHTML = leerHinweis('Zurzeit sind keine Nightwave-Aufgaben aktiv.');
+    return;
+  }
+
+  box.innerHTML = items.map(nw => {
+    const art = NW_ARTEN[nw.art] || { label: nw.missionType || 'Aufgabe', klasse: '' };
+    return `
+      <div class="ws-alert-card ws-nw-card ${art.klasse}">
+        <div class="ws-alert-head">
+          <span class="ws-alert-art">${esc(art.label)}</span>
+          ${nw.eta ? `<span class="ws-alert-eta">${Icon.clock(12)} ${esc(nw.eta)}</span>` : ''}
+        </div>
+        <b>${esc(nw.titel || 'Nightwave')}</b>
+        ${nw.beschreibung ? `<p class="ws-nw-desc">${esc(nw.beschreibung)}</p>` : ''}
+        ${nw.reward ? `<div class="ws-nw-reward"><span class="ws-nw-badge">${esc(nw.reward)}</span></div>` : ''}
+      </div>`;
+  }).join('');
+}
+
+/* ---------------- Alerts, Kuva & Schlichtung ---------------- */
+
 const ALERT_ARTEN = {
-  'kuva-flut':           { label: 'Kuva-Flut',      klasse: 'is-gold' },
-  'kuva-siphon':         { label: 'Kuva-Siphon',    klasse: 'is-gold' },
-  'arbitration':         { label: 'Schlichtung',    klasse: 'is-accent' },
-  'nightwave-elite':     { label: 'Nightwave Elite',klasse: 'is-accent' },
-  'nightwave':           { label: 'Nightwave',      klasse: '' },
-  'nightwave-taeglich':  { label: 'Nightwave',      klasse: '' },
-  'alert':               { label: 'Alert',          klasse: '' }
+  'kuva-flut':    { label: 'Kuva-Flut',   klasse: 'is-gold' },
+  'kuva-siphon':  { label: 'Kuva-Siphon', klasse: 'is-gold' },
+  'arbitration':  { label: 'Schlichtung', klasse: 'is-accent' },
+  'alert':        { label: 'Alert',       klasse: '' }
 };
 
 function renderAlerts(d) {
@@ -1637,6 +1752,20 @@ function renderSyndicates(list) {
   }).join('');
 }
 
+const RELIC_TIER_IMAGES = {
+  lith: 'assets/icons/worldstate/relic-lith.png',
+  meso: 'assets/icons/worldstate/relic-meso.png',
+  neo: 'assets/icons/worldstate/relic-neo.png',
+  axi: 'assets/icons/worldstate/relic-axi.png',
+  requiem: 'assets/icons/worldstate/relic-requiem.png',
+  omnia: 'assets/icons/worldstate/relic-omnia.png'
+};
+
+function relicTierImage(tier) {
+  const t = String(tier || '').toLowerCase();
+  return RELIC_TIER_IMAGES[t] || 'assets/icons/worldstate/relic-lith.png';
+}
+
 function renderFissures(list) {
   const filtered = activeFissureTier === 'all'
     ? list
@@ -1647,9 +1776,12 @@ function renderFissures(list) {
       const isMatch = isFissureAlertMatch(f, notificationSettings);
       return `
       <div class="ws-fissure-card ${isMatch ? 'is-alert-match' : ''}">
-        <span class="ws-fissure-tier ${esc(f.tier)}">${esc(f.tier)}</span>
+        <img class="ws-fissure-img" src="${relicTierImage(f.tier)}" alt="${esc(f.tier)}" onerror="this.style.display='none'">
         <div class="ws-fissure-info">
-          <b>${esc(f.missionType)}${f.isHard ? ' <small style="color:var(--red); font-size:11px;">[Steel Path]</small>' : ''}${isMatch ? `<span class="fissure-alert-tag">${Icon.bell(11)} Alarm</span>` : ''}</b>
+          <div class="ws-fissure-head-row">
+            <span class="ws-fissure-tier ${esc(f.tier)}">${esc(f.tier)}</span>
+            <b>${esc(f.missionType)}${f.isHard ? ' <small style="color:var(--red); font-size:11px;">[Steel Path]</small>' : ''}${isMatch ? `<span class="fissure-alert-tag">${Icon.bell(11)} Alarm</span>` : ''}</b>
+          </div>
           <span>${esc(f.node)} · ${esc(f.enemy)}</span>
         </div>
         <span class="ws-fissure-eta">${esc(f.eta)}</span>
@@ -1743,6 +1875,8 @@ let currentSelectionPreset = 'all'; // 'all' | 'duplicates' | 'custom' | 'none'
 let ducatsMode = 'inventory';    // 'inventory' | 'catalog' | 'sets' | 'plan'
 let planTier = 'all';            // Aera-Filter des Planers
 let planSort = 'plat-desc';      // Sortierung des Planers
+let planOnlyTracked = false;     // nur die gemerkten Relikte zeigen
+let trackedRelicIds = new Set(); // "Lith V1|Radiant" der gemerkten Relikte
 let ducatsFilter = 'all';        // 'all' | 'advice-junk' | 'advice-plat' | '100' | '45' | '15'
 let ducatsSort = 'ducats-desc';   // 'ducats-desc' | 'plat-desc' | 'ratio-desc' | 'count-desc' | 'name-asc'
 let isFetchingDucatPrices = false;
@@ -1755,6 +1889,7 @@ function updateSelectionPresetButtons() {
 async function loadDucats() {
   const res = await window.api.getDucatsData();
   ducatsData = res;
+  trackedRelicIds = new Set((res?.trackedRelics || []).map(t => t.id));
 
   // Wenn noch keine Mengen gewählt wurden und Inventar vorliegt: alles vorselektieren
   if (sellQuantities.size === 0 && ducatsData?.inventory?.items?.length > 0) {
@@ -1855,6 +1990,32 @@ function applyDucatPrices(priceMap) {
 
   (ducatsData.inventory?.items || []).forEach(updateItem);
   (ducatsData.catalog || []).forEach(updateItem);
+
+  /* Die Relikt-Karten rechnen mit denselben Preisen, stehen aber in einer
+     eigenen Liste - ohne diese Runde blieben ihre Erwartungswerte auf dem
+     Stand des Programmstarts, waehrend die Teileliste daneben schon frische
+     Zahlen zeigt. */
+  for (const relic of ducatsData.relicPlan || []) {
+    let touched = false;
+    for (const w of relic.rewards || []) {
+      if (w.slug && priceMap[w.slug] !== undefined) {
+        w.plat = priceMap[w.slug]?.min ?? null;
+        touched = true;
+      }
+    }
+    if (!touched) continue;
+
+    /* Dieselbe Rechnung wie in core/relics.js: Chance mal Wert, und der
+       Anteil der Chance, fuer den ueberhaupt ein Preis vorliegt. */
+    let expPlat = 0, priced = 0, total = 0;
+    for (const w of relic.rewards || []) {
+      const chance = w.chance || 0;
+      total += chance;
+      if (w.plat != null) { expPlat += chance / 100 * w.plat; priced += chance; }
+    }
+    relic.expPlat = Math.round(expPlat * 10) / 10;
+    relic.pricedShare = total ? priced / total : 0;
+  }
 }
 
 function renderDucats() {
@@ -2002,6 +2163,15 @@ function renderPlanTierFilter(all) {
   const tiers = order.filter(t => counts.has(t));
   if (!tiers.length) { box.innerHTML = ''; return; }
 
+  /* Der Merk-Chip steht neben den Aeren, weil er dieselbe Frage beantwortet:
+     welcher Ausschnitt der Liste ist gerade gemeint. Er erscheint erst, wenn
+     etwas gemerkt ist - ein Filter, der garantiert nichts uebrig laesst,
+     gehoert nicht in die Leiste. */
+  const trackedCount = trackedRelicIds.size;
+  /* Ist das letzte gemerkte Relikt abgewaehlt, verschwindet der Chip - und mit
+     ihm der Weg zurueck. Deshalb faellt der Filter hier von selbst weg. */
+  if (!trackedCount) planOnlyTracked = false;
+
   box.innerHTML =
     `<button class="tier-chip ${planTier === 'all' ? 'active' : ''}" data-tier="all">
        Alle <span>${all.length}</span>
@@ -2009,11 +2179,57 @@ function renderPlanTierFilter(all) {
     tiers.map(t => `
       <button class="tier-chip tier-${t.toLowerCase()} ${planTier === t ? 'active' : ''}" data-tier="${t}">
         ${t} <span>${counts.get(t)}</span>
-      </button>`).join('');
+      </button>`).join('') +
+    (trackedCount ? `
+      <button class="tier-chip chip-tracked ${planOnlyTracked ? 'active' : ''}" data-tracked="1"
+              title="Nur die Relikte, die im Overlay stehen">
+        ${Icon.star(11)} Gemerkt <span>${trackedCount}</span>
+      </button>` : '');
 
   box.querySelectorAll('[data-tier]').forEach(btn => {
     btn.onclick = () => { planTier = btn.dataset.tier; renderDucatsRelicPlan(); };
   });
+  box.querySelector('[data-tracked]')?.addEventListener('click', () => {
+    planOnlyTracked = !planOnlyTracked;
+    renderDucatsRelicPlan();
+  });
+}
+
+/* Zustaende heissen im deutschen Spiel anders als in DEs Droptabelle - und
+   der Inventar-Tab nebenan zeigt sie laengst uebersetzt. */
+const RELIC_STATE_LABEL = {
+  Intact: 'Intakt',
+  Exceptional: 'Außergewöhnlich',
+  Flawless: 'Makellos',
+  Radiant: 'Strahlend'
+};
+const relicStateLabel = st => RELIC_STATE_LABEL[st] || st || '';
+
+/**
+ * Ein Relikt merken oder vergessen.
+ *
+ * Der Stern schaltet sofort um und wartet nicht auf die Platte: der Klick
+ * soll sich wie ein Schalter anfuehlen, nicht wie ein Auftrag. Kommt die
+ * gespeicherte Liste zurueck, ersetzt sie die Annahme - dann steht auch
+ * wieder gerade, was ein fehlgeschlagenes Speichern verstellt haette.
+ */
+async function toggleTrackedRelic(id) {
+  const [key, state] = id.split('|');
+  const relic = (ducatsData?.relicPlan || []).find(r => r.key === key && r.state === state);
+
+  if (trackedRelicIds.has(id)) trackedRelicIds.delete(id);
+  else trackedRelicIds.add(id);
+  renderDucatsRelicPlan();
+
+  try {
+    const list = await window.api.toggleTrackedRelic({
+      key, state, tier: relic?.tier || '', name: relic?.name || ''
+    });
+    trackedRelicIds = new Set((list || []).map(t => t.id));
+  } catch (err) {
+    console.error('Merkliste nicht gespeichert:', err);
+  }
+  renderDucatsRelicPlan();
 }
 
 function renderDucatsRelicPlan() {
@@ -2031,6 +2247,7 @@ function renderDucatsRelicPlan() {
     : all;
 
   if (planTier !== 'all') plan = plan.filter(r => r.tier === planTier);
+  if (planOnlyTracked) plan = plan.filter(r => trackedRelicIds.has(r.key + '|' + r.state));
 
   /* Sortiert wird auf einer Kopie: die Reihenfolge aus dem Hauptprozess bleibt
      erhalten, sonst wuerde jede Umsortierung die naechste beeinflussen. */
@@ -2049,20 +2266,26 @@ function renderDucatsRelicPlan() {
       <div class="ducats-empty-box">
         <div class="empty-icon">${Icon.relic(30)}</div>
         <h3>${all.length ? 'Keine Treffer' : 'Keine Relikte im Bestand'}</h3>
-        <p>${all.length
-          ? 'Zu deiner Suche gibt es kein passendes Relikt.'
-          : 'Sobald Relikte im Inventar liegen, rechnet Argus hier aus, welches sich zu öffnen lohnt.'}</p>
+        <p>${!all.length
+          ? 'Sobald Relikte im Inventar liegen, rechnet Argus hier aus, welches sich zu öffnen lohnt.'
+          : planOnlyTracked
+            ? 'Kein gemerktes Relikt passt zu Suche und Ära-Filter.'
+            : 'Zu deiner Suche gibt es kein passendes Relikt.'}</p>
       </div>`;
     return;
   }
 
   container.innerHTML = plan.slice(0, 60).map(r => {
     const thin = r.pricedShare < 0.9;
+    const id = r.key + '|' + r.state;
+    const tracked = trackedRelicIds.has(id);
 
     const rewards = [...r.rewards]
       .sort((a, b) => (b.plat ?? -1) - (a.plat ?? -1) || b.chance - a.chance)
       .map(w => `
         <div class="plan-rw rarity-${esc(String(w.rarity || '').toLowerCase())}">
+          <img class="plan-rw-img" src="${esc(w.image || '')}" alt="" loading="lazy"
+               onerror="this.style.visibility='hidden'">
           <span class="plan-rw-name">${esc(w.name)}</span>
           <span class="plan-rw-chance">${w.chance}%</span>
           <span class="plan-rw-plat">${w.plat != null ? w.plat + 'p' : '–'}</span>
@@ -2070,12 +2293,14 @@ function renderDucatsRelicPlan() {
         </div>`).join('');
 
     return `
-      <div class="plan-card tier-${esc(r.tier.toLowerCase())}">
+      <div class="plan-card tier-${esc(r.tier.toLowerCase())} ${tracked ? 'tracked' : ''}">
         <div class="plan-head">
+          <img class="plan-img" src="${esc(r.image || '')}" alt="" loading="lazy"
+               onerror="this.style.visibility='hidden'">
           <div class="plan-title">
             <span class="plan-tier">${esc(r.tier)}</span>
             <b>${esc(r.name)}</b>
-            <span class="plan-state">${esc(r.state)}${r.count > 1 ? ' · ×' + r.count : ''}</span>
+            <span class="plan-state">${esc(relicStateLabel(r.state))}${r.count > 1 ? ' · ×' + r.count : ''}</span>
           </div>
           <div class="plan-exp">
             <span class="plan-exp-val" title="Erwarteter Platin-Erlös je Öffnung">
@@ -2087,6 +2312,10 @@ function renderDucatsRelicPlan() {
               <b>${nf(r.expDucats)}</b>
             </span>
           </div>
+          <button class="plan-track ${tracked ? 'on' : ''}" data-track="${esc(id)}"
+                  title="${tracked ? 'Aus dem Overlay nehmen' : 'Im Overlay anzeigen'}">
+            ${Icon.star(14)}
+          </button>
         </div>
 
         ${thin ? `<div class="plan-thin" title="Für Teile ohne bekannten Preis wird nichts angenommen">
@@ -2098,6 +2327,10 @@ function renderDucatsRelicPlan() {
   }).join('') + (plan.length > 60
     ? `<div class="inv-more">… und ${nf(plan.length - 60)} weitere. Nutze die Suche.</div>`
     : '');
+
+  container.querySelectorAll('[data-track]').forEach(btn => {
+    btn.onclick = () => toggleTrackedRelic(btn.dataset.track);
+  });
 }
 
 /**
@@ -2108,71 +2341,6 @@ function renderDucatsRelicPlan() {
  * beantwortet das nicht - dort steht "Lex Prime Barrel x1", ohne zu verraten,
  * ob das das letzte fehlende Teil war oder das dritte Duplikat.
  */
-function renderDucatsSets() {
-  const container = $('ducats-catalog');
-  if (!container) return;
-
-  const query = ($('ducat-search')?.value || '').trim().toLowerCase();
-  const all = ducatsData?.sets || [];
-  const sets = query
-    ? all.filter(s => s.name.toLowerCase().includes(query)
-        || s.parts.some(p => p.name.toLowerCase().includes(query)))
-    : all;
-
-  if (!sets.length) {
-    container.innerHTML = `
-      <div class="ducats-empty-box">
-        <div class="empty-icon">${Icon.layers(30)}</div>
-        <h3>${all.length ? 'Keine Treffer' : 'Noch keine Prime-Teile'}</h3>
-        <p>${all.length
-          ? 'Zu deiner Suche gibt es kein passendes Set.'
-          : 'Sobald du Prime-Teile besitzt, erscheinen hier die zugehörigen Sets mit dem, was dir noch fehlt.'}</p>
-      </div>`;
-    return;
-  }
-
-  /* Direkt in den Container, ohne eigenes Raster drumherum: die Liste ist
-     bereits ein Raster (.ducats-catalog-list). Ein zweites darin bekaeme eine
-     einzige Spalte zugeteilt - und stapelte die Karten darin untereinander. */
-  container.innerHTML = sets.map(s => {
-    const pct = Math.round((s.ownedParts / s.totalParts) * 100);
-
-    const parts = s.parts.map(p => `
-      <div class="set-part ${p.count > 0 ? 'has' : 'missing'}" title="${esc(p.name)} · ${p.ducats} Dukaten${p.price ? ' · ' + p.price.min + 'p' : ''}">
-        <img class="set-part-img" src="${esc(p.image || '')}" alt=""
-             onerror="this.style.visibility='hidden'">
-        <span class="set-part-name">${esc(p.shortName)}</span>
-        <span class="set-part-count">${p.count > 0 ? '×' + p.count : '–'}</span>
-      </div>`).join('');
-
-    return `
-      <div class="set-card ${s.complete ? 'complete' : ''}">
-        <div class="set-head">
-          <div class="set-title">
-            <b>${esc(s.name)}</b>
-            <span>${s.ownedParts} / ${s.totalParts} Teile${s.complete ? ' · komplett' : ''}</span>
-          </div>
-          <div class="set-progress" title="${pct} % beisammen">
-            <div class="set-progress-fill" style="width: ${pct}%"></div>
-          </div>
-        </div>
-
-        <div class="set-parts">${parts}</div>
-
-        <div class="set-foot">
-          <span class="set-val" title="Dukaten für alle deine Teile dieses Sets, Duplikate mitgezählt">
-            <img class="currency-ic ducat-ic" src="assets/icons/ducats.png" alt="Dukaten">
-            <b>${nf(s.ownedDucats)}</b> <small>Dukaten</small>
-          </span>
-          <span class="set-val">
-            <img class="currency-ic" src="assets/icons/currency/platinum.png" alt="Platin">
-            <b>${s.setPrice ? s.setPrice.min : '–'}</b> <small>Set</small>
-          </span>
-        </div>
-      </div>`;
-  }).join('');
-}
-
 function updateDucatsPriceButtonState(loading) {
   const btn = $('btn-ducats-fetch-prices');
   if (!btn) return;
@@ -2187,8 +2355,8 @@ function updateDucatsPriceButtonState(loading) {
 
 function renderDucatsCatalog() {
   if (!ducatsData) return;
-  if (ducatsMode === 'sets') return renderDucatsSets();
   if (ducatsMode === 'plan') return renderDucatsRelicPlan();
+  if (ducatsMode === 'sets') ducatsMode = 'inventory';
 
   const q = ($('ducat-search')?.value || '').toLowerCase().trim();
   const rawList = ducatsMode === 'inventory'
@@ -2581,7 +2749,8 @@ function renderInventory() {
   $('inv-currencies').innerHTML = [
     ['Credits', d.currencies.credits, 'credits'],
     ['Platin', d.currencies.platinum, 'platinum'],
-    ['Endo', d.currencies.endo, 'endo']
+    ['Endo', d.currencies.endo, 'endo'],
+    ['Dukaten', d.currencies.ducats, 'ducats']
   ].map(([label, value, icon]) => `
     <div class="inv-cur">
       <img class="inv-cur-ic" src="assets/icons/currency/${icon}.png" alt="">
@@ -2648,52 +2817,752 @@ function renderInvTierFilter(all) {
   });
 }
 
+function renderInventorySets(sets) {
+  const container = $('inv-grid');
+  if (!container) return;
+
+  if (!sets.length) {
+    container.innerHTML = `<div class="empty" style="grid-column: 1 / -1;">Keine passenden Prime-Sets gefunden.</div>`;
+    return;
+  }
+
+  container.innerHTML = sets.map(s => {
+    const pct = s.totalParts ? Math.min(100, Math.round((s.ownedParts / s.totalParts) * 100)) : 0;
+
+    const parts = s.parts.map(p => {
+      const req = p.required || 1;
+      const hasEnough = p.count >= req;
+      const isPartial = !hasEnough && p.count > 0;
+      const countLabel = req > 1
+        ? `${p.count}/${req}`
+        : (p.count > 0 ? '×' + p.count : '–');
+
+      return `
+      <div class="set-part ${hasEnough ? 'has' : (isPartial ? 'partial' : 'missing')}" title="${esc(p.name)} · ${req > 1 ? req + 'x benötigt · ' : ''}${p.ducats} Dukaten${p.price ? ' · ' + p.price.min + 'p' : ''}">
+        <img class="set-part-img" src="${esc(p.image || '')}" alt=""
+             onerror="this.style.visibility='hidden'">
+        <span class="set-part-name">${esc(p.shortName)}</span>
+        <span class="set-part-count">${countLabel}</span>
+      </div>`;
+    }).join('');
+
+    return `
+      <div class="set-card ${s.complete ? 'complete' : ''}">
+        <div class="set-card-body">
+          ${s.image ? `
+            <div class="set-art-showcase">
+              <img class="set-art-img" src="${esc(s.image)}" alt="" loading="lazy" onerror="this.parentElement.style.display='none'">
+            </div>` : ''}
+          <div class="set-main-content">
+            <div class="set-head">
+              <div class="set-title">
+                <b>${esc(s.name)}</b>
+                <span>${s.ownedParts} / ${s.totalParts} Teile${s.complete ? ' · komplett' : ''}</span>
+              </div>
+              <div class="set-progress" title="${pct} % beisammen">
+                <div class="set-progress-fill" style="width: ${pct}%"></div>
+              </div>
+            </div>
+            <div class="set-parts">${parts}</div>
+          </div>
+        </div>
+
+        <div class="set-foot">
+          <span class="set-val" title="Dukaten für alle deine Teile dieses Sets, Duplikate mitgezählt">
+            <img class="currency-ic ducat-ic" src="assets/icons/ducats.png" alt="Dukaten">
+            <b>${nf(s.ownedDucats)}</b> <small>Dukaten</small>
+          </span>
+          <span class="set-val">
+            <img class="currency-ic" src="assets/icons/currency/platinum.png" alt="Platin">
+            <b>${s.setPrice ? s.setPrice.min : '–'}</b> <small>Set</small>
+          </span>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+let currentInvList = [];
+let invRenderedCount = 0;
+let invChunkObserver = null;
+const INV_CHUNK_SIZE = 60;
+
+function setupInvGridEvents(grid) {
+  if (!grid || grid.dataset.delegated) return;
+  grid.dataset.delegated = 'true';
+
+  grid.onclick = (e) => {
+    const el = e.target.closest('[data-idx]');
+    if (!el) return;
+    const idx = Number(el.dataset.idx);
+    const item = currentInvList?.[idx];
+    if (item) {
+      const open = invSection === 'relics' ? openRelicModal : openUpgradeModal;
+      open(item);
+    }
+  };
+
+  grid.addEventListener('error', (e) => {
+    const img = e.target;
+    if (!img || img.tagName !== 'IMG') return;
+    if (img.matches('.mod-art img, .arc-art img')) {
+      img.style.visibility = 'hidden';
+    } else if (img.matches('.mat-icon')) {
+      img.classList.add('is-missing');
+    }
+  }, true);
+}
+
+function loadNextInvChunk() {
+  const grid = $('inv-grid');
+  const sentinel = $('inv-sentinel');
+  if (!grid || !currentInvList || invRenderedCount >= currentInvList.length) {
+    if (invChunkObserver) {
+      invChunkObserver.disconnect();
+      invChunkObserver = null;
+    }
+    sentinel?.remove();
+    return;
+  }
+
+  const nextBatch = currentInvList.slice(invRenderedCount, invRenderedCount + INV_CHUNK_SIZE);
+  const tileFn = invSection === 'mods' ? modTile : (invSection === 'arcanes' ? arcaneTile : plainRow);
+  const html = nextBatch.map((item, idx) => tileFn(item, invRenderedCount + idx)).join('');
+  invRenderedCount += nextBatch.length;
+
+  if (sentinel) {
+    sentinel.insertAdjacentHTML('beforebegin', html);
+    if (invRenderedCount >= currentInvList.length) {
+      if (invChunkObserver) {
+        invChunkObserver.disconnect();
+        invChunkObserver = null;
+      }
+      sentinel.remove();
+    }
+  } else {
+    grid.insertAdjacentHTML('beforeend', html);
+  }
+}
+
 function renderInventoryGrid() {
   const d = inventoryData;
+  if (!d || !d.sections) return;
   const query = ($('inv-search')?.value || '').toLowerCase().trim();
   const all = d.sections[invSection] || [];
 
-  renderInvTierFilter(all);
-
-  let list = query ? all.filter(e => e.name.toLowerCase().includes(query)) : all;
-  if (invSection === 'relics' && invTier !== 'all') {
-    list = list.filter(e => e.tier === invTier);
+  if (invChunkObserver) {
+    invChunkObserver.disconnect();
+    invChunkObserver = null;
   }
 
-  const total = d.totals[invSection];
+  /* Betriebsart des Rasters. MUSS hier oben stehen, vor allen vorzeitigen
+     Ausstiegen: die Sets-Ansicht und der Leerfall steigen weiter unten aus,
+     und blieben dann mit der Spaltenbreite der vorigen Ansicht zurueck -
+     Set-Karten brauchen 320 px, Mod-Karten 184, und die zuletzt im
+     Stilblatt stehende Regel gewinnt. */
+  const grid = $('inv-grid');
+  grid?.classList.toggle('is-sets', invSection === 'sets');
+  grid?.classList.toggle('is-cards', invSection === 'mods');
+  grid?.classList.toggle('is-arcanes', invSection === 'arcanes');
+
+  if (grid) setupInvGridEvents(grid);
+
+  renderInvTierFilter(all);
+
+  let list = all;
+  if (invSection === 'sets') {
+    list = query
+      ? all.filter(s => s.name.toLowerCase().includes(query) || s.parts.some(p => p.name.toLowerCase().includes(query)))
+      : all;
+  } else {
+    list = query ? all.filter(e => e.name.toLowerCase().includes(query)) : all;
+    if (invSection === 'relics' && invTier !== 'all') {
+      list = list.filter(e => e.tier === invTier);
+    }
+  }
+
+  const total = d.totals[invSection] || { arten: all.length, stueck: 0 };
   const alt = (QUELLEN[d.source] || QUELLEN.api).stale && d.fetchedAt
     ? ` · Stand ${new Date(d.fetchedAt).toLocaleDateString('de-DE')}`
     : '';
   $('inv-meta').innerHTML = (query
     ? `${nf(list.length)} von ${nf(all.length)} Einträgen`
-    : `${nf(total.arten)} Arten · ${nf(total.stueck)} Stück insgesamt`) + esc(alt);
+    : invSection === 'sets'
+      ? `${nf(total.arten)} Sets · ${nf(total.complete || 0)} vollständig`
+      : `${nf(total.arten)} Arten · ${nf(total.stueck)} Stück insgesamt`) + esc(alt);
+
+  if (invSection === 'sets') {
+    currentInvList = list;
+    renderInventorySets(list);
+    return;
+  }
 
   if (!list.length) {
+    currentInvList = [];
     $('inv-grid').innerHTML = `<div class="empty">Nichts gefunden für „${esc(query)}“.</div>`;
     return;
   }
 
-  /* Nur die ersten 300 zeichnen - bei 619 Mods mit Bild wird das Scrollen sonst zaeh. */
-  const shown = list.slice(0, 300);
-  $('inv-grid').innerHTML = shown.map(e => {
-    const extra = e.quality ? `<span class="inv-tag">${esc(e.quality)}</span>`
-      : e.ranks?.length ? `<span class="inv-tag">${e.ranks.map(r =>
-          `Rang ${r.rank}${r.count > 1 ? '×' + r.count : ''}`).join(', ')}</span>`
-      : '';
-    return `
-      <div class="inv-item" title="${esc(e.uniqueName)}">
-        <img class="mat-icon" src="${esc(e.image)}" alt="" loading="lazy"
-             onerror="this.classList.add('is-missing')">
-        <div class="inv-item-body">
-          <b>${esc(e.name)}</b>
-          ${extra}
-        </div>
-        <span class="inv-item-count">${nf(e.count)}</span>
-      </div>`;
-  }).join('') + (list.length > shown.length
-    ? `<div class="inv-more">… und ${nf(list.length - shown.length)} weitere. Nutze die Suche.</div>`
-    : '');
+  /* Progressives Rendern in Chunks: die ersten 60 Karten erscheinen sofort (<5ms),
+     weitere werden beim Scrollen über einen IntersectionObserver nachgeladen. */
+  currentInvList = list;
+  const initial = list.slice(0, INV_CHUNK_SIZE);
+  invRenderedCount = initial.length;
+
+  const tileFn = invSection === 'mods' ? modTile : (invSection === 'arcanes' ? arcaneTile : plainRow);
+  const initialHtml = initial.map((item, idx) => tileFn(item, idx)).join('');
+
+  if (list.length > initial.length) {
+    grid.innerHTML = initialHtml + '<div id="inv-sentinel" class="inv-sentinel"></div>';
+    const sentinel = $('inv-sentinel');
+    if (sentinel) {
+      invChunkObserver = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            loadNextInvChunk();
+          }
+        }
+      }, {
+        rootMargin: '600px 0px'
+      });
+      invChunkObserver.observe(sentinel);
+    }
+  } else {
+    grid.innerHTML = initialHtml;
+  }
 }
+
+/* ---------------- Kacheln des Inventar-Rasters ---------------- */
+
+/**
+ * Ausgefallene Bilder abfangen.
+ *
+ * ACHTUNG: onerror="..." als Attribut laeuft hier NICHT. Die
+ * Content-Security-Policy der Seite laesst nur Skripte aus eigenen Dateien zu,
+ * und ein Attribut-Handler zaehlt als Inline-Skript - er wird stillschweigend
+ * verworfen. Statt eines fehlenden Bildes bliebe dann der Alternativtext
+ * mitten im Raster stehen.
+ *
+ * Der zweite Teil ist genauso wichtig: ein Bild, das schon vor dem Verdrahten
+ * aufgegeben hat, feuert kein Ereignis mehr. `complete` bei Breite 0 heisst
+ * genau das - fertig geladen und trotzdem nichts da.
+ */
+function onImageFail(root, selector, fix) {
+  root.querySelectorAll(selector).forEach(img => {
+    if (img.complete && img.naturalWidth === 0) fix(img);
+    else img.addEventListener('error', () => fix(img), { once: true });
+  });
+}
+
+/**
+ * Mod-Karte mit DEN ZWEI ZUSTAENDEN, die sie im Spiel auch hat.
+ *
+ * ZUGEKLAPPT steht nur der Name da. AUFGEKLAPPT faehrt die Karte auf und zeigt
+ * Illustration, Wirkung und Kompatibilitaet.
+ *
+ * WARUM SELBST GEZEICHNET UND NICHT ALS FERTIGES BILD:
+ *   Ein gerendertes Kartenbild kennt nur EINEN Zustand. Den zugeklappten
+ *   daraus zu schneiden geht nicht - er hat einen anderen Aufbau, und wo der
+ *   Name sitzt, haengt an der Laenge des Wirkungstextes. Hier steht jedes Teil
+ *   an seinem Platz, und der Wechsel ist eine Frage von Hoehe und Deckkraft.
+ *
+ * Der Aufbau folgt dem, was Overframe macht: Rahmenteile als Hintergrundbilder
+ * (die echten Spiel-Texturen), die Illustration darin, Text darueber. Der
+ * zugeklappte Zustand entsteht dadurch, dass die Karte nur 90 px hoch ist und
+ * `overflow: hidden` alles darunter abschneidet - waehrend der Name mit einem
+ * negativen `top` nach oben ueber die abgedunkelte Illustration rutscht.
+ */
+function modTile(e, i) {
+  const rank = e.maxRank ?? 0;
+  const rarity = String(e.rarity || 'common').toLowerCase();
+
+  return `
+    <div class="mod-slot" ${e.resolved ? `data-idx="${i}" title="Datenblatt öffnen"` : ''}>
+      <div class="mod-card rar-${esc(rarity)}">
+        <div class="mod-edge"></div>
+        <div class="mod-inner">
+          ${e.drain != null ? `
+            <div class="mod-drain ${e.isAura ? 'is-aura' : ''}">
+              ${e.isAura ? '+' : ''}${e.drain}
+              ${e.polarity ? `<span class="mod-pol">${Icon.polarity(e.polarity.glyph, 11)}</span>` : ''}
+            </div>` : ''}
+          <figure class="mod-art">
+            <img src="${esc(e.art || e.image)}" alt="" loading="lazy">
+          </figure>
+          <div class="mod-text">
+            <p class="mod-name">${esc(e.name)}</p>
+            ${(e.stats || []).map(s => `<p class="mod-stat">${esc(s)}</p>`).join('')}
+          </div>
+          ${e.compat ? `<div class="mod-compat"><p>${esc(e.compat)}</p></div>` : ''}
+          ${e.pips ? `
+            <div class="mod-pips ${rank >= e.pips ? 'is-max' : ''}">
+              ${Array.from({ length: e.pips }, (_, p) =>
+                `<i class="${p < rank ? 'on' : ''}">★</i>`).join('')}
+            </div>` : ''}
+        </div>
+      </div>
+      <span class="mod-count">${nf(e.count)}</span>
+    </div>`;
+}
+
+/**
+ * Arcanes sind keine Karten, sondern Gefaesse - quer statt hochkant und ohne
+ * Rahmen, in dem ein Name stuende. Der steht deshalb darunter.
+ */
+function arcaneTile(e, i) {
+  return `
+    <div class="arc-tile" ${e.resolved ? `data-idx="${i}" title="Datenblatt öffnen"` : ''}>
+      <div class="arc-art">
+        <img src="${esc(e.card || e.image)}" alt="" loading="lazy">
+        <span class="mod-count">${nf(e.count)}</span>
+      </div>
+      <b>${esc(e.name)}</b>
+      ${e.ranks?.length ? `<span class="inv-tag">${e.ranks.map(r =>
+        `Rang ${r.rank}${r.count > 1 ? '×' + r.count : ''}`).join(', ')}</span>` : ''}
+    </div>`;
+}
+
+/** Relikte, Materialien, Blueprints: die gewohnte Zeile. */
+function plainRow(e, i) {
+  const extra = e.quality ? `<span class="inv-tag">${esc(e.quality)}</span>` : '';
+  const clickable = invSection === 'relics';
+  return `
+    <div class="inv-item ${clickable ? 'is-clickable' : ''}"
+         ${clickable ? `data-idx="${i}" title="Datenblatt öffnen"` : `title="${esc(e.uniqueName)}"`}>
+      <img class="mat-icon" src="${esc(e.image)}" alt="" loading="lazy">
+      <div class="inv-item-body">
+        <b>${esc(e.name)}</b>
+        ${extra}
+      </div>
+      <span class="inv-item-count">${nf(e.count)}</span>
+    </div>`;
+}
+
+/* ---------------- Datenblatt einer Mod / eines Arcanes ---------------- */
+
+let upgradeData = null;
+let upgradeRank = 0;
+
+/**
+ * Oeffnet das Datenblatt zu einer Karte aus dem Inventar.
+ *
+ * Der Inventar-Eintrag wandert mit in den Hauptprozess: Anzahl und Raenge
+ * liegen hier bereits vor, und die Inventardatei ist ein Megabyte gross -
+ * sie je Klick neu zu lesen waere Verschwendung.
+ */
+async function openUpgradeModal(entry) {
+  if (!entry?.uniqueName) return;
+  const modal = $('upgrade-modal');
+  const content = $('upgrade-modal-content');
+  if (!modal || !content) return;
+
+  modal.classList.remove('hidden');
+  content.innerHTML = `<div class="up-loading">${Icon.refresh(22)}<span>Lade Datenblatt …</span></div>`;
+
+  const res = await window.api.getUpgradeDetails(entry.uniqueName, {
+    count: entry.count || 0,
+    ranks: entry.ranks || [],
+    maxRank: entry.maxRank ?? null
+  });
+
+  if (!res.ok) {
+    content.innerHTML = `
+      <div class="im-header">
+        <div class="im-title-group"><h2>${esc(entry.name)}</h2></div>
+        <button class="modal-close-icon" id="up-close" title="Schließen">&times;</button>
+      </div>
+      <div class="im-scroll-body">
+        <p class="up-empty">${esc(res.error || 'Datenblatt konnte nicht geladen werden.')}</p>
+      </div>`;
+    $('up-close').onclick = closeUpgradeModal;
+    return;
+  }
+
+  upgradeData = res.data;
+  /* Startwert ist der hoechste Rang, den man BESITZT - er zeigt, was die Karte
+     gerade wirklich tut. Ohne Besitz der Maximalrang, denn danach fragt, wer
+     die Karte noch sucht. */
+  upgradeRank = upgradeData.owned?.maxRank ?? upgradeData.maxRank;
+  renderUpgradeModal();
+}
+
+function closeUpgradeModal() {
+  $('upgrade-modal')?.classList.add('hidden');
+}
+
+/**
+ * Adresse im offiziellen Warframe-Wiki. Dieselbe Quelle, aus der auch die
+ * Kartenbilder kommen - der alte Fandom-Spiegel wird nicht mehr gepflegt.
+ */
+const wikiLink = name =>
+  'https://wiki.warframe.com/w/' + encodeURIComponent(String(name).replace(/ /g, '_'));
+
+/** Herkunft der Fundorte - wer die Zahlen liest, soll wissen, woher sie kommen. */
+const UPGRADE_ORIGIN = {
+  de:           'Fundorte aus den offiziellen Droptabellen von Digital Extremes.',
+  warframestat: 'Fundorte über warframestat.us – Angebote, die DE nicht als Drop führt.',
+  rule:         'Diese Karte fällt nirgends: die Einordnung stammt aus dem Pfad, in den DE sie sortiert hat.'
+};
+
+function renderUpgradeModal() {
+  const d = upgradeData;
+  const content = $('upgrade-modal-content');
+  if (!d || !content) return;
+
+  const row = d.ranks[upgradeRank] || d.ranks[d.ranks.length - 1] || { stats: [] };
+  const owned = d.owned && d.owned.count > 0 ? d.owned : null;
+  const ownedRanks = new Set((owned?.ranks || []).map(r => r.rank));
+
+  const badges = [
+    `<span class="im-badge cat">${esc(d.kindLabel)}</span>`,
+    d.typeLabel ? `<span class="im-badge">${esc(d.typeLabel)}</span>` : '',
+    d.rarityLabel ? `<span class="im-badge rar-${esc(String(d.rarity).toLowerCase())}">${esc(d.rarityLabel)}</span>` : '',
+    /* Bei einer Aura sagt das schon der Typ - zweimal "Aura" nebeneinander
+       ist keine zusaetzliche Auskunft. */
+    d.isAura && d.typeLabel !== 'Aura' ? '<span class="im-badge">Aura</span>' : '',
+    d.isExilus ? '<span class="im-badge">Exilus</span>' : ''
+  ].join('');
+
+  /* Kopfzeile: worauf die Karte passt und mit welcher Polaritaet. Beides ist
+     die erste Frage beim Bauen, deshalb steht es unter dem Namen und nicht
+     erst unten in den Werten. */
+  const subline = [
+    d.compat ? `Passt auf <b>${esc(d.compat)}</b>` : null,
+    d.polarity ? `Polarität <b class="up-pol">${Icon.polarity(d.polarity.glyph, 12)}${esc(d.polarity.label)}</b>` : null
+  ].filter(Boolean).join(' · ');
+
+  /* Kosten der gewaehlten Stufe. Mods zahlen Kapazitaet und Endo, Arcanes
+     bezahlen mit sich selbst - dort steht die Zahl der Exemplare. */
+  const rankCost = d.kind === 'arcane'
+    ? `<span>Braucht <b>${nf(row.copies)}</b> Exemplare</span>`
+    : [
+        `<span>${d.isAura ? 'Gibt' : 'Kostet'} <b>${nf(row.drain)}</b> Kapazität</span>`,
+        row.endo ? `<span><b>${nf(row.endo)}</b> Endo bis hierher</span>` : ''
+      ].join('');
+
+  const tiles = [
+    ['Max-Rang', d.maxRank],
+    d.kind === 'arcane'
+      ? ['Exemplare für Max', nf(d.copiesToMax)]
+      : [d.isAura ? 'Kapazität bei Max' : 'Kosten bei Max', nf(d.maxDrain)],
+    d.kind === 'arcane' ? null : ['Endo bis Max', nf(d.endoToMax)],
+    /* Dritter Eintrag ist fertiges Markup - nur die Polaritaet braucht es,
+       weil ihr Zeichen eine Vektorgrafik ist und kein Buchstabe. */
+    d.polarity
+      ? ['Polarität', d.polarity.label,
+         `<span class="up-pol">${Icon.polarity(d.polarity.glyph, 13)}${esc(d.polarity.label)}</span>`]
+      : null,
+    d.rarityLabel ? ['Seltenheit', d.rarityLabel] : null,
+    d.compat ? ['Kompatibel', d.compat] : null
+  ].filter(Boolean);
+
+  const wikiUrl = wikiLink(d.name);
+
+  content.innerHTML = `
+    <div class="im-header">
+      <div class="im-header-left">
+        <!-- Die gerenderte Karte, wenn es sie gibt: sie zeigt Rahmen, Rang-
+             punkte und Polaritaet so, wie sie im Spiel aussehen. Sonst bleibt
+             das Bild aus DEs Export. -->
+        <div class="im-art-wrap up-art-wrap ${d.card ? 'has-card' : ''} is-${esc(d.kind)}">
+          <img class="im-art" src="${esc(d.card || d.image)}" alt="">
+        </div>
+        <div class="im-title-group">
+          <div class="im-tags">${badges}</div>
+          <h2>${esc(d.name)}</h2>
+          ${subline ? `<div class="up-subline">${subline}</div>` : ''}
+        </div>
+      </div>
+      <button class="modal-close-icon" id="up-close" title="Schließen">&times;</button>
+    </div>
+
+    <div class="im-scroll-body">
+      ${owned ? `
+        <div class="im-section">
+          <div class="im-section-title">Im Besitz</div>
+          <div class="up-owned">
+            <b>${nf(owned.count)}</b>
+            <span>${owned.count === 1 ? 'Exemplar' : 'Exemplare'}</span>
+            ${owned.ranks.length ? `<span class="up-owned-ranks">${owned.ranks.map(r =>
+              `Rang ${r.rank}${r.count > 1 ? ' ×' + r.count : ''}`).join(' · ')}</span>` : ''}
+            ${d.kind === 'arcane' && d.copiesToMax && owned.copies < d.copiesToMax
+              ? `<span class="up-owned-ranks">noch ${nf(d.copiesToMax - owned.copies)} bis Rang ${d.maxRank}</span>`
+              : ''}
+          </div>
+        </div>` : ''}
+
+      <div class="im-section">
+        <div class="im-section-title">Wirkung</div>
+        <div class="up-ranks">
+          ${d.ranks.map(r => `
+            <button class="up-rank ${r.rank === upgradeRank ? 'active' : ''} ${ownedRanks.has(r.rank) ? 'has' : ''}"
+                    data-rank="${r.rank}"
+                    title="${ownedRanks.has(r.rank) ? 'Rang ' + r.rank + ' im Besitz' : 'Rang ' + r.rank}">
+              ${r.rank}
+            </button>`).join('')}
+        </div>
+        <div class="up-stats">
+          ${row.stats.length
+            /* Alle Zeilen in EINEM Kasten, so wie die Karte im Spiel aussieht.
+               Einzelne Kaesten je Zeile reissen zusammengehoerige Angaben
+               auseinander ("On Energy Pickup:" stuende dann allein). */
+            ? `<div class="up-stat">${row.stats.map(esc).join('<br>')}</div>`
+            : '<div class="up-empty">Für diesen Rang nennt der Export keine Werte.</div>'}
+        </div>
+        <div class="up-rank-cost">${rankCost}</div>
+        ${d.description.length ? `
+          <p class="im-desc up-desc">${d.description.map(esc).join('<br>')}</p>` : ''}
+      </div>
+
+      <div class="im-section">
+        <div class="im-section-title">Werte</div>
+        <div class="im-stats-grid">
+          ${tiles.map(([label, val, html]) => `
+            <div class="im-stat-tile">
+              <span class="st-label">${esc(label)}</span>
+              <b class="st-val">${html || esc(String(val))}</b>
+            </div>`).join('')}
+        </div>
+      </div>
+
+      ${d.set ? `
+        <div class="im-section">
+          <div class="im-section-title">Set-Bonus · ${esc(d.set.name)}</div>
+          <p class="up-set-hint">Jede getragene Karte des Sets verstärkt alle anderen.</p>
+          <div class="up-set">
+            ${d.set.members.map(m => `
+              <span class="up-set-part ${m === d.name ? 'is-self' : ''}">${esc(m)}</span>`).join('')}
+          </div>
+        </div>` : ''}
+
+      <div class="im-section">
+        <div class="im-section-title">Woher bekommt man das?</div>
+        ${renderUpgradeSources(d)}
+        <div class="up-src-foot">
+          ${d.sources.origin ? `<span>${esc(UPGRADE_ORIGIN[d.sources.origin] || '')}</span>` : ''}
+          <a class="up-wiki" href="${esc(wikiUrl)}" target="_blank" rel="noreferrer">
+            ${Icon.link(13)}<span>Im Wiki nachschlagen</span>
+          </a>
+        </div>
+      </div>
+    </div>`;
+
+  $('up-close').onclick = closeUpgradeModal;
+  content.querySelectorAll('[data-rank]').forEach(btn => {
+    btn.onclick = () => { upgradeRank = Number(btn.dataset.rank); renderUpgradeModal(); };
+  });
+
+  /* Bleibt die gezeichnete Karte aus, tritt das Bild aus DEs Export an ihre
+     Stelle - und der Rahmen im Kopf schrumpft wieder auf Bildgroesse. */
+  onImageFail(content, '.im-art', img => {
+    img.src = d.image;
+    img.closest('.im-art-wrap')?.classList.remove('has-card');
+  });
+}
+
+/** Fundorte, nach Art gruppiert. Leer ist ein eigener Fall, kein leerer Kasten. */
+function renderUpgradeSources(d) {
+  const groups = d.sources?.groups || [];
+  if (!groups.length) {
+    return `<div class="up-empty">
+      ${esc(d.dropNote || 'In den Droptabellen steht zu dieser Karte kein Fundort. '
+        + 'Das trifft vor allem zeitlich begrenzte Belohnungen – im Handel gibt es sie trotzdem.')}
+    </div>`;
+  }
+
+  return groups.map(g => `
+    <div class="up-src-group">
+      <div class="up-src-head">${esc(g.label)}</div>
+      ${g.entries.map(e => `
+        <div class="up-src-row">
+          <span class="up-src-place">${esc(e.place)}</span>
+          ${e.detail ? `<span class="up-src-detail">${esc(e.detail)}</span>` : ''}
+          ${e.chanceText ? `<span class="up-src-chance">${esc(e.chanceText)}</span>` : ''}
+        </div>`).join('')}
+      ${g.hidden ? `<div class="up-src-more">… und ${nf(g.hidden)} weitere</div>` : ''}
+    </div>`).join('');
+}
+
+$('upgrade-modal').onclick = e => {
+  if (e.target === $('upgrade-modal')) closeUpgradeModal();
+};
+
+/* ---------------- Datenblatt eines Relikts ---------------- */
+
+let relicData = null;
+let relicState = 'Intact';
+
+/* Seltenheit der Belohnung - dieselben drei Stufen wie im Auswahlbildschirm. */
+const REWARD_RARITY = { Common: 'Gewöhnlich', Uncommon: 'Ungewöhnlich', Rare: 'Selten' };
+
+async function openRelicModal(entry) {
+  if (!entry?.uniqueName) return;
+  const modal = $('relic-modal');
+  const content = $('relic-modal-content');
+  if (!modal || !content) return;
+
+  modal.classList.remove('hidden');
+  content.innerHTML = `<div class="up-loading">${Icon.refresh(22)}<span>Lade Belohnungstabelle …</span></div>`;
+
+  const res = await window.api.getRelicDetails(entry.uniqueName);
+  if (!res.ok) {
+    content.innerHTML = `
+      <div class="im-header">
+        <div class="im-title-group"><h2>${esc(entry.name)}</h2></div>
+        <button class="modal-close-icon" id="rl-close" title="Schließen">&times;</button>
+      </div>
+      <div class="im-scroll-body">
+        <p class="up-empty">${esc(res.error || 'Belohnungen konnten nicht geladen werden.')}</p>
+      </div>`;
+    $('rl-close').onclick = closeRelicModal;
+    return;
+  }
+
+  relicData = res.data;
+  /* Die eigene Politur-Stufe zuerst - danach ist gefragt, wer im Inventar
+     darauf geklickt hat. */
+  relicState = relicData.currentState || 'Intact';
+  renderRelicModal();
+}
+
+function closeRelicModal() {
+  $('relic-modal')?.classList.add('hidden');
+}
+
+function renderRelicModal() {
+  const d = relicData;
+  const content = $('relic-modal-content');
+  if (!d || !content) return;
+
+  const cur = d.states.find(s => s.state === relicState) || d.states[0];
+
+  /* Der Erwartungswert ist eine Untergrenze, solange nicht jede Belohnung
+     einen Preis hat - das gehoert dazugesagt, sonst liest sich die Zahl
+     genauer, als sie ist. */
+  const unpriced = cur.pricedShare < 0.999;
+
+  content.innerHTML = `
+    <div class="im-header">
+      <div class="im-header-left">
+        <div class="im-art-wrap rl-art-wrap">
+          <img class="im-art" src="${esc(d.image || '')}" alt="">
+        </div>
+        <div class="im-title-group">
+          <div class="im-tags">
+            <span class="im-badge cat">Relikt</span>
+            ${d.tier ? `<span class="im-badge tier-${esc(d.tier.toLowerCase())}">${esc(d.tier)}</span>` : ''}
+            ${d.vaulted ? '<span class="im-badge rar-rare">Vaulted</span>' : ''}
+          </div>
+          <h2>${esc(d.displayName)}</h2>
+          <div class="up-subline">
+            ${d.total ? `<b>${nf(d.total)}</b> im Bestand` : 'Nicht im Bestand'}
+            ${d.vaulted ? ' · fällt zurzeit nirgends' : ''}
+          </div>
+        </div>
+      </div>
+      <button class="modal-close-icon" id="rl-close" title="Schließen">&times;</button>
+    </div>
+
+    <div class="im-scroll-body">
+      <div class="im-section">
+        <div class="im-section-title">Politur-Stufe</div>
+        <p class="up-set-hint">
+          Alle vier Stufen zeigen dieselben sechs Belohnungen – nur die Chancen verschieben sich
+          zur seltenen hin.
+        </p>
+        <div class="rl-states">
+          ${d.states.map(s => `
+            <button class="rl-state ${s.state === relicState ? 'active' : ''} ${s.count ? 'has' : ''}"
+                    data-state="${esc(s.state)}">
+              ${esc(s.label)}<span>${nf(s.count)}</span>
+            </button>`).join('')}
+        </div>
+      </div>
+
+      ${cur.rewards.length ? `
+        <div class="im-section">
+          <div class="im-section-title">Belohnungen</div>
+          <div class="rl-rewards">
+            ${cur.rewards.map(r => `
+              <div class="rl-reward rar-${esc(String(r.rarity || '').toLowerCase())}">
+                <img class="mat-icon" src="${esc(r.image || '')}" alt="" loading="lazy">
+                <div class="rl-reward-body">
+                  <b>${esc(r.name)}</b>
+                  <span>${esc(REWARD_RARITY[r.rarity] || r.rarity || '')}</span>
+                </div>
+                <span class="rl-chance">${esc(fmtChance(r.chance))}</span>
+                <span class="rl-val">
+                  <img class="currency-ic" src="assets/icons/currency/platinum.png" alt="Platin">
+                  ${r.plat != null ? nf(r.plat) : '–'}
+                </span>
+                <span class="rl-val">
+                  <img class="currency-ic ducat-ic" src="assets/icons/ducats.png" alt="Dukaten">
+                  ${r.ducats != null ? nf(r.ducats) : '–'}
+                </span>
+              </div>`).join('')}
+          </div>
+        </div>
+
+        <div class="im-section">
+          <div class="im-section-title">Was ein Öffnen im Schnitt bringt</div>
+          <div class="im-stats-grid">
+            <div class="im-stat-tile">
+              <span class="st-label">Platin${unpriced ? ' (mindestens)' : ''}</span>
+              <b class="st-val">${nf(cur.expPlat)}</b>
+            </div>
+            <div class="im-stat-tile">
+              <span class="st-label">Dukaten</span>
+              <b class="st-val">${nf(cur.expDucats)}</b>
+            </div>
+          </div>
+          ${unpriced ? `
+            <p class="up-set-hint" style="margin-top:9px;">
+              Für ${Math.round((1 - cur.pricedShare) * 100)} % der Chance liegt kein Platinpreis vor –
+              der Platinwert ist deshalb eine Untergrenze, keine Schätzung.
+            </p>` : ''}
+        </div>
+      ` : `
+        <div class="im-section">
+          <div class="im-section-title">Belohnungen</div>
+          <div class="up-empty">
+            Für dieses Relikt steht keine Belohnungstabelle bereit. Vaulted Relikte führt DE
+            nicht mehr auf – die Belohnungen bleiben dieselben, nachschlagen lässt sich das
+            aber nur im Wiki.
+          </div>
+        </div>`}
+
+      <div class="im-section">
+        <div class="im-section-title">Woher bekommt man das?</div>
+        ${d.vaulted
+          ? `<div class="up-empty">Dieses Relikt ist im Tresor – es fällt zurzeit nirgends.
+             Es bleibt der Handel oder das Warten auf eine Unvaulting.</div>`
+          : renderUpgradeSources(d)}
+        <div class="up-src-foot">
+          ${d.sources?.origin ? `<span>${esc(UPGRADE_ORIGIN[d.sources.origin] || '')}</span>` : ''}
+          <a class="up-wiki" target="_blank" rel="noreferrer" href="${esc(wikiLink(d.key))}">
+            ${Icon.link(13)}<span>Im Wiki nachschlagen</span>
+          </a>
+        </div>
+      </div>
+    </div>`;
+
+  $('rl-close').onclick = closeRelicModal;
+  content.querySelectorAll('[data-state]').forEach(btn => {
+    btn.onclick = () => { relicState = btn.dataset.state; renderRelicModal(); };
+  });
+
+  /* Nicht handelbare Belohnungen haben kein Marktbild. Der Platz bleibt
+     stehen, damit die Spalte daneben nicht verrutscht. */
+  onImageFail(content, '.im-art, .rl-reward .mat-icon', img => { img.style.visibility = 'hidden'; });
+}
+
+/** Chancen kommen als Zahl - hier bekommen sie Komma und Prozentzeichen. */
+const fmtChance = v => v == null
+  ? '–'
+  : `${Number(v).toLocaleString('de-DE', { maximumFractionDigits: 2 })} %`;
+
+$('relic-modal').onclick = e => {
+  if (e.target === $('relic-modal')) closeRelicModal();
+};
 
 if ($('inv-search')) $('inv-search').oninput = () => renderInventoryGrid();
 

@@ -20,13 +20,13 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
-import { loadCatalog, imageUrl } from '../core/catalog.js';
+import { loadCatalog, imageUrl, cleanGameText } from '../core/catalog.js';
 import { loadProfile, displayName, starChart } from '../core/profile.js';
 import { analyze, recommend, diversify, STATUS } from '../core/analyze.js';
 import { masteryRankName, progressForMR } from '../core/mastery.js';
 import { classify, CATEGORY_LABELS } from '../core/classify.js';
 import { acquisitionOf } from '../core/acquisition.js';
-import { resolveGoal, combineGoals, formatDuration } from '../core/recipes.js';
+import { resolveGoal, combineGoals, formatDuration, isRawMaterial } from '../core/recipes.js';
 import { loadConfig, saveConfig, DEFAULT_HOTKEYS } from '../core/config.js';
 import * as store from '../core/store.js';
 import { loadMods, POLARITIES, RARITY_LABELS, searchMods, isAuraMod, isExilusMod } from '../core/mods.js';
@@ -36,12 +36,18 @@ import { getAllResourceGuides, searchResourceGuides } from '../core/farming.js';
 import { getDucatsReferenceList, buildPrimeSets, buildDucatsCatalog, buildInventoryDucats } from '../core/ducats.js';
 import { loadInventory } from '../core/inventory.js';
 import { buildInventory, SECTIONS } from '../core/inventory-items.js';
+import { loadDropTables, sourcesFor } from '../core/droptables.js';
+import { loadCardImages, cardUrl } from '../core/cards.js';
+import { upgradeDetails } from '../core/upgrade-details.js';
 import { checkAllowed, formatWait } from '../core/ratelimit.js';
 import { matchesFissureFilter } from '../core/fissure-filter.js';
 import { captureForeground, restoreForeground } from '../core/foreground.js';
 import { LogWatcher } from '../core/logwatch.js';
 import { loadMarketItems, findMarketItem, getPrice, getPrices } from '../core/market.js';
-import { loadRelicTables, allRewardNames, planRelics, resolveInventoryRelic } from '../core/relics.js';
+import {
+  loadRelicTables, allRewardNames, planRelics, resolveInventoryRelic, relicIconPath,
+  rewardsFor, relicExpectation, RELIC_STATES
+} from '../core/relics.js';
 import { scanRewardScreen, buildRewardIndex } from '../core/rewardscan.js';
 import {
   parseBuildId, fetchBuild, toBuild, loadModMap, saveModMap,
@@ -113,7 +119,7 @@ let interacting = false;
 /* Fenster, das vor dem Zeigermodus den Fokus hatte - im Spielbetrieb also
    Warframe. Nur eine Kennung, kein Zugriff auf den fremden Prozess. */
 let interactReturnTo = null;
-const cache = { catalog: null, profile: null, analysis: null, mods: null };
+const cache = { catalog: null, profile: null, analysis: null, mods: null, dropTables: null, cards: null };
 
 process.chdir(path.resolve(__dirname, '../..'));   // data/ liegt im Projektwurzelverzeichnis
 
@@ -958,15 +964,6 @@ ipcMain.handle('item:details', async (_e, uniqueName) => {
       if (item.trigger !== undefined) stats.push({ label: 'Feuermodus', val: item.trigger });
     }
 
-    const cleanGameText = str => {
-      if (!str) return '';
-      return String(str)
-        .replace(/<[^>]*>/g, '')           // remove <DT_SLASH_COLOR>, </>, etc.
-        .replace(/\|[A-Z0-9_]+\|/g, '')     // remove |BASE|, |HPS|, |MAX|, etc.
-        .replace(/\s{2,}/g, ' ')
-        .trim();
-    };
-
     return {
       ok: true,
       data: {
@@ -1019,26 +1016,224 @@ ipcMain.handle('farming:get', async (_e, query) => {
   return searchResourceGuides(query);
 });
 
+/* ------------------------ Relikte: Bausteine ------------------------
+
+   Dieselben drei Schritte brauchen der Dukaten-Tab (alle eigenen Relikte) und
+   die Merkliste (nur die ausgewaehlten). Deshalb hier einmal, statt zweimal
+   nebeneinander zu altern.
+   ------------------------------------------------------------------ */
+
+/** Gecachte Marktpreise von Platte. Ohne sie gibt es Dukaten, aber kein Platin. */
+async function readPriceCache() {
+  /* Der leere catch hat hier frueher verdeckt, dass existsSync und readFile
+     nicht importiert waren: der ReferenceError verschwand wortlos, und der
+     Cache blieb leer. Deshalb wird der Fehlschlag gemeldet. */
+  try {
+    const p = path.join('data', 'market-prices.json');
+    if (existsSync(p)) return JSON.parse(await readFile(p, 'utf8')) || {};
+  } catch (err) {
+    console.error('[Dukaten] Preis-Cache nicht lesbar:', err.message);
+  }
+  return {};
+}
+
+/** Basispfad + Zustand -> Bild-URL. Ohne Pfad kein Bild, statt einer Ausnahme. */
+function relicImage(base, state) {
+  const p = relicIconPath(base, state);
+  return p ? imageUrl(p, 128) : null;
+}
+
+/**
+ * Bestand je Relikt UND Zustand aus dem Inventar.
+ * Strahlend und intakt sind dasselbe Relikt, aber nicht dieselbe Entscheidung.
+ */
+function ownedRelics(inventory, market) {
+  const owned = new Map();
+
+  for (const row of inventory?.MiscItems || []) {
+    if (typeof row.ItemType !== 'string' || !row.ItemType.includes('/Projections/')) continue;
+    const res = resolveInventoryRelic(market, row.ItemType);
+    if (!res?.key) continue;
+
+    const k = res.key + '|' + res.state;
+    const prev = owned.get(k);
+    if (prev) { prev.count += row.ItemCount || 1; continue; }
+
+    owned.set(k, {
+      key: res.key,
+      state: res.state,
+      count: row.ItemCount || 1,
+      image: relicImage(res.base, res.state)
+    });
+  }
+  return owned;
+}
+
+/**
+ * Katalog-Eintrag ueber den Anzeigenamen.
+ *
+ * Der Index haengt am Katalog selbst und nicht an einer Variablen daneben -
+ * so bekommt ein neu geladener Katalog zwangslaeufig einen neuen Index, statt
+ * dass ein alter stehenbleibt.
+ */
+function catalogItemByName(catalog, name) {
+  if (!catalog || !name) return null;
+
+  if (!catalog.byName) {
+    catalog.byName = new Map();
+    for (const it of [...(catalog.items || []), ...(catalog.lookup || [])]) {
+      const n = (it.name || '').toLowerCase();
+      /* Erster Treffer gewinnt: items stehen vor lookup, echte Items also vor
+         den blossen Nachschlage-Eintraegen (siehe catalog.js). */
+      if (n && !catalog.byName.has(n)) catalog.byName.set(n, it);
+    }
+  }
+  return catalog.byName.get(String(name).toLowerCase().trim()) || null;
+}
+
+/**
+ * Bild fuer Belohnungen, die der Markt nicht fuehrt.
+ *
+ * Forma, Kuva, Exilus-Adapter und Riven-Splitter sind nicht handelbar und
+ * stehen deshalb in keiner Marktliste - in den Droptabellen sehr wohl, und
+ * Forma steckt in fast jedem Relikt. Ohne diesen Umweg ueber den Katalog
+ * bliebe ausgerechnet die haeufigste Belohnung ohne Bild.
+ *
+ * Die Mengenangabe gehoert zur Zeile, nicht zum Item ("2X Forma Blueprint") -
+ * zum Nachschlagen wird sie abgeschnitten.
+ */
+function nonMarketImage(catalog, name) {
+  const clean = String(name || '').replace(/^\d+X\s+/i, '').trim();
+  const isBlueprint = /\sBlueprint$/i.test(clean);
+  const base = isBlueprint ? clean.replace(/\sBlueprint$/i, '') : clean;
+
+  const item = catalogItemByName(catalog, base) || catalogItemByName(catalog, clean);
+  if (!item?.uniqueName) return null;
+
+  /* Belohnt wird der Bauplan, nicht das fertige Teil: im Spiel sieht man das
+     Bauplan-Symbol, und genau das soll hier stehen. */
+  if (isBlueprint) {
+    const recipe = catalog.recipeFor?.get(item.uniqueName);
+    if (recipe?.uniqueName) return imageUrl(recipe.uniqueName, 128);
+  }
+  return imageUrl(item.uniqueName, 128);
+}
+
+/** Belohnungsname -> Dukaten, Platin, Markt-Kennung und Bild. */
+function relicRewardLookup(market, priceCache, catalog) {
+  return name => {
+    const m = market ? findMarketItem(market, { name }) : null;
+    if (!m) {
+      /* Nicht handelbar heisst: kein Preis, keine Dukaten - aber ein Bild. */
+      const image = nonMarketImage(catalog, name);
+      return image ? { ducats: null, plat: null, slug: null, image } : null;
+    }
+    return {
+      ducats: m.ducats ?? null,
+      plat: priceCache[m.slug]?.price?.min ?? null,
+      slug: m.slug,
+      /* Bild aus DEs Export ueber gameRef, nicht das Thumbnail von
+         warframe.market: die Content-Security-Policy der Oberflaeche laesst
+         nur cdn.jsdelivr.net zu, Marktbilder blieben wortlos leer. */
+      image: m.gameRef ? imageUrl(m.gameRef, 128) : null
+    };
+  };
+}
+
+/**
+ * Gemerkte Relikte mit frischen Zahlen.
+ *
+ * Gespeichert ist nur die Kennung - Bestand, Preise und Erwartungswert werden
+ * bei jedem Abruf neu gerechnet. Ein gemerktes Relikt, das gerade nicht im
+ * Inventar liegt, faellt deshalb nicht aus der Liste: dann ist es kein
+ * Bestand, sondern ein Farmziel, und genau das soll im Overlay stehen.
+ */
+async function describeTrackedRelics() {
+  const saved = await store.load();
+  const tracked = saved.trackedRelics || [];
+  if (!tracked.length) return [];
+
+  if (!cache.catalog) cache.catalog = await loadCatalog();
+
+  const market = await loadMarketItems().catch(() => null);
+  const invRes = await loadInventory({ refresh: false }).catch(() => null);
+  const priceCache = await readPriceCache();
+  const relicIdx = await loadRelicTables();
+
+  const owned = ownedRelics(invRes?.inventory, market);
+  const lookup = relicRewardLookup(market, priceCache, cache.catalog);
+
+  const entries = tracked.map(t => {
+    const state = t.state || 'Intact';
+    const have = owned.get(t.key + '|' + state);
+    if (have) return have;
+
+    /* Nicht im Bestand: das Bild kommt dann ueber die Marktliste, die als
+       einzige auch die vaulted Relikte kennt (siehe relics.js). */
+    const base = market ? findMarketItem(market, { name: t.key + ' Relic' })?.gameRef : null;
+    return { key: t.key, state, count: 0, image: relicImage(base, state) };
+  });
+
+  const planned = planRelics(relicIdx, entries, lookup);
+  const byId = new Map(planned.map(p => [p.key + '|' + p.state, p]));
+
+  /* Reihenfolge wie im Planer: was am meisten bringt, zuerst. Die Merkliste
+     selbst ist ungeordnet - sie haelt fest, WAS gemerkt wurde, nicht wie viel
+     es heute wert ist. */
+  return tracked
+    .map((t, i) => {
+      const id = t.key + '|' + (t.state || 'Intact');
+      const hit = byId.get(id);
+      if (hit) return { id, ...hit };
+
+      /* Kein Eintrag in der Droptabelle - vaulted Relikte stehen dort nicht.
+         Lieber ohne Zahlen zeigen als stillschweigend verschlucken. */
+      return {
+        id, key: t.key, tier: t.tier || '', name: t.name || t.key,
+        state: t.state || 'Intact', count: entries[i].count, image: entries[i].image,
+        rewards: [], expPlat: 0, expDucats: 0, pricedShare: 0, noTable: true
+      };
+    })
+    .sort((a, b) => b.expPlat - a.expPlat || b.expDucats - a.expDucats);
+}
+
+/* Beide Fenster: das Hauptfenster zeichnet die Sterne im Planer, das Overlay
+   seinen Abschnitt - und beide sollen nach einem Klick gleich stehen. */
+function broadcastTrackedRelics(list) {
+  for (const w of [win, overlayWin]) {
+    if (w && !w.isDestroyed()) w.webContents.send('relics:tracked-changed', list);
+  }
+}
+
+ipcMain.handle('relics:tracked', async () => {
+  try { return await describeTrackedRelics(); }
+  catch (err) {
+    console.error('[Relikt] Merkliste nicht lesbar:', err.message);
+    return [];
+  }
+});
+
+ipcMain.handle('relics:toggleTracked', async (_e, entry) => {
+  await store.toggleTrackedRelic(entry || {});
+  const list = await describeTrackedRelics().catch(() => []);
+  broadcastTrackedRelics(list);
+  return list;
+});
+
+ipcMain.handle('relics:clearTracked', async () => {
+  await store.clearTrackedRelics();
+  broadcastTrackedRelics([]);
+  return [];
+});
+
 ipcMain.handle('ducats:get', async () => {
   if (!cache.catalog) await ensureData({ refresh: false });
   const market = await loadMarketItems().catch(() => null);
   const invRes = await loadInventory({ refresh: false }).catch(() => null);
 
   /* Gecachte Marktpreise. Ohne sie zeigt der Tab zwar Dukaten - die stehen in
-     der Marktliste -, aber keinen einzigen Platinpreis.
-
-     Der leere catch hier hat frueher genau das verdeckt: existsSync und
-     readFile waren nicht importiert, der ReferenceError verschwand wortlos,
-     und der Cache blieb leer. Deshalb wird der Fehlschlag jetzt gemeldet. */
-  let priceCache = {};
-  try {
-    const pPath = path.join('data', 'market-prices.json');
-    if (existsSync(pPath)) {
-      priceCache = JSON.parse(await readFile(pPath, 'utf8')) || {};
-    }
-  } catch (err) {
-    console.error('[Dukaten] Preis-Cache nicht lesbar:', err.message);
-  }
+     der Marktliste -, aber keinen einzigen Platinpreis. */
+  const priceCache = await readPriceCache();
 
   const inventoryData = invRes?.inventory
     ? buildInventoryDucats(invRes.inventory, cache.catalog, market, priceCache)
@@ -1060,35 +1255,36 @@ ipcMain.handle('ducats:get', async () => {
 
   /* Sets nur aus dem, was man besitzt: eine Liste aller 160 Prime-Sets waere
      ein Katalog, keine Antwort auf "was fehlt mir noch". */
-  const sets = buildPrimeSets(market, priceCache, inventoryData.items);
+  const masteredDucats = new Set([
+    ...(invRes?.inventory?.XPInfo || []).map(e => e.ItemType),
+    ...(invRes?.inventory?.Suits || []).map(e => e.ItemType),
+    ...(invRes?.inventory?.Weapons || []).map(e => e.ItemType),
+    ...(invRes?.inventory?.SpaceSuits || []).map(e => e.ItemType),
+    ...(invRes?.inventory?.SpaceWeapons || []).map(e => e.ItemType),
+    ...(invRes?.inventory?.MechSuits || []).map(e => e.ItemType)
+  ]);
+  const sets = buildPrimeSets(market, priceCache, inventoryData.items, {
+    onlyOwned: true,
+    catalog: cache.catalog,
+    mastered: masteredDucats
+  });
 
   /* Relikt-Planer: was bringt das Oeffnen im Schnitt. Faellt er aus, laeuft
      der Rest des Tabs weiter - er ist eine Zugabe, keine Voraussetzung. */
   let relicPlan = [];
+  let trackedRelics = [];
   try {
     const relicIdx = await loadRelicTables();
+    const ownedMap = ownedRelics(invRes?.inventory, market);
+    relicPlan = planRelics(relicIdx, [...ownedMap.values()],
+      relicRewardLookup(market, priceCache, cache.catalog));
 
-    /* Bestand je Relikt UND Zustand: strahlend und intakt sind dasselbe
-       Relikt, aber nicht dieselbe Entscheidung. */
-    const ownedMap = new Map();
-    for (const row of invRes?.inventory?.MiscItems || []) {
-      if (typeof row.ItemType !== 'string' || !row.ItemType.includes('/Projections/')) continue;
-      const res = resolveInventoryRelic(market, row.ItemType);
-      if (!res?.key) continue;
-
-      const k = res.key + '|' + res.state;
-      const prev = ownedMap.get(k);
-      if (prev) prev.count += row.ItemCount || 1;
-      else ownedMap.set(k, { key: res.key, state: res.state, count: row.ItemCount || 1 });
-    }
-
-    const lookup = name => {
-      const m = market ? findMarketItem(market, { name }) : null;
-      if (!m) return null;
-      return { ducats: m.ducats ?? null, plat: priceCache[m.slug]?.price?.min ?? null, slug: m.slug };
-    };
-
-    relicPlan = planRelics(relicIdx, [...ownedMap.values()], lookup);
+    /* Nur die Kennungen: welche Karten im Planer als gemerkt zu zeichnen sind.
+       Die ausgerechnete Fassung holt sich das Overlay selbst. */
+    const saved = await store.load();
+    trackedRelics = (saved.trackedRelics || []).map(t => ({
+      id: t.key + '|' + (t.state || 'Intact'), key: t.key, state: t.state || 'Intact'
+    }));
   } catch { /* ohne Planer laeuft der Rest weiter */ }
 
   return {
@@ -1097,9 +1293,11 @@ ipcMain.handle('ducats:get', async () => {
     catalog: catalogData,
     sets,
     relicPlan,
+    trackedRelics,
     hasInventory: !!invRes?.inventory,
-    source: invRes?.source || 'none',
-    fetchedAt: invRes?.fetchedAt || null
+    isDevelopmentInventory: !!invRes?.isDevelopmentInventory,
+    pricesFetchedAt: Object.values(priceCache)[0]?.fetchedAt || null,
+    hasPrices: Object.keys(priceCache).length > 0
   };
 });
 
@@ -1127,13 +1325,65 @@ const INVENTORY_ERRORS = {
   scan_failed:   'Die Suche im Spielspeicher ist fehlgeschlagen.'
 };
 
+/**
+ * Gefaessbilder der Arcanes nachreichen.
+ *
+ * NUR Arcanes: Mod-Karten zeichnet die Oberflaeche selbst aus Rahmen,
+ * Illustration und Text, weil nur so beide Zustaende moeglich sind. Ein
+ * Arcane ist dagegen ein einzelnes Gefaess ohne zweiten Zustand - dafuer ist
+ * das fertige Bild genau richtig.
+ *
+ * Ohne Netz oder beim allerersten Start gibt es die Zuordnung noch nicht -
+ * dann bleibt `card` leer und es bleibt beim Bild aus DEs Export. Ein
+ * fehlendes Bild darf den Inventar-Abruf nicht scheitern lassen.
+ */
+async function attachCards(view) {
+  if (!cache.cards) {
+    try { cache.cards = await loadCardImages({}); }
+    catch (err) { console.warn('[Karten] Bildverzeichnis nicht verfügbar:', err.message); return; }
+  }
+  for (const e of view.sections.arcanes || []) e.card = cardUrl(cache.cards, e, 128);
+}
+
 /** Gemeinsamer Aufbau fuer get und refresh. */
 async function inventoryPayload({ refresh }) {
   if (!cache.catalog) await ensureData({ refresh: false });
 
   const res = await loadInventory({ refresh });
   const view = buildInventory(res.inventory, cache.catalog);
+  await attachCards(view);
   const gate = await checkAllowed({});
+
+  let sets = [];
+  try {
+    const market = await loadMarketItems().catch(() => null);
+    const priceCache = await readPriceCache();
+    if (market && res.inventory) {
+      const invDucats = buildInventoryDucats(res.inventory, cache.catalog, market, priceCache);
+      const mastered = new Set([
+        ...(res.inventory.XPInfo || []).map(e => e.ItemType),
+        ...(res.inventory.Suits || []).map(e => e.ItemType),
+        ...(res.inventory.Weapons || []).map(e => e.ItemType),
+        ...(res.inventory.SpaceSuits || []).map(e => e.ItemType),
+        ...(res.inventory.SpaceWeapons || []).map(e => e.ItemType),
+        ...(res.inventory.MechSuits || []).map(e => e.ItemType)
+      ]);
+      sets = buildPrimeSets(market, priceCache, invDucats.items, {
+        onlyOwned: true,
+        catalog: cache.catalog,
+        mastered
+      });
+    }
+  } catch (err) {
+    console.warn('[Inventory] Sets-Erstellung fehlgeschlagen:', err.message);
+  }
+
+  view.sections.sets = sets;
+  view.totals.sets = {
+    arten: sets.length,
+    stueck: sets.reduce((sum, s) => sum + s.ownedParts, 0),
+    complete: sets.filter(s => s.complete).length
+  };
 
   return {
     ok: true,
@@ -1170,6 +1420,122 @@ ipcMain.handle('inventory:refresh', async () => {
   } catch (err) {
     const code = err.code || (err.rateLimited ? 'rate_limited' : 'unknown');
     return { ok: false, code, error: INVENTORY_ERRORS[code] || err.message };
+  }
+});
+
+/**
+ * Datenblatt einer Mod- oder Arcane-Karte.
+ *
+ * `owned` reicht die Oberflaeche mit herein: sie hat den Inventar-Eintrag mit
+ * Anzahl und Raengen bereits vorliegen. Ihn hier neu aus der Inventardatei zu
+ * ziehen, hiesse ein Megabyte JSON pro Klick zu lesen.
+ *
+ * Die Droptabellen sind ABSICHTLICH kein Grund zum Scheitern: ohne Netz oder
+ * beim allerersten Start gibt es die Datei noch nicht. Dann fehlen eben die
+ * Fundorte - Wirkung und Werte stehen trotzdem da.
+ */
+ipcMain.handle('upgrade:details', async (_e, uniqueName, owned = null) => {
+  try {
+    if (!cache.catalog) await ensureData({ refresh: false });
+
+    let dropNote = null;
+    if (!cache.dropTables) {
+      try {
+        cache.dropTables = await loadDropTables({});
+      } catch (err) {
+        dropNote = `Fundorte nicht verfügbar: ${err.message}`;
+      }
+    }
+
+    const data = upgradeDetails(uniqueName, cache.catalog, cache.dropTables, owned);
+    if (!data) return { ok: false, error: 'Karte nicht im Katalog gefunden.' };
+
+    /* Im Datenblatt ist Platz fuer die grosse Karte - dieselbe Quelle wie im
+       Raster, nur in doppelter Breite. */
+    if (!cache.cards) cache.cards = await loadCardImages({}).catch(() => null);
+    const card = cardUrl(cache.cards, data, data.kind === 'arcane' ? 256 : 310);
+
+    return { ok: true, data: { ...data, card, dropNote } };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+/* Deutsche Namen der Politur-Stufen. Im Inventar stehen sie laengst so da -
+   ein Datenblatt, das plötzlich "Radiant" sagt, waere ein Bruch. */
+const RELIC_STATE_LABELS = {
+  Intact: 'Intakt', Exceptional: 'Außergewöhnlich',
+  Flawless: 'Makellos', Radiant: 'Strahlend'
+};
+
+/**
+ * Datenblatt eines Relikts.
+ *
+ * Die vier Politur-Stufen zeigen DIESELBEN sechs Belohnungen mit anderen
+ * Chancen - strahlend hebt die seltene von 2 % auf 10 %. Deshalb wird nicht
+ * eine Stufe ausgerechnet, sondern alle vier: die Frage vor dem Oeffnen ist
+ * ja gerade, ob sich das Polieren lohnt.
+ */
+ipcMain.handle('relic:details', async (_e, uniqueName) => {
+  try {
+    if (!cache.catalog) cache.catalog = await loadCatalog();
+
+    const market = await loadMarketItems().catch(() => null);
+    const resolved = resolveInventoryRelic(market, uniqueName);
+    if (!resolved?.key) return { ok: false, error: 'Relikt nicht erkannt.' };
+
+    const [relicIdx, priceCache] = await Promise.all([loadRelicTables(), readPriceCache()]);
+    const lookup = relicRewardLookup(market, priceCache, cache.catalog);
+
+    /* Bestand je Stufe: das eigene Inventar weiss, wie viele intakte und wie
+       viele strahlende danebenliegen. */
+    const invRes = await loadInventory({ refresh: false }).catch(() => null);
+    const owned = ownedRelics(invRes?.inventory, market);
+
+    const states = RELIC_STATES.map(state => {
+      const table = rewardsFor(relicIdx, resolved.key, state);
+      const value = table ? relicExpectation(table.rewards, lookup) : null;
+      return {
+        state,
+        label: RELIC_STATE_LABELS[state] || state,
+        count: owned.get(resolved.key + '|' + state)?.count || 0,
+        rewards: value?.rewards || [],
+        expPlat: value?.expPlat ?? null,
+        expDucats: value?.expDucats ?? null,
+        pricedShare: value?.pricedShare ?? 0
+      };
+    });
+
+    /* Steht das Relikt nicht mehr in den Droptabellen, ist es vaulted - dann
+       gibt es keine Belohnungsliste und auch keinen Fundort. */
+    const vaulted = !relicIdx?.byKey?.has(resolved.key);
+
+    let sources = { groups: [], origin: null };
+    if (!vaulted) {
+      if (!cache.dropTables) cache.dropTables = await loadDropTables({}).catch(() => null);
+      sources = sourcesFor(cache.dropTables, { name: `${resolved.key} Relic` });
+    }
+
+    const [tier, ...rest] = resolved.key.split(' ');
+    return {
+      ok: true,
+      data: {
+        key: resolved.key,
+        tier,
+        name: rest.join(' '),
+        /* Die Marktliste haengt "Relic" an jeden Namen. Im Inventar steht
+           daneben schlicht "Axi A22" - im Datenblatt soll dasselbe stehen. */
+        displayName: (resolved.displayName || resolved.key).replace(/\s*Relic$/i, ''),
+        image: relicImage(resolved.base, resolved.state),
+        currentState: resolved.state,
+        states,
+        vaulted,
+        sources,
+        total: states.reduce((sum, s) => sum + s.count, 0)
+      }
+    };
+  } catch (err) {
+    return { ok: false, code: err.code || null, error: err.message };
   }
 });
 
@@ -1485,6 +1851,7 @@ async function resolveSetDetails(name, uniqueName) {
           // 2. Zutaten / Unter-Komponenten
           for (const ing of recipe.ingredients || []) {
             const ingUnique = ing.ItemType;
+            if (isRawMaterial(ingUnique)) continue;
             const subRec = catalog.recipeFor.get(ingUnique);
             const ingItem = catalog.byUniqueName.get(ingUnique);
             let targetUnique = ingUnique;

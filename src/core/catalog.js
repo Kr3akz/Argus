@@ -107,6 +107,25 @@ function buildIndex(items, recipes, lookup = []) {
   return { items, byUniqueName, recipes: recipes || [], recipeFor, recipeByUniqueName, lookup };
 }
 
+/**
+ * Anzeigetexte aus dem Export von ihren Auszeichnungen befreien.
+ *
+ * DE schreibt sie fuer die Spiel-Oberflaeche: <DT_FIRE_COLOR> faerbt "Hitze"
+ * rot, |BASE| wird zur Laufzeit durch eine Zahl ersetzt, <LOWER_IS_BETTER>
+ * dreht den Pfeil um. Ausserhalb des Spiels ist das nur Rauschen.
+ *
+ * Steht hier, weil es JEDEN Export-Text betrifft - Mods, Waffen, Faehigkeiten -
+ * und nicht nur den einen Ort, an dem es zuerst gebraucht wurde.
+ */
+export function cleanGameText(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/<[^>]*>/g, '')
+    .replace(/\|[A-Z0-9_]+\|/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 /** uniqueName -> Bild-URL. /Lotus/Weapons/X/Y => Lotus.Weapons.X.Y.png */
 export function imageUrl(uniqueName, size = 128) {
   const slug = uniqueName.replace(/^\//, '').replaceAll('/', '.');

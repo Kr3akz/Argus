@@ -2,8 +2,10 @@
 <html lang="de">
 <head>
   <meta charset="utf-8">
+  <!-- wiki.warframe.com liefert die fertig gezeichneten Mod- und Arcane-Karten.
+       Nur Bilder, nichts Ausfuehrbares: script-src bleibt bei 'self'. -->
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; img-src 'self' https://cdn.jsdelivr.net data:; style-src 'self' 'unsafe-inline';">
+        content="default-src 'self'; img-src 'self' https://cdn.jsdelivr.net https://wiki.warframe.com data:; style-src 'self' 'unsafe-inline';">
   <title>Cephalon Argus</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -41,15 +43,7 @@
       </div>
 
       <nav class="sidebar-nav">
-        <button class="nav-item active" data-tab="dashboard">
-          <span class="nav-icon" data-icon="dashboard"></span>
-          <div class="nav-tooltip">
-            <b>Dashboard</b>
-            <span>Übersicht & Empfehlungen</span>
-          </div>
-        </button>
-
-        <button class="nav-item" data-tab="worldstate">
+        <button class="nav-item active" data-tab="worldstate">
           <span class="nav-icon" data-icon="alert"></span>
           <span class="nav-pill live-dot"></span>
           <div class="nav-tooltip">
@@ -58,17 +52,17 @@
           </div>
         </button>
 
-        <button class="nav-item" data-tab="goals">
-          <span class="nav-icon" data-icon="target"></span>
-          <span id="goal-count" class="nav-pill">0</span>
+        <button class="nav-item" data-tab="mastery">
+          <span class="nav-icon" data-icon="upgrade"></span>
+          <span id="goal-count" class="nav-pill hidden">0</span>
           <div class="nav-tooltip">
-            <b>Farm-Ziele & Checkliste</b>
-            <span>Aktive Ziele, Rohstoffe & Items</span>
+            <b>Mastery & Farm-Ziele</b>
+            <span>Ziele, Empfehlungen & Katalog</span>
           </div>
         </button>
 
         <button class="nav-item" data-tab="inventory">
-          <span class="nav-icon" data-icon="crate"></span>
+          <span class="nav-icon" data-icon="inventory"></span>
           <div class="nav-tooltip">
             <b>Inventar</b>
             <span>Relikte, Mods, Arcanes & Material</span>
@@ -76,7 +70,7 @@
         </button>
 
         <button class="nav-item" data-tab="ducats">
-          <span class="nav-icon" data-icon="ducat"></span>
+          <span class="nav-icon" data-icon="relic"></span>
           <div class="nav-tooltip">
             <b>Baro & Dukaten</b>
             <span>Prime-Teile & Relikt-Rechner</span>
@@ -84,8 +78,7 @@
         </button>
 
         <button class="nav-item" data-tab="builds">
-          <span class="nav-icon" data-icon="forma"></span>
-          <span id="build-count" class="nav-pill">0</span>
+          <span class="nav-icon" data-icon="rifle"></span>
           <div class="nav-tooltip">
             <b>Builds & Mods</b>
             <span>Overframe-Import & Modding</span>
@@ -151,7 +144,7 @@
           </div>
 
           <div class="mr-block">
-            <div class="mr-big"><span id="mr-value">–</span><small>MR</small></div>
+            <div class="mr-big"><img class="mr-icon" src="assets/icons/mastery-rank.png" alt="MR"><span id="mr-value">–</span><small>MR</small></div>
             <span class="mr-max">von max. <b id="stat-potential">–</b></span>
           </div>
         </div>
@@ -186,43 +179,8 @@
       </div>
     </section>
 
-    <!-- ---------------- 1. Dashboard ---------------- -->
-    <section id="tab-dashboard" class="tabpane active">
-      <div id="active-goals-wrap" class="hidden">
-        <div class="section-head section-head-row">
-          <div>
-            <h2>Woran du gerade farmst</h2>
-            <p>Deine offenen Ziele mit den nächsten Materialien</p>
-          </div>
-          <button class="btn-sm" id="btn-to-goals">Alle Ziele</button>
-        </div>
-        <div id="active-goals" class="activegoals"></div>
-      </div>
-
-      <div class="section-head">
-        <h2>Quick Wins</h2>
-        <p>Gegenstände in deinem Besitz, die noch gelevelt werden müssen</p>
-      </div>
-      <div id="quick-wins" class="cards"></div>
-
-      <div class="section-head">
-        <h2>Günstig zu holen</h2>
-        <p>Direkt aus Markt oder Dojo-Labor, keine langen Farm-Voraussetzungen</p>
-      </div>
-      <div id="easy-gains" class="cards"></div>
-
-      <div class="section-head">
-        <h2>Fehlende Warframes</h2>
-        <p>Jeder Frame bringt 6.000 Meisterschaftspunkte</p>
-      </div>
-      <div id="warframes" class="cards"></div>
-
-      <div class="section-head"><h2>Fortschritt nach Kategorie</h2></div>
-      <div id="categories" class="cats"></div>
-    </section>
-
-    <!-- ---------------- 2. Live World-State Tracker ---------------- -->
-    <section id="tab-worldstate" class="tabpane">
+    <!-- ---------------- 1. Live World-State Tracker ---------------- -->
+    <section id="tab-worldstate" class="tabpane active">
       <div class="section-head section-head-row">
         <div>
           <h2>Live Weltstatus & Zyklen</h2>
@@ -290,11 +248,20 @@
         </div>
       </div>
 
+      <!-- ---- Unterseite: Nightwave ---- -->
+      <div class="ws-pane" data-ws-pane="nightwave">
+        <div class="section-head">
+          <h2>Nightwave-Aufgaben</h2>
+          <p>Tages-, Wochen- und Elite-Aufgaben für Ansehen und Belohnungen</p>
+        </div>
+        <div id="ws-nightwave" class="ws-alert-list"></div>
+      </div>
+
       <!-- ---- Unterseite: Alerts & zeitlich begrenzte Missionen ---- -->
       <div class="ws-pane" data-ws-pane="alerts">
         <div class="section-head">
           <h2>Alerts & zeitlich begrenzte Missionen</h2>
-          <p>Kuva-Siphons, Schlichtung, Nightwave und klassische Alerts</p>
+          <p>Kuva-Siphons, Schlichtung und klassische Alerts</p>
         </div>
         <div id="ws-alerts" class="ws-alert-list"></div>
       </div>
@@ -330,57 +297,110 @@
       </div>
     </section>
 
-    <!-- ---------------- 3. Farm-Ziele & Checkliste ---------------- -->
-    <section id="tab-goals" class="tabpane">
-      <div class="section-head section-head-row">
-        <div>
-          <h2>Farm-Ziele & Checkliste</h2>
-          <p>Verwalte deine aktiven Ziele oder wähle Gegenstände aus dem gesamten Warframe-Katalog</p>
-        </div>
-      </div>
+    <!-- ---------------- 2. Mastery & Farm-Ziele ---------------- -->
+    <section id="tab-mastery" class="tabpane">
 
-      <!-- Gemeinsame Einkaufsliste -->
-      <div id="shopping" class="shopping hidden">
-        <div class="shopping-head">
+      <!-- Immer sichtbar: was gerade laeuft, egal ob Manager oder Katalog -->
+      <div id="active-goals-wrap" class="hidden">
+        <div class="section-head section-head-row">
           <div>
-            <h3>Gemeinsame Einkaufsliste</h3>
-            <p>Gesamte Rohstoffe für alle deine offenen Ziele zusammen</p>
+            <h2>Woran du gerade farmst</h2>
+            <p>Deine offenen Ziele mit den nächsten Materialien</p>
           </div>
-          <div class="shopping-meta">
-            <span>Credits: <b id="shop-credits">0</b></span>
-            <span>Gesamte Bauzeit: <b id="shop-time">0h</b></span>
-          </div>
+          <button class="btn-sm" id="btn-to-goals">Details & Materialien</button>
         </div>
-        <div id="shopping-mats" class="matgrid"></div>
+        <div id="active-goals" class="activegoals"></div>
       </div>
 
-      <!-- Deine aktiven Ziele -->
-      <div class="section-head" style="margin-top: 18px;">
-        <h2>Deine aktiven Ziele</h2>
-        <p>Gegenstände, an denen du aktuell arbeitest oder levelst</p>
-      </div>
-      <div id="goals" class="goals"></div>
-
-      <!-- Gegenstands-Katalog & Mastery-Checkliste -->
-      <div class="section-head" style="margin-top: 36px;">
-        <h2>Gegenstands-Katalog & Mastery-Checkliste</h2>
-        <p>Alle Warframe-Items nach Kategorie & Status filtern – klicke auf eine Kachel für Drop-Quellen und um sie als Ziel zu setzen</p>
-      </div>
-      <div class="filters">
-        <select id="filter-category"></select>
-        <select id="filter-status">
-          <option value="">Alle Status</option>
-          <option value="missing">Nur fehlende</option>
-          <option value="partial">Nur angefangene</option>
-          <option value="done">Nur fertige</option>
-        </select>
-        <div class="searchbox">
-          <span class="ic" id="ic-filtersearch"></span>
-          <input id="filter-search" type="text" placeholder="Item suchen … z. B. Wisp, Ignis Wraith, Torid, Stropha">
+      <!-- Umschalter zwischen Manager und Katalog -->
+      <div class="mastery-mode-row">
+        <div class="ducats-mode-tabs">
+          <button class="ducats-tab-btn active" id="tab-mastery-mode-manager" data-mode="manager">
+            <span class="btn-ic" data-icon="upgrade"></span><span>Manager</span>
+          </button>
+          <button class="ducats-tab-btn" id="tab-mastery-mode-catalog" data-mode="catalog">
+            <span class="btn-ic" data-icon="codex"></span><span>Katalog</span>
+          </button>
         </div>
-        <span id="checklist-count" class="meta"></span>
+        <span class="meta" id="mastery-mode-hint">Ziele, Rohstoffe & Mastery-Empfehlungen</span>
       </div>
-      <div id="checklist" class="grid"></div>
+
+      <!-- ----- Modus: Manager ----- -->
+      <div id="mastery-pane-manager" class="mastery-pane active">
+
+        <!-- Gemeinsame Einkaufsliste -->
+        <div id="shopping" class="shopping hidden">
+          <div class="shopping-head">
+            <div>
+              <h3>Gemeinsame Einkaufsliste</h3>
+              <p>Gesamte Rohstoffe für alle deine offenen Ziele zusammen</p>
+            </div>
+            <div class="shopping-meta">
+              <span>Credits: <b id="shop-credits">0</b></span>
+              <span>Gesamte Bauzeit: <b id="shop-time">0h</b></span>
+            </div>
+          </div>
+          <div id="shopping-mats" class="matgrid"></div>
+        </div>
+
+        <!-- Ziele im Detail: eingeklappt, damit der Kopfbereich oben nicht
+             direkt darunter dieselben Karten noch einmal zeigt. -->
+        <div class="goal-details-block" id="goal-details-head">
+          <button class="goal-details-toggle" id="btn-goal-details" aria-expanded="false" aria-controls="goals">
+            <span class="gd-chevron" data-icon="chevron"></span>
+            <span class="gd-text">
+              <b>Ziel-Details & Materialien</b>
+              <small>Bauteile, Rohstoffe und Notizen zu jedem Ziel</small>
+            </span>
+            <span class="counter-badge" id="goal-details-count">0</span>
+          </button>
+          <div id="goals" class="goals hidden"></div>
+        </div>
+
+        <div class="section-head">
+          <h2>Quick Wins</h2>
+          <p>Gegenstände in deinem Besitz, die noch gelevelt werden müssen</p>
+        </div>
+        <div id="quick-wins" class="cards"></div>
+
+        <div class="section-head">
+          <h2>Günstig zu holen</h2>
+          <p>Direkt aus Markt oder Dojo-Labor, keine langen Farm-Voraussetzungen</p>
+        </div>
+        <div id="easy-gains" class="cards"></div>
+
+        <div class="section-head">
+          <h2>Fehlende Warframes</h2>
+          <p>Jeder Frame bringt 6.000 Meisterschaftspunkte</p>
+        </div>
+        <div id="warframes" class="cards"></div>
+
+        <div class="section-head"><h2>Fortschritt nach Kategorie</h2></div>
+        <div id="categories" class="cats"></div>
+      </div>
+
+      <!-- ----- Modus: Katalog ----- -->
+      <div id="mastery-pane-catalog" class="mastery-pane">
+        <div class="section-head">
+          <h2>Gegenstands-Katalog & Mastery-Checkliste</h2>
+          <p>Alle Warframe-Items nach Kategorie & Status filtern – klicke auf eine Kachel für Drop-Quellen und um sie als Ziel zu setzen</p>
+        </div>
+        <div class="filters">
+          <select id="filter-category"></select>
+          <select id="filter-status">
+            <option value="">Alle Status</option>
+            <option value="missing">Nur fehlende</option>
+            <option value="partial">Nur angefangene</option>
+            <option value="done">Nur fertige</option>
+          </select>
+          <div class="searchbox">
+            <span class="ic" id="ic-filtersearch"></span>
+            <input id="filter-search" type="text" placeholder="Item suchen … z. B. Wisp, Ignis Wraith, Torid, Stropha">
+          </div>
+          <span id="checklist-count" class="meta"></span>
+        </div>
+        <div id="checklist" class="grid"></div>
+      </div>
     </section>
 
     <!-- ---------------- 4. Farm-Routen & Ressourcen Guide ---------------- -->
@@ -473,10 +493,6 @@
             </button>
             <button class="ducats-tab-btn" id="tab-ducats-mode-cat" data-mode="catalog">
               <span class="btn-ic" data-icon="codex"></span><span>Gesamter Prime-Katalog</span>
-            </button>
-            <button class="ducats-tab-btn" id="tab-ducats-mode-sets" data-mode="sets">
-              <span class="btn-ic" data-icon="layers"></span><span>Meine Sets</span>
-              <span class="counter-badge" id="ducats-sets-badge-count">0</span>
             </button>
             <button class="ducats-tab-btn" id="tab-ducats-mode-plan" data-mode="plan">
               <span class="btn-ic" data-icon="relic"></span><span>Relikt-Planer</span>
@@ -804,6 +820,20 @@
 <div id="item-modal" class="modal hidden">
   <div class="modal-box item-modal-box">
     <div id="item-modal-content"></div>
+  </div>
+</div>
+
+<!-- Datenblatt einer Mod oder eines Arcanes (Inventar-Tab) -->
+<div id="upgrade-modal" class="modal hidden">
+  <div class="modal-box item-modal-box">
+    <div id="upgrade-modal-content"></div>
+  </div>
+</div>
+
+<!-- Datenblatt eines Relikts (Inventar-Tab) -->
+<div id="relic-modal" class="modal hidden">
+  <div class="modal-box item-modal-box">
+    <div id="relic-modal-content"></div>
   </div>
 </div>
 

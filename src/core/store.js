@@ -29,6 +29,7 @@ const empty = () => ({
   generalNotes: '',
   builds: [],
   ownedMods: [],
+  trackedRelics: [],
   notifications: DEFAULT_NOTIFICATIONS()
 });
 
@@ -44,6 +45,7 @@ export async function load() {
       generalNotes: typeof parsed.generalNotes === 'string' ? parsed.generalNotes : '',
       builds: Array.isArray(parsed.builds) ? parsed.builds : [],
       ownedMods: Array.isArray(parsed.ownedMods) ? parsed.ownedMods : [],
+      trackedRelics: Array.isArray(parsed.trackedRelics) ? parsed.trackedRelics : [],
       notifications: {
         ...defNotif,
         ...rawNotif,
@@ -141,6 +143,39 @@ export async function setManyModsOwned(uniqueNames, owned) {
   const set = new Set(s.ownedMods);
   for (const u of uniqueNames) { if (owned) set.add(u); else set.delete(u); }
   s.ownedMods = [...set];
+  return save(s);
+}
+
+/* ------------------------ Gemerkte Relikte ------------------------ */
+
+/**
+ * Merkliste des Relikt-Planers - die Vorlage fuer den Abschnitt im Overlay.
+ *
+ * Gemerkt wird Relikt UND Zustand: intakt und strahlend sind dasselbe Relikt,
+ * aber nicht dieselbe Entscheidung. Wer sich ein strahlendes vornimmt, will im
+ * Overlay nicht die Chancen des intakten lesen.
+ *
+ * Gespeichert wird nur die Kennung, nicht der ausgerechnete Erwartungswert:
+ * Preise altern, die Merkliste nicht. Die Zahlen kommen bei jedem Abruf frisch
+ * aus Droptabelle und Preis-Cache.
+ */
+export const trackedRelicId = (key, state) => `${key}|${state || 'Intact'}`;
+
+export async function toggleTrackedRelic({ key, state = 'Intact', tier = '', name = '' } = {}) {
+  if (!key) return load();
+  const s = await load();
+  const id = trackedRelicId(key, state);
+
+  const idx = s.trackedRelics.findIndex(r => trackedRelicId(r.key, r.state) === id);
+  if (idx >= 0) s.trackedRelics.splice(idx, 1);
+  else s.trackedRelics.push({ key, state, tier, name, addedAt: Date.now() });
+
+  return save(s);
+}
+
+export async function clearTrackedRelics() {
+  const s = await load();
+  s.trackedRelics = [];
   return save(s);
 }
 

@@ -20,6 +20,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
 
 let dashboard = null;             // MR und Ziele
 let world     = null;             // Weltzustand
+let trackedRelics = [];           // Merkliste aus dem Relikt-Planer
 let notifSettings = null;         // dieselbe Auswahl wie fuer die Toasts
 let clickThrough = false;
 let interacting = false;
@@ -37,6 +38,16 @@ const STALE_MS  = 15 * 60 * 1000;
 const POLL_MS   = 60000;
 const MAX_FISS  = 8;
 const MAX_GOALS = 4;
+const MAX_RELICS = 5;
+
+/* Zustaende, wie das deutsche Spiel sie nennt - gekuerzt, weil daneben noch
+   Aera, Anzahl und Erwartungswert in dieselbe Zeile muessen. */
+const RELIC_STATE_LABEL = {
+  Intact: 'Intakt',
+  Exceptional: 'Außergew.',
+  Flawless: 'Makellos',
+  Radiant: 'Strahlend'
+};
 
 /* ---------------- Icons ---------------- */
 
@@ -119,6 +130,13 @@ async function loadWorld(force = false) {
   } catch { /* alter Stand bleibt stehen, das Alter steht in der Fussleiste */ }
 }
 
+async function loadTrackedRelics() {
+  try {
+    const list = await window.api.getTrackedRelics();
+    if (Array.isArray(list)) trackedRelics = list;
+  } catch { /* ohne Merkliste faellt nur dieser Abschnitt weg */ }
+}
+
 async function loadNotifSettings() {
   try { notifSettings = await window.api.getNotifications(); } catch { /* dann eben ohne Hervorhebung */ }
 }
@@ -158,6 +176,7 @@ function render() {
   renderHead();
   renderCycles();
   renderFissures();
+  renderTrackedRelics();
   renderGoals();
   renderFoot();
   tickClocks();
@@ -237,6 +256,66 @@ function renderFissures() {
     </div>`).join('');
 }
 
+/**
+ * Gemerkte Relikte aus dem Planer.
+ *
+ * Die Zahlen kommen fertig aus dem Hauptprozess (siehe describeTrackedRelics)
+ * - hier wird nur noch dazugestellt, was das Overlay allein weiss: ob gerade
+ * ein Riss der passenden Aera offen ist. Genau daran haengt, ob das gemerkte
+ * Relikt jetzt drankommt oder erst spaeter, und deshalb steht es an der Zeile
+ * statt in einer zweiten Liste, die man abgleichen muesste.
+ */
+function renderTrackedRelics() {
+  const sec = $('ov-relics-sec');
+  const box = $('ov-relics');
+  const note = $('ov-relics-note');
+  if (!sec || !box) return;
+
+  sec.classList.toggle('hidden', !trackedRelics.length);
+  if (!trackedRelics.length) return;
+
+  const openTiers = new Map();
+  for (const f of (world && world.fissures) || []) {
+    const left = msUntil(f.expiry);
+    if (left !== null && left <= 0) continue;
+    openTiers.set(f.tier, (openTiers.get(f.tier) || 0) + 1);
+  }
+
+  const fitting = trackedRelics.filter(r => openTiers.get(r.tier)).length;
+  note.textContent = fitting ? `${fitting} mit Riss` : `${trackedRelics.length} gemerkt`;
+
+  box.innerHTML = trackedRelics.slice(0, MAX_RELICS).map(r => {
+    const open = openTiers.get(r.tier) || 0;
+
+    /* Die teuerste Belohnung ist der Grund, warum man sich dieses Relikt
+       gemerkt hat - sie steht deshalb in der Zeile, nicht alle sechs. */
+    const best = [...(r.rewards || [])]
+      .sort((a, b) => (b.plat ?? -1) - (a.plat ?? -1))[0];
+
+    const parts = [];
+    if (!r.count) parts.push('nicht im Bestand');
+    if (r.noTable) parts.push('nicht mehr farmbar');
+    else if (best && best.plat != null) parts.push(`${best.name} ${best.plat}p`);
+    else parts.push('Preise unbekannt');
+    if (open) parts.push(`${open} ${open === 1 ? 'Riss' : 'Risse'} offen`);
+
+    return `
+      <div class="ov-row ${open ? 'hit' : ''}">
+        <img class="ov-relic-img" src="${esc(r.image || '')}" alt=""
+             onerror="this.style.visibility='hidden'">
+        <div class="ov-row-body">
+          <b>${esc(r.tier)} ${esc(r.name)}
+            <span class="ov-relic-state">${esc(RELIC_STATE_LABEL[r.state] || r.state || '')}${r.count > 1 ? ' ×' + r.count : ''}</span>
+          </b>
+          <span>${esc(parts.join(' · '))}</span>
+        </div>
+        <span class="ov-relic-exp" title="Erwarteter Platin-Erlös je Öffnung">${r.noTable ? '–' : r.expPlat + 'p'}</span>
+      </div>`;
+  }).join('') + (trackedRelics.length > MAX_RELICS
+    ? `<div class="ov-empty">… und ${trackedRelics.length - MAX_RELICS} weitere im Planer</div>`
+    : '');
+}
+
 function renderGoals() {
   const sec = $('ov-goals-sec');
   const open = ((dashboard && dashboard.goals) || []).filter(g => !g.done);
@@ -305,7 +384,7 @@ async function applyState(st) {
   /* Beim Einblenden neu laden: waehrend das Overlay weg war, koennen im
      Hauptfenster Ziele dazugekommen oder abgehakt worden sein. */
   if (wasHidden) {
-    await Promise.all([loadDashboard(), loadWorld(false)]);
+    await Promise.all([loadDashboard(), loadWorld(false), loadTrackedRelics()]);
     render();
   }
   startTimers();
@@ -316,7 +395,7 @@ async function applyState(st) {
 $('ov-exit').onclick = () => window.api.toggleOverlay();
 
 $('ov-refresh').onclick = async () => {
-  await Promise.all([loadWorld(true), loadDashboard()]);
+  await Promise.all([loadWorld(true), loadDashboard(), loadTrackedRelics()]);
   render();
 };
 
@@ -385,10 +464,18 @@ window.addEventListener('keydown', e => {
 
 window.api.onOverlayChanged(applyState);
 
+/* Der Stern im Planer wirkt sofort: der Hauptprozess schickt die fertige
+   Liste an beide Fenster, sobald sie sich geaendert hat. Ohne das muesste
+   man das Overlay aus- und wieder einblenden, um sie zu sehen. */
+window.api.onTrackedRelicsChanged(list => {
+  trackedRelics = Array.isArray(list) ? list : [];
+  renderTrackedRelics();
+});
+
 /* ---------------- Start ---------------- */
 
 (async function boot() {
-  await Promise.all([loadDashboard(), loadWorld(false), loadNotifSettings()]);
+  await Promise.all([loadDashboard(), loadWorld(false), loadNotifSettings(), loadTrackedRelics()]);
   render();
 
   /* Das Fenster entsteht oft erst, WEIL gerade ein Fund gemeldet wurde - die

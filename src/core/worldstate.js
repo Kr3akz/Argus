@@ -1,11 +1,21 @@
 /**
  * Warframe World-State Live-Tracker
- * Holt offizielle DE-Echtzeitdaten über die warframestat.us API.
+ * Holt offizielle DE-Echtzeitdaten über die warframestat.us API mit
+ * automatischem tenno.tools Live-Fallback bei Ausfällen oder veraltetem Server-Stand.
  */
 
 let cachedWorldstate = null;
 let lastFetchedAt = 0;
 const CACHE_TTL_MS = 30000; // 30 Sekunden Cache
+
+const TIER_NUMS = {
+  Lith: 1,
+  Meso: 2,
+  Neo: 3,
+  Axi: 4,
+  Requiem: 5,
+  Omnia: 6
+};
 
 export async function fetchWorldState({ force = false } = {}) {
   const now = Date.now();
@@ -13,60 +23,293 @@ export async function fetchWorldState({ force = false } = {}) {
     return cachedWorldstate;
   }
 
+  let data = null;
+  let primaryError = null;
+
   try {
     const res = await fetch('https://api.warframestat.us/pc/', {
-      headers: { 'User-Agent': 'Cephalon-Argus/2.0' }
+      headers: { 'User-Agent': 'Cephalon-Argus/2.0' },
+      signal: AbortSignal.timeout(8000)
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-
-    const formatted = {
-      fetchedAt: new Date().toISOString(),
-      /* Der Zeitstempel der QUELLE, nicht unserer. warframestat.us liefert
-         zeitweise stundenalte Staende - ohne diesen Wert kann die Oberflaeche
-         eine leere Liste nicht von "Quelle haengt" unterscheiden. */
-      sourceTimestamp: data.timestamp || null,
-      cetus: formatCetus(data.cetusCycle),
-      vallis: formatVallis(data.vallisCycle),
-      cambion: formatCambion(data.cambionCycle),
-      voidTrader: formatVoidTrader(data.voidTrader),
-      fissures: formatFissures(data.fissures || []),
-      sortie: formatSortie(data.sortie),
-      archonHunt: formatArchonHunt(data.archonHunt),
-      events: formatEvents(data.events || []),
-      /* Eine gemeinsame Liste aller zeitlich begrenzten Missionen. Kuva, Schlichtung
-         und Nightwave kommen aus getrennten Feldern, gehoeren fuer den Spieler aber
-         zusammen: "was kann ich gerade machen, bevor es weg ist". */
-      alerts: [
-        ...formatAlerts(data.alerts || []),
-        ...formatKuva(data.kuva),
-        ...formatArbitration(data.arbitration),
-        ...formatNightwave(data.nightwave)
-      ],
-      invasions: formatInvasions(data.invasions || []),
-      syndicates: formatSyndicates(data.syndicateMissions || []),
-      steelPath: formatSteelPath(data.steelPath)
-    };
-
-    formatted.counts = countAll(formatted);
-
-    cachedWorldstate = formatted;
-    lastFetchedAt = now;
-    return formatted;
+    data = await res.json();
   } catch (err) {
-    /* Ein alter Stand ist besser als gar keiner - aber der Fehler muss mit,
-       sonst haelt die Oberflaeche veraltete Daten fuer frisch. */
-    if (cachedWorldstate) return { ...cachedWorldstate, error: err.message };
+    primaryError = err.message;
+  }
+
+  /* Risse aus der Primaerquelle formatieren und pruefen */
+  let fissures = data?.fissures ? formatFissures(data.fissures) : [];
+  let sourceName = 'warframestat';
+
+  /* Wenn warframestat.us 0 aktive Risse liefert (haeufiger Parser-Lag / Stale Cache)
+     oder die Anfrage scheiterte: Live-Risse von tenno.tools nachladen. */
+  if (!fissures.length) {
+    const fallbackFissures = await fetchTennoToolsFissures();
+    if (fallbackFissures && fallbackFissures.length > 0) {
+      fissures = fallbackFissures;
+      sourceName = data ? 'warframestat+tennotools' : 'tennotools';
+    }
+  }
+
+  if (data) {
+    try {
+      const formatted = {
+        fetchedAt: new Date().toISOString(),
+        source: sourceName,
+        /* Der Zeitstempel der QUELLE, nicht unserer. */
+        sourceTimestamp: data.timestamp || null,
+        cetus: formatCetus(data.cetusCycle),
+        vallis: formatVallis(data.vallisCycle),
+        cambion: formatCambion(data.cambionCycle),
+        voidTrader: formatVoidTrader(data.voidTrader),
+        fissures,
+        sortie: formatSortie(data.sortie),
+        archonHunt: formatArchonHunt(data.archonHunt),
+        events: formatEvents(data.events || []),
+        nightwave: formatNightwave(data.nightwave),
+        alerts: [
+          ...formatAlerts(data.alerts || []),
+          ...formatKuva(data.kuva),
+          ...formatArbitration(data.arbitration)
+        ],
+        invasions: formatInvasions(data.invasions || []),
+        syndicates: formatSyndicates(data.syndicateMissions || []),
+        steelPath: formatSteelPath(data.steelPath)
+      };
+
+      formatted.counts = countAll(formatted);
+
+      cachedWorldstate = formatted;
+      lastFetchedAt = now;
+      return formatted;
+    } catch (err) {
+      console.warn('[WorldState] Formatierungsfehler Primaerquelle:', err.message);
+    }
+  }
+
+  /* Primaerquelle komplett ausgefallen: Vollstaendigen Fallback ueber tenno.tools bauen */
+  const fallbackFull = await fetchTennoToolsFullWorldState();
+  if (fallbackFull) {
+    fallbackFull.fissures = fissures.length ? fissures : fallbackFull.fissures;
+    fallbackFull.counts = countAll(fallbackFull);
+    cachedWorldstate = fallbackFull;
+    lastFetchedAt = now;
+    return fallbackFull;
+  }
+
+  /* Letzte Rettung: alter Cache oder leerer Stand */
+  if (cachedWorldstate) {
+    return { ...cachedWorldstate, error: primaryError || 'WorldState veraltet' };
+  }
+
+  return {
+    error: primaryError || 'WorldState nicht erreichbar',
+    fetchedAt: new Date().toISOString(),
+    source: 'none',
+    sourceTimestamp: null,
+    cetus: null, vallis: null, cambion: null,
+    voidTrader: null, fissures: [], sortie: null, archonHunt: null,
+    events: [], nightwave: [], alerts: [], invasions: [], syndicates: [], steelPath: null,
+    counts: { events: 0, nightwave: 0, alerts: 0, steelPath: 0, invasions: 0,
+              syndicates: 0, fissures: 0, sortie: 0, archon: 0, missions: 0 }
+  };
+}
+
+/** Knoten-Name von 'Planet/Knoten' in 'Knoten (Planet)' normalisieren. */
+function normaliseNode(loc) {
+  if (!loc) return 'Unbekannt';
+  const parts = loc.split('/');
+  if (parts.length === 2) return `${parts[1]} (${parts[0]})`;
+  return loc;
+}
+
+/**
+ * Holt die aktuellen Void-Risse und Void-Stürme direkt von tenno.tools.
+ * tenno.tools pollt DEs offiziellen Feed im Minutentakt und ist auch dann live,
+ * wenn der warframestat.us-Dienst stundenlang hängt.
+ */
+export async function fetchTennoToolsFissures() {
+  try {
+    const res = await fetch('https://api.tenno.tools/worldstate', {
+      headers: { 'User-Agent': 'Cephalon-Argus/2.0' },
+      signal: AbortSignal.timeout(6000)
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const d = await res.json();
+    const now = Date.now();
+    const fissures = [];
+
+    for (const f of d.fissures?.data || []) {
+      const expMs = f.end ? f.end * 1000 : null;
+      if (expMs && expMs <= now) continue;
+      const expiry = expMs ? new Date(expMs).toISOString() : null;
+      const tier = f.tier || 'Lith';
+      fissures.push({
+        id: f.id,
+        node: normaliseNode(f.location),
+        missionType: f.missionType || 'Mission',
+        enemy: f.faction || 'Corrupted',
+        tier,
+        tierNum: TIER_NUMS[tier] || 1,
+        isHard: !!f.hard,
+        isStorm: false,
+        eta: etaFrom(expiry),
+        expiry
+      });
+    }
+
+    for (const s of d.voidstorms?.data || []) {
+      const expMs = s.end ? s.end * 1000 : null;
+      if (expMs && expMs <= now) continue;
+      const expiry = expMs ? new Date(expMs).toISOString() : null;
+      const tier = s.tier || 'Lith';
+      fissures.push({
+        id: s.id,
+        node: normaliseNode(s.location),
+        missionType: s.missionType || 'Mission',
+        enemy: s.faction || 'Corrupted',
+        tier,
+        tierNum: TIER_NUMS[tier] || 1,
+        isHard: false,
+        isStorm: true,
+        eta: etaFrom(expiry),
+        expiry
+      });
+    }
+
+    return fissures.sort((a, b) => a.tierNum - b.tierNum || a.node.localeCompare(b.node));
+  } catch (err) {
+    console.warn('[WorldState] tenno.tools Riss-Abruf fehlgeschlagen:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Vollstaendiger Fallback ueber tenno.tools, falls warframestat.us komplett ausfaellt.
+ */
+async function fetchTennoToolsFullWorldState() {
+  try {
+    const res = await fetch('https://api.tenno.tools/worldstate', {
+      headers: { 'User-Agent': 'Cephalon-Argus/2.0' },
+      signal: AbortSignal.timeout(6000)
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const d = await res.json();
+    const now = Date.now();
+
+    const fissures = [];
+    for (const f of d.fissures?.data || []) {
+      const expMs = f.end ? f.end * 1000 : null;
+      if (expMs && expMs <= now) continue;
+      const expiry = expMs ? new Date(expMs).toISOString() : null;
+      const tier = f.tier || 'Lith';
+      fissures.push({
+        id: f.id,
+        node: normaliseNode(f.location),
+        missionType: f.missionType || 'Mission',
+        enemy: f.faction || 'Corrupted',
+        tier,
+        tierNum: TIER_NUMS[tier] || 1,
+        isHard: !!f.hard,
+        isStorm: false,
+        eta: etaFrom(expiry),
+        expiry
+      });
+    }
+    for (const s of d.voidstorms?.data || []) {
+      const expMs = s.end ? s.end * 1000 : null;
+      if (expMs && expMs <= now) continue;
+      const expiry = expMs ? new Date(expMs).toISOString() : null;
+      const tier = s.tier || 'Lith';
+      fissures.push({
+        id: s.id,
+        node: normaliseNode(s.location),
+        missionType: s.missionType || 'Mission',
+        enemy: s.faction || 'Corrupted',
+        tier,
+        tierNum: TIER_NUMS[tier] || 1,
+        isHard: false,
+        isStorm: true,
+        eta: etaFrom(expiry),
+        expiry
+      });
+    }
+
+    const sorties = (d.sorties?.data || []).map(s => ({
+      boss: s.bossName || 'Sortie Boss',
+      faction: s.faction || 'Grineer',
+      eta: s.end ? etaFrom(new Date(s.end * 1000).toISOString()) : '',
+      variants: (s.missions || []).map(m => ({
+        node: normaliseNode(m.location),
+        missionType: m.missionType || '',
+        modifier: m.modifier || '',
+        modifierDescription: ''
+      }))
+    }))[0] || null;
+
+    const alerts = (d.alerts?.data || [])
+      .filter(a => !a.end || a.end * 1000 > now)
+      .map(a => ({
+        id: a.id,
+        art: 'alert',
+        titel: a.missionType || 'Alert',
+        node: normaliseNode(a.location),
+        missionType: a.missionType || 'Mission',
+        faction: a.faction || '',
+        minLevel: a.minLevel ?? null,
+        maxLevel: a.maxLevel ?? null,
+        reward: a.rewards?.credits ? `${a.rewards.credits} Credits` : 'Belohnung',
+        eta: a.end ? etaFrom(new Date(a.end * 1000).toISOString()) : ''
+      }));
+
+    const invasions = (d.invasions?.data || []).map(i => {
+      const completion = i.endScore && i.score ? Math.round((i.score / i.endScore) * 100) : 50;
+      return {
+        id: i.id,
+        node: normaliseNode(i.location),
+        desc: `${i.factionAttacker || ''} vs ${i.factionDefender || ''}`,
+        attacker: i.factionAttacker || '',
+        attackerReward: '',
+        defender: i.factionDefender || '',
+        defenderReward: '',
+        completion: Math.max(0, Math.min(100, completion)),
+        vsInfestation: (i.factionDefender || '').toLowerCase().includes('infest')
+      };
+    });
+
+    const voidTraderEntry = (d.voidtraders?.data || [])[0];
+    const voidTrader = voidTraderEntry ? {
+      character: voidTraderEntry.name || "Baro Ki'Teer",
+      active: !!voidTraderEntry.active,
+      location: normaliseNode(voidTraderEntry.location),
+      activation: voidTraderEntry.start ? new Date(voidTraderEntry.start * 1000).toISOString() : null,
+      expiry: voidTraderEntry.end ? new Date(voidTraderEntry.end * 1000).toISOString() : null,
+      startString: voidTraderEntry.start ? etaFrom(new Date(voidTraderEntry.start * 1000).toISOString()) : '',
+      endString: voidTraderEntry.end ? etaFrom(new Date(voidTraderEntry.end * 1000).toISOString()) : '',
+      inventory: []
+    } : null;
+
     return {
-      error: err.message,
       fetchedAt: new Date().toISOString(),
-      sourceTimestamp: null,
-      cetus: null, vallis: null, cambion: null,
-      voidTrader: null, fissures: [], sortie: null, archonHunt: null,
-      events: [], alerts: [], invasions: [], syndicates: [], steelPath: null,
-      counts: { events: 0, alerts: 0, steelPath: 0, invasions: 0,
-                syndicates: 0, fissures: 0, sortie: 0, archon: 0, missions: 0 }
+      source: 'tennotools',
+      sourceTimestamp: d.time ? new Date(d.time * 1000).toISOString() : null,
+      cetus: null,
+      vallis: null,
+      cambion: null,
+      voidTrader,
+      fissures: fissures.sort((a, b) => a.tierNum - b.tierNum || a.node.localeCompare(b.node)),
+      sortie: sorties,
+      archonHunt: null,
+      events: [],
+      nightwave: [],
+      alerts,
+      invasions,
+      syndicates: [],
+      steelPath: null
     };
+  } catch (err) {
+    console.warn('[WorldState] tenno.tools Vollabruf fehlgeschlagen:', err.message);
+    return null;
   }
 }
 
@@ -367,6 +610,7 @@ function formatSteelPath(sp) {
 function countAll(f) {
   return {
     events:     (f.events || []).length,
+    nightwave:  (f.nightwave || []).length,
     alerts:     (f.alerts || []).length,
     steelPath:  f.steelPath && f.steelPath.incursionsActive ? 1 : 0,
     invasions:  (f.invasions || []).length,

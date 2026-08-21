@@ -9,10 +9,12 @@
  * denn beides deckt sich nicht: Relikte liegen mit den Materialien zusammen in
  * MiscItems, und Arcanes stecken zwischen den Mods in RawUpgrades/Upgrades.
  */
-import { imageUrl } from './catalog.js';
+import { imageUrl, cleanGameText } from './catalog.js';
+import { POLARITIES, modDrain, auraBonus, isAuraMod } from './mods.js';
 
 export const SECTIONS = [
   { key: 'relics',     label: 'Relikte' },
+  { key: 'sets',       label: 'Meine Sets' },
   { key: 'mods',       label: 'Mods' },
   { key: 'arcanes',    label: 'Arcanes' },
   { key: 'materials',  label: 'Materialien' },
@@ -134,6 +136,51 @@ function decorateRelic(entry) {
   return entry;
 }
 
+/**
+ * Alles, was die Oberflaeche braucht, um die Mod-Karte selbst zu ZEICHNEN.
+ *
+ * Die Karte wird nicht als fertiges Bild geholt, sondern aus ihren Teilen
+ * gebaut - Rahmen, Illustration, Name, Wirkung, Kompatibilitaet, Kosten mit
+ * Polaritaet und Rangpunkte. Nur so gibt es die beiden Zustaende, die das
+ * Spiel auch hat: zugeklappt nur der Name, aufgeklappt die ganze Karte.
+ *
+ * Der Renderer hat keinen Katalog, deshalb haengt alles hier an der Zeile.
+ *
+ * ACHTUNG: `pips` ist die Rangzahl der KARTE, nicht der eigene Rang. Der steht
+ * in `maxRank` und wird hier nicht angefasst.
+ */
+function decorateUpgrade(entry, catalog) {
+  const mod = catalog.byUniqueName?.get(entry.uniqueName);
+  if (!mod) return entry;
+
+  const pol = POLARITIES[mod.polarity];
+  const aura = isAuraMod(mod);
+  const pips = mod.fusionLimit ?? Math.max(0, (mod.levelStats?.length || 1) - 1);
+
+  entry.rarity = mod.rarity || null;
+  entry.polarity = pol ? { glyph: pol.glyph, label: pol.label } : null;
+  entry.pips = pips;
+  entry.isAura = aura;
+  /* Kosten bei vollem Rang - dieselbe Zahl, die auch im Spiel auf der voll
+     aufgewerteten Karte steht. Auras GEBEN Kapazitaet, dort ist es der Bonus. */
+  entry.drain = aura ? auraBonus(mod, pips) : modDrain(mod, pips);
+
+  /* Die Illustration in Kartenbreite. 128 px reichen fuer eine Zeile, aber
+     nicht fuer eine Karte, die beim Aufklappen auf 200 px waechst. */
+  entry.art = imageUrl(entry.uniqueName, 256);
+
+  /* Wirkung bei vollem Rang - dieselbe Zeile wie auf der Karte im Spiel. */
+  entry.stats = (mod.levelStats?.[pips]?.stats || [])
+    .flatMap(s => String(s ?? '').split(/\r?\n/))
+    .map(cleanGameText)
+    .filter(Boolean);
+
+  /* Der Balken am unteren Rand. Im Spiel steht dort der englische Begriff in
+     Grossbuchstaben - bei einem Augment der Warframe, sonst die Waffenklasse. */
+  entry.compat = mod.compatName ? String(mod.compatName).toUpperCase() : null;
+  return entry;
+}
+
 const byName = (a, b) => a.name.localeCompare(b.name, 'de');
 
 /**
@@ -169,17 +216,20 @@ export function buildInventory(inventory, catalog) {
 
   const sections = {
     relics:     misc.filter(e => isRelic(e.uniqueName)).map(decorateRelic).sort(byName),
+    sets:       [],
     materials:  misc.filter(e => !isRelic(e.uniqueName)).sort(byName),
     arcanes:    upgrades.filter(e => isArcane(e.uniqueName)).sort(byName),
-    mods:       upgrades.filter(e => !isArcane(e.uniqueName)).sort(byName),
+    mods:       upgrades.filter(e => !isArcane(e.uniqueName))
+                        .map(e => decorateUpgrade(e, catalog)).sort(byName),
     blueprints: collect(inv.Recipes, catalog).sort(byName)
   };
 
   const totals = {};
   for (const { key } of SECTIONS) {
+    const list = sections[key] || [];
     totals[key] = {
-      arten: sections[key].length,
-      stueck: sections[key].reduce((sum, e) => sum + e.count, 0)
+      arten: list.length,
+      stueck: list.reduce((sum, e) => sum + (e.count || 0), 0)
     };
   }
 
@@ -191,7 +241,8 @@ export function buildInventory(inventory, catalog) {
     currencies: {
       credits:  inv.RegularCredits ?? 0,
       platinum: inv.PremiumCredits ?? 0,
-      endo:     inv.FusionPoints ?? 0
+      endo:     inv.FusionPoints ?? 0,
+      ducats:   inv.PrimeTokens ?? 0
     },
     unresolved
   };

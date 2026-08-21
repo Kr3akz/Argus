@@ -28,7 +28,7 @@ for (const { key, label } of SECTIONS) {
 }
 
 console.log('\n=== Waehrungen ===');
-console.log(`  Credits ${nf(view.currencies.credits)} | Platin ${nf(view.currencies.platinum)} | Endo ${nf(view.currencies.endo)}`);
+console.log(`  Credits ${nf(view.currencies.credits)} | Platin ${nf(view.currencies.platinum)} | Endo ${nf(view.currencies.endo)} | Dukaten ${nf(view.currencies.ducats)}`);
 
 /* Strukturelle Invarianten statt fester Zahlen. Ein Inventar aendert sich mit
    jeder Spielsitzung - Tests gegen eingefrorene Staende schlagen dann fehl,

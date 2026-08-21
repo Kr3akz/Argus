@@ -45,9 +45,17 @@ laufenden Spiel, und es zeigt nur, was sich in den nächsten Minuten entscheidet
 - die drei Open-World-Zyklen mit sekundengenauem Countdown
 - aktive Void-Risse — Treffer deiner Benachrichtigungs-Auswahl stehen oben und sind
   farbig hinterlegt, der Rest bleibt darunter sichtbar
+- gemerkte Relikte aus dem Relikt-Planer — mit Erwartungswert, teuerster Belohnung und
+  der Zahl der gerade offenen Risse ihrer Ära
 - deine offenen Farm-Ziele
 
 Restzeiten unter fünf Minuten färben sich golden.
+
+Welche Relikte im Overlay stehen, entscheidet der **Stern** auf den Karten im
+Relikt-Planer (Tab **Baro & Dukaten**). Die Auswahl wirkt sofort, auch bei offenem
+Overlay, und übersteht einen Neustart — sie liegt in `data/goals.json`. Ist zu einem
+gemerkten Relikt gerade ein Riss der passenden Ära offen, ist die Zeile farbig
+hinterlegt: dann lohnt es sich jetzt, es mitzunehmen.
 
 Das Overlay merkt sich seine Position und Größe getrennt vom Hauptfenster. Beim ersten
 Mal geht es oben rechts auf dem **Hauptbildschirm** auf — dort läuft in aller Regel das
@@ -197,6 +205,144 @@ Das automatische Einblenden lässt sich in den **Einstellungen** abschalten.
 - Sehr kleine Auflösungen sind ungetestet; der Abgleich fängt einiges ab, aber unter
   1080p kann die Schrift zu klein werden.
 
+## Mods, Arcanes und Relikte im Inventar
+
+### Die Karten, wie sie im Spiel aussehen
+
+Eine Mod hat im Spiel **zwei Zustände**: zugeklappt steht nur der Name da, beim
+Darüberfahren klappt sie auf und zeigt Illustration, Wirkung und Kompatibilität. Genau
+das macht das Inventar hier auch.
+
+```
+zugeklappt (184 × 90)             aufgeklappt (× 1.1)
+┌──────────────────┐              ┌──────────────────┐
+│ ╌╌╌╌╌╌╌╌╌  14 ⟋  │              │ ╌╌╌╌╌╌╌╌╌  14 ⟋  │
+│                  │              │   [Illustration] │
+│ Primed Continuity│   ──▶        │                  │
+│                  │              │ Primed Continuity│
+│ ★★★★★★★★★★       │              │ +55% Ability Dur.│
+└──────────────────┘              │ ▓▓ WARFRAME ▓▓   │
+                                  │ ★★★★★★★★★★       │
+                                  └──────────────────┘
+```
+
+**Die Karte wird gezeichnet, nicht als Bild geladen.** Ein fertig gerendertes Kartenbild
+kennt nur einen Zustand; den zugeklappten daraus zu schneiden geht nicht, weil er anders
+aufgebaut ist und die Namenszeile je nach Länge des Wirkungstextes woanders sitzt. Hier
+steht jedes Teil an seinem Platz, und der Wechsel ist eine Frage von Höhe und Deckkraft.
+
+Drei Kniffe tragen das:
+
+- Die Karte trägt `transform: scale(1)`. Eine Transformation macht sie zum **Bezugsrahmen**
+  für alles, was darin absolut sitzt — Rahmenteile, Kostenzahl, Kompatibilitätsbalken,
+  Rangsterne. Deshalb wandern sie beim Aufklappen mit, statt am 90 px hohen Platz zu kleben.
+- Der Innenteil schneidet ab. Zugeklappt ist die Karte 90 px hoch, der Wirkungstext liegt
+  darunter und ist damit weg.
+- Der Name sitzt mit `top: -60px` über der abgedunkelten Illustration und fährt beim
+  Aufklappen auf `top: 0`, wodurch der Text darunter frei wird.
+
+Der **Platz im Raster behält seine 90 px**, auch wenn die Karte darin auf 260 px wächst —
+sonst bräche das Raster bei jedem Zeigerwechsel um. Die Karte selbst nimmt keine
+Mausereignisse an, damit die aufgeklappte Fassung ihre Nachbarn nicht blockiert.
+
+Die Rahmenteile sind die **echten Spiel-Texturen** (vier Familien nach Seltenheit, je fünf
+Dateien) und liegen unter `src/renderer/assets/mod/`. Die Illustration kommt wie bisher
+aus DEs Export. Damit funktioniert das Raster vollständig offline.
+
+Die Polaritäts-Zeichen sind Vektoren aus dem Wiki, inline in `icons.js`. Sie färben sich
+über `currentColor` mit und bleiben scharf, ob 11 oder 24 Pixel groß — vorher stand dort
+ein Buchstabe als Notbehelf.
+
+Arcanes sind keine Karten, sondern Gefäße: quer, ohne Rahmen und ohne Namen darin. Sie
+bekommen ihr echtes Gefäßbild aus dem Wiki und den Namen darunter. Ein eigener
+Bildspeicher wäre dafür überflüssig — das Wiki liefert
+`cache-control: public, max-age=31536000, immutable`, Chromium legt jedes Bild also von
+selbst dauerhaft ab.
+
+### Datenblatt einer Mod oder eines Arcanes
+
+Ein Klick auf eine Karte öffnet ihr Datenblatt.
+
+```
+Serration                             MOD · PRIMÄRWAFFEN-MOD · UNGEWÖHNLICH
+Passt auf Gewehr · Polarität V Madurai
+
+IM BESITZ   13 Exemplare              Rang 0 ×11 · Rang 6 · Rang 10
+
+WIRKUNG     [0][1][2][3][4][5][6•][7][8][9][10•]
+            +165% Damage
+            Kostet 14 Kapazität · 6.138 Endo bis hierher
+
+WOHER BEKOMMT MAN DAS?
+  MISSION   Arval · Mars        Spy · Rotation C          8,6 %
+  GEGNER    Ghoul Expired       Mod-Drop 20 % × Tab. 7,37 %  1,47 %
+```
+
+**Die Rangleiter ist der Kern.** Eine Karte auf Rang 3 wirkt anders als dieselbe auf
+Rang 10, und genau das ist die Frage, die man sich vor dem Aufwerten stellt. Ein Punkt
+unter der Ziffer markiert die Ränge, die im eigenen Bestand liegen; beim Öffnen steht
+das Blatt auf dem höchsten davon.
+
+Arcanes rechnen anders: sie kosten weder Kapazität noch Endo, sondern sich selbst.
+Statt der Endo-Zeile steht dort, wie viele Exemplare der Rang schluckt — 21 für Rang 5.
+Ein fertiges Rang-5-Arcane ist dabei **ein** Gegenstand, in dem 21 stecken; die Anzeige
+rechnet das mit, statt neben einem Maximum noch „20 fehlen" zu behaupten.
+
+### Woher die Fundorte kommen
+
+Drei Stufen, in dieser Reihenfolge:
+
+1. **DEs Droptabellen** (`drops.warframestat.us`) — dieselbe Quelle wie bei den
+   Relikten. Sie liefern Planet, Knoten, Rotation, Gegner und Chance als eigene Felder,
+   lassen sich also sauber beschriften. Bei Gegnern steht die **effektive** Chance da:
+   erst muss der Gegner überhaupt eine Mod fallen lassen, dann muss es diese sein.
+2. **Die Item-API von warframestat.us** — nur, wenn Stufe 1 nichts hergibt. Sie kennt,
+   was DE gar nicht als „Drop" veröffentlicht, allen voran die **Syndikats-Augmente**:
+   *Despoil* gibt es bei Red Veil und der Perrin Sequence, in DEs Tabellen kommt der
+   Name nirgends vor.
+3. **Eine Regeltabelle** für Karten, die man schlicht nicht erfarmt — Baro-Ware,
+   Arbitrations-Ehrenmarken, die Lua-Prüfungsräume, Precepts, die mit dem Begleiter
+   kommen. Sie rät nicht, sondern liest den Pfad, in den DE die Karte einsortiert hat.
+
+Gemessen an einem Konto mit 639 Mods und 90 Arcanes: 631 aus Stufe 1, 23 aus Stufe 2,
+57 aus Stufe 3 — **9 Karten ohne Fundort**, gut ein Prozent. Das sind Nightwave-Reste
+und Auslaufmodelle; dort steht der Hinweis, dass es sie im Handel weiterhin gibt, samt
+Link ins Wiki.
+
+Alles darüber — Wirkung je Rang, Kapazität, Polarität, Seltenheit, Set-Zugehörigkeit —
+stammt aus DEs eigenem Export, also aus derselben Datei, aus der das Spiel die Karte
+zeichnet.
+
+### Datenblatt eines Relikts
+
+Relikte lassen sich ebenso anklicken. Dort steht, was drin ist:
+
+```
+Axi A22                                    RELIKT · AXI · 4 im Bestand
+
+POLITUR-STUFE   [Intakt 4] Außergewöhnlich 0  Makellos 0  Strahlend 0
+
+BELOHNUNGEN
+  Afentis Prime Blueprint      Selten          2,00 %    18p    100 Duk.
+  Dual Zoren Prime Handle      Ungewöhnlich   25,33 %     2p     15 Duk.
+  …
+
+WAS EIN ÖFFNEN IM SCHNITT BRINGT     Platin 2,7   ·   Dukaten 18
+```
+
+**Die vier Politur-Stufen zeigen dieselben sechs Belohnungen** — nur die Chancen
+verschieben sich: intakt steht die seltene bei 2 %, strahlend bei 10 %. Deshalb rechnet
+das Datenblatt alle vier durch, statt eine auszuwählen; die Frage vor dem Polieren ist ja
+gerade, ob es sich lohnt.
+
+Der Erwartungswert ist **Chance × Wert**, nicht der Mittelwert der sechs Belohnungen —
+bei Chancen zwischen 2 % und 25 % wäre ein Mittelwert eine andere Zahl als die, nach der
+man entscheidet. Fehlt für einen Teil der Chance ein Platinpreis, sagt das Blatt es
+dazu: der Platinwert ist dann eine Untergrenze, keine Schätzung.
+
+Ein Relikt aus dem Tresor führt DE nicht mehr auf. Statt einer leeren Tabelle steht dann
+da, dass es vaulted ist — mitsamt dem, was das praktisch heißt.
+
 ## Einstellungen
 
 Im Tab **Einstellungen** stehen die Dinge, die immer gelten:
@@ -237,9 +383,10 @@ Abgerufen werden diese Endpunkte:
 | `api.warframe.com/cdn/getProfileViewingData.php` | dein öffentliches Profil |
 | `api.warframe.com/api/inventory.php` | dein Inventar (nur auf Knopfdruck) |
 | `cdn.jsdelivr.net/.../warframe-exports-data` | DEs Item-Katalog + Bilder |
-| `api.warframestat.us` | Weltzustand, Zyklen, Risse |
-| `drops.warframestat.us` | DEs Droptabellen für Relikte |
+| `api.warframestat.us` | Weltzustand, Zyklen, Risse, Fundorte von Syndikats-Augmenten |
+| `drops.warframestat.us` | DEs Droptabellen für Relikte, Mods und Arcanes |
 | `api.warframe.market/v2` | Platinpreise und Dukatenwerte |
+| `wiki.warframe.com` | Arcane-Bilder, Mod-Rahmen, Polaritaets-Zeichen |
 | `overframe.gg` | Build-Import, nur auf Knopfdruck |
 
 ### ⚠️ Wichtig: Nicht zu oft aktualisieren
@@ -298,12 +445,16 @@ src/core/     Logik, komplett unabhängig von der Oberfläche
   logwatch.js     liest Warframes EE.log mit (Relikt-Belohnungen)
   rewardscan.js   erkennt die vier Belohnungen auf dem Bildschirm
   relics.js       Relikt-Belohnungstabellen aus DEs Droptabellen
+  droptables.js   Fundorte fuer Mods und Arcanes ("wo bekomme ich das?")
+  cards.js        Arcane-Gefaessbilder aus dem Warframe-Wiki
+  upgrade-details.js  Datenblatt einer Mod/eines Arcanes, Werte je Rang
   market.js       Preise und Dukatenwerte von warframe.market
 src/main/     Electron-Hauptprozess (Hauptfenster + Overlay-Fenster)
 src/renderer/ Oberfläche
   index.html    Hauptfenster
   overlay.html  Overlay-Fenster, eigene schlanke Oberfläche
   style.css     beide Fenster
+  assets/mod/   Rahmen-Texturen der Mod-Karten (Spiel-Assets)
 data/         lokaler Cache, Konfiguration, deine Ziele
 ```
 

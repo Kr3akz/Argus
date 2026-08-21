@@ -32,6 +32,22 @@ const TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 /* Reihenfolge der Politur-Stufen, wie sie im Spiel aufeinander folgen. */
 export const RELIC_STATES = ['Intact', 'Exceptional', 'Flawless', 'Radiant'];
+
+/**
+ * Zustand -> Metall-Suffix des Bildpfads.
+ *
+ * DEs Export fuehrt je Politur-Stufe ein eigenes Bild; der Pfad OHNE Suffix
+ * existiert nicht. Das trifft auch Requiem-Relikte, die sich gar nicht polieren
+ * lassen: ihr Inventarpfad endet ohne Metall, ihr Bild liegt trotzdem unter
+ * ...Bronze.png. Deshalb wird das Suffix hier immer angehaengt, nie geraten.
+ */
+const METAL_BY_STATE = { Intact: 'Bronze', Exceptional: 'Silver', Flawless: 'Gold', Radiant: 'Platinum' };
+
+/** Basispfad + Zustand -> uniqueName des zugehoerigen Bildes. */
+export function relicIconPath(base, state = 'Intact') {
+  if (!base) return null;
+  return base + (METAL_BY_STATE[state] || 'Bronze');
+}
 export const RELIC_TIERS  = ['Lith', 'Meso', 'Neo', 'Axi', 'Requiem', 'Omnia'];
 
 let index = null;   // { relics: [...], byKey: Map }
@@ -170,7 +186,8 @@ export function relicExpectation(rewards, lookup) {
       chance,
       ducats: info.ducats ?? null,
       plat: info.plat ?? null,
-      slug: info.slug ?? null
+      slug: info.slug ?? null,
+      image: info.image ?? null
     };
   });
 
@@ -208,6 +225,7 @@ export function planRelics(idx, owned, lookup) {
       name: relic.name,
       state: entry.state,
       count: entry.count,
+      image: entry.image ?? null,
       ...value
     });
   }

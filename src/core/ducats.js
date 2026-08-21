@@ -197,7 +197,7 @@ export function buildInventoryDucats(inventory, catalog, market, priceCache = {}
  * Das Set-Item selbst (Tag "set") ist kein Bestandteil, sondern traegt nur den
  * Gesamtpreis - sonst zaehlte man ein fuenftes Teil, das es nicht gibt.
  */
-export function buildPrimeSets(market, priceCache = {}, ownedItems = [], { onlyOwned = true } = {}) {
+export function buildPrimeSets(market, priceCache = {}, ownedItems = [], { onlyOwned = true, catalog = null, mastered = new Set() } = {}) {
   if (!market?.list?.length) return [];
 
   const owned = new Map();
@@ -214,13 +214,17 @@ export function buildPrimeSets(market, priceCache = {}, ownedItems = [], { onlyO
 
     let set = sets.get(parent);
     if (!set) {
-      set = { name: parent, parts: [], setSlug: null, setPrice: null };
+      set = { name: parent, parts: [], setSlug: null, setPrice: null, gameRef: null, image: null };
       sets.set(parent, set);
     }
 
     if (m.tags?.includes('set')) {
       set.setSlug = m.slug;
       set.setPrice = priceCache[m.slug]?.price || null;
+      if (m.gameRef) {
+        set.gameRef = m.gameRef;
+        set.image = imageUrl(m.gameRef, 128);
+      }
       continue;
     }
     if (m.ducats == null) continue;
@@ -234,9 +238,7 @@ export function buildPrimeSets(market, priceCache = {}, ownedItems = [], { onlyO
       slug: m.slug,
       ducats: m.ducats,
       gameRef: m.gameRef || null,
-      /* Bild aus DEs Export, nicht das Thumbnail von warframe.market: die
-         Content-Security-Policy der Oberflaeche laesst nur cdn.jsdelivr.net zu,
-         Marktbilder wuerden wortlos blockiert und blieben leer. */
+      /* Bild aus DEs Export, nicht das Thumbnail von warframe.market */
       image: m.gameRef ? imageUrl(m.gameRef, 128) : null,
       price: priceCache[m.slug]?.price || null,
       count
@@ -247,27 +249,87 @@ export function buildPrimeSets(market, priceCache = {}, ownedItems = [], { onlyO
   for (const set of sets.values()) {
     if (!set.parts.length) continue;
 
-    const ownedParts = set.parts.filter(p => p.count > 0).length;
-    if (onlyOwned && !ownedParts) continue;
+    if (!set.image && catalog) {
+      const catItem = catalog.byName?.get(set.name.toLowerCase()) ||
+        catalog.items?.find(it => it.name?.toLowerCase() === set.name.toLowerCase());
+      if (catItem?.uniqueName) {
+        set.gameRef = catItem.uniqueName;
+        set.image = imageUrl(catItem.uniqueName, 128);
+      }
+    }
+
+    let recipe = null;
+    if (catalog) {
+      if (set.gameRef && catalog.recipeFor?.get(set.gameRef)) {
+        recipe = catalog.recipeFor.get(set.gameRef);
+      } else {
+        const catItem = catalog.byName?.get(set.name.toLowerCase()) ||
+          catalog.items?.find(it => it.name?.toLowerCase() === set.name.toLowerCase());
+        if (catItem?.uniqueName) {
+          if (!set.gameRef) set.gameRef = catItem.uniqueName;
+          recipe = catalog.recipeFor?.get(catItem.uniqueName);
+        }
+      }
+    }
+
+    for (const p of set.parts) {
+      let required = 1;
+      if (recipe) {
+        if (p.gameRef === recipe.uniqueName || p.slug.endsWith('_blueprint') || p.name.toLowerCase().endsWith('blueprint')) {
+          required = 1;
+        } else {
+          let found = (recipe.ingredients || []).find(ing => ing.ItemType === p.gameRef);
+          if (!found && catalog?.recipeFor) {
+            found = (recipe.ingredients || []).find(ing => {
+              const subRec = catalog.recipeFor.get(ing.ItemType);
+              return subRec && (subRec.uniqueName === p.gameRef || subRec.resultType === p.gameRef);
+            });
+          }
+          if (!found && catalog?.recipeByUniqueName) {
+            const pRec = catalog.recipeByUniqueName.get(p.gameRef);
+            if (pRec) {
+              found = (recipe.ingredients || []).find(ing => ing.ItemType === pRec.resultType || ing.ItemType === pRec.uniqueName);
+            }
+          }
+          if (found) {
+            required = found.ItemCount || 1;
+          }
+        }
+      }
+      p.required = required;
+    }
+
+    const hasAny = set.parts.some(p => p.count > 0);
+    if (onlyOwned && !hasAny) continue;
 
     set.parts.sort((a, b) => b.ducats - a.ducats || a.name.localeCompare(b.name, 'de'));
 
+    const totalParts = set.parts.reduce((sum, p) => sum + (p.required || 1), 0);
+    const ownedParts = set.parts.reduce((sum, p) => sum + Math.min(p.count, p.required || 1), 0);
+    const complete = set.parts.every(p => p.count >= (p.required || 1));
+    const fullSetsCount = set.parts.length
+      ? Math.min(...set.parts.map(p => Math.floor(p.count / (p.required || 1))))
+      : 0;
+    const isMastered = !!(mastered.has(set.gameRef) || mastered.has(set.name.toLowerCase()));
+
     out.push({
       ...set,
-      totalParts: set.parts.length,
+      totalParts,
       ownedParts,
-      complete: ownedParts === set.parts.length,
+      complete,
+      fullSetsCount,
+      isMastered,
       /* Nur was man wirklich hat - der Wert der fehlenden Teile waere eine
          Zahl ueber Besitz, den es nicht gibt. */
-      ownedDucats: set.parts.reduce((sum, p) => sum + (p.count > 0 ? p.ducats * p.count : 0), 0),
-      totalDucats: set.parts.reduce((sum, p) => sum + p.ducats, 0)
+      ownedDucats: set.parts.reduce((sum, p) => sum + (p.count > 0 ? (p.ducats || 0) * p.count : 0), 0),
+      totalDucats: set.parts.reduce((sum, p) => sum + (p.ducats || 0) * (p.required || 1), 0)
     });
   }
 
   /* Fast vollstaendige Sets zuerst: dort lohnt der naechste Riss am meisten. */
   return out.sort((a, b) => {
-    const ra = a.ownedParts / a.totalParts;
-    const rb = b.ownedParts / b.totalParts;
+    const ra = a.totalParts ? a.ownedParts / a.totalParts : 0;
+    const rb = b.totalParts ? b.ownedParts / b.totalParts : 0;
     return rb - ra || b.ownedParts - a.ownedParts || a.name.localeCompare(b.name, 'de');
   });
 }

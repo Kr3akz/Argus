@@ -26,6 +26,10 @@ contextBridge.exposeInMainWorld('api', {
      accountId oder nonce an. */
   getInventory:    ()          => ipcRenderer.invoke('inventory:get'),
   refreshInventory:()          => ipcRenderer.invoke('inventory:refresh'),
+  /* Datenblatt einer Mod oder eines Arcanes. Der Inventar-Eintrag wandert
+     mit, damit der Hauptprozess die Inventardatei nicht je Klick neu liest. */
+  getUpgradeDetails:(u, owned) => ipcRenderer.invoke('upgrade:details', u, owned),
+  getRelicDetails: (u)         => ipcRenderer.invoke('relic:details', u),
   getChecklist:    (cat)       => ipcRenderer.invoke('checklist:get', cat),
   getBuilds:       ()          => ipcRenderer.invoke('builds:get'),
   importBuild:     (url)       => ipcRenderer.invoke('builds:import', url),
@@ -101,6 +105,18 @@ contextBridge.exposeInMainWorld('api', {
     const handler = () => cb();
     ipcRenderer.on('relic:closed', handler);
     return () => ipcRenderer.removeListener('relic:closed', handler);
+  },
+  /* Merkliste des Relikt-Planers. Sie steht in derselben Datei wie Ziele
+     und Notizen - hier laufen nur Kennungen hin und ausgerechnete Zeilen
+     zurueck. Die Aenderung meldet der Hauptprozess an BEIDE Fenster, damit
+     Planer und Overlay nach einem Klick gleich stehen. */
+  getTrackedRelics:()          => ipcRenderer.invoke('relics:tracked'),
+  toggleTrackedRelic:(entry)   => ipcRenderer.invoke('relics:toggleTracked', entry),
+  clearTrackedRelics:()        => ipcRenderer.invoke('relics:clearTracked'),
+  onTrackedRelicsChanged:(cb)  => {
+    const handler = (_e, list) => cb(list);
+    ipcRenderer.on('relics:tracked-changed', handler);
+    return () => ipcRenderer.removeListener('relics:tracked-changed', handler);
   },
   minimize:        ()          => ipcRenderer.invoke('window:minimize'),
   close:           ()          => ipcRenderer.invoke('window:close')

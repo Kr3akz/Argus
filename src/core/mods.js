@@ -10,17 +10,22 @@ import path from 'node:path';
 
 const CDN = 'https://cdn.jsdelivr.net/gh/Aericio/warframe-exports-data/export';
 
-/** Polaritaets-Symbole, wie sie im Spiel heissen. */
+/**
+ * Polaritaeten, wie sie im Spiel heissen.
+ *
+ * `glyph` benennt das echte Zeichen (siehe icons.js), `symbol` bleibt als
+ * Notbehelf fuer Stellen ohne Vektorzeichnung - etwa eine Konsolenausgabe.
+ */
 export const POLARITIES = {
-  AP_ATTACK:    { key: 'madurai',  symbol: 'V', label: 'Madurai' },
-  AP_DEFENSE:   { key: 'vazarin',  symbol: 'D', label: 'Vazarin' },
-  AP_TACTIC:    { key: 'naramon',  symbol: '—', label: 'Naramon' },
-  AP_POWER:     { key: 'zenurik',  symbol: '=', label: 'Zenurik' },
-  AP_WARD:      { key: 'unairu',   symbol: 'Ψ', label: 'Unairu' },
-  AP_UMBRA:     { key: 'umbra',    symbol: 'U', label: 'Umbra' },
-  AP_PRECEPT:   { key: 'precept',  symbol: 'P', label: 'Precept' },
-  AP_UNIVERSAL: { key: 'universal',symbol: '★', label: 'Universal (Aura Forma)' },
-  AP_ANY:       { key: 'any',      symbol: '★', label: 'Beliebig' }
+  AP_ATTACK:    { key: 'madurai',   glyph: 'madurai', symbol: 'V', label: 'Madurai' },
+  AP_DEFENSE:   { key: 'vazarin',   glyph: 'vazarin', symbol: 'D', label: 'Vazarin' },
+  AP_TACTIC:    { key: 'naramon',   glyph: 'naramon', symbol: '—', label: 'Naramon' },
+  AP_POWER:     { key: 'zenurik',   glyph: 'zenurik', symbol: '=', label: 'Zenurik' },
+  AP_WARD:      { key: 'unairu',    glyph: 'unairu',  symbol: 'Ψ', label: 'Unairu' },
+  AP_UMBRA:     { key: 'umbra',     glyph: 'umbra',   symbol: 'U', label: 'Umbra' },
+  AP_PRECEPT:   { key: 'precept',   glyph: 'penjaga', symbol: 'P', label: 'Penjaga' },
+  AP_UNIVERSAL: { key: 'universal', glyph: 'any',     symbol: '★', label: 'Universal (Aura Forma)' },
+  AP_ANY:       { key: 'any',       glyph: 'any',     symbol: '★', label: 'Beliebig' }
 };
 
 export const RARITY_LABELS = {
