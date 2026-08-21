@@ -9,27 +9,27 @@
  */
 
 export const SOURCES = {
-  LICH_KUVA:    { label: 'Kuva-Lich',            effort: 120, note: 'Lich erzeugen, Requiem-Morde, besiegen' },
-  LICH_CODA:    { label: 'Coda-Lich (Infested)', effort: 120, note: 'Coda-Lich Nemesis-Zyklus' },
+  LICH_KUVA:    { label: 'Kuva-Lich',            effort: 120, note: 'Spawn a lich, requiem murmurs, defeat it' },
+  LICH_CODA:    { label: 'Coda-Lich (Infested)', effort: 120, note: 'Coda lich nemesis cycle' },
   LICH_TENET:   { label: 'Tenet (Granum Void)',  effort: 110, note: 'Granum Void + Ergo Glast' },
-  PRIME:        { label: 'Prime (Relikte)',      effort:  80, note: 'Relikte farmen und oeffnen' },
-  DOJO:         { label: 'Clan-Dojo',            effort:  45, note: 'Forschung im Dojo, dann bauen' },
-  BARO:         { label: "Baro Ki'Teer",         effort:  90, note: 'Nur alle 2 Wochen verfuegbar' },
-  PET_KUBROW:   { label: 'Kubrow',               effort:  70, note: 'Ei + Inkubator + Reifezeit' },
-  PET_KAVAT:    { label: 'Kavat',                effort:  75, note: 'Genetischer Code aus Derelict' },
+  PRIME:        { label: 'Prime (relics)',       effort:  80, note: 'Farm relics and crack them' },
+  DOJO:         { label: 'Clan dojo',            effort:  45, note: 'Research in the dojo, then build' },
+  BARO:         { label: "Baro Ki'Teer",         effort:  90, note: 'Only available every 2 weeks' },
+  PET_KUBROW:   { label: 'Kubrow',               effort:  70, note: 'Egg + incubator + maturation time' },
+  PET_KAVAT:    { label: 'Kavat',                effort:  75, note: 'Genetic code from the Derelict' },
   PET_MOA:      { label: 'MOA',                  effort:  50, note: 'Legs bei Legs (Fortuna)' },
   PET_HOUND:    { label: 'Hound',                effort:  60, note: 'Sisters of Parvos' },
-  AMP:          { label: 'Amp (Quills/Vox)',     effort:  55, note: 'Reputation bei Quills / Vox Solaris' },
-  MODULAR_ZAW:  { label: 'Zaw (Hok)',            effort:  45, note: 'Cetus, Hok - Reputation' },
-  MODULAR_KIT:  { label: 'Kitgun (Rude Zuud)',   effort:  45, note: 'Fortuna, Rude Zuud - Reputation' },
-  KDRIVE:       { label: 'K-Drive (Ventkids)',   effort:  50, note: 'Ventkids-Reputation' },
+  AMP:          { label: 'Amp (Quills/Vox)',     effort:  55, note: 'Standing with the Quills / Vox Solaris' },
+  MODULAR_ZAW:  { label: 'Zaw (Hok)',            effort:  45, note: 'Cetus, Hok — standing' },
+  MODULAR_KIT:  { label: 'Kitgun (Rude Zuud)',   effort:  45, note: 'Fortuna, Rude Zuud — standing' },
+  KDRIVE:       { label: 'K-Drive (Ventkids)',   effort:  50, note: 'Ventkids standing' },
   MECH:         { label: 'Necramech',            effort: 100, note: 'Isolation Vaults / Loid' },
-  RAILJACK:     { label: 'Railjack',             effort:  70, note: 'Railjack-Missionen' },
-  EVENT:        { label: 'Event / Zeitbegrenzt', effort: 150, note: 'Nur zu bestimmten Zeiten' },
-  SYNDICATE:    { label: 'Syndikat',             effort:  55, note: 'Syndikats-Reputation' },
-  BOSS:         { label: 'Boss-Drop / Quest',    effort:  40, note: 'Bossfarm auf der Sternenkarte' },
-  MARKET:       { label: 'Markt / Blaupause',    effort:  20, note: 'Direkt im Ingame-Markt' },
-  UNKNOWN:      { label: 'Unklar',               effort:  40, note: 'Quelle nicht eindeutig' }
+  RAILJACK:     { label: 'Railjack',             effort:  70, note: 'Railjack missions' },
+  EVENT:        { label: 'Event / time-limited', effort: 150, note: 'Only at certain times' },
+  SYNDICATE:    { label: 'Syndicate',            effort:  55, note: 'Syndicate standing' },
+  BOSS:         { label: 'Boss drop / quest',    effort:  40, note: 'Boss farming on the star chart' },
+  MARKET:       { label: 'Market / blueprint',   effort:  20, note: 'Straight from the in-game market' },
+  UNKNOWN:      { label: 'Unclear',              effort:  40, note: 'Source is ambiguous' }
 };
 
 /**

@@ -25,6 +25,7 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { dataDir as defaultDataDir } from './paths.js';
 
 const URL_ITEMS = 'https://api.warframestat.us/items/?only=uniqueName,name,category,wikiaThumbnail';
 const WIKI = 'https://wiki.warframe.com';
@@ -43,7 +44,7 @@ let index = null;
  * Die Antwort deckt den ganzen Itembestand ab (7 MB); gespeichert werden nur
  * Mods und Arcanes und von denen nur der Dateiname - rund 250 KB statt 7 MB.
  */
-export async function loadCardImages({ dataDir = 'data', refresh = false } = {}) {
+export async function loadCardImages({ dataDir = defaultDataDir(), refresh = false } = {}) {
   if (index && !refresh) return index;
 
   let cached = null;

@@ -144,12 +144,12 @@ function scoreEntry(entry, catalog, item, playerMR) {
 function buildReason(entry, catalog, acq, owned, ranksLeft) {
   if (owned) {
     return entry.maxLvl > 30
-      ? `Besitzt du - Rang ${entry.rank}/${entry.maxLvl}, ${ranksLeft} Raenge per Forma`
-      : `Besitzt du - nur noch ${ranksLeft} ${ranksLeft === 1 ? 'Rang' : 'Raenge'}`;
+      ? `You own it — rank ${entry.rank}/${entry.maxLvl}, ${ranksLeft} ranks via forma`
+      : `You own it — only ${ranksLeft} ${ranksLeft === 1 ? 'rank' : 'ranks'} left`;
   }
   const r = catalog.recipeFor.get(entry.uniqueName);
   const build = r
-    ? ` | Bau: ${(r.buildPrice || 0).toLocaleString('de-DE')} Cr, ${Math.round((r.buildTime || 0) / 3600)}h`
+    ? ` | Build: ${(r.buildPrice || 0).toLocaleString('en-GB')} cr, ${Math.round((r.buildTime || 0) / 3600)}h`
     : '';
   return `${acq.label}: ${acq.note}${build}`;
 }

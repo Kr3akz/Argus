@@ -12,7 +12,7 @@
    Laeuft wie der uebrige Renderer ohne Node-Zugriff, alles ueber window.api.  */
 
 const $  = id => document.getElementById(id);
-const nf = n => (n ?? 0).toLocaleString('de-DE');
+const nf = n => (n ?? 0).toLocaleString('en-GB');
 
 /** Item- und Knotennamen kommen aus fremden Daten - vor dem Einsetzen entschaerfen. */
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
@@ -40,13 +40,14 @@ const MAX_FISS  = 8;
 const MAX_GOALS = 4;
 const MAX_RELICS = 5;
 
-/* Zustaende, wie das deutsche Spiel sie nennt - gekuerzt, weil daneben noch
-   Aera, Anzahl und Erwartungswert in dieselbe Zeile muessen. */
+/* Die vier Politur-Stufen. Im Overlay muessen daneben noch Aera, Anzahl und
+   Erwartungswert in dieselbe schmale Zeile - deshalb bleibt hier Platz fuer
+   eine Kuerzung, sollte eine der Bezeichnungen einmal laenger werden. */
 const RELIC_STATE_LABEL = {
-  Intact: 'Intakt',
-  Exceptional: 'Außergew.',
-  Flawless: 'Makellos',
-  Radiant: 'Strahlend'
+  Intact: 'Intact',
+  Exceptional: 'Exceptional',
+  Flawless: 'Flawless',
+  Radiant: 'Radiant'
 };
 
 /* ---------------- Icons ---------------- */
@@ -70,7 +71,7 @@ function msUntil(iso) {
 /** h:mm:ss bzw. m:ss - kurz genug fuer eine schmale Spalte. */
 function fmtCountdown(ms) {
   if (ms === null) return '—';
-  if (ms <= 0) return 'jetzt';
+  if (ms <= 0) return 'now';
   const total = Math.floor(ms / 1000);
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);
@@ -80,14 +81,14 @@ function fmtCountdown(ms) {
 }
 
 function relativeAge(ts) {
-  if (!ts) return 'unbekannt';
+  if (!ts) return 'unknown';
   const min = Math.round((Date.now() - ts) / 60000);
-  if (min < 2) return 'gerade eben';
-  if (min < 60) return `vor ${min} Minuten`;
+  if (min < 2) return 'just now';
+  if (min < 60) return `${min} min ago`;
   const h = Math.round(min / 60);
-  if (h < 24) return `vor ${h} Stunde${h === 1 ? '' : 'n'}`;
+  if (h < 24) return `${h} h ago`;
   const d = Math.round(h / 24);
-  return `vor ${d} Tag${d === 1 ? '' : 'en'}`;
+  return `${d} day${d === 1 ? '' : 's'} ago`;
 }
 
 /* Laeuft jede Sekunde und fasst nur die Uhren an - kein Neuaufbau der Listen,
@@ -167,7 +168,7 @@ function renderStale() {
 
   const min = Math.round(lag / 60000);
   const h = Math.floor(min / 60), m = min % 60;
-  el.innerHTML = `${Icon.warning(12)}<span>Datenquelle hängt ${h ? h + ' h ' : ''}${m} min hinterher — abgelaufene Einträge fehlen</span>`;
+  el.innerHTML = `${Icon.warning(12)}<span>Source is ${h ? h + ' h ' : ''}${m} min behind — expired entries are missing</span>`;
   el.classList.remove('hidden');
 }
 
@@ -190,16 +191,16 @@ function renderHead() {
 function renderCycles() {
   const box = $('ov-cycles');
   if (!world) {
-    box.innerHTML = '<div class="ov-empty">Weltzustand wird geladen …</div>';
+    box.innerHTML = '<div class="ov-empty">Loading world state …</div>';
     return;
   }
 
   const c = world.cetus || {}, v = world.vallis || {}, cb = world.cambion || {};
   const rows = [
     { name: 'Cetus',   cls: c.isDay   ? 'day'  : 'night', icon: c.isDay   ? 'sun'   : 'moon',
-      state: c.isDay ? 'Tag' : 'Nacht', expiry: c.expiry },
+      state: c.isDay ? 'Day' : 'Night', expiry: c.expiry },
     { name: 'Vallis',  cls: v.isWarm  ? 'warm' : 'cold',  icon: v.isWarm  ? 'flame' : 'snowflake',
-      state: v.isWarm ? 'Warm' : 'Kalt', expiry: v.expiry },
+      state: v.isWarm ? 'Warm' : 'Cold', expiry: v.expiry },
     { name: 'Cambion', cls: cb.isFass ? 'warm' : 'night', icon: cb.isFass ? 'flame' : 'moon',
       state: cb.isFass ? 'Fass' : 'Vome', expiry: cb.expiry }
   ];
@@ -232,8 +233,8 @@ function renderFissures() {
 
   if (!all.length) {
     box.innerHTML = sourceIsStale()
-      ? '<div class="ov-empty">Keine Daten — die Quelle hängt (siehe oben).</div>'
-      : '<div class="ov-empty">Keine aktiven Risse.</div>';
+      ? '<div class="ov-empty">No data — the source is lagging (see above).</div>'
+      : '<div class="ov-empty">No active fissures.</div>';
     note.textContent = '';
     return;
   }
@@ -282,7 +283,7 @@ function renderTrackedRelics() {
   }
 
   const fitting = trackedRelics.filter(r => openTiers.get(r.tier)).length;
-  note.textContent = fitting ? `${fitting} mit Riss` : `${trackedRelics.length} gemerkt`;
+  note.textContent = fitting ? `${fitting} with a fissure` : `${trackedRelics.length} tracked`;
 
   box.innerHTML = trackedRelics.slice(0, MAX_RELICS).map(r => {
     const open = openTiers.get(r.tier) || 0;
@@ -293,11 +294,11 @@ function renderTrackedRelics() {
       .sort((a, b) => (b.plat ?? -1) - (a.plat ?? -1))[0];
 
     const parts = [];
-    if (!r.count) parts.push('nicht im Bestand');
+    if (!r.count) parts.push('not in stock');
     if (r.noTable) parts.push('nicht mehr farmbar');
     else if (best && best.plat != null) parts.push(`${best.name} ${best.plat}p`);
-    else parts.push('Preise unbekannt');
-    if (open) parts.push(`${open} ${open === 1 ? 'Riss' : 'Risse'} offen`);
+    else parts.push('prices unknown');
+    if (open) parts.push(`${open} ${open === 1 ? 'fissure' : 'fissures'} open`);
 
     return `
       <div class="ov-row ${open ? 'hit' : ''}">
@@ -309,7 +310,7 @@ function renderTrackedRelics() {
           </b>
           <span>${esc(parts.join(' · '))}</span>
         </div>
-        <span class="ov-relic-exp" title="Erwarteter Platin-Erlös je Öffnung">${r.noTable ? '–' : r.expPlat + 'p'}</span>
+        <span class="ov-relic-exp" title="Expected platinum return per crack">${r.noTable ? '–' : r.expPlat + 'p'}</span>
       </div>`;
   }).join('') + (trackedRelics.length > MAX_RELICS
     ? `<div class="ov-empty">… und ${trackedRelics.length - MAX_RELICS} weitere im Planer</div>`
@@ -330,7 +331,7 @@ function renderGoals() {
       <img class="ov-goal-img" src="${esc(g.image)}" alt="" onerror="this.style.visibility='hidden'">
       <div class="ov-row-body">
         <b>${esc(g.name)}</b>
-        <span>${g.owned ? `Rang ${g.rank}/${g.maxLvl}` : 'Farmen'}</span>
+        <span>${g.owned ? `Rank ${g.rank}/${g.maxLvl}` : 'Farm it'}</span>
       </div>
       <span class="ov-gain">+${nf(g.gain)}</span>
     </div>`).join('');
@@ -338,7 +339,7 @@ function renderGoals() {
 
 function renderFoot() {
   const ts = world && world.fetchedAt ? new Date(world.fetchedAt).getTime() : null;
-  $('ov-age').textContent = ts ? `Stand ${relativeAge(ts)}` : 'Kein Weltzustand';
+  $('ov-age').textContent = ts ? `As of ${relativeAge(ts)}` : 'No world state';
 }
 
 /* ---------------- Takte ---------------- */
@@ -417,7 +418,7 @@ $('ov-opacity').oninput = e => window.api.setOverlayOpacity(Number(e.target.valu
 function renderHint() {
   const el = $('ov-hint');
   if (interacting) {
-    el.innerHTML = `<b>Zeigermodus</b> · <kbd>Esc</kbd> zurück ins Spiel`;
+    el.innerHTML = `<b>Cursor mode</b> · <kbd>Esc</kbd> back to the game`;
     el.classList.remove('hidden');
   } else if (clickThrough) {
     el.innerHTML = `Klicks gehen ans Spiel · ` +
@@ -526,7 +527,7 @@ function rewardRow(r, bestPlat) {
            onerror="this.style.visibility='hidden'">
       <div class="ov-rw-body">
         <b>${esc(r.name)}</b>
-        <span>${r.isOwn ? 'dein Relikt' : ''}${r.score < 1 ? (r.isOwn ? ' · ' : '') + 'unscharf erkannt' : ''}</span>
+        <span>${r.isOwn ? 'your relic' : ''}${r.score < 1 ? (r.isOwn ? ' · ' : '') + 'fuzzy match' : ''}</span>
       </div>
       <span class="ov-rw-plat ${good ? 'good' : ''}">${plat}</span>
       <span class="ov-rw-duc">${r.ducats != null ? r.ducats : '–'}</span>
@@ -542,7 +543,7 @@ function renderRelic() {
   if (!relicState) { box.classList.add('hidden'); return; }
 
   const list = relicState.rewards || [];
-  head.textContent = list.length ? 'Relikt-Belohnungen' : 'Dein Fund';
+  head.textContent = list.length ? 'Relic rewards' : 'Your drop';
 
   if (list.length) {
     /* Der hoechste Platinpreis wird hervorgehoben - aber erst, wenn alle
@@ -552,7 +553,7 @@ function renderRelic() {
     const bestPlat = complete ? Math.max(...prices) : null;
 
     body.innerHTML = `<div class="ov-rw-head">
-        <span></span><span></span><span>Belohnung</span><span>Platin</span><span>Duk.</span>
+        <span></span><span></span><span>Reward</span><span>Plat</span><span>Duc.</span>
       </div>` + list.map(r => rewardRow(r, bestPlat)).join('');
     return;
   }
@@ -570,11 +571,11 @@ function renderRelic() {
          <span class="ov-rw-pos">•</span>
          <img class="ov-rw-img" src="${esc(own.image || '')}" alt=""
               onerror="this.style.visibility='hidden'">
-         <div class="ov-rw-body"><b>${esc(own.name)}</b><span>dein Relikt</span></div>
+         <div class="ov-rw-body"><b>${esc(own.name)}</b><span>your relic</span></div>
          <span class="ov-rw-plat">${priceText(own.price)}</span>
          <span class="ov-rw-duc">${own.ducats != null ? own.ducats : '–'}</span>
        </div>`
-    : '<div class="ov-relic-note">Auswahl läuft — dein Fund stand nicht im Log.</div>') + note;
+    : '<div class="ov-relic-note">Choice in progress — your drop was not in the log.</div>') + note;
 }
 
 function showRelicReward(data) {

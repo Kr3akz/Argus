@@ -24,11 +24,12 @@ import { execFile } from 'node:child_process';
 import { readFile, unlink, mkdir } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import path from 'node:path';
+import { dataFile, resourceFile } from './paths.js';
 
 const run = promisify(execFile);
 
-const SCRIPT  = () => path.resolve('tools', 'ocr-capture.ps1');
-const TMP_DIR = () => path.resolve('data', 'ocr');
+const SCRIPT  = () => resourceFile('tools', 'ocr-capture.ps1');
+const TMP_DIR = () => dataFile('ocr');
 
 /* Ab hier gilt ein unscharfer Treffer als derselbe Name. 0.72 laesst rund ein
    Viertel der Zeichen daneben liegen - genug fuer verlesene Buchstaben, zu

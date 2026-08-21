@@ -103,7 +103,7 @@ export async function fetchWorldState({ force = false } = {}) {
   }
 
   return {
-    error: primaryError || 'WorldState nicht erreichbar',
+    error: primaryError || 'World state unreachable',
     fetchedAt: new Date().toISOString(),
     source: 'none',
     sourceTimestamp: null,
@@ -258,7 +258,7 @@ async function fetchTennoToolsFullWorldState() {
         faction: a.faction || '',
         minLevel: a.minLevel ?? null,
         maxLevel: a.maxLevel ?? null,
-        reward: a.rewards?.credits ? `${a.rewards.credits} Credits` : 'Belohnung',
+        reward: a.rewards?.credits ? `${a.rewards.credits} credits` : 'Reward',
         eta: a.end ? etaFrom(new Date(a.end * 1000).toISOString()) : ''
       }));
 
@@ -433,7 +433,7 @@ function formatArchonHunt(a) {
 function etaFrom(expiry) {
   if (!expiry) return '';
   const ms = new Date(expiry).getTime() - Date.now();
-  if (!Number.isFinite(ms) || ms <= 0) return 'abgelaufen';
+  if (!Number.isFinite(ms) || ms <= 0) return 'expired';
   const d = Math.floor(ms / 86400000);
   const h = Math.floor((ms % 86400000) / 3600000);
   const m = Math.floor((ms % 3600000) / 60000);
@@ -447,7 +447,7 @@ function rewardText(reward) {
   if (!reward) return '';
   const parts = (reward.countedItems || []).map(c => `${c.count}x ${c.type || c.key}`);
   parts.push(...(reward.items || []));
-  if (reward.credits) parts.push(`${reward.credits.toLocaleString('de-DE')} Credits`);
+  if (reward.credits) parts.push(`${reward.credits.toLocaleString('en-GB')} credits`);
   return parts.join(', ');
 }
 
@@ -541,9 +541,9 @@ function formatNightwave(nw) {
       art: c.isElite ? 'nightwave-elite' : (c.isDaily ? 'nightwave-taeglich' : 'nightwave'),
       titel: c.title || 'Nightwave',
       node: '',
-      missionType: c.isElite ? 'Elite-Aufgabe' : (c.isDaily ? 'Tagesaufgabe' : 'Wochenaufgabe'),
+      missionType: c.isElite ? 'Elite act' : (c.isDaily ? 'Daily act' : 'Weekly act'),
       faction: '',
-      reward: c.reputation ? `${c.reputation} Ansehen` : '',
+      reward: c.reputation ? `${c.reputation} standing` : '',
       beschreibung: c.desc || '',
       eta: etaFrom(c.expiry)
     }));

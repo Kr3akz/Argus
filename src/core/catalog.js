@@ -8,6 +8,7 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { dataDir as defaultDataDir } from './paths.js';
 
 const CDN = 'https://cdn.jsdelivr.net/gh/Aericio/warframe-exports-data/export';
 const IMG = 'https://cdn.jsdelivr.net/gh/Aericio/warframe-exports-data/image';
@@ -56,7 +57,7 @@ async function fetchExport(name) {
 }
 
 /** Laedt den Katalog, mit Cache auf Platte. maxAgeHours=0 erzwingt Refresh. */
-export async function loadCatalog({ dataDir = 'data', force = false } = {}) {
+export async function loadCatalog({ dataDir = defaultDataDir(), force = false } = {}) {
   await mkdir(dataDir, { recursive: true });
   const cacheFile = path.join(dataDir, 'catalog.json');
 

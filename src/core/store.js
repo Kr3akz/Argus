@@ -4,9 +4,9 @@
  */
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import path from 'node:path';
+import { dataDir, dataFile } from './paths.js';
 
-const FILE = () => path.join('data', 'goals.json');
+const FILE = () => dataFile('goals.json');
 
 export const DEFAULT_NOTIFICATIONS = () => ({
   enabled: true,
@@ -61,7 +61,7 @@ export async function load() {
 }
 
 async function save(state) {
-  await mkdir('data', { recursive: true });
+  await mkdir(dataDir(), { recursive: true });
   await writeFile(FILE(), JSON.stringify(state, null, 2));
   return state;
 }

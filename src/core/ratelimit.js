@@ -9,17 +9,17 @@
  *
  * REGELN:
  *   - Profil nur auf ausdrueckliche Nutzeraktion abrufen, niemals automatisch
- *   - Mindestens 5 Minuten zwischen zwei Abrufen
- *   - Nach einer Drosselung 1 h Sperre, kein Retry
+ *   - Mindestens 10 Minuten zwischen zwei Abrufen
+ *   - Nach einer Drosselung 3 h Sperre, kein Retry
  *   - Identifizierbarer User-Agent statt Browser-Tarnung
  */
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import path from 'node:path';
+import { dataDir, dataFile } from './paths.js';
 
-export const MIN_INTERVAL_MS = 5 * 60 * 1000;        // 5 min zwischen Abrufen
-export const COOLDOWN_MS     = 1 * 60 * 60 * 1000;   // 1 h Sperre nach Drosselung
-export const USER_AGENT      = 'Cephalon-Argus/0.1 (persoenlicher Mastery-Planer)';
+export const MIN_INTERVAL_MS = 10 * 60 * 1000;       // 10 min zwischen Abrufen
+export const COOLDOWN_MS     = 3 * 60 * 60 * 1000;   // 3 h Sperre nach Drosselung
+export const USER_AGENT      = 'Cephalon-Argus/1.0 (personal mastery planner)';
 
 /* Der Zaehler ist absichtlich EIN Topf fuer alle Endpunkte. DE drosselt pro IP,
    nicht pro Endpunkt - Profil- und Inventarabruf teilen sich also dasselbe
@@ -29,21 +29,21 @@ export const USER_AGENT      = 'Cephalon-Argus/0.1 (persoenlicher Mastery-Planer
    anders als in den Kommentaren. */
 export class RateLimitedError extends Error {
   constructor(msg) {
-    super(msg || 'Digital Extremes drosselt die Anfragen. Weitere Versuche können '
-              + 'den Spiel-Login blockieren („too many logins“).');
+    super(msg || 'Digital Extremes is throttling requests. Further attempts can block '
+              + 'your game login ("too many logins").');
     this.name = 'RateLimitedError';
     this.rateLimited = true;
   }
 }
 
-const STATE = () => path.join('data', 'ratelimit.json');
+const STATE = () => dataFile('ratelimit.json');
 
 async function read() {
   if (!existsSync(STATE())) return { lastRequest: 0, blockedUntil: 0, requestCount: 0 };
   return JSON.parse(await readFile(STATE(), 'utf8'));
 }
 async function write(s) {
-  await mkdir('data', { recursive: true });
+  await mkdir(dataDir(), { recursive: true });
   await writeFile(STATE(), JSON.stringify(s, null, 2));
 }
 
@@ -54,13 +54,13 @@ export async function checkAllowed({ force = false } = {}) {
 
   if (s.blockedUntil > now) {
     return { allowed: false, reason: 'cooldown', waitMs: s.blockedUntil - now,
-      message: 'Gesperrt nach einer Drosselung durch DE. Weitere Anfragen würden die '
-             + 'IP-Sperre verlängern und können den Spiel-Login blockieren.' };
+      message: 'Locked out after DE throttled us. Further requests would extend the IP '
+             + 'block and can stop you logging in to the game.' };
   }
   const since = now - (s.lastRequest || 0);
   if (!force && since < MIN_INTERVAL_MS) {
     return { allowed: false, reason: 'too_soon', waitMs: MIN_INTERVAL_MS - since,
-      message: 'Die Daten sind aktuell genug – so schnell ändert sich das nicht.' };
+      message: 'The data is recent enough — this does not change that quickly.' };
   }
   return { allowed: true };
 }

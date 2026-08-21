@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <!-- wiki.warframe.com liefert die fertig gezeichneten Mod- und Arcane-Karten.
@@ -19,18 +19,127 @@
   </div>
   <div class="winbtns">
     <span id="hotkey-hint" class="hotkey-hint hidden"></span>
-    <button id="btn-overlay" title="Overlay-Modus (Alt+Shift+W)"></button>
-    <button id="btn-min" title="Minimieren"></button>
-    <button id="btn-close" class="danger" title="Schliessen"></button>
+    <button id="btn-overlay" title="Overlay mode (Alt+Shift+W)"></button>
+    <button id="btn-min" title="Minimise"></button>
+    <button id="btn-close" class="danger" title="Close"></button>
   </div>
 </header>
 
 <div id="loading" class="loading">
   <div class="spinner"></div>
-  <p>Lade Daten aus dem lokalen Cache …</p>
+  <p>Loading data from the local cache …</p>
 </div>
 
 <div id="error" class="error hidden"></div>
+
+<!-- Ersteinrichtung. Sichtbar, solange keine Account-ID hinterlegt ist -
+     davor stand hier fuer neue Nutzer nur eine rote Fehlerzeile.
+
+     ZWEI ANSICHTEN, EINE FRAGE:
+     Vorne steht die Berechtigungsfrage. Sie erledigt Kennung und Inventar in
+     einem Schritt, weil derselbe Scan beides liefert - vorher waren das zwei
+     Fragen, von denen die erste (24 Hex-Zeichen von einer API-Seite
+     abschreiben) wie Bastelarbeit aussah.
+     Dahinter liegt der Handweg fuer alle, bei denen das Spiel nicht laeuft,
+     die auf einer Konsole spielen oder den Speicherzugriff schlicht nicht
+     wollen. Er bleibt vollwertig - nur ohne Inventar. -->
+<div id="setup" class="setup hidden">
+
+  <!-- ---------- Ansicht 1: Berechtigung ---------- -->
+  <div class="setup-card" id="setup-permission">
+    <span class="setup-logo" data-icon="argus"></span>
+    <h1>Argus needs to read from Warframe</h1>
+    <p class="setup-lead">
+      To show your mastery progress and your inventory, Argus reads them from the
+      running game — the same data Warframe shows you.
+    </p>
+
+    <ul class="perm-list">
+      <li>
+        <strong>Reading only.</strong>
+        It never changes anything in the game, never plays for you, and never touches
+        the game’s network traffic.
+      </li>
+      <li>
+        <strong>Your password is never involved.</strong>
+        Argus cannot see it. It borrows the temporary session key your running game
+        already holds — the same one the game uses itself. That key stops working when
+        you close Warframe.
+      </li>
+      <li>
+        <strong>It goes to Warframe’s servers, nowhere else.</strong>
+        The request goes to the same address the game itself talks to.
+      </li>
+      <li>
+        <strong>What stays on your PC.</strong>
+        Your account ID and a copy of your inventory, so Argus need not ask again. The
+        session key is used once and never written to disk.
+      </li>
+    </ul>
+
+    <p class="perm-req">
+      Warframe has to be running, and you have to be past the login screen — in your
+      orbiter is fine.
+    </p>
+
+    <button id="setup-allow" class="btn btn-primary setup-go">Allow and continue</button>
+    <p id="setup-perm-status" class="setup-status hidden"></p>
+
+    <p class="setup-alt">
+      Game not running, or playing on console?
+      <button id="setup-to-manual" class="linkish" type="button">Enter your account ID instead</button>
+    </p>
+  </div>
+
+  <!-- ---------- Ansicht 2: Handweg ---------- -->
+  <div class="setup-card hidden" id="setup-manual">
+    <span class="setup-logo" data-icon="argus"></span>
+    <h1>Enter your account ID</h1>
+    <p class="setup-lead">
+      This works without the game running, and on any platform. Argus then shows your
+      mastery progress — everything except the inventory, which only the running game
+      can provide.
+    </p>
+
+    <label class="setup-label" for="setup-id">Account ID</label>
+    <input id="setup-id" type="text" maxlength="24" spellcheck="false"
+           autocomplete="off" autocapitalize="off"
+           placeholder="24 characters, 0-9 and a-f">
+    <p id="setup-id-error" class="setup-error hidden"></p>
+
+    <!-- Bewusst offen: die drei Schritte sind genau das, wonach hier gesucht
+         wird. Hinter einem Klick versteckt waeren sie eine Huerde mehr. -->
+    <details class="setup-help" open>
+      <summary>Where do I find it?</summary>
+      <ol>
+        <li>Sign in on warframe.com</li>
+        <li>Open <code>warframe.com/api/user-data</code></li>
+        <li>Copy the value of <code>user_id</code></li>
+      </ol>
+      <button id="setup-open-warframe" class="btn-sm" type="button">Open that page</button>
+      <p class="setup-note">
+        Since Update 38.0.8 this only works by account ID. Tools that still ask for your
+        display name are out of date.
+      </p>
+    </details>
+
+    <label class="setup-label" for="setup-platform">Platform</label>
+    <select id="setup-platform">
+      <option value="pc">PC</option>
+      <option value="psn">PlayStation</option>
+      <option value="xbox">Xbox</option>
+      <option value="switch">Switch</option>
+      <option value="mobile">Mobile</option>
+    </select>
+
+    <button id="setup-go" class="btn btn-primary setup-go">Get started</button>
+    <p id="setup-status" class="setup-status hidden"></p>
+
+    <p class="setup-alt">
+      <button id="setup-to-permission" class="linkish" type="button">← Back</button>
+    </p>
+  </div>
+</div>
 
 
 <main id="app" class="app-layout hidden">
@@ -47,8 +156,8 @@
           <span class="nav-icon" data-icon="alert"></span>
           <span class="nav-pill live-dot"></span>
           <div class="nav-tooltip">
-            <b>Live-Tracker</b>
-            <span>Zyklen, Baro & Risse</span>
+            <b>Live tracker</b>
+            <span>Cycles, Baro & fissures</span>
           </div>
         </button>
 
@@ -56,24 +165,24 @@
           <span class="nav-icon" data-icon="upgrade"></span>
           <span id="goal-count" class="nav-pill hidden">0</span>
           <div class="nav-tooltip">
-            <b>Mastery & Farm-Ziele</b>
-            <span>Ziele, Empfehlungen & Katalog</span>
+            <b>Mastery & farming goals</b>
+            <span>Goals, recommendations & catalogue</span>
           </div>
         </button>
 
         <button class="nav-item" data-tab="inventory">
           <span class="nav-icon" data-icon="inventory"></span>
           <div class="nav-tooltip">
-            <b>Inventar</b>
-            <span>Relikte, Mods, Arcanes & Material</span>
+            <b>Inventory</b>
+            <span>Relics, mods, arcanes & materials</span>
           </div>
         </button>
 
         <button class="nav-item" data-tab="ducats">
           <span class="nav-icon" data-icon="relic"></span>
           <div class="nav-tooltip">
-            <b>Baro & Dukaten</b>
-            <span>Prime-Teile & Relikt-Rechner</span>
+            <b>Baro & ducats</b>
+            <span>Prime parts & relic planner</span>
           </div>
         </button>
 
@@ -81,31 +190,31 @@
           <span class="nav-icon" data-icon="rifle"></span>
           <div class="nav-tooltip">
             <b>Builds & Mods</b>
-            <span>Overframe-Import & Modding</span>
+            <span>Overframe import & modding</span>
           </div>
         </button>
 
         <button class="nav-item" data-tab="farmguide">
           <span class="nav-icon" data-icon="starchart"></span>
           <div class="nav-tooltip">
-            <b>Farm-Guide</b>
-            <span>Ressourcen & beste Drop-Nodes</span>
+            <b>Farming guide</b>
+            <span>Resources & best drop nodes</span>
           </div>
         </button>
 
         <button class="nav-item" data-tab="notes">
           <span class="nav-icon" data-icon="codex"></span>
           <div class="nav-tooltip">
-            <b>Notizen</b>
-            <span>Lokales Notizbuch</span>
+            <b>Notes</b>
+            <span>Local notebook</span>
           </div>
         </button>
 
         <button class="nav-item" data-tab="settings">
           <span class="nav-icon" data-icon="sliders"></span>
           <div class="nav-tooltip">
-            <b>Einstellungen</b>
-            <span>Tastenkürzel & Benachrichtigungen</span>
+            <b>Settings</b>
+            <span>Hotkeys & notifications</span>
           </div>
         </button>
       </nav>
@@ -115,8 +224,8 @@
       <button id="sb-btn-refresh" class="sb-action-btn">
         <span class="nav-icon" data-icon="refresh"></span>
         <div class="nav-tooltip" id="sb-refresh-tooltip">
-          <b id="sb-refresh-title">Aktualisieren</b>
-          <span id="sb-refresh-sub">Profil & Daten neu laden</span>
+          <b id="sb-refresh-title">Refresh</b>
+          <span id="sb-refresh-sub">Reload profile & data</span>
         </div>
       </button>
     </div>
@@ -145,7 +254,7 @@
 
           <div class="mr-block">
             <div class="mr-big"><img class="mr-icon" src="assets/icons/mastery-rank.png" alt="MR"><span id="mr-value">–</span><small>MR</small></div>
-            <span class="mr-max">von max. <b id="stat-potential">–</b></span>
+            <span class="mr-max">of max. <b id="stat-potential">–</b></span>
           </div>
         </div>
 
@@ -159,14 +268,14 @@
 
         <div class="hero-split">
           <div class="stats">
-            <div class="stat"><b id="stat-done">–</b><span>Fertig</span></div>
-            <div class="stat"><b id="stat-partial">–</b><span>Angefangen</span></div>
-            <div class="stat"><b id="stat-missing">–</b><span>Offen</span></div>
-            <div class="stat"><b id="stat-open">–</b><span>MR-XP offen</span></div>
+            <div class="stat"><b id="stat-done">–</b><span>Mastered</span></div>
+            <div class="stat"><b id="stat-partial">–</b><span>Started</span></div>
+            <div class="stat"><b id="stat-missing">–</b><span>Remaining</span></div>
+            <div class="stat"><b id="stat-open">–</b><span>MR XP left</span></div>
           </div>
 
           <div class="xpsplit">
-            <span class="xpsplit-label">Woher deine MR-XP stammt</span>
+            <span class="xpsplit-label">Where your MR XP comes from</span>
             <div class="xpbar" id="xpbar"></div>
             <div class="xplegend" id="xplegend"></div>
           </div>
@@ -174,7 +283,7 @@
 
         <div class="hero-foot">
           <span id="meta-info" class="meta">—</span>
-          <button id="btn-refresh" class="btn">Profil aktualisieren</button>
+          <button id="btn-refresh" class="btn">Refresh profile</button>
         </div>
       </div>
     </section>
@@ -183,11 +292,11 @@
     <section id="tab-worldstate" class="tabpane active">
       <div class="section-head section-head-row">
         <div>
-          <h2>Live Weltstatus & Zyklen</h2>
-          <p>Echtzeit-Timer für Open Worlds, Relikt-Risse, Baro Ki’Teer und Einsätze</p>
+          <h2>Live world state & cycles</h2>
+          <p>Live timers for open worlds, void fissures, Baro Ki’Teer and sorties</p>
         </div>
         <button class="btn-sm" id="btn-refresh-worldstate">
-          <span data-icon="refresh"></span> <span>Neu laden</span>
+          <span data-icon="refresh"></span> <span>Reload</span>
         </button>
       </div>
 
@@ -200,10 +309,10 @@
 
       <!-- ---- Unterseite: Übersicht ---- -->
       <div class="ws-pane active" data-ws-pane="overview">
-        <div class="section-head"><h2>Open-World-Zyklen</h2></div>
+        <div class="section-head"><h2>Open world cycles</h2></div>
         <div class="ws-cycles-grid" id="ws-cycles"></div>
 
-        <div class="section-head"><h2>Baro Ki’Teer (Void-Händler)</h2></div>
+        <div class="section-head"><h2>Baro Ki’Teer (void trader)</h2></div>
         <div id="ws-voidtrader" class="ws-trader-box"></div>
       </div>
 
@@ -211,17 +320,17 @@
       <div class="ws-pane" data-ws-pane="fissures">
         <div class="section-head section-head-row">
           <div>
-            <h2>Aktive Void-Risse (Relikte)</h2>
-            <p>Finde die schnellsten Missionen zum Öffnen deiner Relikte</p>
+            <h2>Active void fissures (relics)</h2>
+            <p>Find the fastest missions to crack your relics</p>
           </div>
           <div class="ws-fissure-actions">
-            <button id="btn-fissure-notif" class="btn-sm btn-fissure-notif" title="Benachrichtigungen für Void-Risse anpassen">
+            <button id="btn-fissure-notif" class="btn-sm btn-fissure-notif" title="Adjust void fissure notifications">
               <span data-icon="bell"></span>
-              <span id="fissure-notif-btn-label">Benachrichtigungen</span>
-              <span id="fissure-notif-btn-badge" class="notif-active-badge">Aktiv</span>
+              <span id="fissure-notif-btn-label">Notifications</span>
+              <span id="fissure-notif-btn-badge" class="notif-active-badge">On</span>
             </button>
             <div class="ws-fissure-filters" id="ws-fissure-filters">
-              <button class="fissure-tab active" data-tier="all">Alle</button>
+              <button class="fissure-tab active" data-tier="all">All</button>
               <button class="fissure-tab" data-tier="Lith">Lith</button>
               <button class="fissure-tab" data-tier="Meso">Meso</button>
               <button class="fissure-tab" data-tier="Neo">Neo</button>
@@ -238,11 +347,11 @@
       <div class="ws-pane" data-ws-pane="missions">
         <div class="ws-missions-grid">
           <div class="ws-box">
-            <div class="section-head"><h2>Tages-Einsatz (Sortie)</h2></div>
+            <div class="section-head"><h2>Daily sortie</h2></div>
             <div id="ws-sortie"></div>
           </div>
           <div class="ws-box">
-            <div class="section-head"><h2>Archon-Jagd</h2></div>
+            <div class="section-head"><h2>Archon hunt</h2></div>
             <div id="ws-archon"></div>
           </div>
         </div>
@@ -251,8 +360,8 @@
       <!-- ---- Unterseite: Nightwave ---- -->
       <div class="ws-pane" data-ws-pane="nightwave">
         <div class="section-head">
-          <h2>Nightwave-Aufgaben</h2>
-          <p>Tages-, Wochen- und Elite-Aufgaben für Ansehen und Belohnungen</p>
+          <h2>Nightwave acts</h2>
+          <p>Daily, weekly and elite acts for standing and rewards</p>
         </div>
         <div id="ws-nightwave" class="ws-alert-list"></div>
       </div>
@@ -260,15 +369,15 @@
       <!-- ---- Unterseite: Alerts & zeitlich begrenzte Missionen ---- -->
       <div class="ws-pane" data-ws-pane="alerts">
         <div class="section-head">
-          <h2>Alerts & zeitlich begrenzte Missionen</h2>
-          <p>Kuva-Siphons, Schlichtung und klassische Alerts</p>
+          <h2>Alerts & time-limited missions</h2>
+          <p>Kuva siphons, arbitrations and classic alerts</p>
         </div>
         <div id="ws-alerts" class="ws-alert-list"></div>
       </div>
 
       <!-- ---- Unterseite: Laufende Operationen ---- -->
       <div class="ws-pane" data-ws-pane="events">
-        <div class="section-head"><h2>Laufende Operationen</h2></div>
+        <div class="section-head"><h2>Running operations</h2></div>
         <div id="ws-events" class="ws-event-list"></div>
       </div>
 
@@ -281,8 +390,8 @@
       <!-- ---- Unterseite: Invasionen ---- -->
       <div class="ws-pane" data-ws-pane="invasions">
         <div class="section-head">
-          <h2>Invasionen</h2>
-          <p>Wähle eine Seite und schließe 3 Missionen ab für die Belohnung</p>
+          <h2>Invasions</h2>
+          <p>Pick a side and finish 3 missions to claim the reward</p>
         </div>
         <div id="ws-invasions" class="ws-invasion-grid"></div>
       </div>
@@ -290,8 +399,8 @@
       <!-- ---- Unterseite: Syndikate ---- -->
       <div class="ws-pane" data-ws-pane="syndicates">
         <div class="section-head">
-          <h2>Syndikats-Aufträge</h2>
-          <p>Aktive Bounties und Missionen der Syndikate</p>
+          <h2>Syndicate bounties</h2>
+          <p>Active syndicate bounties and missions</p>
         </div>
         <div id="ws-syndicates" class="ws-syndicate-grid"></div>
       </div>
@@ -304,10 +413,10 @@
       <div id="active-goals-wrap" class="hidden">
         <div class="section-head section-head-row">
           <div>
-            <h2>Woran du gerade farmst</h2>
-            <p>Deine offenen Ziele mit den nächsten Materialien</p>
+            <h2>What you are farming right now</h2>
+            <p>Your open goals with the materials they need next</p>
           </div>
-          <button class="btn-sm" id="btn-to-goals">Details & Materialien</button>
+          <button class="btn-sm" id="btn-to-goals">Details & materials</button>
         </div>
         <div id="active-goals" class="activegoals"></div>
       </div>
@@ -319,10 +428,10 @@
             <span class="btn-ic" data-icon="upgrade"></span><span>Manager</span>
           </button>
           <button class="ducats-tab-btn" id="tab-mastery-mode-catalog" data-mode="catalog">
-            <span class="btn-ic" data-icon="codex"></span><span>Katalog</span>
+            <span class="btn-ic" data-icon="codex"></span><span>Catalogue</span>
           </button>
         </div>
-        <span class="meta" id="mastery-mode-hint">Ziele, Rohstoffe & Mastery-Empfehlungen</span>
+        <span class="meta" id="mastery-mode-hint">Goals, resources & mastery recommendations</span>
       </div>
 
       <!-- ----- Modus: Manager ----- -->
@@ -332,12 +441,12 @@
         <div id="shopping" class="shopping hidden">
           <div class="shopping-head">
             <div>
-              <h3>Gemeinsame Einkaufsliste</h3>
-              <p>Gesamte Rohstoffe für alle deine offenen Ziele zusammen</p>
+              <h3>Combined shopping list</h3>
+              <p>Total resources across all of your open goals</p>
             </div>
             <div class="shopping-meta">
               <span>Credits: <b id="shop-credits">0</b></span>
-              <span>Gesamte Bauzeit: <b id="shop-time">0h</b></span>
+              <span>Total build time: <b id="shop-time">0h</b></span>
             </div>
           </div>
           <div id="shopping-mats" class="matgrid"></div>
@@ -349,8 +458,8 @@
           <button class="goal-details-toggle" id="btn-goal-details" aria-expanded="false" aria-controls="goals">
             <span class="gd-chevron" data-icon="chevron"></span>
             <span class="gd-text">
-              <b>Ziel-Details & Materialien</b>
-              <small>Bauteile, Rohstoffe und Notizen zu jedem Ziel</small>
+              <b>Goal details & materials</b>
+              <small>Components, resources and notes for each goal</small>
             </span>
             <span class="counter-badge" id="goal-details-count">0</span>
           </button>
@@ -359,43 +468,43 @@
 
         <div class="section-head">
           <h2>Quick Wins</h2>
-          <p>Gegenstände in deinem Besitz, die noch gelevelt werden müssen</p>
+          <p>Items you already own that still need levelling</p>
         </div>
         <div id="quick-wins" class="cards"></div>
 
         <div class="section-head">
-          <h2>Günstig zu holen</h2>
-          <p>Direkt aus Markt oder Dojo-Labor, keine langen Farm-Voraussetzungen</p>
+          <h2>Cheap to pick up</h2>
+          <p>Straight from the market or a dojo lab — no long farming prerequisites</p>
         </div>
         <div id="easy-gains" class="cards"></div>
 
         <div class="section-head">
-          <h2>Fehlende Warframes</h2>
-          <p>Jeder Frame bringt 6.000 Meisterschaftspunkte</p>
+          <h2>Warframes you are missing</h2>
+          <p>Each frame is worth 6,000 mastery points</p>
         </div>
         <div id="warframes" class="cards"></div>
 
-        <div class="section-head"><h2>Fortschritt nach Kategorie</h2></div>
+        <div class="section-head"><h2>Progress by category</h2></div>
         <div id="categories" class="cats"></div>
       </div>
 
       <!-- ----- Modus: Katalog ----- -->
       <div id="mastery-pane-catalog" class="mastery-pane">
         <div class="section-head">
-          <h2>Gegenstands-Katalog & Mastery-Checkliste</h2>
-          <p>Alle Warframe-Items nach Kategorie & Status filtern – klicke auf eine Kachel für Drop-Quellen und um sie als Ziel zu setzen</p>
+          <h2>Item catalogue & mastery checklist</h2>
+          <p>Filter every Warframe item by category & status — click a tile for drop sources and to set it as a goal</p>
         </div>
         <div class="filters">
           <select id="filter-category"></select>
           <select id="filter-status">
-            <option value="">Alle Status</option>
-            <option value="missing">Nur fehlende</option>
-            <option value="partial">Nur angefangene</option>
-            <option value="done">Nur fertige</option>
+            <option value="">All statuses</option>
+            <option value="missing">Missing only</option>
+            <option value="partial">Started only</option>
+            <option value="done">Mastered only</option>
           </select>
           <div class="searchbox">
             <span class="ic" id="ic-filtersearch"></span>
-            <input id="filter-search" type="text" placeholder="Item suchen … z. B. Wisp, Ignis Wraith, Torid, Stropha">
+            <input id="filter-search" type="text" placeholder="Search items … e.g. Wisp, Ignis Wraith, Torid, Stropha">
           </div>
           <span id="checklist-count" class="meta"></span>
         </div>
@@ -406,21 +515,21 @@
     <!-- ---------------- 4. Farm-Routen & Ressourcen Guide ---------------- -->
     <section id="tab-farmguide" class="tabpane">
       <div class="section-head">
-        <h2>Ressourcen & Farm-Routen Guide</h2>
-        <p>Die besten Planeten, Missionen und Warframe-Setups für alle Ressourcen</p>
+        <h2>Resource & farming route guide</h2>
+        <p>The best planets, missions and warframe setups for every resource</p>
       </div>
 
       <div class="searchbox" style="margin-bottom: 20px;">
         <span class="ic" id="ic-fgsearch"></span>
-        <input id="fg-search" type="text" placeholder="Ressource oder Planet suchen … z. B. Orokin Cell, Tellurium, Saturn, Uranus">
+        <input id="fg-search" type="text" placeholder="Search a resource or planet … e.g. Orokin Cell, Tellurium, Saturn, Uranus">
       </div>
 
       <div class="fg-pro-tips">
         <div class="pro-tip-item">
-          <span class="tip-ic" data-icon="gem"></span><b>Loot-Squad Setup:</b> Nekros (Entweihen) + Khora (Plündernde Kuppel) + Speed-Nova + Wisp für maximale Dropchancen.
+          <span class="tip-ic" data-icon="gem"></span><b>Loot squad setup:</b> Nekros (Desecrate) + Khora (Pilfering Strangledome) + speed Nova + Wisp for maximum drop chances.
         </div>
         <div class="pro-tip-item">
-          <span class="tip-ic" data-icon="rocket"></span><b>Booster-Effekt:</b> Ressourcen-Verdoppler verdoppelt aufgehobene Mengen (z. B. 2x Orokin Cells), Ressourcen-Chance erhöht Drop-Wahrscheinlichkeit.
+          <span class="tip-ic" data-icon="rocket"></span><b>Booster effect:</b> A resource booster doubles the amount you pick up (e.g. 2x Orokin Cells); a drop-chance booster raises the odds of a drop.
         </div>
       </div>
 
@@ -431,12 +540,12 @@
     <section id="tab-ducats" class="tabpane">
       <div class="section-head section-head-row">
         <div>
-          <h2>Baro Ki’Teer Dukaten- & Trade-Helper</h2>
-          <p>Prime-Inventar analysieren, Dukaten-Ertrag berechnen und Platin-Marktpreise vergleichen</p>
+          <h2>Baro Ki’Teer ducat & trade helper</h2>
+          <p>Analyse your prime inventory, work out ducat yield and compare platinum market prices</p>
         </div>
         <div class="head-actions">
-          <button class="btn btn-subtle" id="btn-ducats-fetch-prices" title="Marktpreise von warframe.market aktualisieren">
-            <span data-icon="refresh"></span> <span>Preise laden</span>
+          <button class="btn btn-subtle" id="btn-ducats-fetch-prices" title="Refresh market prices from warframe.market">
+            <span data-icon="refresh"></span> <span>Load prices</span>
           </button>
         </div>
       </div>
@@ -447,38 +556,38 @@
       <!-- Dashboard KPI Karten -->
       <div class="ducats-stats-grid">
         <div class="ducats-stat-card card-primary">
-          <img class="stat-card-ic" src="assets/icons/ducats.png" alt="Dukaten">
+          <img class="stat-card-ic" src="assets/icons/ducats.png" alt="Ducats">
           <div class="stat-content">
-            <span class="stat-label">Ausgewählte Dukaten</span>
-            <div class="stat-value"><b id="ducats-selected-total">0</b> <small>Dukaten</small></div>
-            <span class="stat-sub" id="ducats-selected-sub">0 Teile zum Verkauf gewählt</span>
+            <span class="stat-label">Selected ducats</span>
+            <div class="stat-value"><b id="ducats-selected-total">0</b> <small>ducats</small></div>
+            <span class="stat-sub" id="ducats-selected-sub">0 parts selected to sell</span>
           </div>
         </div>
 
         <div class="ducats-stat-card card-plat">
           <img class="stat-card-ic" src="assets/icons/currency/platinum.png" alt="Platin">
           <div class="stat-content">
-            <span class="stat-label">Geschätzter Platin-Wert</span>
-            <div class="stat-value"><b id="ducats-selected-plat">0</b> <small>Platin</small></div>
+            <span class="stat-label">Estimated platinum value</span>
+            <div class="stat-value"><b id="ducats-selected-plat">0</b> <small>platinum</small></div>
             <span class="stat-sub" id="ducats-selected-plat-sub">Min. 0p · Median 0p</span>
           </div>
         </div>
 
         <div class="ducats-stat-card card-inv">
-          <img class="stat-card-ic" src="assets/icons/ducats.png" alt="Dukaten">
+          <img class="stat-card-ic" src="assets/icons/ducats.png" alt="Ducats">
           <div class="stat-content">
-            <span class="stat-label">Gesamtes Inventar</span>
-            <div class="stat-value"><b id="ducats-inv-total-ducats">0</b> <small>Dukaten</small></div>
-            <span class="stat-sub" id="ducats-inv-total-sub">0 Prime-Teile im Besitz</span>
+            <span class="stat-label">Entire inventory</span>
+            <div class="stat-value"><b id="ducats-inv-total-ducats">0</b> <small>ducats</small></div>
+            <span class="stat-sub" id="ducats-inv-total-sub">0 prime parts owned</span>
           </div>
         </div>
 
         <div class="ducats-stat-card card-baro">
           <span class="stat-card-svg" id="ic-baro-kaufkraft"></span>
           <div class="stat-content">
-            <span class="stat-label">Baro Ki’Teer Kaufkraft</span>
+            <span class="stat-label">Baro Ki’Teer buying power</span>
             <div class="stat-value"><b id="ducats-baro-power">~0</b> <small>Items</small></div>
-            <span class="stat-sub" id="ducats-baro-sub">Reicht für ~0 Primed Mods</span>
+            <span class="stat-sub" id="ducats-baro-sub">Enough for ~0 primed mods</span>
           </div>
         </div>
       </div>
@@ -488,27 +597,27 @@
         <div class="ducats-toolbar-row">
           <div class="ducats-mode-tabs">
             <button class="ducats-tab-btn active" id="tab-ducats-mode-inv" data-mode="inventory">
-              <span class="btn-ic" data-icon="crate"></span><span>Mein Prime-Inventar</span>
+              <span class="btn-ic" data-icon="crate"></span><span>My prime inventory</span>
               <span class="counter-badge" id="ducats-inv-badge-count">0</span>
             </button>
             <button class="ducats-tab-btn" id="tab-ducats-mode-cat" data-mode="catalog">
-              <span class="btn-ic" data-icon="codex"></span><span>Gesamter Prime-Katalog</span>
+              <span class="btn-ic" data-icon="codex"></span><span>Full prime catalogue</span>
             </button>
             <button class="ducats-tab-btn" id="tab-ducats-mode-plan" data-mode="plan">
-              <span class="btn-ic" data-icon="relic"></span><span>Relikt-Planer</span>
+              <span class="btn-ic" data-icon="relic"></span><span>Relic planner</span>
               <span class="counter-badge" id="ducats-plan-badge-count">0</span>
             </button>
           </div>
 
           <div class="ducats-quick-actions">
-            <button class="btn btn-sm btn-action" id="btn-ducats-select-all" title="Wählt alle verfügbaren Teile aus dem Inventar zum Verkauf aus">
-              <span class="btn-ic" data-icon="bolt"></span>Alle auswählen
+            <button class="btn btn-sm btn-action" id="btn-ducats-select-all" title="Selects every available part from your inventory for sale">
+              <span class="btn-ic" data-icon="bolt"></span>Select all
             </button>
-            <button class="btn btn-sm btn-action" id="btn-ducats-select-dups" title="Behält 1 Exemplar für die Sammlung und wählt alle Duplikate aus">
-              <span class="btn-ic" data-icon="copy"></span>Nur Duplikate (1 behalten)
+            <button class="btn btn-sm btn-action" id="btn-ducats-select-dups" title="Keeps 1 copy for your collection and selects every duplicate">
+              <span class="btn-ic" data-icon="copy"></span>Duplicates only (keep 1)
             </button>
-            <button class="btn btn-sm btn-subtle" id="btn-ducats-clear" title="Setzt alle Verkaufsmengen auf 0 zurück">
-              <span class="btn-ic" data-icon="close"></span>Leeren
+            <button class="btn btn-sm btn-subtle" id="btn-ducats-clear" title="Resets every sell quantity to 0">
+              <span class="btn-ic" data-icon="close"></span>Clear
             </button>
           </div>
         </div>
@@ -516,45 +625,45 @@
         <div class="ducats-filter-row">
           <div class="searchbox flex-search">
             <span class="ic" id="ic-ducatsearch"></span>
-            <input id="ducat-search" type="text" placeholder="Prime-Teil suchen … z. B. Braton, Orthos, Chassis, Glaive">
+            <input id="ducat-search" type="text" placeholder="Search prime parts … e.g. Braton, Orthos, Chassis, Glaive">
           </div>
 
           <!-- Aera-Filter des Planers, gleiche Optik wie im Inventar. -->
           <div class="inv-tier-filter hidden" id="plan-tier-filter"></div>
 
           <div class="ducats-filter-badges">
-            <button class="filter-chip active" data-filter="all">Alle</button>
-            <button class="filter-chip chip-junk" data-filter="advice-junk" title="Dukaten/Plat >= 10: Hoher Schmelzwert">
+            <button class="filter-chip active" data-filter="all">All</button>
+            <button class="filter-chip chip-junk" data-filter="advice-junk" title="Ducats per platinum >= 10: high melt value">
               <span class="chip-dot"></span>Prime Junk
             </button>
-            <button class="filter-chip chip-plat" data-filter="advice-plat" title="Platin >= 15p oder Verhältnis < 7: Besser auf Markt verkaufen">
-              <span class="chip-dot"></span>Platin-Tipps
+            <button class="filter-chip chip-plat" data-filter="advice-plat" title="Platinum >= 15p or ratio < 7: better sold on the market">
+              <span class="chip-dot"></span>Platinum tips
             </button>
             <button class="filter-chip chip-gold" data-filter="100">Gold (100)</button>
-            <button class="filter-chip chip-silver" data-filter="45">Silber (45/65)</button>
+            <button class="filter-chip chip-silver" data-filter="45">Silver (45/65)</button>
             <button class="filter-chip chip-bronze" data-filter="15">Bronze (15/25)</button>
           </div>
 
           <!-- Eigene Sortierung fuer den Planer: dort wird nach Erwartungswert
                entschieden, nicht nach Dukaten je Teil. -->
           <div class="ducats-sort-wrap hidden" id="plan-sort-wrap">
-            <label for="plan-sort">Sortieren:</label>
+            <label for="plan-sort">Sort:</label>
             <select id="plan-sort" class="select-sm">
-              <option value="plat-desc">Platin-Erwartung (Höchste)</option>
-              <option value="ducats-desc">Dukaten-Erwartung (Höchste)</option>
-              <option value="count-desc">Anzahl im Bestand</option>
-              <option value="priced-desc">Preis-Abdeckung</option>
-              <option value="name-asc">Relikt (A–Z)</option>
+              <option value="plat-desc">Expected platinum (highest)</option>
+              <option value="ducats-desc">Expected ducats (highest)</option>
+              <option value="count-desc">Quantity owned</option>
+              <option value="priced-desc">Price coverage</option>
+              <option value="name-asc">Relic (A–Z)</option>
             </select>
           </div>
 
           <div class="ducats-sort-wrap">
-            <label for="ducats-sort">Sortieren:</label>
+            <label for="ducats-sort">Sort:</label>
             <select id="ducats-sort" class="select-sm">
-              <option value="ducats-desc">Dukaten (Höchste)</option>
-              <option value="plat-desc">Platin-Preis (Höchste)</option>
-              <option value="ratio-desc">Dukaten/Plat Effizienz</option>
-              <option value="count-desc">Inventar-Menge</option>
+              <option value="ducats-desc">Ducats (highest)</option>
+              <option value="plat-desc">Platinum price (highest)</option>
+              <option value="ratio-desc">Ducat/platinum efficiency</option>
+              <option value="count-desc">Quantity in inventory</option>
               <option value="name-asc">Name (A–Z)</option>
             </select>
           </div>
@@ -568,10 +677,10 @@
     <section id="tab-inventory" class="tabpane">
       <div class="section-head section-head-row">
         <div>
-          <h2>Inventar</h2>
-          <p>Relikte, Mods, Arcanes, Materialien und Blueprints aus deinem Spielkonto</p>
+          <h2>Inventory</h2>
+          <p>Relics, mods, arcanes, materials and blueprints from your game account</p>
         </div>
-        <button class="btn" id="btn-inv-refresh">Inventar abrufen</button>
+        <button class="btn" id="btn-inv-refresh">Fetch inventory</button>
       </div>
 
       <!-- Antwort auf einen Abruf, der nicht stattgefunden hat -->
@@ -588,7 +697,7 @@
         <div class="searchbox">
           <span class="ic" id="ic-invsearch"></span>
           <input id="inv-search" type="text"
-                 placeholder="Im Inventar suchen … z. B. Rubedo, Lith, Arcane Energize">
+                 placeholder="Search your inventory … e.g. Rubedo, Lith, Arcane Energize">
         </div>
 
         <!-- Nur fuer Relikte sichtbar: die anderen Bereiche haben keine Aera. -->
@@ -602,8 +711,8 @@
     <!-- ---------------- 7. Builds ---------------- -->
     <section id="tab-builds" class="tabpane">
       <div class="section-head">
-        <h2>Overframe-Build importieren</h2>
-        <p>URL eines Builds von overframe.gg einfügen oder eigenen Build erstellen</p>
+        <h2>Import an Overframe build</h2>
+        <p>Paste an overframe.gg build URL, or create your own build</p>
       </div>
 
       <div class="build-import-row">
@@ -611,8 +720,8 @@
           <span class="ic" id="ic-buildimport"></span>
           <input id="build-url" type="text" placeholder="https://overframe.gg/build/12345/...">
         </div>
-        <button id="btn-import" class="btn btn-primary">Importieren</button>
-        <button id="btn-new-build" class="btn btn-secondary">+ Eigener Build</button>
+        <button id="btn-import" class="btn btn-primary">Import</button>
+        <button id="btn-new-build" class="btn btn-secondary">+ Custom build</button>
       </div>
       <div id="import-status" class="hint hidden"></div>
 
@@ -620,7 +729,7 @@
       <div id="newbuild-panel" class="newbuild-panel hidden" style="margin-top: 14px;">
         <div class="searchbox">
           <span class="ic" id="ic-itemsearch"></span>
-          <input id="newbuild-item" type="text" placeholder="Gegenstand für Build suchen … z. B. Torid, Wisp, Glaive Prime">
+          <input id="newbuild-item" type="text" placeholder="Search for an item to build … e.g. Torid, Wisp, Glaive Prime">
           <div id="newbuild-results" class="results hidden"></div>
         </div>
       </div>
@@ -628,8 +737,8 @@
       <!-- Summen über alle Builds -->
       <div id="build-totals" class="build-totals hidden">
         <div class="totals-head">
-          <h3>Bedarf über alle deine aktiven Builds</h3>
-          <p>Gesamte Formas, Katalysatoren und Endo für deine Builds</p>
+          <h3>Total requirements across your active builds</h3>
+          <p>All the forma, catalysts and endo your builds need</p>
         </div>
         <div id="totals-grid" class="totals-grid"></div>
       </div>
@@ -638,56 +747,56 @@
       <div id="missing-mods-wrap" class="missing-mods-wrap hidden">
         <div class="missing-head">
           <div>
-            <h3>Fehlende Mods für deine Builds</h3>
-            <p>Klicke auf einen Eintrag, wenn du die Mod besitzt</p>
+            <h3>Mods missing from your builds</h3>
+            <p>Click an entry once you own that mod</p>
           </div>
-          <button id="btn-all-owned" class="btn-sm">Alle als vorhanden markieren</button>
+          <button id="btn-all-owned" class="btn-sm">Mark all as owned</button>
         </div>
         <div id="missing-mods" class="missing-mods-grid"></div>
       </div>
 
-      <div class="section-head"><h2>Deine Builds</h2></div>
+      <div class="section-head"><h2>Your builds</h2></div>
       <div id="builds" class="buildlist"></div>
     </section>
 
     <!-- ---------------- 8. Notizen ---------------- -->
     <section id="tab-notes" class="tabpane">
       <div class="section-head">
-        <h2>Notizbuch</h2>
-        <p>Wird automatisch lokal gespeichert</p>
+        <h2>Notebook</h2>
+        <p>Saved locally, automatically</p>
       </div>
-      <textarea id="general-notes" placeholder="Pläne, Relikt-Listen, was auch immer …"></textarea>
-      <div class="section-head"><h2>Notizen an Items</h2></div>
+      <textarea id="general-notes" placeholder="Plans, relic lists, whatever …"></textarea>
+      <div class="section-head"><h2>Notes on items</h2></div>
       <div id="item-notes" class="itemnotes"></div>
     </section>
 
     <!-- ---------------- 9. Einstellungen ---------------- -->
     <section id="tab-settings" class="tabpane">
       <div class="section-head">
-        <h2>Einstellungen</h2>
-        <p>Tastenkürzel und Benachrichtigungen</p>
+        <h2>Settings</h2>
+        <p>Hotkeys and notifications</p>
       </div>
 
       <div class="settings-group">
         <div class="settings-group-head">
-          <h3>Globale Tastenkürzel</h3>
-          <p>Gelten systemweit — auch während Warframe im Vordergrund ist. Windows
-             reicht die Kombination dann nicht mehr ans Spiel weiter, wähle also
-             nichts, was du im Spiel brauchst.</p>
+          <h3>Global hotkeys</h3>
+          <p>These work system-wide — including while Warframe is in the foreground.
+             Windows then stops passing the combination on to the game, so do not
+             pick something you need in a mission.</p>
         </div>
 
         <div class="setting-row">
           <div class="setting-info">
-            <b>Overlay ein-/ausblenden</b>
-            <span>Blendet das Overlay über dem Spiel ein und wieder aus</span>
+            <b>Show/hide overlay</b>
+            <span>Shows the overlay on top of the game, and hides it again</span>
           </div>
           <button class="hotkey-btn" data-hotkey="overlay" id="hk-overlay"></button>
         </div>
 
         <div class="setting-row">
           <div class="setting-info">
-            <b>Mauszeiger ins Overlay holen</b>
-            <span>Gibt den Zeiger frei; Esc bringt ihn zurück ins Spiel</span>
+            <b>Bring the cursor into the overlay</b>
+            <span>Releases the cursor; Esc hands it back to the game</span>
           </div>
           <button class="hotkey-btn" data-hotkey="interact" id="hk-interact"></button>
         </div>
@@ -695,16 +804,39 @@
         <div id="hk-status" class="settings-note hidden"></div>
       </div>
 
+      <!-- Der Schalter, auf den die Fehlermeldung des Inventar-Abrufs verweist.
+           Eigene Gruppe, weil es hier nicht um Bequemlichkeit geht, sondern um
+           eine Erlaubnis: ohne Haken fasst Argus den Spielprozess nicht an. -->
       <div class="settings-group">
         <div class="settings-group-head">
-          <h3>Benachrichtigungen</h3>
-          <p>Argus prüft alle 45 Sekunden auf neue Void-Risse</p>
+          <h3>Inventory access</h3>
+          <p>Your public Warframe profile contains no inventory. Reading one means looking
+             up the temporary session credentials of the running game in its process
+             memory — read-only, never writing, and only when you press the button.</p>
         </div>
 
         <label class="setting-row">
           <div class="setting-info">
-            <b>Void-Riss-Benachrichtigungen</b>
-            <span>Meldet neue Risse, die zu deiner Auswahl passen</span>
+            <b>Read inventory from the running game</b>
+            <span>Off by default. Everything except the Inventory tab works without it.</span>
+          </div>
+          <input type="checkbox" id="set-inventory-scan" class="toggle-checkbox">
+          <span class="toggle-switch"></span>
+        </label>
+
+        <div id="inv-scan-status" class="settings-note hidden"></div>
+      </div>
+
+      <div class="settings-group">
+        <div class="settings-group-head">
+          <h3>Notifications</h3>
+          <p>Argus checks for new void fissures every 45 seconds</p>
+        </div>
+
+        <label class="setting-row">
+          <div class="setting-info">
+            <b>Void fissure notifications</b>
+            <span>Reports new fissures that match your selection</span>
           </div>
           <input type="checkbox" id="set-notif-enabled" class="toggle-checkbox">
           <span class="toggle-switch"></span>
@@ -712,8 +844,8 @@
 
         <label class="setting-row">
           <div class="setting-info">
-            <b>Ton abspielen</b>
-            <span>Hinweiston zur Meldung</span>
+            <b>Play a sound</b>
+            <span>An audible cue with the notification</span>
           </div>
           <input type="checkbox" id="set-notif-sound" class="toggle-checkbox">
           <span class="toggle-switch"></span>
@@ -721,8 +853,8 @@
 
         <label class="setting-row">
           <div class="setting-info">
-            <b>Windows Desktop-Toast</b>
-            <span>Systemmeldung außerhalb der App — der Kanal, der dich im Spiel erreicht</span>
+            <b>Windows desktop notification</b>
+            <span>A system notification outside the app — the channel that reaches you mid-mission</span>
           </div>
           <input type="checkbox" id="set-notif-toast" class="toggle-checkbox">
           <span class="toggle-switch"></span>
@@ -730,10 +862,10 @@
 
         <label class="setting-row">
           <div class="setting-info">
-            <b>Overlay bei Relikt-Belohnung einblenden</b>
-            <span>Blendet das Overlay automatisch ein, sobald der Auswahlbildschirm
-                  aufgeht, und danach wieder aus — mit Name, Platinpreis und Dukaten
-                  deines Fundes</span>
+            <b>Show the overlay on a relic reward</b>
+            <span>Brings the overlay up by itself as the reward screen opens and hides it
+                  again afterwards — with the name, platinum price and ducat value of
+                  what you got</span>
           </div>
           <input type="checkbox" id="set-relic-autoshow" class="toggle-checkbox">
           <span class="toggle-switch"></span>
@@ -741,11 +873,11 @@
 
         <label class="setting-row">
           <div class="setting-info">
-            <b>Preise direkt im Spiel anzeigen</b>
-            <span>Setzt unter jede der vier Karten ein kleines Preisschild. Das
-                  Fenster ist klickdurchlässig — es fängt nie einen Klick ab, der
-                  der Karte darunter gilt. Ist dies aus, erscheinen die Preise
-                  stattdessen als Liste im Overlay.</span>
+            <b>Show prices inside the game</b>
+            <span>Puts a small price tag under each of the four cards. That window is
+                  click-through — it never swallows a click meant for the card
+                  beneath it. With this off, the prices appear as a list in the
+                  overlay instead.</span>
           </div>
           <input type="checkbox" id="set-relic-tags" class="toggle-checkbox">
           <span class="toggle-switch"></span>
@@ -753,20 +885,20 @@
 
         <label class="setting-row">
           <div class="setting-info">
-            <b>Belohnungen vom Bildschirm lesen</b>
-            <span>Erkennt alle vier zur Auswahl stehenden Teile per Texterkennung.
-                  Dafür entsteht ein Bildschirmfoto, das nach dem Auswerten sofort
-                  gelöscht wird und den Rechner nie verlässt. Ohne diesen Schalter
-                  zeigt Argus nur deinen eigenen Fund aus dem Spiel-Log.</span>
+            <b>Read the rewards off the screen</b>
+            <span>Recognises all four parts on offer via text recognition. This takes a
+                  screenshot, which is deleted the moment it has been read and never
+                  leaves your machine. With this off, Argus only shows your own drop,
+                  taken from the game log.</span>
           </div>
           <input type="checkbox" id="set-relic-scan" class="toggle-checkbox">
           <span class="toggle-switch"></span>
         </label>
 
         <div class="settings-note settings-note-row">
-          <span>Welche Risse gemeldet werden — Stufen, Missionstypen, Steel Path —
-                stellst du im Live-Tracker unter <b>Void-Risse</b> ein.</span>
-          <button class="btn-sm" id="set-open-fissure-notif">Filter öffnen</button>
+          <span>Which fissures get reported — tiers, mission types, Steel Path — is set
+                in the live tracker under <b>Void fissures</b>.</span>
+          <button class="btn-sm" id="set-open-fissure-notif">Open filters</button>
         </div>
       </div>
     </section>
@@ -779,15 +911,15 @@
   <div class="modal-box">
     <div class="modal-head">
       <div>
-        <h3 id="slot-modal-title">Mod wählen</h3>
+        <h3 id="slot-modal-title">Choose a mod</h3>
         <p id="slot-modal-sub" class="hint"></p>
       </div>
-      <button id="slot-modal-close" class="btn-sm">Schließen</button>
+      <button id="slot-modal-close" class="btn-sm">Close</button>
     </div>
 
     <div class="searchbox">
       <span class="ic" id="ic-modsearch"></span>
-      <input id="modsearch" type="text" placeholder="Mod suchen … z. B. Serration, Vitality">
+      <input id="modsearch" type="text" placeholder="Search mods … e.g. Serration, Vitality">
     </div>
     <div id="modsearch-results" class="modsearch-results"></div>
 
@@ -797,19 +929,19 @@
         <span id="sc-meta" class="hint"></span>
       </div>
       <label class="sc-row">
-        <span>Rang</span>
+        <span>Rank</span>
         <input id="sc-rank" type="range" min="0" max="10" value="10">
         <b id="sc-rank-val">10</b>
       </label>
       <div class="sc-row">
-        <span>Polarität</span>
+        <span>Polarity</span>
         <div id="sc-polarities" class="polrow"></div>
       </div>
       <div class="sc-foot">
         <span id="sc-drain" class="hint">—</span>
         <div class="sc-actions">
-          <button id="sc-clear" class="btn-sm danger">Slot leeren</button>
-          <button id="sc-apply" class="btn btn-primary">Übernehmen</button>
+          <button id="sc-clear" class="btn-sm danger">Clear slot</button>
+          <button id="sc-apply" class="btn btn-primary">Apply</button>
         </div>
       </div>
     </div>
@@ -844,59 +976,59 @@
       <div class="modal-title-wrap">
         <span class="modal-icon-badge" data-icon="bellRing"></span>
         <div>
-          <h3>Void-Riss Benachrichtigungen</h3>
-          <p class="hint">Wähle aus, bei welchen Missionen und Relikten du per Desktop-Toast informiert werden möchtest</p>
+          <h3>Void fissure notifications</h3>
+          <p class="hint">Choose which missions and relics should reach you as a desktop notification</p>
         </div>
       </div>
-      <button id="fissure-notif-close" class="modal-close-icon" title="Schließen">&times;</button>
+      <button id="fissure-notif-close" class="modal-close-icon" title="Close">&times;</button>
     </div>
 
     <div class="notif-modal-scroll">
       <!-- Die drei Hauptschalter stehen jetzt unter Einstellungen. Hier bleibt
            die Auswahl, WELCHE Risse gemeldet werden. -->
       <div class="notif-moved-note">
-        Ein- und Ausschalten, Ton und Desktop-Toast findest du unter
-        <b>Einstellungen</b> in der Seitenleiste.
+        Turning them on or off, the sound and the desktop toast all live under
+        <b>Settings</b> in the sidebar.
       </div>
 
       <!-- Presets / Schnellfilter -->
       <div class="notif-section">
-        <div class="notif-sec-title">Schnell-Presets</div>
+        <div class="notif-sec-title">Quick presets</div>
         <div class="notif-presets-grid">
           <button class="preset-chip" data-preset="cascade">
             <div class="preset-chip-head">
               <span class="preset-icon" data-icon="bolt"></span>
               <b>Void Cascade</b>
             </div>
-            <small>Zariman Kaskade</small>
+            <small>Zariman cascade</small>
           </button>
           <button class="preset-chip" data-preset="speed">
             <div class="preset-chip-head">
               <span class="preset-icon" data-icon="target"></span>
               <b>Speedruns</b>
             </div>
-            <small>Capture & Auslöschung</small>
+            <small>Capture & Exterminate</small>
           </button>
           <button class="preset-chip" data-preset="endless">
             <div class="preset-chip-head">
               <span class="preset-icon" data-icon="clock"></span>
-              <b>Endlos-Missionen</b>
+              <b>Endless missions</b>
             </div>
-            <small>Überleben, Defense, Störung</small>
+            <small>Survival, Defense, Disruption</small>
           </button>
           <button class="preset-chip" data-preset="all">
             <div class="preset-chip-head">
               <span class="preset-icon" data-icon="layers"></span>
-              <b>Alle Typen</b>
+              <b>All types</b>
             </div>
-            <small>Jeder neue Riss</small>
+            <small>Every new fissure</small>
           </button>
         </div>
       </div>
 
       <!-- Relikt-Stufen (Tiers) -->
       <div class="notif-section">
-        <div class="notif-sec-title">Relikt-Stufen (Tiers)</div>
+        <div class="notif-sec-title">Relic tiers</div>
         <div class="notif-tiers-grid">
           <label class="tier-checkbox-tile" data-tier="Lith">
             <input type="checkbox" value="Lith" class="notif-tier-cb">
@@ -929,29 +1061,29 @@
       <div class="notif-section">
         <div class="notif-sec-head">
           <div class="notif-sec-title">Missionstypen</div>
-          <button id="notif-toggle-all-types" class="btn-link">Alle an/abwählen</button>
+          <button id="notif-toggle-all-types" class="btn-link">Select/clear all</button>
         </div>
         <div class="notif-types-grid" id="notif-types-grid"></div>
       </div>
 
       <!-- Modus-Optionen -->
       <div class="notif-section">
-        <div class="notif-sec-title">Modus-Filter</div>
+        <div class="notif-sec-title">Mode filters</div>
         <div class="notif-mode-options">
           <label class="notif-mini-toggle">
             <input type="checkbox" id="notif-steel-path-only">
             <span class="mini-toggle-box"></span>
-            <span>Nur Steel Path (Stählerner Pfad)</span>
+            <span>Steel Path only</span>
           </label>
           <label class="notif-mini-toggle">
             <input type="checkbox" id="notif-include-steel-path">
             <span class="mini-toggle-box"></span>
-            <span>Steel Path Risse einbeziehen</span>
+            <span>Include Steel Path fissures</span>
           </label>
           <label class="notif-mini-toggle">
             <input type="checkbox" id="notif-include-storms">
             <span class="mini-toggle-box"></span>
-            <span>Railjack Void-Stürme einbeziehen</span>
+            <span>Include Railjack void storms</span>
           </label>
         </div>
       </div>
@@ -960,13 +1092,13 @@
     <!-- Live Match Preview & Footer Actions -->
     <div class="notif-footer-summary">
       <div class="notif-matches-hint" id="notif-matches-hint">
-        <span>Lade passende Risse …</span>
+        <span>Loading matching fissures …</span>
       </div>
       <div class="notif-footer-actions">
         <button id="btn-notif-test" class="btn btn-secondary">
-          <span data-icon="bell"></span> <span>Test senden</span>
+          <span data-icon="bell"></span> <span>Send a test</span>
         </button>
-        <button id="btn-notif-save" class="btn btn-primary">Speichern & Schließen</button>
+        <button id="btn-notif-save" class="btn btn-primary">Save & close</button>
       </div>
     </div>
   </div>

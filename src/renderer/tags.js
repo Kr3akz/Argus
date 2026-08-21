@@ -66,7 +66,7 @@ function render(tags) {
             const hasEnough = p.count >= pReq;
             const qtyText = pReq > 1 ? `${p.count}/${pReq}` : fmtQty(p.count);
             return `
-            <div class="tag-part-box ${p.isCurrent ? 'current' : ''} ${p.count === 0 ? 'zero' : (!hasEnough ? 'partial' : '')}" title="${esc(p.name)} (${p.count}/${pReq} im Besitz)">
+            <div class="tag-part-box ${p.isCurrent ? 'current' : ''} ${p.count === 0 ? 'zero' : (!hasEnough ? 'partial' : '')}" title="${esc(p.name)} (${p.count}/${pReq} owned)">
               <img class="tag-part-img" src="${esc(p.image)}" alt="" onerror="this.style.visibility='hidden'">
               <span class="tag-part-qty">${qtyText}</span>
             </div>`;

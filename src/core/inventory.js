@@ -30,6 +30,7 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { dataDir as defaultDataDir } from './paths.js';
 import { checkAllowed, recordRequest, recordThrottled, formatWait, USER_AGENT,
          RateLimitedError } from './ratelimit.js';
 import { scanCredentials } from './gamecreds.js';
@@ -83,11 +84,11 @@ async function requestInventory(creds) {
   if (res.status === 409) {
     const body = (await res.text()).trim();
     if (!body) { await recordThrottled(); throw new RateLimitedError(); }
-    throw staleError('Anfrage abgelehnt (409). Vermutlich abgelaufene Sitzungsdaten.');
+    throw staleError('Request refused (409). The session data has probably expired.');
   }
   if (res.status === 404) {
     throw Object.assign(
-      new Error(`Endpunkt ${ENDPOINT} existiert nicht (404). Der Pfad ist die einzige `
+      new Error(`Endpoint ${ENDPOINT} does not exist (404). The path is the only `
               + 'ungepruefte Annahme - Endpunktname korrigieren.'),
       { status: 404, wrongEndpoint: true });
   }
@@ -130,7 +131,7 @@ async function readFixture(file, source) {
 /**
  * Echte API-Antwort zuerst, sonst die Entwicklungs-Fixture aus tools/alecaframe-dump.js.
  *
- * Der Ersatz existiert, weil die 24-Stunden-Sperre nach der IP-Drosselung den
+ * Der Ersatz existiert, weil die Sperre nach der IP-Drosselung den
  * ersten Live-Abruf blockiert hat. Er verschwindet von selbst, sobald
  * inventory.json daliegt - und source sagt der Oberflaeche, was sie anzeigt,
  * damit alte Zahlen nicht als frisch durchgehen.
@@ -145,10 +146,12 @@ async function readCache(dataDir) {
  *
  * Ein Netzwerkabruf passiert ausschliesslich mit refresh:true, also auf
  * ausdrueckliche Nutzeraktion, und auch dann nur, wenn ratelimit.js zustimmt.
- * force:true ueberspringt den 6-Stunden-Abstand, NICHT die 24-Stunden-Sperre
- * nach einer echten Drosselung.
+ * force:true ueberspringt den Mindestabstand zwischen zwei Abrufen, NICHT die
+ * Sperre nach einer echten Drosselung. Genutzt wird das nur von der
+ * Ersteinrichtung, wo Profil und Inventar als Paar geholt werden - und dort
+ * begrenzt, siehe SETUP_FORCE_LIMIT in main.js.
  */
-export async function loadInventory({ dataDir = 'data', refresh = false, force = false } = {}) {
+export async function loadInventory({ dataDir = defaultDataDir(), refresh = false, force = false } = {}) {
   await mkdir(dataDir, { recursive: true });
   const cacheFile = path.join(dataDir, CACHE);
   const cached = await readCache(dataDir);
@@ -156,8 +159,8 @@ export async function loadInventory({ dataDir = 'data', refresh = false, force =
   if (!refresh) {
     if (cached) return { inventory: cached.inventory, fromCache: true,
                          fetchedAt: cached.fetchedAt, source: cached.source };
-    throw new Error('Noch keine Inventardaten vorhanden. Warframe starten, einloggen '
-                  + 'und einmal „Inventar abrufen“ drücken.');
+    throw new Error('No inventory data yet. Start Warframe, log in and press '
+                  + '"Fetch inventory" once.');
   }
 
   const gate = await checkAllowed({ force });
@@ -165,9 +168,9 @@ export async function loadInventory({ dataDir = 'data', refresh = false, force =
     if (cached) {
       return { inventory: cached.inventory, fromCache: true, fetchedAt: cached.fetchedAt,
                source: cached.source, skipped: gate.reason,
-               message: `${gate.message} (nächster Abruf in ${formatWait(gate.waitMs)})` };
+               message: `${gate.message} (next fetch in ${formatWait(gate.waitMs)})` };
     }
-    throw new RateLimitedError(`${gate.message} Nächster Versuch in ${formatWait(gate.waitMs)}.`);
+    throw new RateLimitedError(`${gate.message} Next attempt in ${formatWait(gate.waitMs)}.`);
   }
 
   const store = async inventory => {
@@ -198,7 +201,7 @@ export async function loadInventory({ dataDir = 'data', refresh = false, force =
 }
 
 /** Stand der lokalen Daten: wann geholt und woher. null, wenn nichts da ist. */
-export async function inventoryAge({ dataDir = 'data' } = {}) {
+export async function inventoryAge({ dataDir = defaultDataDir() } = {}) {
   const cached = await readCache(dataDir);
   return cached ? { fetchedAt: cached.fetchedAt, source: cached.source } : null;
 }

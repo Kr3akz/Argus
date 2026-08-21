@@ -16,9 +16,9 @@
  */
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import path from 'node:path';
+import { dataDir, dataFile } from './paths.js';
 
-const MAP_FILE = () => path.join('data', 'overframe-mods.json');
+const MAP_FILE = () => dataFile('overframe-mods.json');
 export const USER_AGENT = 'Cephalon-Argus/0.1 (persoenlicher Mastery-Planer)';
 
 /** Build-ID aus einer Overframe-URL oder blanken Zahl. */
@@ -35,7 +35,7 @@ export async function loadModMap() {
 }
 
 export async function saveModMap(map) {
-  await mkdir('data', { recursive: true });
+  await mkdir(dataDir(), { recursive: true });
   await writeFile(MAP_FILE(), JSON.stringify(map, null, 2));
 }
 

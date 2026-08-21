@@ -23,12 +23,13 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { dataFile } from './paths.js';
 
 const HOST = 'https://api.warframe.market';
 const USER_AGENT = 'Cephalon-Argus/0.1 (persoenlicher Mastery-Planer)';
 
-const ITEM_CACHE  = () => path.join('data', 'market-items.json');
-const PRICE_CACHE = () => path.join('data', 'market-prices.json');
+const ITEM_CACHE  = () => dataFile('market-items.json');
+const PRICE_CACHE = () => dataFile('market-prices.json');
 
 /* Die Itemliste aendert sich nur, wenn DE etwas Handelbares hinzufuegt. */
 const ITEMS_TTL_MS  = 24 * 60 * 60 * 1000;

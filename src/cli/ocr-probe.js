@@ -18,9 +18,10 @@ import { execFile } from 'node:child_process';
 import { readFile, mkdir } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import path from 'node:path';
+import { dataFile, resourceFile } from '../core/paths.js';
 
 const run = promisify(execFile);
-const OUT_DIR = path.join('data', 'ocr');
+const OUT_DIR = dataFile('ocr');
 
 console.log('Katalog laden …');
 const catalog = await loadCatalog();
@@ -48,7 +49,7 @@ watcher.on('relic-reward', async ev => {
   try {
     await run('powershell', [
       '-NoProfile', '-ExecutionPolicy', 'Bypass',
-      '-File', path.resolve('tools/ocr-capture.ps1'),
+      '-File', resourceFile('tools', 'ocr-capture.ps1'),
       '-Png', png, '-Json', json
     ], { windowsHide: true });
 

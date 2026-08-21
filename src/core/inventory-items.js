@@ -13,21 +13,21 @@ import { imageUrl, cleanGameText } from './catalog.js';
 import { POLARITIES, modDrain, auraBonus, isAuraMod } from './mods.js';
 
 export const SECTIONS = [
-  { key: 'relics',     label: 'Relikte' },
-  { key: 'sets',       label: 'Meine Sets' },
+  { key: 'relics',     label: 'Relics' },
+  { key: 'sets',       label: 'My sets' },
   { key: 'mods',       label: 'Mods' },
   { key: 'arcanes',    label: 'Arcanes' },
-  { key: 'materials',  label: 'Materialien' },
+  { key: 'materials',  label: 'Materials' },
   { key: 'blueprints', label: 'Blueprints' }
 ];
 
 /* Reliktzustand steckt als Suffix im Pfad, nicht im Namen: der Katalog nennt
    jede Stufe gleich ("Lith V1 Relic"). */
 const RELIC_QUALITY = {
-  Bronze:   'Intakt',
-  Silver:   'Außergewöhnlich',
-  Gold:     'Makellos',
-  Platinum: 'Strahlend'
+  Bronze:   'Intact',
+  Silver:   'Exceptional',
+  Gold:     'Flawless',
+  Platinum: 'Radiant'
 };
 
 const isRelic  = u => u.includes('/Types/Game/Projections/');
@@ -181,7 +181,7 @@ function decorateUpgrade(entry, catalog) {
   return entry;
 }
 
-const byName = (a, b) => a.name.localeCompare(b.name, 'de');
+const byName = (a, b) => a.name.localeCompare(b.name, 'en');
 
 /**
  * Baut die Ansicht fuer den Inventar-Tab.

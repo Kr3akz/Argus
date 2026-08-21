@@ -7,6 +7,17 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
+  /* Ersteinrichtung.
+     Die Account-ID geht hier nur HINEIN. setupState() meldet lediglich, ob
+     eine eingerichtet ist, und die letzten vier Zeichen zum Wiedererkennen -
+     nie den vollen Wert. Das haelt die Zusage aus main.js ein, dass die
+     Kennung den Hauptprozess nicht verlaesst, und kostet nur, dass man sie
+     beim Aendern neu eintippt. */
+  getSetupState:   ()          => ipcRenderer.invoke('setup:state'),
+  detectSetup:     ()          => ipcRenderer.invoke('setup:detect'),
+  saveSetup:       (data)      => ipcRenderer.invoke('setup:save', data),
+  setInventoryScan:(on)        => ipcRenderer.invoke('setup:setScan', on),
+  openExternal:    (url)       => ipcRenderer.invoke('shell:open', url),
   getDashboard:    ()          => ipcRenderer.invoke('dashboard:get'),
   refreshProfile:  ()          => ipcRenderer.invoke('profile:refresh'),
   resolveGoal:     (u)         => ipcRenderer.invoke('goal:resolve', u),

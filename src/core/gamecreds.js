@@ -17,6 +17,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { Worker } from 'node:worker_threads';
 import { promisify } from 'node:util';
 import path from 'node:path';
+import { dataDir, dataFile } from './paths.js';
 
 const run = promisify(execFile);
 
@@ -30,7 +31,7 @@ const WINDOW = 512;
 /* Nur die zuletzt erfolgreiche Adresse, kein Inhalt. Nach einem Spielneustart
    verschiebt ASLR alles - dann geht der Schnellpfad ins Leere und der Vollscan
    uebernimmt. Kostet im Fehlfall einen einzigen 512-Byte-Lesezugriff. */
-const HINT_FILE = () => path.join('data', 'scan-hint.json');
+const HINT_FILE = () => dataFile('scan-hint.json');
 
 function fail(code, message, detail) {
   return { ok: false, code, message, detail };
@@ -89,7 +90,7 @@ async function readHint() {
 
 async function writeHint(address) {
   try {
-    await mkdir('data', { recursive: true });
+    await mkdir(dataDir(), { recursive: true });
     await writeFile(HINT_FILE(),
       JSON.stringify({ address: '0x' + address.toString(16), savedAt: Date.now() }, null, 2));
   } catch {
@@ -107,14 +108,14 @@ async function writeHint(address) {
  */
 export async function findCredentials({ skipHint = false } = {}) {
   const procmem = await import('./procmem.js').catch(() => null);
-  if (!procmem) return fail('koffi_missing', 'Speichermodul nicht ladbar.');
+  if (!procmem) return fail('koffi_missing', 'The memory module could not be loaded.');
   if (!procmem.isSupported()) {
     return fail('unsupported', 'Der Inventar-Abruf braucht Windows (64 Bit).');
   }
 
   const pids = await findGameProcessIds();
   if (!pids.length) {
-    return fail('no_process', 'Warframe läuft nicht. Starte das Spiel und logge dich ein.');
+    return fail('no_process', 'Warframe is not running. Start the game and log in.');
   }
 
   const hint = skipHint ? null : await readHint();
@@ -165,8 +166,8 @@ export async function findCredentials({ skipHint = false } = {}) {
       }
 
       lastError = scan.timedOut
-        ? fail('timeout', 'Suche abgebrochen - Zeitlimit erreicht.')
-        : fail('not_found', 'Keine Zugangsdaten im Speicher gefunden. Bist du im Spiel eingeloggt?');
+        ? fail('timeout', 'Search cancelled — time limit reached.')
+        : fail('not_found', 'No credentials found in memory. Are you logged in to the game?');
     } catch (e) {
       lastError = fail(e.code || 'scan_failed', e.message, e.detail);
     } finally {
@@ -174,7 +175,7 @@ export async function findCredentials({ skipHint = false } = {}) {
     }
   }
 
-  return lastError || fail('not_found', 'Keine Zugangsdaten im Speicher gefunden.');
+  return lastError || fail('not_found', 'No credentials found in memory.');
 }
 
 /**
@@ -205,13 +206,13 @@ export function scanCredentials({ timeoutMs = 120000, skipHint = false } = {}) {
     };
 
     const timer = setTimeout(
-      () => finish(fail('timeout', 'Suche im Spielspeicher hat zu lange gedauert.')),
+      () => finish(fail('timeout', 'Searching the game memory took too long.')),
       timeoutMs);
 
     worker.on('message', finish);
     worker.on('error', e => finish(fail('scan_failed', e.message)));
     worker.on('exit', code => {
-      if (!settled) finish(fail('scan_failed', `Worker beendet (Code ${code}).`));
+      if (!settled) finish(fail('scan_failed', `Worker exited (code ${code}).`));
     });
   });
 }

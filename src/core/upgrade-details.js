@@ -50,20 +50,20 @@ const arcaneCopies = rank => ((rank + 1) * (rank + 2)) / 2;
  */
 const COMPAT_LABELS = {
   WARFRAME: 'Warframe',      ANY: 'Beliebig',            AURA: 'Aura-Slot',
-  PRIMARY: 'Primärwaffe',    SECONDARY: 'Sekundärwaffe', MELEE: 'Nahkampf',
-  Rifle: 'Gewehr',           Pistol: 'Sekundärwaffe',    Shotgun: 'Schrotflinte',
-  Melee: 'Nahkampf',         Bow: 'Bogen',               Sniper: 'Scharfschützengewehr',
+  PRIMARY: 'Primary',        SECONDARY: 'Secondary',     MELEE: 'Melee',
+  Rifle: 'Rifle',            Pistol: 'Pistol',           Shotgun: 'Shotgun',
+  Melee: 'Melee',            Bow: 'Bow',                 Sniper: 'Sniper',
   'Assault Rifle': 'Sturmgewehr', 'Thrown Melee': 'Wurfwaffe', Claws: 'Klauen',
   Archgun: 'Archgun',        Archmelee: 'Arch-Nahkampf', Archwing: 'Archwing',
   Necramech: 'Necramech',    Parazon: 'Parazon',         'K-Drive': 'K-Drive',
   COMPANION: 'Begleiter',    ROBOTIC: 'Roboter-Begleiter', BEAST: 'Tier-Begleiter',
-  Sentinel: 'Wächter',       SENTINEL: 'Wächter',        Kubrow: 'Kubrow',
+  Sentinel: 'Sentinel',      SENTINEL: 'Sentinel',       Kubrow: 'Kubrow',
   Kavat: 'Kavat',            Tome: 'Foliant',            MOD: 'Mod',
   STANCE: 'Stance',          OPERATOR: 'Operator'
 };
 
 const TYPE_LABELS = {
-  WARFRAME: 'Warframe-Mod',  PRIMARY: 'Primärwaffen-Mod', SECONDARY: 'Sekundärwaffen-Mod',
+  WARFRAME: 'Warframe mod',  PRIMARY: 'Primary mod',      SECONDARY: 'Secondary mod',
   MELEE: 'Nahkampf-Mod',     AURA: 'Aura',                STANCE: 'Stance',
   SENTINEL: 'Begleiter-Mod', KUBROW: 'Kubrow-Mod',        KAVAT: 'Kavat-Mod',
   ARCHWING: 'Archwing-Mod',  'ARCH-GUN': 'Archgun-Mod',   'ARCH-MELEE': 'Arch-Nahkampf-Mod',

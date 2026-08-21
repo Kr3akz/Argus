@@ -10,7 +10,7 @@
  *   DE drosselt pro IP, nicht pro Endpunkt. Zu viele Anfragen fuehren zu
  *   "too many logins" BEIM SPIEL-LOGIN - der Nutzer sperrt sich also selbst aus.
  *   Deshalb: Abruf ausschliesslich auf ausdrueckliche Nutzeraktion, mindestens
- *   5 min Abstand, nach Drosselung 1 h Pause ohne Retry. Siehe ratelimit.js.
+ *   10 min Abstand, nach Drosselung 3 h Pause ohne Retry. Siehe ratelimit.js.
  *
  * HOST:
  *   content.warframe.com/dynamic/ ist tot (404). Aktuell: api.warframe.com/cdn/
@@ -19,6 +19,7 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { dataDir as defaultDataDir } from './paths.js';
 import { checkAllowed, recordRequest, recordThrottled, formatWait, USER_AGENT,
          RateLimitedError } from './ratelimit.js';
 
@@ -35,7 +36,7 @@ export function isValidAccountId(id) {
 /** Roher Abruf. Nur ueber fetchProfile aufrufen - sonst fehlt die Drosselung. */
 async function fetchProfileRaw(accountId, platform = 'pc') {
   const id = String(accountId || '').trim();
-  if (!isValidAccountId(id)) throw new Error('Ungueltige Account-ID (erwartet: 24 Hex-Zeichen)');
+  if (!isValidAccountId(id)) throw new Error('Invalid account ID (expected 24 hex characters)');
 
   const suffix = PLATFORM_SUFFIX[platform] ?? '';
   const url = `https://api${suffix}.warframe.com/cdn/getProfileViewingData.php`
@@ -48,16 +49,16 @@ async function fetchProfileRaw(accountId, platform = 'pc') {
     const body = (await res.text()).trim();
     // Leerer Body = Drosselung. Text = Account existiert wirklich nicht.
     if (!body) { await recordThrottled(); throw new RateLimitedError(); }
-    throw Object.assign(new Error('Account nicht gefunden - ID und Plattform pruefen.'), { status: 409 });
+    throw Object.assign(new Error('Account not found — check the ID and platform.'), { status: 409 });
   }
   if (res.status === 403 || res.status === 429) {
     await recordThrottled();
     throw new RateLimitedError();
   }
-  if (!res.ok) throw Object.assign(new Error(`Abruf fehlgeschlagen (HTTP ${res.status}).`), { status: res.status });
+  if (!res.ok) throw Object.assign(new Error(`Request failed (HTTP ${res.status}).`), { status: res.status });
 
   const json = await res.json();
-  if (!json?.Results?.length) throw new Error('Account nicht gefunden.');
+  if (!json?.Results?.length) throw new Error('Account not found.');
   return json.Results[0];
 }
 
@@ -66,23 +67,23 @@ async function fetchProfileRaw(accountId, platform = 'pc') {
  * Ein echter Netzwerkabruf passiert ausschliesslich mit refresh:true - also wenn
  * der Nutzer bewusst auf "Aktualisieren" klickt.
  */
-export async function loadProfile(accountId, platform = 'pc', { dataDir = 'data', refresh = false, force = false } = {}) {
+export async function loadProfile(accountId, platform = 'pc', { dataDir = defaultDataDir(), refresh = false, force = false } = {}) {
   await mkdir(dataDir, { recursive: true });
   const cacheFile = path.join(dataDir, `profile-${accountId}.json`);
   const cached = existsSync(cacheFile) ? JSON.parse(await readFile(cacheFile, 'utf8')) : null;
 
   if (!refresh) {
     if (cached) return { profile: cached.profile, fromCache: true, fetchedAt: cached.fetchedAt };
-    throw new Error('Noch keine Daten vorhanden. Einmal "Aktualisieren" ausloesen.');
+    throw new Error('No data yet. Press "Refresh" once.');
   }
 
   const gate = await checkAllowed({ force });
   if (!gate.allowed) {
     if (cached) {
       return { profile: cached.profile, fromCache: true, fetchedAt: cached.fetchedAt,
-               skipped: gate.reason, message: `${gate.message} (nächster Abruf in ${formatWait(gate.waitMs)})` };
+               skipped: gate.reason, message: `${gate.message} (next fetch in ${formatWait(gate.waitMs)})` };
     }
-    throw new RateLimitedError(`${gate.message} Nächster Versuch in ${formatWait(gate.waitMs)}.`);
+    throw new RateLimitedError(`${gate.message} Next attempt in ${formatWait(gate.waitMs)}.`);
   }
 
   try {

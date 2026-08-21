@@ -7,6 +7,7 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { dataDir as defaultDataDir } from './paths.js';
 
 const CDN = 'https://cdn.jsdelivr.net/gh/Aericio/warframe-exports-data/export';
 
@@ -29,8 +30,8 @@ export const POLARITIES = {
 };
 
 export const RARITY_LABELS = {
-  COMMON: 'Gewöhnlich', UNCOMMON: 'Ungewöhnlich',
-  RARE: 'Selten', LEGENDARY: 'Legendär'
+  COMMON: 'Common', UNCOMMON: 'Uncommon',
+  RARE: 'Rare', LEGENDARY: 'Legendary'
 };
 
 /**
@@ -50,7 +51,7 @@ function flatten(json) {
   return out;
 }
 
-export async function loadMods({ dataDir = 'data', force = false } = {}) {
+export async function loadMods({ dataDir = defaultDataDir(), force = false } = {}) {
   await mkdir(dataDir, { recursive: true });
   const cacheFile = path.join(dataDir, 'mods.json');
 

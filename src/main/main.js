@@ -21,7 +21,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 import { loadCatalog, imageUrl, cleanGameText } from '../core/catalog.js';
-import { loadProfile, displayName, starChart } from '../core/profile.js';
+import { loadProfile, displayName, starChart, isValidAccountId } from '../core/profile.js';
 import { analyze, recommend, diversify, STATUS } from '../core/analyze.js';
 import { masteryRankName, progressForMR } from '../core/mastery.js';
 import { classify, CATEGORY_LABELS } from '../core/classify.js';
@@ -35,6 +35,7 @@ import { fetchWorldState } from '../core/worldstate.js';
 import { getAllResourceGuides, searchResourceGuides } from '../core/farming.js';
 import { getDucatsReferenceList, buildPrimeSets, buildDucatsCatalog, buildInventoryDucats } from '../core/ducats.js';
 import { loadInventory } from '../core/inventory.js';
+import { scanCredentials } from '../core/gamecreds.js';
 import { buildInventory, SECTIONS } from '../core/inventory-items.js';
 import { loadDropTables, sourcesFor } from '../core/droptables.js';
 import { loadCardImages, cardUrl } from '../core/cards.js';
@@ -53,6 +54,7 @@ import {
   parseBuildId, fetchBuild, toBuild, loadModMap, saveModMap,
   unknownModIds, mergeNames, USER_AGENT as OF_USER_AGENT
 } from '../core/overframe.js';
+import { setDataDir, setResourceDir, dataFile } from '../core/paths.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -121,7 +123,18 @@ let interacting = false;
 let interactReturnTo = null;
 const cache = { catalog: null, profile: null, analysis: null, mods: null, dropTables: null, cards: null };
 
-process.chdir(path.resolve(__dirname, '../..'));   // data/ liegt im Projektwurzelverzeichnis
+/* Wohin geschrieben wird - siehe core/paths.js.
+   Im gepackten Build liegt der Programmordner unter Programme und gehoert
+   nicht dem Nutzer; geschrieben wird deshalb nach %APPDATA%. Das hat einen
+   zweiten Vorteil, der beim ersten Update sichtbar wird: Ziele, Builds und
+   Notizen ueberstehen die neue Fassung, weil sie gar nicht erst im
+   ausgetauschten Ordner liegen.
+   In der Entwicklung bleibt es beim data/ des Projekts - sonst laege der
+   Testbestand ploetzlich woanders als der, an dem gerade gearbeitet wird. */
+if (app.isPackaged) {
+  setDataDir(path.join(app.getPath('userData'), 'data'));
+  setResourceDir(process.resourcesPath);   // extraResources: tools/ liegt daneben
+}
 
 function createWindow() {
   win = new BrowserWindow({
@@ -623,12 +636,12 @@ function toggleOverlay() {
 
 /* ---------------------------- Daten ---------------------------- */
 
-async function ensureData({ refresh = false } = {}) {
+async function ensureData({ refresh = false, force = false } = {}) {
   const cfg = await loadConfig();
   if (!cache.catalog) cache.catalog = await loadCatalog();
   if (!cache.mods)    cache.mods    = await loadMods();
 
-  const res = await loadProfile(cfg.accountId, cfg.platform, { refresh });
+  const res = await loadProfile(cfg.accountId, cfg.platform, { refresh, force });
   cache.profile = res.profile;
   cache.analysis = analyze(res.profile, cache.catalog);
   return { ...res, cfg };
@@ -786,7 +799,7 @@ function scrapeModNames(buildUrl) {
     });
 
     const done = (fn, arg) => { try { w.destroy(); } catch {} fn(arg); };
-    const timer = setTimeout(() => done(reject, new Error('Zeitüberschreitung beim Laden der Seite.')), 25000);
+    const timer = setTimeout(() => done(reject, new Error('Timed out while loading the page.')), 25000);
 
     w.webContents.on('did-finish-load', async () => {
       try {
@@ -817,7 +830,7 @@ function scrapeModNames(buildUrl) {
 
     w.webContents.on('did-fail-load', (_e, code, desc) => {
       clearTimeout(timer);
-      done(reject, new Error(`Seite nicht erreichbar (${desc || code}).`));
+      done(reject, new Error(`Page unreachable (${desc || code}).`));
     });
 
     w.loadURL(buildUrl, { userAgent: OF_USER_AGENT });
@@ -843,7 +856,7 @@ function verifyAlignment(raw, scraped) {
 
 async function importOverframeBuild(input) {
   const id = parseBuildId(input);
-  if (!id) throw new Error('Keine gültige Overframe-Build-URL oder -ID.');
+  if (!id) throw new Error('Not a valid Overframe build URL or ID.');
 
   const raw = await fetchBuild(id);
   let modMap = await loadModMap();
@@ -856,17 +869,17 @@ async function importOverframeBuild(input) {
     const scraped = await scrapeModNames(url);
     if (!scraped || !scraped.length) {
       throw new Error('Die Mod-Namen liessen sich nicht auslesen - Overframe hat vermutlich '
-                    + 'die Seitenstruktur geändert.');
+                    + 'the page structure has changed.');
     }
     const check = verifyAlignment(raw, scraped);
     if (!check.reliable) {
-      throw new Error(`Zuordnung unsicher (${check.ok}/${check.checked} Prüfwerte stimmen) - `
+      throw new Error(`Match is unreliable (${check.ok}/${check.checked} check values agree) — `
                     + 'Import abgebrochen, damit keine falschen Mods gespeichert werden.');
     }
     const merged = mergeNames(raw, scraped.map(s => s.name), modMap);
     modMap = merged.map;
     await saveModMap(modMap);
-    scrapeNote = `${merged.added} neue Mod-Namen gelernt (${check.ok}/${check.checked} Prüfwerte ok)`;
+    scrapeNote = `Learned ${merged.added} new mod names (${check.ok}/${check.checked} check values ok)`;
   }
 
   const build = toBuild(raw, modMap, cache.mods, cache.catalog);
@@ -874,6 +887,184 @@ async function importOverframeBuild(input) {
 }
 
 /* ---------------------------- IPC ---------------------------- */
+
+/**
+ * Ersteinrichtung.
+ *
+ * WARUM ES DAS BRAUCHT:
+ *   Ohne Account-ID lief frueher ensureData() ins Leere und die Oberflaeche
+ *   zeigte eine rote Fehlerzeile - fuer jemanden, der die App gerade
+ *   installiert hat, eine Sackgasse. Den Ausweg kannte nur, wer das README
+ *   gelesen und eine JSON-Datei von Hand angelegt hat. Das ist die Huerde
+ *   zwischen "heruntergeladen" und "benutzt es".
+ *
+ * WAS ZURUECKGEHT:
+ *   Nur ob eingerichtet ist, und die letzten vier Zeichen der Kennung. Die
+ *   vollstaendige Account-ID verlaesst den Hauptprozess nicht - siehe die
+ *   Zusage im Kopf dieser Datei. Der Preis dafuer ist, dass man sie beim
+ *   Aendern neu eintippen muss; ein Feld mit der gespeicherten Kennung waere
+ *   bequemer, wuerde die Zusage aber brechen.
+ */
+ipcMain.handle('setup:state', async () => {
+  const cfg = await loadConfig();
+  const id = String(cfg.accountId || '');
+  return {
+    configured: isValidAccountId(id),
+    hint: id.length >= 4 ? id.slice(-4) : '',
+    platform: cfg.platform || 'pc',
+    /* Der lesende Speicherzugriff auf den Spielprozess ist AUS, solange ihn
+       niemand ausdruecklich einschaltet. Ein Programm, das ungefragt fremde
+       Prozesse liest, hat die Zustimmung nicht, die es dafuer braucht - und
+       ein frisch heruntergeladenes Programm hat sie erst recht nicht. */
+    inventoryScan: cfg.inventoryScan === true
+  };
+});
+
+/**
+ * Einrichtung speichern und den ersten Profilabruf ausloesen.
+ *
+ * Der Abruf laeuft ABSICHTLICH durch dieselbe Drosselung wie jeder spaetere
+ * (kein force): waere er ausgenommen, koennte man sich ueber wiederholtes
+ * Neu-Einrichten genau die IP-Sperre einhandeln, gegen die ratelimit.js
+ * gebaut wurde. Bei einer vertippten Kennung heisst das fuenf Minuten warten -
+ * die Formatpruefung unten faengt die meisten Vertipper vorher ab.
+ */
+/**
+ * Die Ersteinrichtung darf die 10-Minuten-Sperre umgehen - begrenzt.
+ *
+ * WARUM UEBERHAUPT:
+ *   Eine Einrichtung besteht aus zwei Anfragen: Profil und Inventar. Waere
+ *   die zweite durch die Sperre blockiert, muesste der Nutzer nach dem
+ *   Einrichten zehn Minuten warten, um die Haelfte dessen zu sehen, wofuer
+ *   er gerade eine Berechtigung erteilt hat.
+ *
+ * WARUM MIT DECKEL:
+ *   Ohne Deckel waere das ein Loch in genau dem Schutz, fuer den
+ *   ratelimit.js existiert: wer bei einem Netzwerkfehler zwanzigmal auf
+ *   "Allow" drueckt, handelt sich die IP-Sperre ein, die den Spiel-Login
+ *   blockiert. Nach fuenf Versuchen gilt deshalb wieder die normale
+ *   Drosselung.
+ */
+let setupAttempts = 0;
+const SETUP_FORCE_LIMIT = 5;
+const mayForceSetup = () => setupAttempts++ < SETUP_FORCE_LIMIT;
+
+/**
+ * Erster Abruf nach dem Einrichten: Profil, danach das Inventar.
+ *
+ * Das Inventar darf scheitern, ohne die Einrichtung zu kippen - ohne
+ * Speicherzugriff, bei geschlossenem Spiel oder auf einer Konsole gibt es
+ * keins, und das Dashboard steht auch ohne. Gemeldet wird es trotzdem.
+ */
+async function firstFetch({ withInventory }) {
+  const force = mayForceSetup();
+  const meta = await ensureData({ refresh: true, force });
+
+  let inventoryNote = null;
+  if (withInventory) {
+    try {
+      await loadInventory({ refresh: true, force });
+    } catch (err) {
+      inventoryNote = INVENTORY_ERRORS[err.code] || err.message;
+    }
+  }
+  return { data: await buildDashboard(meta), inventoryNote };
+}
+
+/**
+ * Der bequeme Weg: Account-ID aus dem laufenden Spiel lesen.
+ *
+ * WARUM DAS DIE VORDERE TUER IST:
+ *   Die Kennung von Hand einzutragen hiess: auf warframe.com einloggen, eine
+ *   API-URL aufrufen, 24 Hex-Zeichen abschreiben. Das ist eine Huerde, die
+ *   nach Bastelei aussieht - und sie ist unnoetig, denn derselbe Scan, der
+ *   das Inventar holt, liest die Kennung ohnehin mit. Aus zwei Fragen
+ *   (Kennung eintippen + Haken fuer Speicherzugriff) wird so eine einzige.
+ *
+ * Die Kennung geht dabei NICHT an den Renderer - sie wird hier gelesen,
+ * hier gespeichert und hier benutzt.
+ */
+ipcMain.handle('setup:detect', async () => {
+  const creds = await scanCredentials();
+  if (!creds.ok) {
+    return { ok: false, code: creds.code,
+             error: INVENTORY_ERRORS[creds.code] || creds.message };
+  }
+
+  /* Wer im Speicher des laufenden Spiels gefunden wurde, spielt auf dem PC -
+     eine Plattformabfrage waere hier eine Frage ohne Zweck. */
+  const cfg = await loadConfig();
+  await saveConfig({ ...cfg, accountId: creds.accountId, platform: 'pc', inventoryScan: true });
+
+  try {
+    const { data, inventoryNote } = await firstFetch({ withInventory: true });
+    return { ok: true, data, inventoryNote };
+  } catch (err) {
+    return { ok: false, code: err.code || null, error: err.message,
+             rateLimited: !!err.rateLimited };
+  }
+});
+
+ipcMain.handle('setup:save', async (_e, data = {}) => {
+  const id = String(data.accountId || '').trim().toLowerCase();
+  if (!isValidAccountId(id)) {
+    return { ok: false, field: 'accountId',
+             error: 'That does not look like an account ID. Expected 24 characters, digits and a-f only.' };
+  }
+
+  const platform = ['pc', 'psn', 'xbox', 'switch', 'mobile'].includes(data.platform)
+    ? data.platform : 'pc';
+
+  const cfg = await loadConfig();
+  /* Der Handweg ist der Weg fuer alle, die den Speicherzugriff nicht wollen -
+     er schaltet ihn deshalb NICHT ein. */
+  await saveConfig({ ...cfg, accountId: id, platform, inventoryScan: cfg.inventoryScan === true });
+
+  /* Der erste Abruf gehoert in die Einrichtung, nicht dahinter: sonst landet
+     der Nutzer nach dem Speichern wieder auf derselben Fehlerzeile wie
+     vorher, nur mit anderem Text. */
+  try {
+    const { data: dash } = await firstFetch({ withInventory: false });
+    return { ok: true, data: dash };
+  } catch (err) {
+    /* Die Kennung bleibt gespeichert: sie kann richtig sein und nur der
+       Abruf gescheitert (kein Netz, DE drosselt). Beim naechsten Start
+       geht es dann ohne erneutes Eintippen weiter. */
+    return { ok: false, field: err.status === 409 ? 'accountId' : null,
+             error: err.message, rateLimited: !!err.rateLimited };
+  }
+});
+
+/**
+ * Den Inventar-Abruf nachtraeglich ein- oder ausschalten.
+ *
+ * Getrennt von setup:save, weil hier NUR dieses eine Feld angefasst wird:
+ * die Einstellung soll umlegbar sein, ohne dass dabei die Account-ID durch
+ * den Renderer laeuft.
+ */
+ipcMain.handle('setup:setScan', async (_e, on) => {
+  const cfg = await loadConfig();
+  await saveConfig({ ...cfg, inventoryScan: on === true });
+  return { ok: true, inventoryScan: on === true };
+});
+
+/**
+ * Link im richtigen Browser oeffnen, nicht im Fenster der App.
+ *
+ * Die Positivliste ist kein Selbstzweck: shell.openExternal reicht an das
+ * Betriebssystem weiter, was es bekommt. Eine offene Fassung waere ein
+ * Werkzeug zum Starten beliebiger Ziele, sobald irgendwo im Renderer eine
+ * fremde Zeichenkette durchrutscht.
+ */
+const EXTERNAL_ALLOWED = [
+  'https://www.warframe.com/api/user-data',
+  'https://github.com/Kr3akz/Argus'
+];
+ipcMain.handle('shell:open', async (_e, url) => {
+  if (!EXTERNAL_ALLOWED.includes(String(url))) return { ok: false };
+  await shell.openExternal(String(url));
+  return { ok: true };
+});
 
 ipcMain.handle('dashboard:get', async () => {
   try {
@@ -919,7 +1110,7 @@ ipcMain.handle('item:details', async (_e, uniqueName) => {
   try {
     if (!cache.catalog || !cache.analysis) await ensureData({ refresh: false });
     const item = cache.catalog.byUniqueName.get(uniqueName);
-    if (!item) return { ok: false, error: 'Item nicht im Katalog gefunden.' };
+    if (!item) return { ok: false, error: 'Item not found in the catalogue.' };
 
     const entry = cache.analysis.entries.find(e => e.uniqueName === uniqueName);
     const cls = classify(item);
@@ -947,21 +1138,21 @@ ipcMain.handle('item:details', async (_e, uniqueName) => {
     let stats = [];
     if (item.productCategory === 'Suits') {
       stats = [
-        { label: 'Gesundheit', val: item.health ?? '—' },
-        { label: 'Schild', val: item.shield ?? '—' },
-        { label: 'Rüstung', val: item.armor ?? '—' },
-        { label: 'Energie', val: item.power ?? '—' },
-        { label: 'Sprint-Tempo', val: item.sprintSpeed ? item.sprintSpeed.toFixed(2) : '—' }
+        { label: 'Health', val: item.health ?? '—' },
+        { label: 'Shield', val: item.shield ?? '—' },
+        { label: 'Armour', val: item.armor ?? '—' },
+        { label: 'Energy', val: item.power ?? '—' },
+        { label: 'Sprint speed', val: item.sprintSpeed ? item.sprintSpeed.toFixed(2) : '—' }
       ];
     } else {
-      if (item.totalDamage !== undefined) stats.push({ label: 'Gesamtschaden', val: item.totalDamage });
-      if (item.criticalChance !== undefined) stats.push({ label: 'Krit. Chance', val: `${(item.criticalChance * 100).toFixed(1)}%` });
-      if (item.criticalMultiplier !== undefined) stats.push({ label: 'Krit. Multiplikator', val: `${item.criticalMultiplier.toFixed(1)}x` });
-      if (item.procChance !== undefined) stats.push({ label: 'Status-Chance', val: `${(item.procChance * 100).toFixed(1)}%` });
-      if (item.fireRate !== undefined) stats.push({ label: 'Feuerrate', val: item.fireRate.toFixed(2) });
-      if (item.magazineSize !== undefined) stats.push({ label: 'Magazin', val: item.magazineSize });
-      if (item.reloadTime !== undefined) stats.push({ label: 'Nachladezeit', val: `${item.reloadTime.toFixed(1)}s` });
-      if (item.trigger !== undefined) stats.push({ label: 'Feuermodus', val: item.trigger });
+      if (item.totalDamage !== undefined) stats.push({ label: 'Total damage', val: item.totalDamage });
+      if (item.criticalChance !== undefined) stats.push({ label: 'Crit chance', val: `${(item.criticalChance * 100).toFixed(1)}%` });
+      if (item.criticalMultiplier !== undefined) stats.push({ label: 'Crit multiplier', val: `${item.criticalMultiplier.toFixed(1)}x` });
+      if (item.procChance !== undefined) stats.push({ label: 'Status chance', val: `${(item.procChance * 100).toFixed(1)}%` });
+      if (item.fireRate !== undefined) stats.push({ label: 'Fire rate', val: item.fireRate.toFixed(2) });
+      if (item.magazineSize !== undefined) stats.push({ label: 'Magazine', val: item.magazineSize });
+      if (item.reloadTime !== undefined) stats.push({ label: 'Reload time', val: `${item.reloadTime.toFixed(1)}s` });
+      if (item.trigger !== undefined) stats.push({ label: 'Trigger', val: item.trigger });
     }
 
     return {
@@ -1029,7 +1220,7 @@ async function readPriceCache() {
      nicht importiert waren: der ReferenceError verschwand wortlos, und der
      Cache blieb leer. Deshalb wird der Fehlschlag gemeldet. */
   try {
-    const p = path.join('data', 'market-prices.json');
+    const p = dataFile('market-prices.json');
     if (existsSync(p)) return JSON.parse(await readFile(p, 'utf8')) || {};
   } catch (err) {
     console.error('[Dukaten] Preis-Cache nicht lesbar:', err.message);
@@ -1314,15 +1505,18 @@ ipcMain.handle('ducats:fetchPrices', async (_e, slugs = []) => {
  * Der Nutzer soll lesen, was zu tun ist, nicht wie der Code heisst.
  */
 const INVENTORY_ERRORS = {
-  no_process:    'Warframe läuft nicht. Starte das Spiel, logge dich ein und versuche es dann erneut.',
-  not_found:     'Im Speicher des Spiels waren keine Zugangsdaten zu finden. Das passiert, '
-               + 'wenn du noch im Anmeldebildschirm stehst – geh einmal ins Orbit und probier es nochmal.',
-  open_failed:   'Der Warframe-Prozess ließ sich nicht öffnen. Läuft das Spiel als Administrator, '
+  no_process:    'Warframe is not running. Start the game, log in, and try again.',
+  not_found:     'No credentials were found in the game\u2019s memory. That happens while you are '
+               + 'still on the login screen — go to your orbiter once and try again.',
+  open_failed:   'The Warframe process could not be opened. If the game runs as administrator, '
                + 'muss dieses Fenster ebenfalls als Administrator laufen.',
-  timeout:       'Die Suche im Spielspeicher hat zu lange gedauert. Versuch es noch einmal.',
-  unsupported:   'Der Inventar-Abruf funktioniert nur unter Windows (64 Bit).',
-  koffi_missing: 'Das Speicher-Modul fehlt. Einmal "npm install" im Projektordner ausführen.',
-  scan_failed:   'Die Suche im Spielspeicher ist fehlgeschlagen.'
+  timeout:       'Searching the game memory took too long. Please try again.',
+  unsupported:   'Fetching the inventory only works on Windows (64-bit).',
+  koffi_missing: 'The memory module is missing. Run "npm install" in the project folder once.',
+  scan_failed:   'Searching the game memory failed.',
+  scan_disabled: 'Fetching the inventory is switched off. It reads the current session\u2019s '
+               + 'credentials from the game process memory — read-only. You can turn it on '
+               + 'under Settings → Inventory access.'
 };
 
 /**
@@ -1416,6 +1610,14 @@ ipcMain.handle('inventory:get', async () => {
 
 ipcMain.handle('inventory:refresh', async () => {
   try {
+    /* Die Sperre sitzt hier und nicht in inventory.js: core/ kennt die
+       Konfiguration nicht, und das soll so bleiben. Wichtiger aber - hier
+       ist die Stelle, VOR der noch kein fremder Prozess angefasst wurde.
+       Ein "abgelehnt" hinter dem Speicherzugriff waere wertlos. */
+    const cfg = await loadConfig();
+    if (cfg.inventoryScan !== true) {
+      return { ok: false, code: 'scan_disabled', error: INVENTORY_ERRORS.scan_disabled };
+    }
     return await inventoryPayload({ refresh: true });
   } catch (err) {
     const code = err.code || (err.rateLimited ? 'rate_limited' : 'unknown');
@@ -1443,12 +1645,12 @@ ipcMain.handle('upgrade:details', async (_e, uniqueName, owned = null) => {
       try {
         cache.dropTables = await loadDropTables({});
       } catch (err) {
-        dropNote = `Fundorte nicht verfügbar: ${err.message}`;
+        dropNote = `Drop locations unavailable: ${err.message}`;
       }
     }
 
     const data = upgradeDetails(uniqueName, cache.catalog, cache.dropTables, owned);
-    if (!data) return { ok: false, error: 'Karte nicht im Katalog gefunden.' };
+    if (!data) return { ok: false, error: 'Card not found in the catalogue.' };
 
     /* Im Datenblatt ist Platz fuer die grosse Karte - dieselbe Quelle wie im
        Raster, nur in doppelter Breite. */
@@ -1461,11 +1663,12 @@ ipcMain.handle('upgrade:details', async (_e, uniqueName, owned = null) => {
   }
 });
 
-/* Deutsche Namen der Politur-Stufen. Im Inventar stehen sie laengst so da -
-   ein Datenblatt, das plötzlich "Radiant" sagt, waere ein Bruch. */
+/* Die Politur-Stufen heissen in DEs Daten wie im englischen Spiel. Die
+   Zuordnung bleibt als die eine Stelle stehen, an der eine Umbenennung durch
+   DE aufzufangen waere. */
 const RELIC_STATE_LABELS = {
-  Intact: 'Intakt', Exceptional: 'Außergewöhnlich',
-  Flawless: 'Makellos', Radiant: 'Strahlend'
+  Intact: 'Intact', Exceptional: 'Exceptional',
+  Flawless: 'Flawless', Radiant: 'Radiant'
 };
 
 /**
@@ -1482,7 +1685,7 @@ ipcMain.handle('relic:details', async (_e, uniqueName) => {
 
     const market = await loadMarketItems().catch(() => null);
     const resolved = resolveInventoryRelic(market, uniqueName);
-    if (!resolved?.key) return { ok: false, error: 'Relikt nicht erkannt.' };
+    if (!resolved?.key) return { ok: false, error: 'Relic not recognised.' };
 
     const [relicIdx, priceCache] = await Promise.all([loadRelicTables(), readPriceCache()]);
     const lookup = relicRewardLookup(market, priceCache, cache.catalog);
@@ -1612,7 +1815,7 @@ ipcMain.handle('builds:create', async (_e, itemUniqueName, name) => {
   try {
     if (!cache.mods) await ensureData({ refresh: false });
     const item = cache.catalog.byUniqueName.get(itemUniqueName);
-    if (!item) return { ok: false, error: 'Item nicht gefunden.' };
+    if (!item) return { ok: false, error: 'Item not found.' };
 
     await store.addBuild({
       name: name || `${item.name}-Build`,
@@ -1633,7 +1836,7 @@ ipcMain.handle('builds:setSlot', async (_e, buildId, slotIndex, slot) => {
   try {
     const st = await store.load();
     const b = st.builds.find(x => x.id === buildId);
-    if (!b) return { ok: false, error: 'Build nicht gefunden.' };
+    if (!b) return { ok: false, error: 'Build not found.' };
 
     const slots = Array.isArray(b.slots) ? [...b.slots] : EMPTY_SLOTS();
     while (slots.length < 10) slots.push(null);
@@ -2113,7 +2316,7 @@ let notificationPollerTimer = null;
 
 async function triggerFissureNotification(fissure, settings) {
   const iconPath = path.join(__dirname, '../renderer/assets/icons/worldstate/fissure.png');
-  const title = `Void-Riss aktiv: ${fissure.tier} · ${fissure.missionType}`;
+  const title = `Void fissure active: ${fissure.tier} · ${fissure.missionType}`;
   const body = `${fissure.node} (${fissure.enemy || 'Befallen/Korrumpiert'})${fissure.isHard ? ' · [Steel Path]' : ''}\nRestzeit: ${fissure.eta || 'jetzt live'}`;
 
   // Native Windows Notification Toast
@@ -2216,7 +2419,7 @@ ipcMain.handle('notifications:test', async () => {
     eta: '54m'
   };
 
-  const title = `[Test] Void-Riss aktiv: Axi · Void Cascade`;
+  const title = `[Test] Void fissure active: Axi · Void Cascade`;
   const body = `Teshub (Zariman) · [Steel Path]\nRestzeit: 54m (Test-Benachrichtigung)`;
 
   if (Notification.isSupported()) {

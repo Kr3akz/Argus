@@ -21,10 +21,10 @@
  */
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import path from 'node:path';
+import { dataDir, dataFile } from './paths.js';
 
 const URL = 'https://drops.warframestat.us/data/relics.json';
-const CACHE = () => path.join('data', 'relic-drops.json');
+const CACHE = () => dataFile('relic-drops.json');
 const USER_AGENT = 'Cephalon-Argus/0.1 (persoenlicher Mastery-Planer)';
 
 /* Die Tabellen aendern sich nur zu Updates und Prime-Access-Wechseln. */
@@ -103,7 +103,7 @@ export async function loadRelicTables({ refresh = false } = {}) {
     const list = json.relics || [];
     if (!list.length) throw new Error('leere Relikttabelle');
 
-    await mkdir('data', { recursive: true });
+    await mkdir(dataDir(), { recursive: true });
     await writeFile(CACHE(), JSON.stringify({ fetchedAt: Date.now(), list }));
     index = build(list);
   } catch (err) {

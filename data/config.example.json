@@ -1,5 +1,7 @@
 {
   "accountId": "",
   "platform": "pc",
+  "inventoryScan": false,
+  "relicTagOffset": 0.083,
   "notes": {}
 }

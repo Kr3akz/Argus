@@ -1,11 +1,28 @@
 {
   "name": "cephalon-argus",
-  "version": "0.1.0",
-  "description": "Cephalon Argus - Mastery-Planer und Live-Begleiter fuer Warframe: Weltzustand, Inventar, Builds und In-Game-Overlay",
+  "productName": "Cephalon Argus",
+  "version": "1.0.0",
+  "description": "Mastery rank planner and live companion for Warframe: world state, inventory, builds and an in-game overlay",
   "type": "module",
   "main": "src/main/main.js",
+  "author": "Kr3akz",
+  "license": "MIT",
+  "homepage": "https://github.com/Kr3akz/Argus",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Kr3akz/Argus.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Kr3akz/Argus/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "electron .",
+    "icon": "node tools/make-icon.mjs",
+    "dist": "electron-builder",
+    "dist:dir": "electron-builder --dir",
     "sync": "node src/cli/sync.js",
     "report": "node src/cli/report.js",
     "scan-test": "node src/cli/scan-test.js",
@@ -16,7 +33,8 @@
     "ocr-probe": "node src/cli/ocr-probe.js"
   },
   "devDependencies": {
-    "electron": "^33.0.0"
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
   },
   "dependencies": {
     "koffi": "^3.1.5"

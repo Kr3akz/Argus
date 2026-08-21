@@ -1,7 +1,7 @@
 /* Renderer. Laeuft ohne Node-Zugriff - alles geht ueber window.api (preload.cjs). */
 
 const $  = id => document.getElementById(id);
-const nf = n => (n ?? 0).toLocaleString('de-DE');
+const nf = n => (n ?? 0).toLocaleString('en-GB');
 
 /** Item-Namen kommen aus fremden Daten - vor dem Einsetzen entschaerfen. */
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
@@ -22,7 +22,7 @@ function renderHotkeyHint(hk) {
   const el = $('hotkey-hint');
   if (!el || !hk || !hk.overlay) return;
   el.innerHTML = hk.overlay.split('+').map(k => `<kbd>${esc(k)}</kbd>`).join('');
-  el.title = `${hk.overlay}: Overlay ein- und ausblenden\n${hk.interact}: Mauszeiger ins Overlay holen`;
+  el.title = `${hk.overlay}: show/hide the overlay\n${hk.interact}: bring the cursor into the overlay`;
   el.classList.remove('hidden');
 }
 
@@ -37,14 +37,17 @@ if ($('ic-fgsearch')) $('ic-fgsearch').innerHTML     = Icon.search(16);
 if ($('ic-ducatsearch')) $('ic-ducatsearch').innerHTML  = Icon.search(16);
 if ($('ic-baro-kaufkraft')) $('ic-baro-kaufkraft').innerHTML = Icon.baro(36);
 if ($('ic-invsearch')) $('ic-invsearch').innerHTML    = Icon.search(16);
-if ($('btn-inv-refresh')) $('btn-inv-refresh').innerHTML = Icon.refresh(15) + '<span>Inventar abrufen</span>';
-if ($('btn-refresh')) $('btn-refresh').innerHTML = Icon.refresh(15) + '<span>Profil aktualisieren</span>';
-if ($('btn-refresh-worldstate')) $('btn-refresh-worldstate').innerHTML = Icon.refresh(14) + ' <span>Neu laden</span>';
+if ($('btn-inv-refresh')) $('btn-inv-refresh').innerHTML = Icon.refresh(15) + '<span>Fetch inventory</span>';
+if ($('btn-refresh')) $('btn-refresh').innerHTML = Icon.refresh(15) + '<span>Refresh profile</span>';
+if ($('btn-refresh-worldstate')) $('btn-refresh-worldstate').innerHTML = Icon.refresh(14) + ' <span>Reload</span>';
 
 document.querySelectorAll('[data-icon]').forEach(el => {
   const name = el.dataset.icon;
   if (Icon[name]) {
-    const size = el.classList.contains('sb-logo') ? 26 : el.classList.contains('nav-icon') ? 22 : 15;
+    const size = el.classList.contains('sb-logo')    ? 26
+               : el.classList.contains('nav-icon')   ? 22
+               : el.classList.contains('setup-logo') ? 44
+               : 15;
     el.innerHTML = Icon[name](size);
   }
 });
@@ -97,8 +100,8 @@ document.querySelectorAll('.nav-item').forEach(tab => {
 let masteryMode = 'manager';   // 'manager' | 'catalog'
 
 const MASTERY_HINTS = {
-  manager: 'Ziele, Rohstoffe & Mastery-Empfehlungen',
-  catalog: 'Alle Items durchsuchen und als Ziel setzen'
+  manager: 'Goals, resources & mastery recommendations',
+  catalog: 'Search every item and set it as a goal'
 };
 
 function applyMasteryMode() {
@@ -141,13 +144,161 @@ function jumpToGoalDetails() {
 }
 if ($('btn-to-goals')) $('btn-to-goals').onclick = jumpToGoalDetails;
 
+/* ---------------- Ersteinrichtung ---------------- */
+
+const ACCOUNT_ID_RE = /^[0-9a-f]{24}$/i;
+
+function showSetupError(msg) {
+  const box = $('setup-id-error');
+  box.textContent = msg || '';
+  box.classList.toggle('hidden', !msg);
+  $('setup-id').classList.toggle('invalid', !!msg);
+}
+
+function setSetupStatus(msg, { busy = false } = {}) {
+  const box = $('setup-status');
+  if (!msg) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+  box.classList.remove('hidden');
+  box.innerHTML = (busy ? '<span class="spinner"></span>' : '') + `<span>${msg}</span>`;
+}
+
+async function submitSetup() {
+  const id = $('setup-id').value.trim().toLowerCase();
+
+  /* Vorpruefung im Fenster, nicht erst im Hauptprozess. Nicht aus Bequemlich-
+     keit: jeder Abruf zaehlt gegen die Drosselung von DE, ein erkennbarer
+     Vertipper darf gar nicht erst ins Netz gehen. */
+  if (!ACCOUNT_ID_RE.test(id)) {
+    /* Laenge und Zeichenvorrat getrennt melden. Ein gemeinsamer Satz ergibt
+       bei 24 falschen Zeichen "that is 24 characters, an ID has 24" - eine
+       Meldung, die dem Leser nichts sagt, ausser dass etwas nicht stimmt. */
+    let msg;
+    if (!id) msg = 'Please enter your account ID.';
+    else if (id.length !== 24) {
+      msg = `That is ${id.length} character${id.length === 1 ? '' : 's'} — an account ID has exactly 24.`;
+    } else {
+      const bad = [...new Set(id.replace(/[0-9a-f]/g, ''))].join(' ');
+      msg = `The length is right, but an account ID only uses 0-9 and a-f. Check: ${bad}`;
+    }
+    showSetupError(msg);
+    $('setup-id').focus();
+    return;
+  }
+  showSetupError('');
+
+  $('setup-go').disabled = true;
+  setSetupStatus('Fetching your profile and the item catalogue. The first run downloads about 12 MB.', { busy: true });
+
+  const res = await window.api.saveSetup({
+    accountId: id,
+    platform: $('setup-platform').value,
+    /* Der Handweg schaltet den Speicherzugriff nicht ein - wer hierher
+       gewechselt ist, hat die Berechtigungsfrage gerade nicht bejaht. */
+  });
+
+  $('setup-go').disabled = false;
+
+  if (!res.ok) {
+    setSetupStatus('');
+    if (res.field === 'accountId') showSetupError(res.error);
+    else setSetupStatus(res.error);
+    return;
+  }
+
+  $('setup').classList.add('hidden');
+  $('app').classList.remove('hidden');
+  render(res.data);
+  loadWorldState();
+}
+
+/* Zwischen Berechtigungsfrage und Handweg umschalten. */
+function showSetupView(which) {
+  $('setup-permission').classList.toggle('hidden', which !== 'permission');
+  $('setup-manual').classList.toggle('hidden', which !== 'manual');
+  if (which === 'manual') $('setup-id').focus();
+}
+
+function setPermStatus(msg, { busy = false } = {}) {
+  const box = $('setup-perm-status');
+  if (!box) return;
+  if (!msg) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+  box.classList.remove('hidden');
+  box.innerHTML = (busy ? '<span class="spinner"></span>' : '') + `<span>${msg}</span>`;
+}
+
+/**
+ * Der bequeme Weg: Kennung und Inventar aus dem laufenden Spiel.
+ *
+ * Der Speicherscan kann einige Sekunden dauern - deshalb sagt der Text, was
+ * gerade passiert, statt den Knopf nur auszugrauen. Ein Programm, das ohne
+ * Erklaerung sekundenlang steht, sieht abgestuerzt aus.
+ */
+async function allowAndDetect() {
+  $('setup-allow').disabled = true;
+  setPermStatus('Looking for the running game …', { busy: true });
+
+  const res = await window.api.detectSetup();
+  $('setup-allow').disabled = false;
+
+  if (!res.ok) {
+    /* Die Meldungen aus main.js sagen bereits, was zu tun ist ("Warframe is
+       not running. Start the game, log in, and try again."). Ein eigener
+       Satz davor waere nur Verdopplung. */
+    setPermStatus(esc(res.error));
+    return;
+  }
+
+  setPermStatus('');
+  $('setup').classList.add('hidden');
+  $('app').classList.remove('hidden');
+  render(res.data);
+  loadWorldState();
+
+  /* Das Profil steht, das Inventar nicht - das ist kein Grund, die
+     Einrichtung scheitern zu lassen, aber es gehoert gesagt. */
+  if (res.inventoryNote) {
+    showInAppToast({ title: 'Inventory not loaded', body: res.inventoryNote });
+  }
+}
+
+function showSetup(state) {
+  $('setup').classList.remove('hidden');
+  if (state?.platform) $('setup-platform').value = state.platform;
+  showSetupView('permission');
+}
+
+if ($('setup-allow')) $('setup-allow').onclick = allowAndDetect;
+if ($('setup-to-manual')) $('setup-to-manual').onclick = () => showSetupView('manual');
+if ($('setup-to-permission')) $('setup-to-permission').onclick = () => showSetupView('permission');
+
+if ($('setup-go')) $('setup-go').onclick = submitSetup;
+if ($('setup-id')) {
+  // Enter im einzigen Pflichtfeld soll abschicken, nicht nichts tun.
+  $('setup-id').addEventListener('keydown', e => { if (e.key === 'Enter') submitSetup(); });
+  $('setup-id').addEventListener('input', () => showSetupError(''));
+}
+if ($('setup-open-warframe')) {
+  $('setup-open-warframe').onclick = () =>
+    window.api.openExternal('https://www.warframe.com/api/user-data');
+}
+
 /* ---------------- Laden & Refresh ---------------- */
 async function boot() {
+  /* Zuerst die Frage, ob ueberhaupt eine Account-ID hinterlegt ist. Ohne sie
+     hat getDashboard() nichts zu laden - frueher endete das in einer roten
+     Fehlerzeile, aus der kein Weg herausfuehrte. */
+  const setup = await window.api.getSetupState();
+  if (!setup.configured) {
+    $('loading').classList.add('hidden');
+    showSetup(setup);
+    return;
+  }
+
   const res = await window.api.getDashboard();
   $('loading').classList.add('hidden');
   if (!res.ok) {
     $('error').classList.remove('hidden');
-    $('error').textContent = 'Fehler: ' + res.error;
+    $('error').textContent = 'Error: ' + res.error;
     return;
   }
   $('app').classList.remove('hidden');
@@ -184,7 +335,7 @@ async function doRefreshProfile() {
   if (btnHero) {
     btnHero.disabled = false;
     btnHero.classList.remove('is-refreshing');
-    btnHero.innerHTML = Icon.refresh(15) + '<span>Profil aktualisieren</span>';
+    btnHero.innerHTML = Icon.refresh(15) + '<span>Refresh profile</span>';
   }
 
   if (btnSb) {
@@ -192,16 +343,16 @@ async function doRefreshProfile() {
     btnSb.classList.remove('is-refreshing');
     if (res.ok) {
       if (sbTitle) sbTitle.textContent = 'Aktualisiert!';
-      if (sbSub)   sbSub.textContent   = 'Profil ist auf dem neuesten Stand';
+      if (sbSub)   sbSub.textContent   = 'Profile is up to date';
     } else {
-      if (sbTitle) sbTitle.textContent = 'Fehler';
-      if (sbSub)   sbSub.textContent   = res.error || 'Fehler beim Laden';
+      if (sbTitle) sbTitle.textContent = 'Error';
+      if (sbSub)   sbSub.textContent   = res.error || 'Could not load';
     }
 
     refreshTimer = setTimeout(() => {
       btnSb.classList.remove('show-feedback');
       if (sbTitle) sbTitle.textContent = 'Aktualisieren';
-      if (sbSub)   sbSub.textContent   = 'Profil & Daten neu laden';
+      if (sbSub)   sbSub.textContent   = 'Reload profile & data';
     }, 2500);
   }
 
@@ -224,8 +375,8 @@ function render(data) {
   $('progress-fill').style.width = Math.min(100, p.progress.percent).toFixed(1) + '%';
   /* Bei einer bekannten Luecke ist die Summe eine Untergrenze - das "mind."
      sagt genau das, statt eine Genauigkeit vorzutaeuschen. */
-  $('progress-text').textContent = (p.hiddenXP > 0 ? 'mind. ' : '') + nf(p.progress.current) + ' MR-XP';
-  $('progress-next').textContent = 'Noch ' + nf(p.progress.remaining) + ' bis MR ' + (p.mr + 1);
+  $('progress-text').textContent = (p.hiddenXP > 0 ? 'at least ' : '') + nf(p.progress.current) + ' MR XP';
+  $('progress-next').textContent = nf(p.progress.remaining) + ' to go until MR ' + (p.mr + 1);
 
   $('stat-done').textContent      = nf(p.counts.done);
   $('stat-partial').textContent   = nf(p.counts.partial);
@@ -240,14 +391,14 @@ function render(data) {
   const m = data.meta;
   const parts = [];
   parts.push(m.fetchedAt
-    ? 'Stand: ' + new Date(m.fetchedAt).toLocaleString('de-DE')
-    : 'Noch keine Profildaten');
-  if (m.fromCache) parts.push('Lokaler Cache');
+    ? 'As of ' + new Date(m.fetchedAt).toLocaleString('en-GB')
+    : 'No profile data yet');
+  if (m.fromCache) parts.push('local cache');
   /* Der Rang stammt aus dem Profil. Weicht unsere XP-Summe davon ab, fehlt uns
      eine Quelle, die das oeffentliche Profil nicht ausweist - das gehoert
      dazugesagt, sonst wirkt die XP-Zahl praeziser als sie ist. */
   if (p.hiddenXP > 0) {
-    parts.push(`mind. ${nf(p.hiddenXP)} MR-XP aus Quellen, die das Profil nicht ausweist`);
+    parts.push(`at least ${nf(p.hiddenXP)} MR XP from sources the profile does not list`);
   }
   if (m.message)   parts.push(m.message);
   $('meta-info').textContent = parts.join(' · ');
@@ -284,7 +435,7 @@ function renderHeroTags(p) {
   const tags = [];
   if (p.clan)         tags.push([Icon.users(13),    p.clan]);
   if (p.loadout?.focus) tags.push([Icon.star(13),   p.loadout.focus]);
-  if (p.yearsPlayed)  tags.push([Icon.calendar(13), 'Seit ' + new Date(p.createdMs).getFullYear() + ' · ' + p.yearsPlayed + ' Jahre']);
+  if (p.yearsPlayed)  tags.push([Icon.calendar(13), 'Since ' + new Date(p.createdMs).getFullYear() + ' · ' + p.yearsPlayed + ' years']);
   if (p.nodes)        tags.push([Icon.map(13),      nf(p.nodes) + ' Nodes · ' + p.junctions + ' Junctions']);
 
   $('hero-tags').innerHTML = tags
@@ -342,7 +493,7 @@ function renderActiveGoals(data) {
           </div>
           <div class="agoal-meta">
             ${isLevel
-              ? `<span>Im Inventar</span> · <span>Rang ${g.rank}/${g.maxLvl}</span>`
+              ? `<span>In inventory</span> · <span>Rank ${g.rank}/${g.maxLvl}</span>`
               : `<span>${Icon.coin(12)} ${nf(g.credits)}</span> <span>${Icon.clock(12)} ${esc(g.buildTime)}</span>`
             }
           </div>
@@ -350,10 +501,10 @@ function renderActiveGoals(data) {
         <div class="agoal-head-right">
           <span class="agoal-gain">+${nf(g.gain)}</span>
           <div class="agoal-actions">
-            <button class="btn-icon ${g.done ? 'on' : ''}" data-goal-toggle="${esc(g.uniqueName)}" title="${g.done ? 'Als offen markieren' : 'Als erledigt markieren'}">
+            <button class="btn-icon ${g.done ? 'on' : ''}" data-goal-toggle="${esc(g.uniqueName)}" title="${g.done ? 'Mark as open' : 'Mark as done'}">
               ${Icon.check(13)}
             </button>
-            <button class="btn-icon danger" data-goal-remove="${esc(g.uniqueName)}" title="Ziel entfernen">
+            <button class="btn-icon danger" data-goal-remove="${esc(g.uniqueName)}" title="Remove goal">
               ${Icon.trash(13)}
             </button>
           </div>
@@ -363,8 +514,8 @@ function renderActiveGoals(data) {
       ${isLevel ? `
         <div class="agoal-level-box">
           <div class="level-box-head">
-            <span>Level-Fortschritt</span>
-            <b>Noch ${g.ranksLeft} ${g.ranksLeft === 1 ? 'Rang' : 'Ränge'}</b>
+            <span>Level progress</span>
+            <b>${g.ranksLeft} more ${g.ranksLeft === 1 ? 'rank' : 'ranks'}</b>
           </div>
           <div class="level-track"><div class="level-fill" style="width: ${progressPct}%"></div></div>
         </div>
@@ -376,7 +527,7 @@ function renderActiveGoals(data) {
               <span>${esc(m.name)}</span>
               <b>${nf(m.count)}</b>
             </span>`).join('')}
-          ${rest > 0 ? `<span class="chip more">+${rest} weitere</span>` : ''}
+          ${rest > 0 ? `<span class="chip more">+${rest} more</span>` : ''}
         </div>
       `}
 
@@ -407,7 +558,7 @@ function renderActiveGoals(data) {
 
 function renderCards(target, list) {
   const el = $(target);
-  if (!list.length) { el.innerHTML = '<div class="empty">Nichts offen</div>'; return; }
+  if (!list.length) { el.innerHTML = '<div class="empty">Nothing outstanding</div>'; return; }
 
   const inGoals = new Set((state?.goals || []).map(g => g.uniqueName));
 
@@ -425,8 +576,8 @@ function renderCards(target, list) {
         <div class="card-reason">${esc(r.reason)}</div>
         <div class="card-actions">
           <button class="btn-sm ${already ? 'on' : ''}" data-add="${esc(r.uniqueName)}" data-name="${esc(r.name)}">
-            ${already ? Icon.check(13) + '<span>Als Ziel gesetzt</span>'
-                      : Icon.plus(13)  + '<span>Als Ziel</span>'}
+            ${already ? Icon.check(13) + '<span>Set as goal</span>'
+                      : Icon.plus(13)  + '<span>Set as goal</span>'}
           </button>
         </div>
       </div>
@@ -477,7 +628,7 @@ function renderCategories(cats) {
       <span class="cat-label-wrap">${ic}<span>${esc(c.label)}</span></span>
       <div class="catbar"><div style="width:${pct.toFixed(1)}%"></div></div>
       <span class="catnum">${c.done} / ${c.total}</span>
-      <span class="catgain">${nf(c.gain)} offen</span>
+      <span class="catgain">${nf(c.gain)} left</span>
     </div>`;
   }).join('');
 }
@@ -488,7 +639,7 @@ function renderGoals(data) {
   if (!el) return;
 
   if (!data.goals || !data.goals.length) {
-    el.innerHTML = '<div class="empty">Noch keine Ziele gesetzt. Wechsle oben auf <b>Katalog</b>, wähle ein Item und klicke auf „Als Ziel setzen“.</div>';
+    el.innerHTML = '<div class="empty">No goals set yet. Switch to <b>Catalogue</b> above, pick an item and click <b>Set as goal</b>.</div>';
     /* Ohne Ziele ist dieser Hinweis der einzige Wegweiser - der darf nicht
        hinter einem zugeklappten Abschnitt verschwinden. */
     setGoalDetailsOpen(true);
@@ -515,14 +666,14 @@ function renderGoals(data) {
           <div class="goal-sub">
             <span class="gain">+${nf(g.gain)} MR-XP</span>
             ${isLevel
-              ? `<span>Im Inventar</span> · <span>Rang ${g.rank}/${g.maxLvl}</span>`
+              ? `<span>In inventory</span> · <span>Rank ${g.rank}/${g.maxLvl}</span>`
               : `<span>${Icon.coin(13)} ${nf(g.credits)}</span> <span>${Icon.clock(13)} ${esc(g.buildTime)}</span>`
             }
           </div>
         </div>
         <div class="goal-actions">
           <button class="btn-sm ${g.done ? 'on' : ''}" data-toggle="${esc(g.uniqueName)}">
-            ${Icon.check(13)}<span>${g.done ? 'Erledigt' : 'Als erledigt'}</span>
+            ${Icon.check(13)}<span>${g.done ? 'Done' : 'Mark done'}</span>
           </button>
           <button class="btn-sm danger" data-remove="${esc(g.uniqueName)}">
             ${Icon.trash(13)}<span>Entfernen</span>
@@ -533,14 +684,14 @@ function renderGoals(data) {
         ${isLevel ? `
           <div class="goal-level-box">
             <div class="level-box-head">
-              <span>Aktueller Rang: <b>${g.rank} / ${g.maxLvl}</b></span>
-              <span>Noch <b>${g.ranksLeft} ${g.ranksLeft === 1 ? 'Rang' : 'Ränge'}</b> bis max (${progressPct}%)</span>
+              <span>Current rank: <b>${g.rank} / ${g.maxLvl}</b></span>
+              <span><b>${g.ranksLeft} more ${g.ranksLeft === 1 ? 'rank' : 'ranks'}</b> to max (${progressPct}%)</span>
             </div>
             <div class="level-track"><div class="level-fill" style="width: ${progressPct}%"></div></div>
           </div>
         ` : `
           ${g.components && g.components.length > 0 ? `
-            <div class="goal-section-label">Benötigte Bauteile & Komponenten</div>
+            <div class="goal-section-label">Required parts & components</div>
             <div class="goal-comps-grid">
               ${g.components.map(c => `
                 <div class="goal-comp-item ${c.isSubRecipe ? 'craftable' : ''}">
@@ -568,7 +719,7 @@ function renderGoals(data) {
           ` : ''}
         `}
         <textarea class="goal-note" data-note="${esc(g.uniqueName)}"
-          placeholder="Notiz zu diesem Ziel …">${esc(g.note)}</textarea>
+          placeholder="A note on this goal …">${esc(g.note)}</textarea>
       </div>
     </div>`;
   }).join('');
@@ -633,7 +784,7 @@ if ($('goal-search')) {
         <div class="result" data-u="${esc(r.uniqueName)}" data-n="${esc(r.name)}">
           <img src="${esc(r.image)}" alt="" onerror="this.style.visibility='hidden'">
           <span>${esc(r.name)}</span>
-          <span class="result-meta">${esc(r.label)} · ${r.status === 'done' ? 'Fertig' : '+' + nf(r.gain)}</span>
+          <span class="result-meta">${esc(r.label)} · ${r.status === 'done' ? 'Mastered' : '+' + nf(r.gain)}</span>
         </div>`).join('');
       box.querySelectorAll('.result').forEach(row => row.onclick = () => {
         openItemModal(row.dataset.u);
@@ -667,7 +818,7 @@ $('btn-import').onclick = async () => {
   if (!input) return;
   const btn = $('btn-import');
   btn.disabled = true;
-  showImportStatus('busy', 'Lade Build von Overframe … das kann einen Moment dauern.');
+  showImportStatus('busy', 'Loading the build from Overframe … this can take a moment.');
 
   const res = await window.api.importBuild(input);
   btn.disabled = false;
@@ -677,8 +828,8 @@ $('btn-import').onclick = async () => {
   let msg = 'Build importiert.';
   if (res.note) msg += ' ' + res.note + '.';
   if (res.unresolved) {
-    msg += ` ${res.unresolved} Einträge ohne Zuordnung `
-         + '(meist Arcanes – die stehen nicht im Mod-Katalog).';
+    msg += ` ${res.unresolved} entries could not be matched `
+         + '(usually arcanes — they are not in the mod catalogue).';
   }
   showImportStatus('ok', msg);
   $('build-url').value = '';
@@ -694,7 +845,7 @@ function renderBuilds(data) {
 
   const el = $('builds');
   if (!data.builds.length) {
-    el.innerHTML = '<div class="empty">Noch keine Builds. Oben einen Overframe-Link einfügen.</div>';
+    el.innerHTML = '<div class="empty">No builds yet. Paste an Overframe link above.</div>';
     return;
   }
 
@@ -708,9 +859,9 @@ function renderBuilds(data) {
           <h3>${esc(b.name)}</h3>
           <div class="build-sub">
             <span>${esc(b.itemName)}</span>
-            ${b.author ? `<span>von ${esc(b.author)}</span>` : ''}
+            ${b.author ? `<span>by ${esc(b.author)}</span>` : ''}
             <span>${Icon.bolt(12)} ${b.requirements.forma} Forma</span>
-            <span>${b.mods.owned} / ${b.mods.total} Mods vorhanden</span>
+            <span>${b.mods.owned} / ${b.mods.total} mods owned</span>
           </div>
         </div>
         <div class="build-actions">
@@ -722,8 +873,8 @@ function renderBuilds(data) {
           <div class="capbar-fill ${b.overCapacity ? 'over' : ''}" style="width:${pct}%"></div>
         </div>
         <div class="capbar-label">
-          <span>Kapazität ${b.used} / ${b.capacity}</span>
-          <span>${b.overCapacity ? 'Überzogen um ' + (b.used - b.capacity) : b.free + ' frei'}</span>
+          <span>Capacity ${b.used} / ${b.capacity}</span>
+          <span>${b.overCapacity ? 'Over by ' + (b.used - b.capacity) : b.free + ' free'}</span>
         </div>
       </div>
       <div class="slots">${b.slots.map((s, i) => renderSlot(s, i, b.source === 'manual', b.id)).join('')}</div>
@@ -762,7 +913,7 @@ function renderSlot(s, i, editable, buildId) {
   if (!s) {
     if (!editable) return '<div class="slot slot-empty"><div class="slot-top"><span class="slot-name">leer</span></div></div>';
     return `<div class="slot addslot editable"${edit}>
-      ${Icon.plus(15)}<span class="slot-kind">${esc(kind || 'Mod wählen')}</span></div>`;
+      ${Icon.plus(15)}<span class="slot-kind">${esc(kind || 'Choose a mod')}</span></div>`;
   }
   if (s.unknown) {
     return `<div class="slot"><div class="slot-top">
@@ -781,9 +932,9 @@ function renderSlot(s, i, editable, buildId) {
         <span class="slot-drain ${s.isAura ? 'aura' : ''}">${s.isAura ? '↑' + Math.abs(s.drain) : s.drain}</span>
       </div>
       <div class="slot-meta">
-        <span>Rang ${s.rank}/${s.maxRank}</span>
+        <span>Rank ${s.rank}/${s.maxRank}</span>
         ${s.polaritySymbol ? `<span class="slot-pol">${esc(s.polaritySymbol)}</span>` : ''}
-        <span>${s.owned ? '✓ vorhanden' : 'fehlt'}</span>
+        <span>${s.owned ? '✓ owned' : 'missing'}</span>
       </div>
     </div>`;
 }
@@ -817,7 +968,7 @@ $('newbuild-item').oninput = e => {
         $('newbuild-item').value = '';
         box.classList.add('hidden');
         $('newbuild-panel').classList.add('hidden');
-        showImportStatus('ok', `Build für ${row.dataset.name} angelegt – jetzt die Slots füllen.`);
+        showImportStatus('ok', `Build for ${row.dataset.name} created — now fill the slots.`);
       } else showImportStatus('err', res.error);
     });
   }, 220);
@@ -873,7 +1024,7 @@ $('modsearch').oninput = e => {
         <span class="mo-meta">
           ${m.polaritySymbol ? `<span class="pol">${esc(m.polaritySymbol)}</span>` : ''}
           <span>${esc(m.rarityLabel)}</span>
-          <span>${m.owned ? '✓ vorhanden' : 'fehlt'}</span>
+          <span>${m.owned ? '✓ owned' : 'missing'}</span>
         </span>
       </div>`).join('');
     $('modsearch-results').querySelectorAll('.modopt').forEach(el => {
@@ -927,13 +1078,13 @@ function updateDrainPreview() {
 
   let text;
   if (m.isAura) {
-    text = `Gibt ${matches ? base * 2 : base} Kapazität${matches ? ' (Polarität passt, verdoppelt)' : ''}`;
+    text = `Grants ${matches ? base * 2 : base} capacity${matches ? ' (polarity matches, doubled)' : ''}`;
   } else if (matches) {
-    text = `Kostet ${Math.ceil(base / 2)} statt ${base} – Polarität passt`;
+    text = `Costs ${Math.ceil(base / 2)} instead of ${base} — polarity matches`;
   } else if (editor.polarity) {
-    text = `Kostet ${Math.ceil(base * 1.25)} statt ${base} – Polarität passt nicht`;
+    text = `Costs ${Math.ceil(base * 1.25)} instead of ${base} — polarity does not match`;
   } else {
-    text = `Kostet ${base} Kapazität`;
+    text = `Costs ${base} capacity`;
   }
   $('sc-drain').textContent = text;
 }
@@ -963,7 +1114,7 @@ function renderTotals(t, builds) {
     [Icon.star(18), t.umbraForma, 'Umbra-Forma',         null],
     [Icon.cube(18), t.reactor,    'Orokin-Reaktoren',    null],
     [Icon.cube(18), t.catalyst,   'Orokin-Katalysatoren', null],
-    [Icon.coin(18), nf(t.endo),   'Endo',                estimated ? 'geschätzt' : 'laut Overframe']
+    [Icon.coin(18), nf(t.endo),   'Endo',                estimated ? 'estimated' : 'per Overframe']
   ].filter(c => c[1] !== 0 && c[1] !== '0');
 
   $('totals-grid').innerHTML = cards.map(([ic, val, label, note]) => `
@@ -984,7 +1135,7 @@ function renderMissingMods(list) {
       <span class="mcheck">${Icon.check(13)}</span>
       <div class="modrow-body">
         <b>${esc(m.name)}</b>
-        <small>Rang ${m.rank}/${m.maxRank} · ${esc(m.usedIn.join(', '))}</small>
+        <small>Rank ${m.rank}/${m.maxRank} · ${esc(m.usedIn.join(', '))}</small>
       </div>
       <span class="rarity ${esc(m.rarity)}">${esc(m.rarityLabel)}</span>
     </div>`).join('');
@@ -1007,7 +1158,7 @@ $('btn-all-owned').onclick = async () => {
 async function loadChecklist() {
   checklistCache = await window.api.getChecklist(null);
   const cats = [...new Set(checklistCache.map(i => i.category))].sort();
-  $('filter-category').innerHTML = '<option value="">Alle Kategorien</option>' +
+  $('filter-category').innerHTML = '<option value="">All categories</option>' +
     cats.map(c => {
       const label = (checklistCache.find(i => i.category === c) || {}).label || c;
       return `<option value="${esc(c)}">${esc(label)}</option>`;
@@ -1035,10 +1186,10 @@ function drawChecklist() {
       return `
       <div class="tile ${esc(i.status)} ${isGoal ? 'is-goal' : ''}" data-item-u="${esc(i.uniqueName)}">
         <span class="dot ${esc(i.status)}"></span>
-        ${isGoal ? `<span class="tile-goal-badge" title="Aktives Farm-Ziel">${Icon.target(12)}</span>` : ''}
+        ${isGoal ? `<span class="tile-goal-badge" title="Active farming goal">${Icon.target(12)}</span>` : ''}
         <img src="${esc(i.image)}" alt="" onerror="this.style.visibility='hidden'">
         <div class="tile-name">${esc(i.name)}</div>
-        <div class="tile-rank">${i.status === 'missing' ? 'Fehlt' : 'Rang ' + i.rank + ' / ' + i.maxLvl}</div>
+        <div class="tile-rank">${i.status === 'missing' ? 'Missing' : 'Rank ' + i.rank + ' / ' + i.maxLvl}</div>
       </div>`;
     }).join('');
 
@@ -1057,7 +1208,7 @@ function renderNotes(data) {
   const withNotes = data.goals.filter(g => g.note && g.note.trim());
   $('item-notes').innerHTML = withNotes.length
     ? withNotes.map(g => `<div class="itemnote"><b>${esc(g.name)}</b><p>${esc(g.note)}</p></div>`).join('')
-    : '<div class="empty">Notizen an Zielen erscheinen hier.</div>';
+    : '<div class="empty">Notes you attach to goals appear here.</div>';
 }
 let notesTimer;
 $('general-notes').oninput = e => {
@@ -1084,11 +1235,11 @@ async function openItemModal(uniqueName) {
   if (!res.ok) {
     content.innerHTML = `
       <div class="im-header">
-        <h2>Fehler</h2>
+        <h2>Error</h2>
         <button class="modal-close-icon" onclick="closeItemModal()">&times;</button>
       </div>
       <div class="im-scroll-body">
-        <p style="color: var(--red);">${esc(res.error || 'Details konnten nicht geladen werden.')}</p>
+        <p style="color: var(--red);">${esc(res.error || 'Could not load the details.')}</p>
       </div>
     `;
     return;
@@ -1097,9 +1248,9 @@ async function openItemModal(uniqueName) {
   const d = res.data;
   const inGoals = (state?.goals || []).some(g => g.uniqueName === d.uniqueName);
 
-  let statusText = 'Fehlt';
-  if (d.status === 'done') statusText = 'Gemeistert';
-  else if (d.status === 'partial') statusText = `Rang ${d.rank}/${d.maxLvl}`;
+  let statusText = 'Missing';
+  if (d.status === 'done') statusText = 'Mastered';
+  else if (d.status === 'partial') statusText = `Rank ${d.rank}/${d.maxLvl}`;
 
   content.innerHTML = `
     <div class="im-header">
@@ -1116,10 +1267,10 @@ async function openItemModal(uniqueName) {
           <h2>${esc(d.name)}</h2>
           <div class="im-gain-hint">
             ${d.status === 'done'
-              ? `<span class="gain-done">${Icon.check(13)} Vollständig gemeistert (+${nf(d.potentialXP)} XP)</span>`
+              ? `<span class="gain-done">${Icon.check(13)} Fully mastered (+${nf(d.potentialXP)} XP)</span>`
               : (d.status === 'partial'
-                  ? `<span class="gain-partial">${Icon.bolt(13)} Im Inventar (Rang ${d.rank}/${d.maxLvl}) · Noch +${nf(d.gain)} MR-XP</span>`
-                  : `<span class="gain-missing">${Icon.target(13)} Nicht im Besitz · +${nf(d.potentialXP)} MR-XP</span>`
+                  ? `<span class="gain-partial">${Icon.bolt(13)} In inventory (rank ${d.rank}/${d.maxLvl}) · +${nf(d.gain)} MR XP to go</span>`
+                  : `<span class="gain-missing">${Icon.target(13)} Not owned · +${nf(d.potentialXP)} MR XP</span>`
                 )
             }
           </div>
@@ -1127,10 +1278,10 @@ async function openItemModal(uniqueName) {
       </div>
       <div class="im-header-actions">
         <button id="im-goal-btn" class="btn ${inGoals ? 'btn-secondary' : 'btn-primary'}" data-u="${esc(d.uniqueName)}" data-name="${esc(d.name)}">
-          ${inGoals ? Icon.trash(14) + ' <span>Aus Zielen entfernen</span>' : Icon.plus(14) + ' <span>Als Ziel setzen</span>'}
+          ${inGoals ? Icon.trash(14) + ' <span>Remove from goals</span>' : Icon.plus(14) + ' <span>Set as goal</span>'}
         </button>
       </div>
-      <button class="modal-close-icon" id="im-close" title="Schließen">&times;</button>
+      <button class="modal-close-icon" id="im-close" title="Close">&times;</button>
     </div>
 
     <div class="im-scroll-body">
@@ -1156,14 +1307,14 @@ async function openItemModal(uniqueName) {
 
     ${d.passiveDescription ? `
       <div class="im-section">
-        <div class="im-section-title">Passive Fähigkeit</div>
+        <div class="im-section-title">Passive ability</div>
         <div class="im-passive">${esc(d.passiveDescription)}</div>
       </div>
     ` : ''}
 
     ${d.abilities && d.abilities.length ? `
       <div class="im-section">
-        <div class="im-section-title">Fähigkeiten</div>
+        <div class="im-section-title">Abilities</div>
         <div class="im-abilities">
           ${d.abilities.map((ab, i) => `
             <div class="im-ability">
@@ -1188,7 +1339,7 @@ async function openItemModal(uniqueName) {
 
     ${d.components && d.components.length ? `
       <div class="im-section">
-        <div class="im-section-title">Benötigte Bauteile & Komponenten</div>
+        <div class="im-section-title">Required parts & components</div>
         <div class="im-components-grid">
           ${d.components.map(c => `
             <div class="im-component-card ${c.isSubRecipe ? 'craftable' : ''}">
@@ -1287,18 +1438,18 @@ async function loadWorldState(force = false) {
   if (btn) {
     btn.disabled = true;
     btn.classList.add('is-refreshing');
-    btn.innerHTML = Icon.refresh(14) + ' <span>Lade …</span>';
+    btn.innerHTML = Icon.refresh(14) + ' <span>Loading …</span>';
   }
   
   const data = await window.api.getWorldState(force);
   if (btn) {
     btn.disabled = false;
     btn.classList.remove('is-refreshing');
-    btn.innerHTML = Icon.refresh(14) + ' <span>Neu laden</span>';
+    btn.innerHTML = Icon.refresh(14) + ' <span>Reload</span>';
   }
 
   if (!data || data.error) {
-    $('ws-cycles').innerHTML = `<div class="empty">Live-Daten konnten nicht geladen werden (${esc(data?.error || 'Netzwerkfehler')}).</div>`;
+    $('ws-cycles').innerHTML = `<div class="empty">Could not load live data (${esc(data?.error || 'network error')}).</div>`;
     return;
   }
 
@@ -1327,39 +1478,39 @@ function renderWorldState(d) {
       <div class="ws-cycle-head">
         <div>
           <div class="ws-cycle-title">Plains of Eidolon (Cetus)</div>
-          <div class="ws-cycle-sub">Erde · Eidolon-Jagd</div>
+          <div class="ws-cycle-sub">Earth · Eidolon hunting</div>
         </div>
         <span class="ws-cycle-badge ${c.isDay ? 'day' : 'night'}">
-          ${c.isDay ? Icon.sun(13) + ' Tag' : Icon.moon(13) + ' Nacht (Eidolon)'}
+          ${c.isDay ? Icon.sun(13) + ' Day' : Icon.moon(13) + ' Night (Eidolon)'}
         </span>
       </div>
-      <div class="ws-cycle-time">${esc(c.timeLeft || '—')} <small>verbleibend</small></div>
+      <div class="ws-cycle-time">${esc(c.timeLeft || '—')} <small>remaining</small></div>
     </div>
 
     <div class="ws-cycle-card ${v.isWarm ? 'warm' : 'cold'}">
       <div class="ws-cycle-head">
         <div>
           <div class="ws-cycle-title">Orb Vallis (Fortuna)</div>
-          <div class="ws-cycle-sub">Venus · Thermo-Zyklen</div>
+          <div class="ws-cycle-sub">Venus · thermia cycles</div>
         </div>
         <span class="ws-cycle-badge ${v.isWarm ? 'warm' : 'cold'}">
-          ${v.isWarm ? Icon.flame(13) + ' Warm' : Icon.snowflake(13) + ' Kalt'}
+          ${v.isWarm ? Icon.flame(13) + ' Warm' : Icon.snowflake(13) + ' Cold'}
         </span>
       </div>
-      <div class="ws-cycle-time">${esc(v.timeLeft || '—')} <small>verbleibend</small></div>
+      <div class="ws-cycle-time">${esc(v.timeLeft || '—')} <small>remaining</small></div>
     </div>
 
     <div class="ws-cycle-card ${cb.isFass ? 'warm' : 'night'}">
       <div class="ws-cycle-head">
         <div>
           <div class="ws-cycle-title">Cambion Drift (Deimos)</div>
-          <div class="ws-cycle-sub">Deimos · Wurm-Zyklus</div>
+          <div class="ws-cycle-sub">Deimos · worm cycle</div>
         </div>
         <span class="ws-cycle-badge ${cb.state || 'fass'}">
-          ${cb.isFass ? 'Fass (Orange)' : 'Vome (Blau)'}
+          ${cb.isFass ? 'Fass (orange)' : 'Vome (blue)'}
         </span>
       </div>
-      <div class="ws-cycle-time">${esc(cb.timeLeft || '—')} <small>verbleibend</small></div>
+      <div class="ws-cycle-time">${esc(cb.timeLeft || '—')} <small>remaining</small></div>
     </div>
   `;
 
@@ -1370,9 +1521,9 @@ function renderWorldState(d) {
       <div class="ws-trader-head">
         <div class="ws-trader-info">
           <h3>${esc(vt.character)} ist anwesend!</h3>
-          <p>Standort: <b>${esc(vt.location)}</b> · Verlässt das Relais in <b>${esc(vt.endString || '2 Tagen')}</b></p>
+          <p>Location: <b>${esc(vt.location)}</b> · leaves the relay in <b>${esc(vt.endString || '2 days')}</b></p>
         </div>
-        <span class="ws-trader-status active">Jetzt im Relais</span>
+        <span class="ws-trader-status active">In the relay now</span>
       </div>
       ${vt.inventory && vt.inventory.length ? `
         <div class="ducats-catalog-list" style="margin-top: 14px;">
@@ -1382,7 +1533,7 @@ function renderWorldState(d) {
                 <b>${esc(it.item)}</b>
                 <span>${nf(it.credits)} Credits</span>
               </div>
-              <span class="ducat-item-val"><img class="currency-ic ducat-ic" src="assets/icons/ducats.png" alt="Dukaten"> <b>${nf(it.ducats)}</b></span>
+              <span class="ducat-item-val"><img class="currency-ic ducat-ic" src="assets/icons/ducats.png" alt="Ducats"> <b>${nf(it.ducats)}</b></span>
             </div>
           `).join('')}
         </div>
@@ -1392,10 +1543,10 @@ function renderWorldState(d) {
     $('ws-voidtrader').innerHTML = `
       <div class="ws-trader-head">
         <div class="ws-trader-info">
-          <h3>${esc(vt.character || "Baro Ki'Teer")} ist auf Reisen</h3>
-          <p>Nächste Ankunft: <b>${esc(vt.location || 'Relais')}</b> in <b>${esc(vt.startString || 'wenigen Tagen')}</b></p>
+          <h3>${esc(vt.character || "Baro Ki'Teer")} is travelling</h3>
+          <p>Next arrival: <b>${esc(vt.location || 'a relay')}</b> in <b>${esc(vt.startString || 'a few days')}</b></p>
         </div>
-        <span class="ws-trader-status inactive">Countdown läuft</span>
+        <span class="ws-trader-status inactive">Counting down</span>
       </div>
     `;
   }
@@ -1403,7 +1554,7 @@ function renderWorldState(d) {
   // 3. Sortie & Archon
   /* Restzeit nur anhaengen, wenn es eine gibt - sonst blieb hier ein
      angefangenes "Noch" ohne Wert stehen. */
-  const restzeit = eta => (eta ? ` · Noch <b>${esc(eta)}</b>` : '');
+  const restzeit = eta => (eta ? ` · <b>${esc(eta)}</b> left` : '');
 
   const sort = d.sortie;
   if (sort) {
@@ -1422,14 +1573,14 @@ function renderWorldState(d) {
       `).join('')}
     `;
   } else {
-    $('ws-sortie').innerHTML = '<div class="empty">Kein aktiver Einsatz gemeldet.</div>';
+    $('ws-sortie').innerHTML = '<div class="empty">No active sortie reported.</div>';
   }
 
   const arc = d.archonHunt;
   if (arc) {
     $('ws-archon').innerHTML = `
       <div style="font-size: 12.5px; color: var(--text-2); margin-bottom: 8px;">
-        Ziel: <b style="color: var(--gold);">${esc(arc.boss)}</b>${restzeit(arc.eta)}
+        Target: <b style="color: var(--gold);">${esc(arc.boss)}</b>${restzeit(arc.eta)}
       </div>
       ${(arc.missions || []).map((m, i) => `
         <div class="ws-mission-item">
@@ -1442,7 +1593,7 @@ function renderWorldState(d) {
       `).join('')}
     `;
   } else {
-    $('ws-archon').innerHTML = '<div class="empty">Keine Archon-Jagd aktiv.</div>';
+    $('ws-archon').innerHTML = '<div class="empty">No archon hunt active.</div>';
   }
 
   // 4. Void Fissures
@@ -1479,15 +1630,15 @@ const leerHinweis = text => `<div class="empty" style="grid-column: 1 / -1;">${e
  * null bedeutet: dieser Bereich hat keine sinnvolle Anzahl.
  */
 const WS_PANES = [
-  { key: 'overview',   label: 'Übersicht',   icon: 'svg:globe',     count: null },
-  { key: 'fissures',   label: 'Void-Risse',  icon: 'img:fissure',   count: 'fissures' },
-  { key: 'missions',   label: 'Einsätze',    icon: 'img:sortie',    count: 'missions' },
+  { key: 'overview',   label: 'Overview',    icon: 'svg:globe',     count: null },
+  { key: 'fissures',   label: 'Void fissures', icon: 'img:fissure', count: 'fissures' },
+  { key: 'missions',   label: 'Sorties',     icon: 'img:sortie',    count: 'missions' },
   { key: 'nightwave',  label: 'Nightwave',   icon: 'img:nightwave', count: 'nightwave' },
   { key: 'alerts',     label: 'Alerts',      icon: 'img:quest',     count: 'alerts' },
-  { key: 'events',     label: 'Operationen', icon: 'img:event',     count: 'events' },
+  { key: 'events',     label: 'Operations',  icon: 'img:event',     count: 'events' },
   { key: 'steelpath',  label: 'Steel Path',  icon: 'img:steelpath', count: 'steelPath' },
-  { key: 'invasions',  label: 'Invasionen',  icon: 'img:invasion',  count: 'invasions' },
-  { key: 'syndicates', label: 'Syndikate',   icon: 'img:syndicate', count: 'syndicates' }
+  { key: 'invasions',  label: 'Invasions',   icon: 'img:invasion',  count: 'invasions' },
+  { key: 'syndicates', label: 'Syndicates',  icon: 'img:syndicate', count: 'syndicates' }
 ];
 
 let wsPane = 'overview';
@@ -1540,12 +1691,12 @@ function renderWsSource(d) {
   if (d.error) {
     art = 'down';
     text = `Die Datenquelle (warframestat.us) antwortet nicht: ${d.error}. `
-         + 'Angezeigt wird, was zuletzt geladen wurde – oder nichts.';
+         + 'What you see is the last thing that loaded — or nothing.';
   } else if (alterMin !== null && alterMin > 15) {
     art = 'stale';
     const h = Math.floor(alterMin / 60), m = alterMin % 60;
-    text = `Die Datenquelle hinkt ${h ? h + ' h ' : ''}${m} min hinterher. `
-         + 'Abgelaufene Einträge werden ausgeblendet – deshalb können Listen leer wirken.';
+    text = `The data source is ${h ? h + ' h ' : ''}${m} min behind. `
+         + 'Expired entries are hidden, which is why lists can look empty.';
   }
 
   box.classList.toggle('hidden', !art);
@@ -1573,9 +1724,9 @@ $('ws-statusbar')?.addEventListener('click', e => {
 /* ---------------- Nightwave ---------------- */
 
 const NW_ARTEN = {
-  'nightwave-elite':    { label: 'Elite-Wochenaufgabe', klasse: 'is-accent' },
-  'nightwave':          { label: 'Wochenaufgabe',       klasse: 'is-gold' },
-  'nightwave-taeglich': { label: 'Tagesaufgabe',        klasse: '' }
+  'nightwave-elite':    { label: 'Elite weekly act',    klasse: 'is-accent' },
+  'nightwave':          { label: 'Weekly act',          klasse: 'is-gold' },
+  'nightwave-taeglich': { label: 'Daily act',           klasse: '' }
 };
 
 function renderNightwave(list) {
@@ -1584,12 +1735,12 @@ function renderNightwave(list) {
 
   const items = Array.isArray(list) ? list : [];
   if (!items.length) {
-    box.innerHTML = leerHinweis('Zurzeit sind keine Nightwave-Aufgaben aktiv.');
+    box.innerHTML = leerHinweis('No Nightwave acts are active right now.');
     return;
   }
 
   box.innerHTML = items.map(nw => {
-    const art = NW_ARTEN[nw.art] || { label: nw.missionType || 'Aufgabe', klasse: '' };
+    const art = NW_ARTEN[nw.art] || { label: nw.missionType || 'Act', klasse: '' };
     return `
       <div class="ws-alert-card ws-nw-card ${art.klasse}">
         <div class="ws-alert-head">
@@ -1619,15 +1770,15 @@ function renderAlerts(d) {
   const list = d.alerts || [];
   if (!list.length) {
     box.innerHTML = leerHinweis(d.error
-      ? 'Die Datenquelle antwortet gerade nicht – deshalb keine Einträge.'
-      : 'Gerade läuft nichts Zeitlich-Begrenztes.');
+      ? 'The data source is not answering right now, so there are no entries.'
+      : 'Nothing time-limited is running right now.');
     return;
   }
 
   box.innerHTML = list.map(a => {
     const art = ALERT_ARTEN[a.art] || ALERT_ARTEN.alert;
     const ort = [a.node, a.missionType].filter(Boolean).join(' · ');
-    const stufe = a.minLevel && a.maxLevel ? ` · Stufe ${a.minLevel}–${a.maxLevel}` : '';
+    const stufe = a.minLevel && a.maxLevel ? ` · level ${a.minLevel}–${a.maxLevel}` : '';
     return `
       <div class="ws-alert-card ${art.klasse}">
         <div class="ws-alert-head">
@@ -1649,7 +1800,7 @@ function renderAlerts(d) {
 function renderEvents(list) {
   if (!$('ws-events')) return;
   if (!list.length) {
-    $('ws-events').innerHTML = leerHinweis('Zurzeit läuft keine Operation.');
+    $('ws-events').innerHTML = leerHinweis('No operation is running at the moment.');
     return;
   }
 
@@ -1666,7 +1817,7 @@ function renderEvents(list) {
         <div class="ws-progress">
           <div class="ws-progress-fill" style="width:${e.progress}%"></div>
         </div>
-        <div class="ws-progress-label">${e.progress}% abgeschlossen</div>` : ''}
+        <div class="ws-progress-label">${e.progress}% complete</div>` : ''}
       ${e.rewards.length ? `<div class="ws-event-rewards">${
         e.rewards.map(r => `<span>${esc(r)}</span>`).join('')}</div>` : ''}
     </div>`).join('');
@@ -1677,21 +1828,21 @@ function renderEvents(list) {
 function renderSteelPath(sp) {
   if (!$('ws-steelpath')) return;
   if (!sp) {
-    $('ws-steelpath').innerHTML = leerHinweis('Keine Steel-Path-Daten gemeldet.');
+    $('ws-steelpath').innerHTML = leerHinweis('No Steel Path data reported.');
     return;
   }
 
   $('ws-steelpath').innerHTML = `
     <div class="ws-sp-row">
       <div class="ws-sp-reward">
-        <span class="ws-sp-label">Teshins Angebot dieser Woche</span>
+        <span class="ws-sp-label">Teshin’s offering this week</span>
         <b>${esc(sp.rewardName || '—')}</b>
         ${sp.rewardCost != null ? `<span class="ws-sp-cost">${sp.rewardCost} Steel Essence</span>` : ''}
       </div>
       <div class="ws-sp-side">
         <span class="ws-eta">${esc(sp.remaining || '')}</span>
         <span class="ws-sp-inc ${sp.incursionsActive ? 'on' : 'off'}">
-          ${sp.incursionsActive ? 'Incursions aktiv · ' + esc(sp.incursionsEta) : 'Keine Incursions'}
+          ${sp.incursionsActive ? 'Incursions active · ' + esc(sp.incursionsEta) : 'No incursions'}
         </span>
       </div>
     </div>`;
@@ -1702,7 +1853,7 @@ function renderSteelPath(sp) {
 function renderInvasions(list) {
   if (!$('ws-invasions')) return;
   if (!list.length) {
-    $('ws-invasions').innerHTML = leerHinweis('Zurzeit laufen keine Invasionen.');
+    $('ws-invasions').innerHTML = leerHinweis('No invasions are running right now.');
     return;
   }
 
@@ -1712,7 +1863,7 @@ function renderInvasions(list) {
         <b>${esc(i.node)}</b>
         <span>${esc(i.desc)}</span>
       </div>
-      <div class="ws-inv-bar" title="${i.completion}% zugunsten ${esc(i.attacker)}">
+      <div class="ws-inv-bar" title="${i.completion}% in favour of ${esc(i.attacker)}">
         <div class="ws-inv-fill" style="width:${i.completion}%"></div>
       </div>
       <div class="ws-inv-sides">
@@ -1733,14 +1884,14 @@ function renderInvasions(list) {
 function renderSyndicates(list) {
   if (!$('ws-syndicates')) return;
   if (!list.length) {
-    $('ws-syndicates').innerHTML = leerHinweis('Keine Syndikats-Aufträge gemeldet.');
+    $('ws-syndicates').innerHTML = leerHinweis('No syndicate bounties reported.');
     return;
   }
 
   $('ws-syndicates').innerHTML = list.map(sy => {
     // Bounty-Syndikate liefern Jobs, die klassischen Fraktionen stattdessen Nodes.
     const count = sy.jobCount || sy.nodeCount;
-    const what = sy.jobCount ? 'Aufträge' : 'Missionen';
+    const what = sy.jobCount ? 'bounties' : 'missions';
     return `
       <div class="ws-syndicate-card">
         <div class="ws-syn-head">
@@ -1787,7 +1938,7 @@ function renderFissures(list) {
         <span class="ws-fissure-eta">${esc(f.eta)}</span>
       </div>
     `;}).join('')
-    : '<div class="empty" style="grid-column: 1 / -1;">Keine aktiven Risse für diesen Filter.</div>';
+    : '<div class="empty" style="grid-column: 1 / -1;">No active fissures match this filter.</div>';
 }
 
 document.querySelectorAll('.fissure-tab').forEach(tab => {
@@ -1829,7 +1980,7 @@ function renderFarmGuide(list) {
         </div>
 
         <div class="fg-nodes">
-          <b style="font-size: 11.5px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-3);">Beste Farm-Knoten</b>
+          <b style="font-size: 11.5px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-3);">Best farming nodes</b>
           ${(r.bestNodes || []).map(n => `
             <div class="fg-node-item">
               <div class="fg-node-head">
@@ -1842,17 +1993,17 @@ function renderFarmGuide(list) {
         </div>
 
         <div class="fg-frames">
-          <b>Empfohlene Frames / Setups:</b> ${(r.recommendedFrames || []).join(', ')}
+          <b>Recommended frames / setups:</b> ${(r.recommendedFrames || []).join(', ')}
         </div>
 
         ${r.tips ? `
           <div style="font-size: 11.5px; color: var(--gold); background: rgba(240, 184, 73, 0.08); padding: 8px 12px; border-radius: var(--r-sm);">
-            <span class="tip-ic">${Icon.bulb(13)}</span><b>Tipp:</b> ${esc(r.tips)}
+            <span class="tip-ic">${Icon.bulb(13)}</span><b>Tip:</b> ${esc(r.tips)}
           </div>
         ` : ''}
       </div>
     `).join('')
-    : '<div class="empty" style="grid-column: 1 / -1;">Keine Ressourcen für diese Suche gefunden.</div>';
+    : '<div class="empty" style="grid-column: 1 / -1;">No resources found for that search.</div>';
 }
 
 $('fg-search').oninput = e => {
@@ -1961,7 +2112,7 @@ async function fetchMissingDucatPrices(forceAll = false) {
       renderDucatsCatalog();
     }
   } catch (err) {
-    console.error('Fehler beim Nachladen der Platin-Preise:', err);
+    console.error('Could not reload platinum prices:', err);
   } finally {
     isFetchingDucatPrices = false;
     updateDucatsPriceButtonState(false);
@@ -1978,11 +2129,11 @@ function applyDucatPrices(priceMap) {
       if (price && typeof price.min === 'number' && price.min > 0) {
         const ratio = +(it.ducats / price.min).toFixed(1);
         if (price.min >= 15 || ratio < 7.0) {
-          it.tradeAdvice = { advice: 'plat', ratio, label: 'Platin-Verkauf', reason: `${price.min}p Mindestpreis auf warframe.market` };
+          it.tradeAdvice = { advice: 'plat', ratio, label: 'Sell for platinum', reason: `${price.min}p minimum price on warframe.market` };
         } else if (ratio >= 10.0) {
-          it.tradeAdvice = { advice: 'ducats', ratio, label: 'Prime Junk', reason: `${ratio} Dukaten pro Platin (hoher Schmelzwert)` };
+          it.tradeAdvice = { advice: 'ducats', ratio, label: 'Prime Junk', reason: `${ratio} ducats per platinum (high melt value)` };
         } else {
-          it.tradeAdvice = { advice: 'balanced', ratio, label: 'Ausgeglichen', reason: `${ratio} Dukaten pro Platin` };
+          it.tradeAdvice = { advice: 'balanced', ratio, label: 'Balanced', reason: `${ratio} ducats per platinum` };
         }
       }
     }
@@ -2041,7 +2192,7 @@ function renderDucatsStatusBar() {
   bar.className = 'ducats-status-bar bar-warning';
   bar.innerHTML = `
     <span class="status-dot warning"></span>
-    <span><b>Kein aktives Inventar:</b> Starte Warframe und klicke im Inventar-Tab auf „Inventar abrufen“, um dein Konto automatisch zu scannen. Aktuell wird der Gesamtkatalog angezeigt.</span>
+    <span><b>No live inventory:</b> start Warframe and press <b>Fetch inventory</b> on the Inventory tab to read your account. Until then you are looking at the full catalogue.</span>
   `;
 }
 
@@ -2078,11 +2229,11 @@ function renderDucatsKPIs() {
   if ($('ducats-selected-sub')) {
     const totalInv = ducatsData.inventory?.summary?.totalItems || 0;
     let presetLabel = '';
-    if (currentSelectionPreset === 'all') presetLabel = ' · Alle gewählt';
-    else if (currentSelectionPreset === 'duplicates') presetLabel = ' · Duplikate gewählt';
-    else if (currentSelectionPreset === 'none' || selectedItemsCount === 0) presetLabel = ' · Keine Teile gewählt';
+    if (currentSelectionPreset === 'all') presetLabel = ' · all selected';
+    else if (currentSelectionPreset === 'duplicates') presetLabel = ' · duplicates selected';
+    else if (currentSelectionPreset === 'none' || selectedItemsCount === 0) presetLabel = ' · no parts selected';
 
-    $('ducats-selected-sub').textContent = `${nf(selectedItemsCount)} Teile gewählt ${totalInv ? `(von ${nf(totalInv)})` : ''}${presetLabel}`;
+    $('ducats-selected-sub').textContent = `${nf(selectedItemsCount)} parts selected ${totalInv ? `(of ${nf(totalInv)})` : ''}${presetLabel}`;
   }
 
   // KPI 2: Platin-Wert
@@ -2095,7 +2246,7 @@ function renderDucatsKPIs() {
   const invSum = ducatsData.inventory?.summary || { totalDucats: 0, totalItems: 0, duplicateDucats: 0, duplicateItems: 0 };
   if ($('ducats-inv-total-ducats')) $('ducats-inv-total-ducats').textContent = nf(invSum.totalDucats);
   if ($('ducats-inv-total-sub')) {
-    $('ducats-inv-total-sub').textContent = `${nf(invSum.totalItems)} Teile im Besitz · Duplikate: ${nf(invSum.duplicateDucats)} Duk.`;
+    $('ducats-inv-total-sub').textContent = `${nf(invSum.totalItems)} parts owned · duplicates: ${nf(invSum.duplicateDucats)} duc.`;
   }
 
   // KPI 4: Baro Kaufkraft
@@ -2103,8 +2254,8 @@ function renderDucatsKPIs() {
   if ($('ducats-baro-power')) $('ducats-baro-power').textContent = `~${baroItems}`;
   if ($('ducats-baro-sub')) {
     $('ducats-baro-sub').textContent = baroItems >= 1
-      ? `Reicht für ca. ${baroItems} Primed Mods`
-      : `Reicht noch für keinen Primed Mod`;
+      ? `Enough for about ${baroItems} primed mods`
+      : `Not enough for a primed mod yet`;
   }
   if ($('ic-baro-kaufkraft') && !$('ic-baro-kaufkraft').hasChildNodes()) {
     $('ic-baro-kaufkraft').innerHTML = Icon.baro(36);
@@ -2174,7 +2325,7 @@ function renderPlanTierFilter(all) {
 
   box.innerHTML =
     `<button class="tier-chip ${planTier === 'all' ? 'active' : ''}" data-tier="all">
-       Alle <span>${all.length}</span>
+       All <span>${all.length}</span>
      </button>` +
     tiers.map(t => `
       <button class="tier-chip tier-${t.toLowerCase()} ${planTier === t ? 'active' : ''}" data-tier="${t}">
@@ -2182,7 +2333,7 @@ function renderPlanTierFilter(all) {
       </button>`).join('') +
     (trackedCount ? `
       <button class="tier-chip chip-tracked ${planOnlyTracked ? 'active' : ''}" data-tracked="1"
-              title="Nur die Relikte, die im Overlay stehen">
+              title="Only the relics shown in the overlay">
         ${Icon.star(11)} Gemerkt <span>${trackedCount}</span>
       </button>` : '');
 
@@ -2195,13 +2346,15 @@ function renderPlanTierFilter(all) {
   });
 }
 
-/* Zustaende heissen im deutschen Spiel anders als in DEs Droptabelle - und
-   der Inventar-Tab nebenan zeigt sie laengst uebersetzt. */
+/* Die vier Zustaende heissen in DEs Droptabelle genauso wie im englischen
+   Spiel - die Zuordnung ist deshalb derzeit eine Eins-zu-eins-Abbildung. Sie
+   bleibt trotzdem stehen: sie ist die eine Stelle, an der eine Umbenennung
+   durch DE aufzufangen waere, und der Aufrufer muss davon nichts wissen. */
 const RELIC_STATE_LABEL = {
-  Intact: 'Intakt',
-  Exceptional: 'Außergewöhnlich',
-  Flawless: 'Makellos',
-  Radiant: 'Strahlend'
+  Intact: 'Intact',
+  Exceptional: 'Exceptional',
+  Flawless: 'Flawless',
+  Radiant: 'Radiant'
 };
 const relicStateLabel = st => RELIC_STATE_LABEL[st] || st || '';
 
@@ -2265,12 +2418,12 @@ function renderDucatsRelicPlan() {
     container.innerHTML = `
       <div class="ducats-empty-box">
         <div class="empty-icon">${Icon.relic(30)}</div>
-        <h3>${all.length ? 'Keine Treffer' : 'Keine Relikte im Bestand'}</h3>
+        <h3>${all.length ? 'No matches' : 'No relics in stock'}</h3>
         <p>${!all.length
-          ? 'Sobald Relikte im Inventar liegen, rechnet Argus hier aus, welches sich zu öffnen lohnt.'
+          ? 'Once you have relics in your inventory, Argus works out here which one is worth cracking.'
           : planOnlyTracked
-            ? 'Kein gemerktes Relikt passt zu Suche und Ära-Filter.'
-            : 'Zu deiner Suche gibt es kein passendes Relikt.'}</p>
+            ? 'No tracked relic matches your search and era filter.'
+            : 'No relic matches your search.'}</p>
       </div>`;
     return;
   }
@@ -2303,12 +2456,12 @@ function renderDucatsRelicPlan() {
             <span class="plan-state">${esc(relicStateLabel(r.state))}${r.count > 1 ? ' · ×' + r.count : ''}</span>
           </div>
           <div class="plan-exp">
-            <span class="plan-exp-val" title="Erwarteter Platin-Erlös je Öffnung">
+            <span class="plan-exp-val" title="Expected platinum return per crack">
               <img class="currency-ic" src="assets/icons/currency/platinum.png" alt="Platin">
               <b>${r.expPlat}</b>
             </span>
-            <span class="plan-exp-val" title="Erwarteter Dukaten-Wert je Öffnung">
-              <img class="currency-ic ducat-ic" src="assets/icons/ducats.png" alt="Dukaten">
+            <span class="plan-exp-val" title="Expected ducat value per crack">
+              <img class="currency-ic ducat-ic" src="assets/icons/ducats.png" alt="Ducats">
               <b>${nf(r.expDucats)}</b>
             </span>
           </div>
@@ -2318,14 +2471,14 @@ function renderDucatsRelicPlan() {
           </button>
         </div>
 
-        ${thin ? `<div class="plan-thin" title="Für Teile ohne bekannten Preis wird nichts angenommen">
-            ${Icon.warning(12)} Preise für ${Math.round(r.pricedShare * 100)} % der Chance bekannt — Platinwert ist eine Untergrenze
+        ${thin ? `<div class="plan-thin" title="Parts with no known price count as nothing">
+            ${Icon.warning(12)} Prices known for ${Math.round(r.pricedShare * 100)}% of the drop chance — the platinum value is a lower bound
           </div>` : ''}
 
         <div class="plan-rewards">${rewards}</div>
       </div>`;
   }).join('') + (plan.length > 60
-    ? `<div class="inv-more">… und ${nf(plan.length - 60)} weitere. Nutze die Suche.</div>`
+    ? `<div class="inv-more">… and ${nf(plan.length - 60)} more. Use the search.</div>`
     : '');
 
   container.querySelectorAll('[data-track]').forEach(btn => {
@@ -2346,10 +2499,10 @@ function updateDucatsPriceButtonState(loading) {
   if (!btn) return;
   if (loading) {
     btn.disabled = true;
-    btn.innerHTML = `<span class="spinner-sm"></span> Preise laden …`;
+    btn.innerHTML = `<span class="spinner-sm"></span> Loading prices …`;
   } else {
     btn.disabled = false;
-    btn.innerHTML = Icon.refresh(15) + ' <span>Preise laden</span>';
+    btn.innerHTML = Icon.refresh(15) + ' <span>Load prices</span>';
   }
 }
 
@@ -2385,7 +2538,7 @@ function renderDucatsCatalog() {
   // Sortieren
   list.sort((a, b) => {
     if (ducatsSort === 'ducats-desc') {
-      return b.ducats - a.ducats || (b.count || 0) - (a.count || 0) || a.name.localeCompare(b.name, 'de');
+      return b.ducats - a.ducats || (b.count || 0) - (a.count || 0) || a.name.localeCompare(b.name, 'en');
     }
     if (ducatsSort === 'plat-desc') {
       const pA = a.price?.min || 0;
@@ -2401,7 +2554,7 @@ function renderDucatsCatalog() {
       return (b.count || 0) - (a.count || 0) || b.ducats - a.ducats;
     }
     if (ducatsSort === 'name-asc') {
-      return a.name.localeCompare(b.name, 'de');
+      return a.name.localeCompare(b.name, 'en');
     }
     return 0;
   });
@@ -2414,8 +2567,8 @@ function renderDucatsCatalog() {
       container.innerHTML = `
         <div class="ducats-empty-box">
           <div class="empty-icon">${Icon.crate(30)}</div>
-          <h3>Keine Prime-Teile im Inventar</h3>
-          <p>Es wurden noch keine Prime-Teile in deinem Inventar gefunden. Schalte auf den <b>Gesamtkatalog</b> um oder öffne Warframe und führe einen Inventar-Abruf durch.</p>
+          <h3>No prime parts in your inventory</h3>
+          <p>No prime parts found in your inventory yet. Switch to the <b>full catalogue</b>, or start Warframe and fetch your inventory.</p>
           <button class="btn btn-sm btn-action" id="btn-ducats-switch-to-cat">Zum Gesamtkatalog wechseln</button>
         </div>
       `;
@@ -2430,7 +2583,7 @@ function renderDucatsCatalog() {
     container.innerHTML = `
       <div class="ducats-empty-box">
         <div class="empty-icon">${Icon.search(30)}</div>
-        <h3>Keine Treffer</h3>
+        <h3>No matches</h3>
         <p>Zu deinen Filter- und Suchkriterien wurden keine Prime-Teile gefunden.</p>
       </div>
     `;
@@ -2446,16 +2599,16 @@ function renderDucatsCatalog() {
     let priceHtml = '';
     if (it.price && typeof it.price.min === 'number') {
       priceHtml = `
-        <div class="ducat-plat-tag" title="Günstigster Preis (ingame: ${it.price.online ? 'ja' : 'nein'})">
+        <div class="ducat-plat-tag" title="Cheapest price (in game: ${it.price.online ? 'yes' : 'no'})">
           <img class="currency-ic" src="assets/icons/currency/platinum.png" alt="Platin">
           <b>${it.price.min}p</b>
           <span class="plat-med">Med. ${it.price.median || it.price.min}p</span>
         </div>
       `;
     } else if (isFetchingDucatPrices) {
-      priceHtml = `<div class="ducat-plat-tag plat-loading">lädt …</div>`;
+      priceHtml = `<div class="ducat-plat-tag plat-loading">loading …</div>`;
     } else {
-      priceHtml = `<div class="ducat-plat-tag plat-none" title="Kein Angebot auf warframe.market">-</div>`;
+      priceHtml = `<div class="ducat-plat-tag plat-none" title="No offer on warframe.market">-</div>`;
     }
 
     // Trade-Advice Badge
@@ -2463,18 +2616,18 @@ function renderDucatsCatalog() {
     if (it.tradeAdvice && it.tradeAdvice.advice !== 'unknown') {
       const adv = it.tradeAdvice;
       if (adv.advice === 'ducats') {
-        adviceHtml = `<span class="trade-chip chip-junk" title="${esc(adv.reason)}"><span class="chip-dot"></span>Junk (${adv.ratio} Duk/p)</span>`;
+        adviceHtml = `<span class="trade-chip chip-junk" title="${esc(adv.reason)}"><span class="chip-dot"></span>Junk (${adv.ratio} duc/p)</span>`;
       } else if (adv.advice === 'plat') {
-        adviceHtml = `<span class="trade-chip chip-plat" title="${esc(adv.reason)}"><span class="chip-dot"></span>Markt (${adv.ratio} Duk/p)</span>`;
+        adviceHtml = `<span class="trade-chip chip-plat" title="${esc(adv.reason)}"><span class="chip-dot"></span>Market (${adv.ratio} duc/p)</span>`;
       } else {
-        adviceHtml = `<span class="trade-chip chip-neutral" title="${esc(adv.reason)}"><span class="chip-dot"></span>Fair (${adv.ratio} Duk/p)</span>`;
+        adviceHtml = `<span class="trade-chip chip-neutral" title="${esc(adv.reason)}"><span class="chip-dot"></span>Fair (${adv.ratio} duc/p)</span>`;
       }
     }
 
     // Inventar-Besitz-Badge
     const ownedHtml = it.count != null ? `
       <span class="ducat-owned-badge ${it.count > 1 ? 'has-dups' : ''}">
-        Besitz: <b>${it.count}x</b> ${it.count > 1 ? `<small>(${it.count - 1} Dup.)</small>` : ''}
+        Owned: <b>${it.count}x</b> ${it.count > 1 ? `<small>(${it.count - 1} dup.)</small>` : ''}
       </span>
     ` : '';
 
@@ -2494,8 +2647,8 @@ function renderDucatsCatalog() {
           </div>
           <div class="ducat-card-badges">
             <span class="ducat-badge ducat-val-badge">
-              <img class="currency-ic ducat-ic" src="assets/icons/ducats.png" alt="Dukaten">
-              <b>${it.ducats}</b> <small>Duk.</small>
+              <img class="currency-ic ducat-ic" src="assets/icons/ducats.png" alt="Ducats">
+              <b>${it.ducats}</b> <small>duc.</small>
             </span>
             ${priceHtml}
             ${adviceHtml}
@@ -2504,9 +2657,9 @@ function renderDucatsCatalog() {
 
         <div class="ducat-card-right">
           <div class="ducat-card-counter">
-            <button class="ducat-btn-cnt" data-dec="${esc(it.slug)}" title="Menge verringern">-</button>
+            <button class="ducat-btn-cnt" data-dec="${esc(it.slug)}" title="Decrease quantity">-</button>
             <span class="ducat-cnt-num ${qty > 0 ? 'active' : ''}">${qty}${it.count != null ? `<small>/${it.count}</small>` : ''}</span>
-            <button class="ducat-btn-cnt" data-inc="${esc(it.slug)}" title="Menge erhöhen">+</button>
+            <button class="ducat-btn-cnt" data-inc="${esc(it.slug)}" title="Increase quantity">+</button>
           </div>
           ${it.count != null && it.count > 0 ? `
             <button class="btn-max-cnt ${qty === it.count ? 'is-max' : ''}" data-max="${esc(it.slug)}" title="Auf maximale Inventarmenge setzen">
@@ -2664,20 +2817,20 @@ let invSection = 'relics';
 let invTier = 'all';        // Aera-Filter, nur im Relikt-Bereich
 
 const QUELLEN = {
-  api:        { label: 'Live-Abruf aus dem Spiel', stale: false },
+  api:        { label: 'Live read from the game', stale: false },
   alecaframe: { label: 'AlecaFrame-Datei (Behelf)', stale: true }
 };
 
 /** "vor 3 Tagen" statt eines nackten Zeitstempels. */
 function relativeAge(ts) {
-  if (!ts) return 'unbekannt';
+  if (!ts) return 'unknown';
   const min = Math.round((Date.now() - ts) / 60000);
-  if (min < 2) return 'gerade eben';
-  if (min < 60) return `vor ${min} Minuten`;
+  if (min < 2) return 'just now';
+  if (min < 60) return `${min} minutes ago`;
   const h = Math.round(min / 60);
-  if (h < 24) return `vor ${h} Stunde${h === 1 ? '' : 'n'}`;
+  if (h < 24) return `${h} hour${h === 1 ? '' : 's'} ago`;
   const d = Math.round(h / 24);
-  return `vor ${d} Tag${d === 1 ? '' : 'en'}`;
+  return `${d} day${d === 1 ? '' : 's'} ago`;
 }
 
 async function loadInventoryTab() {
@@ -2695,14 +2848,14 @@ function showInventoryState(code, text) {
   box.classList.remove('hidden');
 
   const erklaerung = code === 'empty'
-    ? 'Es liegen noch keine Inventardaten vor. Starte Warframe, logge dich ein und '
-    + 'drücke auf „Inventar abrufen“ – die Zugangsdaten werden dabei nur aus dem '
-    + 'laufenden Spiel gelesen und nirgends gespeichert.'
+    ? 'There is no inventory data yet. Start Warframe, log in and '
+    + 'press "Fetch inventory" — the credentials are only read from the '
+    + 'running game and are never stored.'
     : text;
 
   box.innerHTML = `
     <div class="inv-state-icon">${code === 'rate_limited' ? Icon.clock(30) : Icon.warning(30)}</div>
-    <b>${esc(code === 'empty' ? 'Noch kein Inventar geladen' : 'Abruf nicht möglich')}</b>
+    <b>${esc(code === 'empty' ? 'No inventory loaded yet' : 'Cannot fetch right now')}</b>
     <p>${esc(erklaerung)}</p>`;
 }
 
@@ -2725,8 +2878,8 @@ function renderInventory() {
   if (refreshBtn) {
     refreshBtn.classList.toggle('is-gated', !d.gate.allowed);
     refreshBtn.title = d.gate.allowed
-      ? `${q.label} · Stand ${relativeAge(d.fetchedAt)}`
-      : `Nächster Abruf in ${d.gate.waitText}`;
+      ? `${q.label} · as of ${relativeAge(d.fetchedAt)}`
+      : `Next fetch in ${d.gate.waitText}`;
   }
 
   /* Ein Abruf, der wegen der Drosselung nicht stattgefunden hat, darf nicht
@@ -2739,7 +2892,7 @@ function renderInventory() {
      zu setzen laedt dazu ein, sie fuer den aktuellen Kontostand zu halten -
      deshalb bei veralteten Daten gedaempft, gestrichelt und mit Datum am Label. */
   const stand = d.fetchedAt
-    ? new Date(d.fetchedAt).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })
+    ? new Date(d.fetchedAt).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })
     : null;
 
   /* Waehrungen tragen die offiziellen Spielbilder statt Vektorglyphen: Credits,
@@ -2748,15 +2901,15 @@ function renderInventory() {
   $('inv-currencies').className = 'inv-currencies' + (q.stale ? ' is-stale' : '');
   $('inv-currencies').innerHTML = [
     ['Credits', d.currencies.credits, 'credits'],
-    ['Platin', d.currencies.platinum, 'platinum'],
+    ['Platinum', d.currencies.platinum, 'platinum'],
     ['Endo', d.currencies.endo, 'endo'],
-    ['Dukaten', d.currencies.ducats, 'ducats']
+    ['Ducats', d.currencies.ducats, 'ducats']
   ].map(([label, value, icon]) => `
     <div class="inv-cur">
       <img class="inv-cur-ic" src="assets/icons/currency/${icon}.png" alt="">
       <div>
         <b>${nf(value)}</b>
-        <span>${label}${q.stale && stand ? ' · Stand ' + esc(stand) : ''}</span>
+        <span>${label}${q.stale && stand ? ' · as of ' + esc(stand) : ''}</span>
       </div>
     </div>`).join('');
 
@@ -2802,7 +2955,7 @@ function renderInvTierFilter(all) {
   box.classList.remove('hidden');
   box.innerHTML =
     `<button class="tier-chip ${invTier === 'all' ? 'active' : ''}" data-tier="all">
-       Alle <span>${nf(total)}</span>
+       All <span>${nf(total)}</span>
      </button>` +
     tiers.map(t => `
       <button class="tier-chip tier-${t.toLowerCase()} ${invTier === t ? 'active' : ''}" data-tier="${t}">
@@ -2822,7 +2975,7 @@ function renderInventorySets(sets) {
   if (!container) return;
 
   if (!sets.length) {
-    container.innerHTML = `<div class="empty" style="grid-column: 1 / -1;">Keine passenden Prime-Sets gefunden.</div>`;
+    container.innerHTML = `<div class="empty" style="grid-column: 1 / -1;">No matching prime sets found.</div>`;
     return;
   }
 
@@ -2838,7 +2991,7 @@ function renderInventorySets(sets) {
         : (p.count > 0 ? '×' + p.count : '–');
 
       return `
-      <div class="set-part ${hasEnough ? 'has' : (isPartial ? 'partial' : 'missing')}" title="${esc(p.name)} · ${req > 1 ? req + 'x benötigt · ' : ''}${p.ducats} Dukaten${p.price ? ' · ' + p.price.min + 'p' : ''}">
+      <div class="set-part ${hasEnough ? 'has' : (isPartial ? 'partial' : 'missing')}" title="${esc(p.name)} · ${req > 1 ? req + 'x needed · ' : ''}${p.ducats} ducats${p.price ? ' · ' + p.price.min + 'p' : ''}">
         <img class="set-part-img" src="${esc(p.image || '')}" alt=""
              onerror="this.style.visibility='hidden'">
         <span class="set-part-name">${esc(p.shortName)}</span>
@@ -2868,9 +3021,9 @@ function renderInventorySets(sets) {
         </div>
 
         <div class="set-foot">
-          <span class="set-val" title="Dukaten für alle deine Teile dieses Sets, Duplikate mitgezählt">
-            <img class="currency-ic ducat-ic" src="assets/icons/ducats.png" alt="Dukaten">
-            <b>${nf(s.ownedDucats)}</b> <small>Dukaten</small>
+          <span class="set-val" title="Ducats for every part you own of this set, duplicates included">
+            <img class="currency-ic ducat-ic" src="assets/icons/ducats.png" alt="Ducats">
+            <b>${nf(s.ownedDucats)}</b> <small>ducats</small>
           </span>
           <span class="set-val">
             <img class="currency-ic" src="assets/icons/currency/platinum.png" alt="Platin">
@@ -2982,13 +3135,13 @@ function renderInventoryGrid() {
 
   const total = d.totals[invSection] || { arten: all.length, stueck: 0 };
   const alt = (QUELLEN[d.source] || QUELLEN.api).stale && d.fetchedAt
-    ? ` · Stand ${new Date(d.fetchedAt).toLocaleDateString('de-DE')}`
+    ? ` · as of ${new Date(d.fetchedAt).toLocaleDateString('en-GB')}`
     : '';
   $('inv-meta').innerHTML = (query
-    ? `${nf(list.length)} von ${nf(all.length)} Einträgen`
+    ? `${nf(list.length)} of ${nf(all.length)} entries`
     : invSection === 'sets'
-      ? `${nf(total.arten)} Sets · ${nf(total.complete || 0)} vollständig`
-      : `${nf(total.arten)} Arten · ${nf(total.stueck)} Stück insgesamt`) + esc(alt);
+      ? `${nf(total.arten)} sets · ${nf(total.complete || 0)} complete`
+      : `${nf(total.arten)} kinds · ${nf(total.stueck)} items in total`) + esc(alt);
 
   if (invSection === 'sets') {
     currentInvList = list;
@@ -2998,7 +3151,7 @@ function renderInventoryGrid() {
 
   if (!list.length) {
     currentInvList = [];
-    $('inv-grid').innerHTML = `<div class="empty">Nichts gefunden für „${esc(query)}“.</div>`;
+    $('inv-grid').innerHTML = `<div class="empty">Nothing found for “${esc(query)}”.</div>`;
     return;
   }
 
@@ -3076,7 +3229,7 @@ function modTile(e, i) {
   const rarity = String(e.rarity || 'common').toLowerCase();
 
   return `
-    <div class="mod-slot" ${e.resolved ? `data-idx="${i}" title="Datenblatt öffnen"` : ''}>
+    <div class="mod-slot" ${e.resolved ? `data-idx="${i}" title="Open data sheet"` : ''}>
       <div class="mod-card rar-${esc(rarity)}">
         <div class="mod-edge"></div>
         <div class="mod-inner">
@@ -3110,14 +3263,14 @@ function modTile(e, i) {
  */
 function arcaneTile(e, i) {
   return `
-    <div class="arc-tile" ${e.resolved ? `data-idx="${i}" title="Datenblatt öffnen"` : ''}>
+    <div class="arc-tile" ${e.resolved ? `data-idx="${i}" title="Open data sheet"` : ''}>
       <div class="arc-art">
         <img src="${esc(e.card || e.image)}" alt="" loading="lazy">
         <span class="mod-count">${nf(e.count)}</span>
       </div>
       <b>${esc(e.name)}</b>
       ${e.ranks?.length ? `<span class="inv-tag">${e.ranks.map(r =>
-        `Rang ${r.rank}${r.count > 1 ? '×' + r.count : ''}`).join(', ')}</span>` : ''}
+        `Rank ${r.rank}${r.count > 1 ? '×' + r.count : ''}`).join(', ')}</span>` : ''}
     </div>`;
 }
 
@@ -3127,7 +3280,7 @@ function plainRow(e, i) {
   const clickable = invSection === 'relics';
   return `
     <div class="inv-item ${clickable ? 'is-clickable' : ''}"
-         ${clickable ? `data-idx="${i}" title="Datenblatt öffnen"` : `title="${esc(e.uniqueName)}"`}>
+         ${clickable ? `data-idx="${i}" title="Open data sheet"` : `title="${esc(e.uniqueName)}"`}>
       <img class="mat-icon" src="${esc(e.image)}" alt="" loading="lazy">
       <div class="inv-item-body">
         <b>${esc(e.name)}</b>
@@ -3168,10 +3321,10 @@ async function openUpgradeModal(entry) {
     content.innerHTML = `
       <div class="im-header">
         <div class="im-title-group"><h2>${esc(entry.name)}</h2></div>
-        <button class="modal-close-icon" id="up-close" title="Schließen">&times;</button>
+        <button class="modal-close-icon" id="up-close" title="Close">&times;</button>
       </div>
       <div class="im-scroll-body">
-        <p class="up-empty">${esc(res.error || 'Datenblatt konnte nicht geladen werden.')}</p>
+        <p class="up-empty">${esc(res.error || 'Could not load the data sheet.')}</p>
       </div>`;
     $('up-close').onclick = closeUpgradeModal;
     return;
@@ -3198,9 +3351,9 @@ const wikiLink = name =>
 
 /** Herkunft der Fundorte - wer die Zahlen liest, soll wissen, woher sie kommen. */
 const UPGRADE_ORIGIN = {
-  de:           'Fundorte aus den offiziellen Droptabellen von Digital Extremes.',
-  warframestat: 'Fundorte über warframestat.us – Angebote, die DE nicht als Drop führt.',
-  rule:         'Diese Karte fällt nirgends: die Einordnung stammt aus dem Pfad, in den DE sie sortiert hat.'
+  de:           'Drop locations from the official Digital Extremes drop tables.',
+  warframestat: 'Locations via warframestat.us — offers DE does not list as drops.',
+  rule:         'This card does not drop anywhere: the classification comes from the path DE filed it under.'
 };
 
 function renderUpgradeModal() {
@@ -3226,33 +3379,33 @@ function renderUpgradeModal() {
      die erste Frage beim Bauen, deshalb steht es unter dem Namen und nicht
      erst unten in den Werten. */
   const subline = [
-    d.compat ? `Passt auf <b>${esc(d.compat)}</b>` : null,
-    d.polarity ? `Polarität <b class="up-pol">${Icon.polarity(d.polarity.glyph, 12)}${esc(d.polarity.label)}</b>` : null
+    d.compat ? `Fits <b>${esc(d.compat)}</b>` : null,
+    d.polarity ? `Polarity <b class="up-pol">${Icon.polarity(d.polarity.glyph, 12)}${esc(d.polarity.label)}</b>` : null
   ].filter(Boolean).join(' · ');
 
   /* Kosten der gewaehlten Stufe. Mods zahlen Kapazitaet und Endo, Arcanes
      bezahlen mit sich selbst - dort steht die Zahl der Exemplare. */
   const rankCost = d.kind === 'arcane'
-    ? `<span>Braucht <b>${nf(row.copies)}</b> Exemplare</span>`
+    ? `<span>Needs <b>${nf(row.copies)}</b> copies</span>`
     : [
-        `<span>${d.isAura ? 'Gibt' : 'Kostet'} <b>${nf(row.drain)}</b> Kapazität</span>`,
+        `<span>${d.isAura ? 'Grants' : 'Costs'} <b>${nf(row.drain)}</b> capacity</span>`,
         row.endo ? `<span><b>${nf(row.endo)}</b> Endo bis hierher</span>` : ''
       ].join('');
 
   const tiles = [
-    ['Max-Rang', d.maxRank],
+    ['Max rank', d.maxRank],
     d.kind === 'arcane'
-      ? ['Exemplare für Max', nf(d.copiesToMax)]
-      : [d.isAura ? 'Kapazität bei Max' : 'Kosten bei Max', nf(d.maxDrain)],
+      ? ['Copies to max', nf(d.copiesToMax)]
+      : [d.isAura ? 'Capacity at max' : 'Drain at max', nf(d.maxDrain)],
     d.kind === 'arcane' ? null : ['Endo bis Max', nf(d.endoToMax)],
     /* Dritter Eintrag ist fertiges Markup - nur die Polaritaet braucht es,
        weil ihr Zeichen eine Vektorgrafik ist und kein Buchstabe. */
     d.polarity
-      ? ['Polarität', d.polarity.label,
+      ? ['Polarity', d.polarity.label,
          `<span class="up-pol">${Icon.polarity(d.polarity.glyph, 13)}${esc(d.polarity.label)}</span>`]
       : null,
     d.rarityLabel ? ['Seltenheit', d.rarityLabel] : null,
-    d.compat ? ['Kompatibel', d.compat] : null
+    d.compat ? ['Compatible with', d.compat] : null
   ].filter(Boolean);
 
   const wikiUrl = wikiLink(d.name);
@@ -3272,31 +3425,31 @@ function renderUpgradeModal() {
           ${subline ? `<div class="up-subline">${subline}</div>` : ''}
         </div>
       </div>
-      <button class="modal-close-icon" id="up-close" title="Schließen">&times;</button>
+      <button class="modal-close-icon" id="up-close" title="Close">&times;</button>
     </div>
 
     <div class="im-scroll-body">
       ${owned ? `
         <div class="im-section">
-          <div class="im-section-title">Im Besitz</div>
+          <div class="im-section-title">Owned</div>
           <div class="up-owned">
             <b>${nf(owned.count)}</b>
-            <span>${owned.count === 1 ? 'Exemplar' : 'Exemplare'}</span>
+            <span>${owned.count === 1 ? 'copy' : 'copies'}</span>
             ${owned.ranks.length ? `<span class="up-owned-ranks">${owned.ranks.map(r =>
-              `Rang ${r.rank}${r.count > 1 ? ' ×' + r.count : ''}`).join(' · ')}</span>` : ''}
+              `Rank ${r.rank}${r.count > 1 ? ' ×' + r.count : ''}`).join(' · ')}</span>` : ''}
             ${d.kind === 'arcane' && d.copiesToMax && owned.copies < d.copiesToMax
-              ? `<span class="up-owned-ranks">noch ${nf(d.copiesToMax - owned.copies)} bis Rang ${d.maxRank}</span>`
+              ? `<span class="up-owned-ranks">${nf(d.copiesToMax - owned.copies)} more to reach rank ${d.maxRank}</span>`
               : ''}
           </div>
         </div>` : ''}
 
       <div class="im-section">
-        <div class="im-section-title">Wirkung</div>
+        <div class="im-section-title">Effect</div>
         <div class="up-ranks">
           ${d.ranks.map(r => `
             <button class="up-rank ${r.rank === upgradeRank ? 'active' : ''} ${ownedRanks.has(r.rank) ? 'has' : ''}"
                     data-rank="${r.rank}"
-                    title="${ownedRanks.has(r.rank) ? 'Rang ' + r.rank + ' im Besitz' : 'Rang ' + r.rank}">
+                    title="${ownedRanks.has(r.rank) ? 'Rank ' + r.rank + ' owned' : 'Rank ' + r.rank}">
               ${r.rank}
             </button>`).join('')}
         </div>
@@ -3306,7 +3459,7 @@ function renderUpgradeModal() {
                Einzelne Kaesten je Zeile reissen zusammengehoerige Angaben
                auseinander ("On Energy Pickup:" stuende dann allein). */
             ? `<div class="up-stat">${row.stats.map(esc).join('<br>')}</div>`
-            : '<div class="up-empty">Für diesen Rang nennt der Export keine Werte.</div>'}
+            : '<div class="up-empty">The export lists no values for this rank.</div>'}
         </div>
         <div class="up-rank-cost">${rankCost}</div>
         ${d.description.length ? `
@@ -3327,7 +3480,7 @@ function renderUpgradeModal() {
       ${d.set ? `
         <div class="im-section">
           <div class="im-section-title">Set-Bonus · ${esc(d.set.name)}</div>
-          <p class="up-set-hint">Jede getragene Karte des Sets verstärkt alle anderen.</p>
+          <p class="up-set-hint">Every equipped card of the set strengthens all the others.</p>
           <div class="up-set">
             ${d.set.members.map(m => `
               <span class="up-set-part ${m === d.name ? 'is-self' : ''}">${esc(m)}</span>`).join('')}
@@ -3335,12 +3488,12 @@ function renderUpgradeModal() {
         </div>` : ''}
 
       <div class="im-section">
-        <div class="im-section-title">Woher bekommt man das?</div>
+        <div class="im-section-title">Where do I get this?</div>
         ${renderUpgradeSources(d)}
         <div class="up-src-foot">
           ${d.sources.origin ? `<span>${esc(UPGRADE_ORIGIN[d.sources.origin] || '')}</span>` : ''}
           <a class="up-wiki" href="${esc(wikiUrl)}" target="_blank" rel="noreferrer">
-            ${Icon.link(13)}<span>Im Wiki nachschlagen</span>
+            ${Icon.link(13)}<span>Look it up in the wiki</span>
           </a>
         </div>
       </div>
@@ -3365,7 +3518,7 @@ function renderUpgradeSources(d) {
   if (!groups.length) {
     return `<div class="up-empty">
       ${esc(d.dropNote || 'In den Droptabellen steht zu dieser Karte kein Fundort. '
-        + 'Das trifft vor allem zeitlich begrenzte Belohnungen – im Handel gibt es sie trotzdem.')}
+        + 'That mostly affects time-limited rewards — you can still trade for them.')}
     </div>`;
   }
 
@@ -3378,7 +3531,7 @@ function renderUpgradeSources(d) {
           ${e.detail ? `<span class="up-src-detail">${esc(e.detail)}</span>` : ''}
           ${e.chanceText ? `<span class="up-src-chance">${esc(e.chanceText)}</span>` : ''}
         </div>`).join('')}
-      ${g.hidden ? `<div class="up-src-more">… und ${nf(g.hidden)} weitere</div>` : ''}
+      ${g.hidden ? `<div class="up-src-more">… and ${nf(g.hidden)} more</div>` : ''}
     </div>`).join('');
 }
 
@@ -3392,7 +3545,7 @@ let relicData = null;
 let relicState = 'Intact';
 
 /* Seltenheit der Belohnung - dieselben drei Stufen wie im Auswahlbildschirm. */
-const REWARD_RARITY = { Common: 'Gewöhnlich', Uncommon: 'Ungewöhnlich', Rare: 'Selten' };
+const REWARD_RARITY = { Common: 'Common', Uncommon: 'Uncommon', Rare: 'Rare' };
 
 async function openRelicModal(entry) {
   if (!entry?.uniqueName) return;
@@ -3408,10 +3561,10 @@ async function openRelicModal(entry) {
     content.innerHTML = `
       <div class="im-header">
         <div class="im-title-group"><h2>${esc(entry.name)}</h2></div>
-        <button class="modal-close-icon" id="rl-close" title="Schließen">&times;</button>
+        <button class="modal-close-icon" id="rl-close" title="Close">&times;</button>
       </div>
       <div class="im-scroll-body">
-        <p class="up-empty">${esc(res.error || 'Belohnungen konnten nicht geladen werden.')}</p>
+        <p class="up-empty">${esc(res.error || 'Could not load the rewards.')}</p>
       </div>`;
     $('rl-close').onclick = closeRelicModal;
     return;
@@ -3454,20 +3607,20 @@ function renderRelicModal() {
           </div>
           <h2>${esc(d.displayName)}</h2>
           <div class="up-subline">
-            ${d.total ? `<b>${nf(d.total)}</b> im Bestand` : 'Nicht im Bestand'}
-            ${d.vaulted ? ' · fällt zurzeit nirgends' : ''}
+            ${d.total ? `<b>${nf(d.total)}</b> in stock` : 'Not in stock'}
+            ${d.vaulted ? ' · currently vaulted' : ''}
           </div>
         </div>
       </div>
-      <button class="modal-close-icon" id="rl-close" title="Schließen">&times;</button>
+      <button class="modal-close-icon" id="rl-close" title="Close">&times;</button>
     </div>
 
     <div class="im-scroll-body">
       <div class="im-section">
-        <div class="im-section-title">Politur-Stufe</div>
+        <div class="im-section-title">Refinement</div>
         <p class="up-set-hint">
-          Alle vier Stufen zeigen dieselben sechs Belohnungen – nur die Chancen verschieben sich
-          zur seltenen hin.
+          All four refinement levels show the same six rewards — only the chances shift
+          towards the rare one.
         </p>
         <div class="rl-states">
           ${d.states.map(s => `
@@ -3480,7 +3633,7 @@ function renderRelicModal() {
 
       ${cur.rewards.length ? `
         <div class="im-section">
-          <div class="im-section-title">Belohnungen</div>
+          <div class="im-section-title">Rewards</div>
           <div class="rl-rewards">
             ${cur.rewards.map(r => `
               <div class="rl-reward rar-${esc(String(r.rarity || '').toLowerCase())}">
@@ -3495,7 +3648,7 @@ function renderRelicModal() {
                   ${r.plat != null ? nf(r.plat) : '–'}
                 </span>
                 <span class="rl-val">
-                  <img class="currency-ic ducat-ic" src="assets/icons/ducats.png" alt="Dukaten">
+                  <img class="currency-ic ducat-ic" src="assets/icons/ducats.png" alt="Ducats">
                   ${r.ducats != null ? nf(r.ducats) : '–'}
                 </span>
               </div>`).join('')}
@@ -3503,43 +3656,43 @@ function renderRelicModal() {
         </div>
 
         <div class="im-section">
-          <div class="im-section-title">Was ein Öffnen im Schnitt bringt</div>
+          <div class="im-section-title">What one crack returns on average</div>
           <div class="im-stats-grid">
             <div class="im-stat-tile">
-              <span class="st-label">Platin${unpriced ? ' (mindestens)' : ''}</span>
+              <span class="st-label">Platinum${unpriced ? ' (at least)' : ''}</span>
               <b class="st-val">${nf(cur.expPlat)}</b>
             </div>
             <div class="im-stat-tile">
-              <span class="st-label">Dukaten</span>
+              <span class="st-label">Ducats</span>
               <b class="st-val">${nf(cur.expDucats)}</b>
             </div>
           </div>
           ${unpriced ? `
             <p class="up-set-hint" style="margin-top:9px;">
-              Für ${Math.round((1 - cur.pricedShare) * 100)} % der Chance liegt kein Platinpreis vor –
-              der Platinwert ist deshalb eine Untergrenze, keine Schätzung.
+              No platinum price exists for ${Math.round((1 - cur.pricedShare) * 100)}% of the drop chance —
+              so the platinum value is a lower bound, not an estimate.
             </p>` : ''}
         </div>
       ` : `
         <div class="im-section">
-          <div class="im-section-title">Belohnungen</div>
+          <div class="im-section-title">Rewards</div>
           <div class="up-empty">
-            Für dieses Relikt steht keine Belohnungstabelle bereit. Vaulted Relikte führt DE
-            nicht mehr auf – die Belohnungen bleiben dieselben, nachschlagen lässt sich das
+            No reward table is available for this relic. DE no longer lists vaulted relics —
+            the rewards stay the same, but they can only be looked up
             aber nur im Wiki.
           </div>
         </div>`}
 
       <div class="im-section">
-        <div class="im-section-title">Woher bekommt man das?</div>
+        <div class="im-section-title">Where do I get this?</div>
         ${d.vaulted
-          ? `<div class="up-empty">Dieses Relikt ist im Tresor – es fällt zurzeit nirgends.
-             Es bleibt der Handel oder das Warten auf eine Unvaulting.</div>`
+          ? `<div class="up-empty">This relic is vaulted — it does not drop anywhere right now.
+             That leaves trading for it, or waiting for an unvaulting.</div>`
           : renderUpgradeSources(d)}
         <div class="up-src-foot">
           ${d.sources?.origin ? `<span>${esc(UPGRADE_ORIGIN[d.sources.origin] || '')}</span>` : ''}
           <a class="up-wiki" target="_blank" rel="noreferrer" href="${esc(wikiLink(d.key))}">
-            ${Icon.link(13)}<span>Im Wiki nachschlagen</span>
+            ${Icon.link(13)}<span>Look it up in the wiki</span>
           </a>
         </div>
       </div>
@@ -3558,7 +3711,7 @@ function renderRelicModal() {
 /** Chancen kommen als Zahl - hier bekommen sie Komma und Prozentzeichen. */
 const fmtChance = v => v == null
   ? '–'
-  : `${Number(v).toLocaleString('de-DE', { maximumFractionDigits: 2 })} %`;
+  : `${Number(v).toLocaleString('en-GB', { maximumFractionDigits: 2 })}%`;
 
 $('relic-modal').onclick = e => {
   if (e.target === $('relic-modal')) closeRelicModal();
@@ -3569,12 +3722,12 @@ if ($('inv-search')) $('inv-search').oninput = () => renderInventoryGrid();
 if ($('btn-inv-refresh')) $('btn-inv-refresh').onclick = async () => {
   const btn = $('btn-inv-refresh');
   btn.disabled = true;
-  btn.innerHTML = Icon.refresh(15) + '<span>Suche im Spielspeicher …</span>';
+  btn.innerHTML = Icon.refresh(15) + '<span>Searching game memory …</span>';
 
   const res = await window.api.refreshInventory();
 
   btn.disabled = false;
-  btn.innerHTML = Icon.refresh(15) + '<span>Inventar abrufen</span>';
+  btn.innerHTML = Icon.refresh(15) + '<span>Fetch inventory</span>';
 
   if (res.ok) { inventoryData = res.data; renderInventory(); }
   else showInventoryState(res.code, res.error);
@@ -3607,18 +3760,18 @@ const FISSURE_MISSION_TYPES = [
   { key: 'Void Flood', label: 'Void-Flut (Flood)' },
   { key: 'Void Armageddon', label: 'Void-Armageddon' },
   { key: 'Capture', label: 'Gefangennahme (Capture)' },
-  { key: 'Extermination', label: 'Auslöschung (Exterminate)' },
-  { key: 'Survival', label: 'Überleben (Survival)' },
+  { key: 'Extermination', label: 'Exterminate' },
+  { key: 'Survival', label: 'Survival' },
   { key: 'Defense', label: 'Verteidigung (Defense)' },
   { key: 'Mobile Defense', label: 'Mobile Verteidigung' },
-  { key: 'Disruption', label: 'Störung (Disruption)' },
+  { key: 'Disruption', label: 'Disruption' },
   { key: 'Excavation', label: 'Ausgrabung (Excavation)' },
   { key: 'Alchemy', label: 'Alchemie (Alchemy)' },
   { key: 'Rescue', label: 'Rettung (Rescue)' },
   { key: 'Spy', label: 'Spionage (Spy)' },
   { key: 'Interception', label: 'Abfangen (Interception)' },
   { key: 'Sabotage', label: 'Sabotage' },
-  { key: 'Skirmish', label: 'Scharmützel (Railjack)' },
+  { key: 'Skirmish', label: 'Skirmish (Railjack)' },
   { key: 'Volatile', label: 'Volatile (Railjack)' },
   { key: 'Orphix', label: 'Orphix (Railjack)' }
 ];
@@ -3640,7 +3793,7 @@ function updateNotificationButtonState() {
   const active = !!(notificationSettings?.enabled && notificationSettings?.fissures?.enabled);
   btn.classList.toggle('is-active', active);
   badge.classList.toggle('is-off', !active);
-  badge.textContent = active ? 'Aktiv' : 'Aus';
+  badge.textContent = active ? 'On' : 'Off';
 }
 
 async function loadNotificationSettings() {
@@ -3648,7 +3801,7 @@ async function loadNotificationSettings() {
     notificationSettings = await window.api.getNotifications();
     updateNotificationButtonState();
   } catch (err) {
-    console.error('Fehler beim Laden der Benachrichtigungseinstellungen:', err);
+    console.error('Could not load the notification settings:', err);
   }
 }
 
@@ -3682,7 +3835,7 @@ function updateModalMatchesHint() {
   if (!hintEl) return;
 
   if (!worldStateCache?.fissures?.length) {
-    hintEl.innerHTML = '<span>Keine Worldstate-Risse im Cache</span>';
+    hintEl.innerHTML = '<span>No world-state fissures in the cache</span>';
     return;
   }
 
@@ -3694,9 +3847,9 @@ function updateModalMatchesHint() {
     hintEl.innerHTML = '<span style="color: var(--text-3);">Benachrichtigungen deaktiviert</span>';
   } else if (matches.length) {
     const topMatches = matches.slice(0, 3).map(m => `<b>${esc(m.tier)} ${esc(m.missionType)}</b> (${esc(m.node)})`).join(', ');
-    hintEl.innerHTML = `<span class="notif-hit-ic">${Icon.target(13)}</span><span><b>${matches.length} passende Risse</b> jetzt aktiv: ${topMatches}</span>`;
+    hintEl.innerHTML = `<span class="notif-hit-ic">${Icon.target(13)}</span><span><b>${matches.length} matching fissures</b> active now: ${topMatches}</span>`;
   } else {
-    hintEl.innerHTML = '<span>Aktuell <b>keine Treffer</b> bei den gewählten Filtern</span>';
+    hintEl.innerHTML = '<span>Currently <b>no matches</b> for the selected filters</span>';
   }
 }
 
@@ -3831,7 +3984,7 @@ $('btn-notif-test')?.addEventListener('click', async () => {
   }
   setTimeout(() => {
     btn.disabled = false;
-    btn.innerHTML = Icon.bell(14) + ' <span>Test senden</span>';
+    btn.innerHTML = Icon.bell(14) + ' <span>Send a test</span>';
   }, 1200);
 });
 
@@ -3859,7 +4012,7 @@ function showInAppToast({ title, body, fissure }) {
       <b>${esc(title)}</b>
       <p>${esc(body).replace(/\n/g, '<br>')}</p>
     </div>
-    <button class="toast-close" title="Schließen">&times;</button>
+    <button class="toast-close" title="Close">&times;</button>
   `;
 
   const remove = () => {
@@ -3961,7 +4114,7 @@ function renderHotkeys() {
 
     if (capturingHotkey === name) {
       btn.classList.add('capturing');
-      btn.textContent = 'Taste drücken …';
+      btn.textContent = 'Press a key …';
       continue;
     }
 
@@ -3985,7 +4138,7 @@ function setHotkeyStatus(kind, text) {
 function startHotkeyCapture(name) {
   capturingHotkey = name;
   renderHotkeys();
-  setHotkeyStatus('', 'Kombination drücken — mindestens Strg, Alt oder Shift muss dabei sein. Esc bricht ab.');
+  setHotkeyStatus('', 'Press a combination — it must include at least Ctrl, Alt or Shift. Esc cancels.');
 }
 
 function cancelHotkeyCapture() {
@@ -4003,8 +4156,8 @@ async function saveHotkey(name, accelerator) {
   const rejected = ((res && res.failed) || []).some(f => f.name === name);
   if (rejected) {
     setHotkeyStatus('warn',
-      `${accelerator} ließ sich nicht registrieren — die Kombination ist systemweit `
-      + `schon vergeben (häufig Discord, GeForce Experience oder ein anderes Overlay). `
+      `${accelerator} could not be registered — that combination is already taken `
+      + `system-wide (often Discord, GeForce Experience or another overlay). `
       + `Es gilt weiter ${hotkeyState[name]}.`);
   } else {
     setHotkeyStatus('ok', `${HOTKEY_LABELS[name]}: ${accelerator}`);
@@ -4087,6 +4240,29 @@ $('set-open-fissure-notif')?.addEventListener('click', () => {
   openNotificationModal();
 });
 
+/* Der Schalter fuer den Speicherzugriff. Die Rueckmeldung steht direkt
+   darunter statt in einem Hinweisfenster: wer eine Erlaubnis umlegt, soll an
+   Ort und Stelle sehen, was jetzt gilt. */
+$('set-inventory-scan')?.addEventListener('change', async e => {
+  const on = e.target.checked;
+  const note = $('inv-scan-status');
+  try {
+    await window.api.setInventoryScan(on);
+    if (note) {
+      note.textContent = on
+        ? 'On. The Inventory tab can now read the running game when you press "Fetch inventory".'
+        : 'Off. Argus will not touch the game process.';
+      note.classList.remove('hidden');
+    }
+  } catch (err) {
+    e.target.checked = !on;   // zurueckstellen, sonst zeigt der Schalter etwas Falsches
+    if (note) {
+      note.textContent = 'Could not save that: ' + err.message;
+      note.classList.remove('hidden');
+    }
+  }
+});
+
 async function loadSettingsTab() {
   try {
     const res = await window.api.getSettings();
@@ -4096,8 +4272,16 @@ async function loadSettingsTab() {
       renderRelicToggle(res.relicAutoShow, res.relicScan, res.relicTags);
     }
   } catch (err) {
-    setHotkeyStatus('warn', 'Einstellungen konnten nicht gelesen werden: ' + err.message);
+    setHotkeyStatus('warn', 'Could not read the settings: ' + err.message);
   }
+
+  /* Aus derselben Quelle wie der Setup-Screen, damit beide nie
+     Unterschiedliches ueber denselben Schalter behaupten. */
+  try {
+    const setup = await window.api.getSetupState();
+    if ($('set-inventory-scan')) $('set-inventory-scan').checked = setup.inventoryScan === true;
+  } catch { /* Schalter bleibt, wie er steht */ }
+
   renderHotkeys();
   renderNotifToggles();
 }

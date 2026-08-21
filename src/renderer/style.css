@@ -5147,3 +5147,110 @@ body.tags-window {
    Schrift daneben. */
 .up-pol { display: inline-flex; align-items: center; gap: 5px; }
 .up-pol .pol-glyph { color: var(--gold); }
+
+/* ---------- Ersteinrichtung ----------
+   Eine einzelne, mittige Karte statt eines Assistenten mit Schritten: es gibt
+   genau ein Pflichtfeld. Mehrere Seiten wuerden nur laenger wirken lassen,
+   was in zehn Sekunden erledigt ist. */
+.setup {
+  flex: 1; display: flex; justify-content: center;
+  padding: 28px 24px; overflow-y: auto;
+}
+.setup.hidden { display: none; }
+
+.setup-card {
+  width: 100%; max-width: 470px; margin: auto;   /* zentriert, wenn Platz ist - sonst wird gescrollt */
+  background: var(--surface); border-radius: var(--r-lg);
+  padding: 30px 36px 26px; box-shadow: var(--shadow-lg);
+}
+.setup-logo { display: block; width: 40px; height: 40px; margin-bottom: 14px; opacity: .9; }
+.setup-card h1 { font-size: 25px; font-weight: 600; letter-spacing: -.3px; }
+.setup-lead { color: var(--text-2); font-size: 14px; line-height: 1.55; margin-top: 8px; }
+
+.setup-label {
+  display: block; margin: 20px 0 7px;
+  font-size: 12px; font-weight: 600; letter-spacing: .3px;
+  text-transform: uppercase; color: var(--text-3);
+}
+
+/* Die Kennung ist eine 24-stellige Hex-Folge - dieselbe Ziffernbreite macht
+   das Vergleichen mit der Quelle ueberhaupt erst zumutbar. */
+#setup-id { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; letter-spacing: .5px; }
+#setup-id.invalid { box-shadow: 0 0 0 2px rgba(255, 92, 92, .45); }
+
+.setup-error { margin-top: 8px; font-size: 13px; color: #ffb4b4; line-height: 1.5; }
+.setup-error.hidden { display: none; }
+
+.setup-help { margin-top: 12px; font-size: 13px; color: var(--text-2); }
+.setup-help summary {
+  cursor: pointer; color: var(--accent); font-weight: 550;
+  list-style: none; user-select: none;
+}
+.setup-help summary::-webkit-details-marker { display: none; }
+.setup-help summary::before { content: "› "; display: inline-block; transition: transform .18s var(--ease); }
+.setup-help[open] summary::before { content: "⌄ "; }
+.setup-help ol { margin: 10px 0 10px 18px; line-height: 1.75; }
+.setup-help code {
+  background: var(--surface-2); padding: 2px 6px; border-radius: 5px;
+  font-family: ui-monospace, Consolas, monospace; font-size: 12px;
+}
+.setup-note { margin-top: 10px; color: var(--text-3); font-size: 12px; line-height: 1.55; }
+
+/* Der Text steht bewusst vollstaendig neben dem Haken und nicht hinter einem
+   Hilfe-Symbol: eine Zustimmung, die man erst aufklappen muss, ist keine. */
+.setup-check {
+  display: flex; gap: 12px; margin-top: 20px; padding: 14px 16px;
+  background: var(--surface); border-radius: var(--r-sm); cursor: pointer;
+}
+.setup-check input { width: auto; margin-top: 3px; flex-shrink: 0; accent-color: var(--accent); }
+.setup-check span { font-size: 12.5px; line-height: 1.6; color: var(--text-3); }
+.setup-check strong { display: block; margin-bottom: 5px; font-size: 13.5px; color: var(--text-2); font-weight: 550; }
+
+.setup-go { width: 100%; margin-top: 20px; justify-content: center; padding: 13px; font-size: 14px; }
+
+.setup-status {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  margin-top: 18px; font-size: 13px; color: var(--text-3); text-align: center; line-height: 1.5;
+}
+.setup-status.hidden { display: none; }
+.setup-status .spinner { width: 15px; height: 15px; border-width: 2px; flex-shrink: 0; }
+
+/* ---------- Ersteinrichtung: Berechtigungsfrage ----------
+   Die vier Punkte stehen als Liste und nicht als Fliesstext: wer eine
+   Berechtigung erteilt, ueberfliegt sie: fett zuerst, Erklaerung dahinter.
+   Ein Absatz wuerde ungelesen weggeklickt. */
+.perm-list { list-style: none; margin: 22px 0 0; padding: 0; display: grid; gap: 14px; }
+.perm-list li {
+  position: relative; padding-left: 26px;
+  font-size: 12.5px; line-height: 1.6; color: var(--text-3);
+}
+/* Haken als Pseudoelement statt als Zeichen im Text - so bleibt der Text
+   beim Kopieren sauber und die Farbe folgt dem Zustand. */
+.perm-list li::before {
+  content: "✓"; position: absolute; left: 4px; top: 0;
+  color: var(--green); font-weight: 700; font-size: 13px;
+}
+.perm-list strong {
+  display: block; margin-bottom: 3px;
+  font-size: 13.5px; font-weight: 600; color: var(--text-2);
+}
+
+.perm-req {
+  margin-top: 20px; padding: 12px 14px;
+  background: var(--accent-sf); border-radius: var(--r-sm);
+  font-size: 12.5px; line-height: 1.55; color: var(--text-2);
+}
+
+/* Der Handweg ist eine Nebentuer, keine gleichrangige Wahl - deshalb als
+   Link und nicht als zweiter Knopf. Zwei gleich aussehende Knoepfe wuerden
+   die Entscheidung schwerer machen, als sie ist. */
+.setup-alt {
+  margin-top: 18px; text-align: center;
+  font-size: 12.5px; color: var(--text-3); line-height: 1.6;
+}
+.linkish {
+  background: none; border: none; padding: 0; cursor: pointer;
+  color: var(--accent); font: inherit; font-weight: 550; text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.linkish:hover { color: #66aeff; }

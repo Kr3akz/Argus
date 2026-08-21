@@ -49,3 +49,13 @@ npm-debug.log*
 .env.*
 *.pem
 *.key
+
+# ---------------------------------------------------------------------------
+# Ausnahme: build/ ist oben als Ausgabeordner gesperrt, enthaelt fuer
+# electron-builder aber die Bau-Ressourcen. Das Programmsymbol muss mit ins
+# Repository, sonst kann die Veroeffentlichung auf einem fremden Rechner
+# (GitHub Actions) kein Paket bauen.
+# ---------------------------------------------------------------------------
+!build/
+build/*
+!build/icon.png

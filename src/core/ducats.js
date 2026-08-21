@@ -21,21 +21,21 @@ export function getDucatsReferenceList() {
       rarity: 'Common (Bronze)',
       ducats: 15,
       badgeClass: 'common',
-      description: 'Häufigste Relikt-Belohnungen (15 / 25 Dukaten). Perfekt als „Prime Junk“ zum bedenkenlosen Eintauschen bei Baro Ki’Teer.',
-      examples: 'Fang Prime Klinge, Braton Prime Gehäuse, Paris Prime Sehne, Orthos Prime Griff'
+      description: 'The most common relic rewards (15 / 25 ducats). Perfect "prime junk" to trade in at Baro Ki\u2019Teer without a second thought.',
+      examples: 'Fang Prime Blade, Braton Prime Receiver, Paris Prime String, Orthos Prime Handle'
     },
     {
       rarity: 'Uncommon (Silber)',
       ducats: 45,
       badgeClass: 'uncommon',
-      description: 'Mittlere Relikt-Stufe (45 / 65 Dukaten). Hoher Dukaten-Ertrag pro Relikt.',
-      examples: 'Warframe-Chassis & Neuroptiken (die meisten Prime Frames), Waffen-Läufe'
+      description: 'Mid-tier relic rewards (45 / 65 ducats). A high ducat yield per relic.',
+      examples: 'Warframe chassis & neuroptics (most prime frames), weapon barrels'
     },
     {
       rarity: 'Rare (Gold)',
       ducats: 100,
       badgeClass: 'rare',
-      description: 'Seltene Gold-Drops (100 Dukaten). Vor dem Eintauschen prüfen, ob das Teil auf warframe.market viel Platin wert ist!',
+      description: 'Rare gold drops (100 ducats). Before trading one in, check whether it is worth a lot of platinum on warframe.market.',
       examples: 'Gauss Prime Systeme, Glaive Prime Klinge, Sevagoth Prime Blaupause'
     }
   ];
@@ -63,15 +63,15 @@ export function getRarity(ducats) {
  */
 export function getTradeAdvice(ducats, price) {
   if (!price || typeof price.min !== 'number' || price.min <= 0) {
-    return { advice: 'unknown', ratio: null, label: 'Preis unbekannt' };
+    return { advice: 'unknown', ratio: null, label: 'Price unknown' };
   }
   const ratio = +(ducats / price.min).toFixed(1);
   if (price.min >= 15 || ratio < 7.0) {
     return {
       advice: 'plat',
       ratio,
-      label: 'Platin-Verkauf',
-      reason: `${price.min}p Mindestpreis auf warframe.market`
+      label: 'Sell for platinum',
+      reason: `${price.min}p minimum price on warframe.market`
     };
   }
   if (ratio >= 10.0) {
@@ -79,14 +79,14 @@ export function getTradeAdvice(ducats, price) {
       advice: 'ducats',
       ratio,
       label: 'Prime Junk',
-      reason: `${ratio} Dukaten pro Platin (hoher Schmelzwert)`
+      reason: `${ratio} ducats per platinum (high melt value)`
     };
   }
   return {
     advice: 'balanced',
     ratio,
-    label: 'Ausgeglichen',
-    reason: `${ratio} Dukaten pro Platin`
+    label: 'Balanced',
+    reason: `${ratio} ducats per platinum`
   };
 }
 
@@ -137,7 +137,7 @@ export function buildInventoryDucats(inventory, catalog, market, priceCache = {}
   const items = [...invMap.values()].sort((a, b) => (
     b.ducats - a.ducats ||
     b.count - a.count ||
-    a.name.localeCompare(b.name, 'de')
+    a.name.localeCompare(b.name, 'en')
   ));
 
   let totalDucats = 0;
@@ -302,7 +302,7 @@ export function buildPrimeSets(market, priceCache = {}, ownedItems = [], { onlyO
     const hasAny = set.parts.some(p => p.count > 0);
     if (onlyOwned && !hasAny) continue;
 
-    set.parts.sort((a, b) => b.ducats - a.ducats || a.name.localeCompare(b.name, 'de'));
+    set.parts.sort((a, b) => b.ducats - a.ducats || a.name.localeCompare(b.name, 'en'));
 
     const totalParts = set.parts.reduce((sum, p) => sum + (p.required || 1), 0);
     const ownedParts = set.parts.reduce((sum, p) => sum + Math.min(p.count, p.required || 1), 0);
@@ -330,7 +330,7 @@ export function buildPrimeSets(market, priceCache = {}, ownedItems = [], { onlyO
   return out.sort((a, b) => {
     const ra = a.totalParts ? a.ownedParts / a.totalParts : 0;
     const rb = b.totalParts ? b.ownedParts / b.totalParts : 0;
-    return rb - ra || b.ownedParts - a.ownedParts || a.name.localeCompare(b.name, 'de');
+    return rb - ra || b.ownedParts - a.ownedParts || a.name.localeCompare(b.name, 'en');
   });
 }
 
@@ -364,5 +364,5 @@ export function buildDucatsCatalog(catalog, market, priceCache = {}) {
     });
   }
 
-  return list.sort((a, b) => b.ducats - a.ducats || a.name.localeCompare(b.name, 'de'));
+  return list.sort((a, b) => b.ducats - a.ducats || a.name.localeCompare(b.name, 'en'));
 }

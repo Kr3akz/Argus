@@ -1,0 +1,79 @@
+# Verpackung fuer die Auslieferung: NSIS-Installer und portable .exe.
+#
+# Warum eine eigene Datei und nicht der build-Block in package.json:
+# electron-builder prueft seine Konfiguration streng und bricht bei
+# unbekannten Feldern ab - Kommentare waeren dort also nicht moeglich. Und
+# gerade die Entscheidungen unten sind welche, die man in einem halben Jahr
+# nicht mehr herleiten kann.
+
+appId: com.kr3akz.cephalonargus       # muss zu app.setAppUserModelId() in main.js passen
+productName: Cephalon Argus
+copyright: Copyright (c) 2026 Kr3akz
+
+directories:
+  output: release
+  buildResources: build
+
+# POSITIVLISTE - bewusst keine Ausschlussliste.
+#
+# data/ enthaelt die accountId, das abgerufene Profil und das vollstaendige
+# Inventar des Entwicklerrechners. Bei einer Ausschlussliste genuegt ein
+# einziger vergessener Eintrag, und diese Dateien liegen in einem
+# oeffentlichen Release zum Herunterladen bereit. Was mitkommt, steht deshalb
+# einzeln hier - eine neue Datei ist im Zweifel draussen, nicht drin.
+#
+# node_modules ergaenzt electron-builder von selbst, aber nur die
+# Produktiv-Abhaengigkeiten (also koffi, nicht electron-builder).
+files:
+  - package.json
+  - src/main/**/*
+  - src/core/**/*
+  - src/renderer/**/*
+  - '!**/*.md'
+
+# asar ist bewusst AUS.
+#
+# Drei Stellen dieser App vertragen sich schlecht mit einem Archiv:
+#   - koffi laedt eine .node-Datei; aus einem asar heraus geht das nicht
+#   - gamecreds.js startet scan-worker.js als Worker-Thread
+#   - fissure-filter.js liest zur Laufzeit eine Datei aus src/renderer/
+# Jedes davon liesse sich einzeln per asarUnpack herausloesen. Zusammen ist
+# der ausgepackte Ordner der ehrlichere Weg: er kostet etwas Startzeit, macht
+# dafuer aber jeden Fehlerbericht nachvollziehbar ("oeffne den Ordner, schau
+# in diese Datei"). Zu verbergen gibt es bei quelloffener Software nichts.
+asar: false
+
+# tools/ landet NEBEN der App unter resources/, nicht darin - core/paths.js
+# sucht das Skript ueber process.resourcesPath.
+# Nur das OCR-Skript: memscan.ps1 und make-icon.mjs sind Entwicklerwerkzeuge.
+extraResources:
+  - from: tools
+    to: tools
+    filter:
+      - ocr-capture.ps1
+
+win:
+  icon: build/icon.png
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+
+nsis:
+  # Kein Ein-Klick-Installer: wer ein Programm installiert, das den Speicher
+  # des Spielprozesses liest, soll vorher sehen, wohin es installiert wird.
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  # Ohne Administratorrechte - die App braucht keine.
+  perMachine: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Cephalon Argus
+  artifactName: ${productName}-${version}-Setup.${ext}
+  # Ziele, Builds und Notizen liegen in %APPDATA% und sollen eine
+  # Deinstallation ueberleben - wer neu installiert, findet seinen Stand wieder.
+  deleteAppDataOnUninstall: false
+
+portable:
+  artifactName: ${productName}-${version}-portable.${ext}

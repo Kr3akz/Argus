@@ -21,6 +21,7 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { dataDir as defaultDataDir } from './paths.js';
 
 const DE_URL = 'https://drops.warframestat.us/data/all.json';
 const WF_URL = 'https://api.warframestat.us/mods/?only=uniqueName,name,drops';
@@ -38,16 +39,16 @@ const CACHE_VERSION = 1;
  * was sich KAUFEN laesst, steht vor dem, was fallen muss.
  */
 export const SOURCE_KINDS = [
-  { key: 'vendor',    label: 'Bezugsquelle' },
-  { key: 'syndicate', label: 'Syndikat' },
-  { key: 'bounty',    label: 'Kopfgeld' },
-  { key: 'special',   label: 'Sondermission' },
+  { key: 'vendor',    label: 'Vendor' },
+  { key: 'syndicate', label: 'Syndicate' },
+  { key: 'bounty',    label: 'Bounty' },
+  { key: 'special',   label: 'Special mission' },
   { key: 'mission',   label: 'Mission' },
-  { key: 'enemy',     label: 'Gegner' },
-  { key: 'relic',     label: 'Relikt' },
-  { key: 'key',       label: 'Quests & Schlüsselmissionen' },
+  { key: 'enemy',     label: 'Enemies' },
+  { key: 'relic',     label: 'Relics' },
+  { key: 'key',       label: 'Quests & key missions' },
   { key: 'sortie',    label: 'Sortie' },
-  { key: 'other',     label: 'Fundorte' }
+  { key: 'other',     label: 'Other sources' }
 ];
 
 const KIND_ORDER = new Map(SOURCE_KINDS.map((k, i) => [k.key, i]));
@@ -92,7 +93,7 @@ function trimWfMods(list) {
  * Die zweite Quelle ist ERGAENZUNG, kein Muss: faellt sie aus, arbeitet der
  * Rest mit DEs Zahlen weiter, statt den ganzen Aufruf scheitern zu lassen.
  */
-export async function loadDropTables({ dataDir = 'data', refresh = false } = {}) {
+export async function loadDropTables({ dataDir = defaultDataDir(), refresh = false } = {}) {
   if (index && !refresh) return index;
 
   let cached = null;
@@ -178,7 +179,7 @@ function build({ de, wf, fetchedAt }) {
     ['deimosRewards',        'Deimos'],
     ['zarimanRewards',       'Zariman'],
     ['entratiLabRewards',    'Entrati-Labor'],
-    ['hexRewards',           'Höllvania']
+    ['hexRewards',           'Hollvania']
   ];
   for (const [field, zone] of BOUNTIES) {
     for (const b of de?.[field] || []) {
@@ -219,7 +220,7 @@ function build({ de, wf, fetchedAt }) {
       add(m.modName, {
         kind: 'enemy',
         place: e.enemyName,
-        detail: `Mod-Drop ${fmtPct(table)} × Tabelle ${fmtPct(e.chance)}`,
+        detail: `Mod drop ${fmtPct(table)} × table ${fmtPct(e.chance)}`,
         chance: (e.chance ?? 0) * table / 100,
         rarity: e.rarity || null
       });
@@ -256,7 +257,7 @@ function build({ de, wf, fetchedAt }) {
         place: syndicate,
         detail: [
           where || null,
-          o.standing ? `${o.standing.toLocaleString('de-DE')} Ansehen` : null
+          o.standing ? `${o.standing.toLocaleString('en-GB')} standing` : null
         ].filter(Boolean).join(' · ') || null,
         chance: null,
         rarity: o.rarity || null
@@ -325,7 +326,7 @@ function build({ de, wf, fetchedAt }) {
   return { byName, wfByName, wfByPath, fetchedAt, stale: null };
 }
 
-const fmtPct = v => `${Number(v ?? 0).toLocaleString('de-DE', { maximumFractionDigits: 2 })} %`;
+const fmtPct = v => `${Number(v ?? 0).toLocaleString('en-GB', { maximumFractionDigits: 2 })} %`;
 
 /* ------------------------------------------------------------------ */
 /*  Regeln fuer Karten ohne Droptabelle                               */
@@ -342,47 +343,47 @@ const VENDOR_RULES = [
   {
     test: (u, n) => /^Primed /i.test(n),
     place: "Baro Ki'Teer",
-    detail: 'Void-Händler · alle zwei Wochen für Dukaten und Credits im Relais'
+    detail: 'Void trader · every two weeks, for ducats and credits, in a relay'
   },
   {
     test: (u, n) => /^Galvanized /i.test(n),
     place: 'Arbitration Honors',
-    detail: 'Ehrenhändler im Arbitrations-Relais · Vitus-Essenz'
+    detail: 'Arbitration honours vendor · Vitus Essence'
   },
   {
     test: u => /\/Upgrades\/Mods\/OrokinChallenge\//i.test(u),
     place: 'Lua · Halls of Ascension',
-    detail: 'Belohnung der Prüfungsräume auf dem Orokin-Mond'
+    detail: 'Reward from the Orokin Moon vaults'
   },
   {
     test: u => /\/Upgrades\/Mods\/Nightwave\//i.test(u),
     place: 'Nightwave',
-    detail: 'Cred-Angebote im Nightwave-Menü'
+    detail: 'Cred offerings in the Nightwave menu'
   },
   {
     test: u => /\/Upgrades\/Mods\/Syndicate\//i.test(u),
     place: 'Syndikats-Angebot',
-    detail: 'Waffenmod für Ansehen · bei jedem der sechs Hauptsyndikate ab Rang 3'
+    detail: 'Weapon augment for standing · at any of the six main syndicates from rank 3'
   },
   {
     test: u => /AugmentCard$/i.test(u) || /\/Augment/i.test(u),
     place: 'Syndikats-Augment',
-    detail: 'Für Ansehen bei den Syndikaten, die den Warframe führen · oder im Handel'
+    detail: 'For standing at the syndicates that carry the warframe · or by trading'
   },
   {
     test: u => /SentinelPrecepts|PetPrecept|\/BeastWeapons\//i.test(u),
     place: 'Kommt mit dem Begleiter',
-    detail: 'Precept-Karte · liegt der Blaupause des Wächters oder Tieres bei'
+    detail: 'Precept card · comes with the sentinel or pet blueprint'
   },
   {
     test: u => /\/Mods\/.*\/Event\//i.test(u),
-    place: 'Event-Belohnung',
-    detail: 'Aus einer zeitlich begrenzten Operation · heute nur noch im Handel'
+    place: 'Event reward',
+    detail: 'From a time-limited operation · today only by trading'
   },
   {
     test: u => /\/Upgrades\/Mods\/Conclave\//i.test(u),
     place: 'Konklave · Teshin',
-    detail: 'PvP-Mod für Konklave-Ansehen'
+    detail: 'PvP mod for Conclave standing'
   }
 ];
 
@@ -429,7 +430,7 @@ export function sourcesFor(idx, { name, uniqueName } = {}) {
       /* Beste Chance zuerst - danach entscheidet der Name, damit die Liste
          zwischen zwei Aufrufen nicht springt. */
       const sorted = list.sort((a, b) =>
-        (b.chance ?? -1) - (a.chance ?? -1) || String(a.place).localeCompare(String(b.place), 'de'));
+        (b.chance ?? -1) - (a.chance ?? -1) || String(a.place).localeCompare(String(b.place), 'en'));
       return {
         kind,
         label: SOURCE_KINDS.find(k => k.key === kind)?.label || kind,

@@ -109,7 +109,7 @@ export function openProcess(pid) {
   const handle = k.OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, false, pid);
   if (!handle) {
     const code = k.GetLastError();
-    const err = fail('open_failed', `OpenProcess fehlgeschlagen (Win32-Fehler ${code}).`);
+    const err = fail('open_failed', `OpenProcess failed (Win32 error ${code}).`);
     err.detail = code;
     throw err;
   }

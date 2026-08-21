@@ -1,0 +1,79 @@
+# Baut Installer und portable .exe und haengt sie an ein GitHub-Release.
+#
+# Ausgeloest wird das von einem Versions-Tag:
+#
+#   npm version 1.0.0        (setzt die Version und legt den Tag an)
+#   git push --follow-tags
+#
+# Danach passiert alles hier - der Rechner, an dem entwickelt wird, muss fuer
+# eine Veroeffentlichung nicht angeschaltet sein. Wichtiger noch: gebaut wird
+# aus dem, was im Repository liegt, nicht aus dem lokalen Arbeitsordner. Was
+# nicht committet ist, kann so auch nicht versehentlich mit ausgeliefert
+# werden - insbesondere nichts aus data/.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  # Erlaubt einen Probelauf ueber die Actions-Oberflaeche, ohne Tag.
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write        # zum Anlegen des Release noetig
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # ci statt install: baut streng nach package-lock.json, damit das
+      # Release aus denselben Abhaengigkeiten entsteht wie der letzte Test.
+      - name: Abhaengigkeiten installieren
+        run: npm ci
+
+      - name: Programmsymbol erzeugen
+        run: npm run icon
+
+      - name: Paketieren
+        run: npm run dist
+
+      # Ohne Signatur ist die Pruefsumme das Einzige, woran ein Nutzer
+      # nachvollziehen kann, dass seine Datei die gebaute ist. Siehe README.
+      - name: Pruefsummen bilden
+        shell: pwsh
+        run: |
+          $lines = Get-ChildItem release\*.exe | ForEach-Object {
+            $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            "$h  $($_.Name)"
+          }
+          $lines | Out-File -FilePath release\SHA256SUMS.txt -Encoding utf8
+          Get-Content release\SHA256SUMS.txt
+
+      - name: Release anlegen
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          draft: true          # erst pruefen, dann von Hand veroeffentlichen
+          generate_release_notes: true
+          files: |
+            release/*.exe
+            release/SHA256SUMS.txt
+
+      # Beim Probelauf ohne Tag gibt es kein Release - dann bleiben die
+      # Dateien als Artefakt am Lauf haengen, zum Herunterladen und Testen.
+      - name: Artefakte anhaengen (Probelauf)
+        uses: actions/upload-artifact@v4
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        with:
+          name: cephalon-argus-windows
+          path: |
+            release/*.exe
+            release/SHA256SUMS.txt

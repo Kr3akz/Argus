@@ -9,6 +9,7 @@ import { loadRelicTables, rewardsFor, resolveInventoryRelic } from '../core/reli
 import { loadMarketItems, findMarketItem, getPrice } from '../core/market.js';
 import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { dataFile } from '../core/paths.js';
 
 const wanted = process.argv.slice(2).join(' ') || 'Axi A1';
 const pad = (s, n) => String(s ?? '').padEnd(n).slice(0, n);
@@ -51,7 +52,7 @@ for (const r of relic.rewards) {
 /* Zweite Probe: die Pfade aus dem echten Inventar. Der interne Pfadname hat
    mit dem Anzeigenamen nichts zu tun, deshalb geht die Aufloesung ueber die
    Marktliste - siehe Kommentar in relics.js. */
-const invFile = 'data/inventory.json';
+const invFile = dataFile('inventory.json');
 if (existsSync(invFile)) {
   const raw = JSON.parse(await readFile(invFile, 'utf8'));
   const inv = raw.inventory || raw;

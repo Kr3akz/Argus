@@ -1,6 +1,10 @@
 /**
  * Warframe Ressourcen- & Farm-Routen-Katalog
  * Detaillierte Offline-Datenbank mit den besten Drop-Nodes, Planeten und Loot-Setups.
+ *
+ * Die Texte hier sind Oberflaeche und stehen deshalb auf Englisch - wie im
+ * Spiel selbst. Missionstypen und Knotennamen sind bewusst DIE des englischen
+ * Clients: wer die Node sucht, sucht sie unter diesem Namen auf der Karte.
  */
 
 import { imageUrl } from './catalog.js';
@@ -9,163 +13,163 @@ export const RESOURCE_GUIDES = [
   {
     name: 'Orokin Cell',
     uniqueName: '/Lotus/Types/Items/MiscItems/OrokinCell',
-    category: 'Selten',
-    description: 'Essentielle seltene Ressource für fast alle Prime-Items, Warframes und Waffen.',
+    category: 'Rare',
+    description: 'Essential rare resource for almost every prime item, warframe and weapon.',
     planets: ['Saturn', 'Ceres', 'Deimos'],
     bestNodes: [
-      { planet: 'Saturn', node: 'Helene', type: 'Verteidigung (Grineer)', desc: 'Sehr populär zum gleichzeitigen Leveln & Zellen farmen.' },
-      { planet: 'Ceres', node: 'Seimeni', type: 'Dunkler Sektor (Verteidigung)', desc: '+35% Ressourcen-Drop-Rate + schnelle Credits.' },
-      { planet: 'Deimos', node: 'Terrorem', type: 'Dunkler Sektor (Überleben)', desc: 'Gleichzeitig Mutagen-Samples & Zellen.' }
+      { planet: 'Saturn', node: 'Helene', type: 'Defense (Grineer)', desc: 'Very popular for levelling and farming cells at the same time.' },
+      { planet: 'Ceres', node: 'Seimeni', type: 'Dark Sector (Defense)', desc: '+35% resource drop rate plus fast credits.' },
+      { planet: 'Deimos', node: 'Terrorem', type: 'Dark Sector (Survival)', desc: 'Mutagen samples and cells in one run.' }
     ],
-    recommendedFrames: ['Nekros (Entweihen)', 'Khora (Plündernder Würgekuppel)', 'Smeeta Kavat'],
-    tips: 'Ressourcen-Verdoppler-Booster verdoppelt jede aufgehobene Zelle von 1x auf 2x.'
+    recommendedFrames: ['Nekros (Desecrate)', 'Khora (Pilfering Strangledome)', 'Smeeta Kavat'],
+    tips: 'A resource booster doubles every cell you pick up, from 1x to 2x.'
   },
   {
     name: 'Argon Crystal',
     uniqueName: '/Lotus/Types/Items/MiscItems/ArgonCrystal',
-    category: 'Spezial',
-    description: 'Flüchtiger Kristall aus dem Void. Zerfällt nach 24 Stunden im Inventar!',
+    category: 'Special',
+    description: 'Volatile crystal from the Void. It decays 24 hours after you pick it up.',
     planets: ['Void'],
     bestNodes: [
-      { planet: 'Void', node: 'Mot', type: 'Überleben', desc: 'Hohe Gegnerdichte, extrem viele Argon-Pegmatit-Ablagerungen.' },
-      { planet: 'Void', node: 'Teshub', type: 'Auslöschung', desc: 'Schnelles Durchlaufen mit Loot-Radar zum Zerstören aller Behälter.' },
-      { planet: 'Void', node: 'Ani', type: 'Überleben', desc: 'Entspanntere Gegner als auf Mot, gute Dropchancen.' }
+      { planet: 'Void', node: 'Mot', type: 'Survival', desc: 'High enemy density and a great many argon pegmatite deposits.' },
+      { planet: 'Void', node: 'Teshub', type: 'Exterminate', desc: 'Fast run with loot radar, smashing every container on the way.' },
+      { planet: 'Void', node: 'Ani', type: 'Survival', desc: 'Gentler enemies than Mot, still good drop chances.' }
     ],
-    recommendedFrames: ['Limbo / Xaku (Kistenzerstörer)', 'Nekros', 'Smeeta Kavat'],
-    tips: 'Achtung: Erst farmen, wenn du das Item direkt in der Schmiede starten kannst!'
+    recommendedFrames: ['Limbo / Xaku (container breakers)', 'Nekros', 'Smeeta Kavat'],
+    tips: 'Only farm argon once you can start the build in the foundry right away — it decays.'
   },
   {
     name: 'Tellurium',
     uniqueName: '/Lotus/Types/Items/MiscItems/Tellurium',
-    category: 'Selten',
-    description: 'Sehr seltene Ressource aus Unterwasser- und Archwing-Missionen.',
-    planets: ['Uranus', 'Kuva-Festung'],
+    category: 'Rare',
+    description: 'Very rare resource from underwater and archwing missions.',
+    planets: ['Uranus', 'Kuva Fortress'],
     bestNodes: [
-      { planet: 'Uranus', node: 'Ophelia', type: 'Überleben (Grineer-Unterwasserlabor)', desc: 'Die unangefochten beste Farm-Node! Droppt zeitgleich Unmengen Polymer-Bündel.' },
-      { planet: 'Uranus', node: 'Assur', type: 'Dunkler Sektor (Überleben)', desc: '+25% Ressourcen-Drop-Rate Bonus.' }
+      { planet: 'Uranus', node: 'Ophelia', type: 'Survival (Grineer sealab)', desc: 'The undisputed best node. Drops piles of polymer bundles alongside.' },
+      { planet: 'Uranus', node: 'Assur', type: 'Dark Sector (Survival)', desc: '+25% resource drop rate bonus.' }
     ],
-    recommendedFrames: ['Khora', 'Nekros', 'Hydroid (Plündernder Schwarm)', 'Smeeta Kavat'],
-    tips: 'Bleibt im selben Raum stehen, damit Nekros und Khora alle Leichen am selben Ort plündern.'
+    recommendedFrames: ['Khora', 'Nekros', 'Hydroid (Pilfering Swarm)', 'Smeeta Kavat'],
+    tips: 'Stay in one room so Nekros and Khora loot every body in the same place.'
   },
   {
     name: 'Plastids',
     uniqueName: '/Lotus/Types/Items/MiscItems/Plastids',
-    category: 'Ungewöhnlich',
-    description: 'Wird in großen Mengen für Warframe-Chassis, -Systeme und Waffen gebraucht.',
+    category: 'Uncommon',
+    description: 'Needed in bulk for warframe chassis, systems and weapons.',
     planets: ['Saturn', 'Uranus', 'Phobos', 'Pluto', 'Eris'],
     bestNodes: [
-      { planet: 'Saturn', node: 'Helene', type: 'Verteidigung', desc: 'Super Kombination aus Plastids, Orokin-Zellen und Waffen-EP.' },
-      { planet: 'Uranus', node: 'Ophelia', type: 'Überleben', desc: 'Droppt zusammen mit Tellurium und Polymer-Bündeln.' },
-      { planet: 'Eris', node: 'Zabala', type: 'Dunkler Sektor (Überleben)', desc: 'Hohe Infested-Gegnerdichte.' }
+      { planet: 'Saturn', node: 'Helene', type: 'Defense', desc: 'Great mix of plastids, orokin cells and weapon XP.' },
+      { planet: 'Uranus', node: 'Ophelia', type: 'Survival', desc: 'Drops together with tellurium and polymer bundles.' },
+      { planet: 'Eris', node: 'Zabala', type: 'Dark Sector (Survival)', desc: 'High infested enemy density.' }
     ],
-    recommendedFrames: ['Nekros', 'Khora', 'Speed-Nova'],
-    tips: 'Schlage die orangefarbenen Karbunkel-Behälter auf dem Weg auf.'
+    recommendedFrames: ['Nekros', 'Khora', 'Speed Nova'],
+    tips: 'Break the orange carbuncle containers you pass on the way.'
   },
   {
     name: 'Polymer Bundle',
     uniqueName: '/Lotus/Types/Items/MiscItems/PolymerBundle',
-    category: 'Ungewöhnlich',
-    description: 'Wird für fast alle Blaupausen sowie Energie-Restore-Pads in rauen Mengen benötigt.',
-    planets: ['Uranus', 'Merkur', 'Venus'],
+    category: 'Uncommon',
+    description: 'Needed in large amounts for almost every blueprint, and for energy restore pads.',
+    planets: ['Uranus', 'Mercury', 'Venus'],
     bestNodes: [
-      { planet: 'Uranus', node: 'Ophelia', type: 'Überleben', desc: 'Droppt bis zu 10.000+ Polymer in 20 Minuten mit Loot-Squad.' },
-      { planet: 'Uranus', node: 'Assur', type: 'Dunkler Sektor (Überleben)', desc: 'Sehr hohe Grund-Droprate.' }
+      { planet: 'Uranus', node: 'Ophelia', type: 'Survival', desc: 'Over 10,000 polymer in 20 minutes with a loot squad.' },
+      { planet: 'Uranus', node: 'Assur', type: 'Dark Sector (Survival)', desc: 'Very high base drop rate.' }
     ],
     recommendedFrames: ['Nekros', 'Khora', 'Pilfering Hydroid'],
-    tips: 'Ideal zum Vorrat-Farmen für Squad-Energie-Wiederhersteller.'
+    tips: 'Ideal for stocking up on squad energy restores.'
   },
   {
     name: 'Neural Sensors',
     uniqueName: '/Lotus/Types/Items/MiscItems/NeuralSensor',
-    category: 'Selten',
-    description: 'Bio-mechanische Sensoren, benötigt für alle Warframe-Helme/Neuroptiken.',
-    planets: ['Jupiter', 'Kuva-Festung'],
+    category: 'Rare',
+    description: 'Bio-mechanical sensors, needed for every warframe helmet and neuroptics.',
+    planets: ['Jupiter', 'Kuva Fortress'],
     bestNodes: [
-      { planet: 'Jupiter', node: 'Camenae', type: 'Dunkler Sektor (Überleben)', desc: 'Infested auf Jupiter bringen sehr viele Sensoren.' },
-      { planet: 'Jupiter', node: 'Themisto', type: 'Attentat (Alad V)', desc: 'Alad V droppt fast in jedem Run 1-2 Sensoren, dauert nur 90 Sekunden.' }
+      { planet: 'Jupiter', node: 'Camenae', type: 'Dark Sector (Survival)', desc: 'Infested on Jupiter yield a lot of sensors.' },
+      { planet: 'Jupiter', node: 'Themisto', type: 'Assassination (Alad V)', desc: 'Alad V drops 1-2 sensors nearly every run, and the run takes 90 seconds.' }
     ],
-    recommendedFrames: ['Volt / Titania (für Alad V Boss-Rush)', 'Nekros (für Überleben)'],
-    tips: 'Alad V lässt sich mit Schildbrecher-Waffen in Sekunden besiegen.'
+    recommendedFrames: ['Volt / Titania (for the Alad V boss rush)', 'Nekros (for survival)'],
+    tips: 'Alad V goes down in seconds to a weapon that strips shields.'
   },
   {
     name: 'Neurodes',
     uniqueName: '/Lotus/Types/Items/MiscItems/Neurode',
-    category: 'Selten',
-    description: 'Essentielle Gehirn-Implantate für organische Rüstungen und Waffen.',
-    planets: ['Erde', 'Eris', 'Lua', 'Deimos'],
+    category: 'Rare',
+    description: 'Essential brain implants for organic armour and weapons.',
+    planets: ['Earth', 'Eris', 'Lua', 'Deimos'],
     bestNodes: [
-      { planet: 'Erde', node: 'Tikal', type: 'Dunkler Sektor (Ausgrabung)', desc: 'Schnelle Extraktoren + viele Infested-Kills.' },
-      { planet: 'Erde', node: 'Mariana', type: 'Auslöschung', desc: 'Loot-Radar nutzen und alle Neuroden-Massen zerstören.' },
-      { planet: 'Deimos', node: 'Terrorem', type: 'Überleben', desc: 'Gute Droprate im Verbund mit Orokin-Zellen.' }
+      { planet: 'Earth', node: 'Tikal', type: 'Dark Sector (Excavation)', desc: 'Quick extractors and plenty of infested kills.' },
+      { planet: 'Earth', node: 'Mariana', type: 'Exterminate', desc: 'Use loot radar and destroy every neurode mass.' },
+      { planet: 'Deimos', node: 'Terrorem', type: 'Survival', desc: 'Good drop rate, alongside orokin cells.' }
     ],
-    recommendedFrames: ['Nekros', 'Khora', 'Xaku (Kistenknacker)'],
-    tips: 'Auf der Erde droppen wilde Kubrow-Baue ebenfalls oft Neuroden.'
+    recommendedFrames: ['Nekros', 'Khora', 'Xaku (container breaker)'],
+    tips: 'On Earth, wild kubrow dens often drop neurodes as well.'
   },
   {
     name: 'Oxium',
     uniqueName: '/Lotus/Types/Items/MiscItems/Oxium',
-    category: 'Ungewöhnlich',
-    description: 'Leichteres Metall, das nur von fliegenden Corpus-Oxium-Falken (Ospreys) fallengelassen wird.',
-    planets: ['Jupiter', 'Venus', 'Pluto', 'Neptun'],
+    category: 'Uncommon',
+    description: 'Lightweight metal, dropped only by flying Corpus Oxium Ospreys.',
+    planets: ['Jupiter', 'Venus', 'Pluto', 'Neptune'],
     bestNodes: [
-      { planet: 'Jupiter', node: 'Io', type: 'Verteidigung', desc: 'Bis Welle 10/15 spawnen massenhaft Oxium-Ospreys.' },
-      { planet: 'Pluto', node: 'Hieracon', type: 'Dunkler Sektor (Ausgrabung)', desc: 'Hohes Level, viele Corpus-Spawns.' }
+      { planet: 'Jupiter', node: 'Io', type: 'Defense', desc: 'Oxium Ospreys spawn in bulk up to wave 10/15.' },
+      { planet: 'Pluto', node: 'Hieracon', type: 'Dark Sector (Excavation)', desc: 'High level, lots of Corpus spawns.' }
     ],
-    recommendedFrames: ['Ivara (Taschendiebstahl)', 'Khora (Strangledome)', 'Nekros'],
-    tips: 'WICHTIG: Töte die Ospreys, bevor sie in dich hineinrasen und explodieren – bei Selbstzerstörung droppt kein Oxium!'
+    recommendedFrames: ['Ivara (Pilfering Pickpocket)', 'Khora (Strangledome)', 'Nekros'],
+    tips: 'Important: kill the ospreys before they charge you and explode — a self-destruct drops no oxium.'
   },
   {
     name: 'Cryotic',
     uniqueName: '/Lotus/Types/Items/MiscItems/Cryotic',
-    category: 'Spezial',
-    description: 'Gewonnen durch Ausgrabungs-Missionen (100 Cryotic pro vollendetem Extraktor).',
-    planets: ['Alle Ausgrabungen'],
+    category: 'Special',
+    description: 'Earned from excavation missions — 100 cryotic per completed extractor.',
+    planets: ['All excavations'],
     bestNodes: [
-      { planet: 'Erde', node: 'Tikal', type: 'Dunkler Sektor (Ausgrabung)', desc: 'Niedrige Gegnerlevel, Extraktoren überleben problemlos.' },
-      { planet: 'Pluto', node: 'Hieracon', type: 'Ausgrabung (Dunkler Sektor)', desc: 'Liefert zeitgleich Neo/Axi-Relikte und Endo.' }
+      { planet: 'Earth', node: 'Tikal', type: 'Dark Sector (Excavation)', desc: 'Low enemy levels; extractors survive without help.' },
+      { planet: 'Pluto', node: 'Hieracon', type: 'Excavation (Dark Sector)', desc: 'Yields Neo/Axi relics and endo at the same time.' }
     ],
-    recommendedFrames: ['Frost (Schneekugel)', 'Gara', 'Limbo (Katastrophe)', 'Khora'],
-    tips: 'Ressourcen-Verdoppler-Booster verdoppelt den Ertrag auf 200 Cryotic pro Extraktor!'
+    recommendedFrames: ['Frost (Snow Globe)', 'Gara', 'Limbo (Cataclysm)', 'Khora'],
+    tips: 'A resource booster doubles the yield to 200 cryotic per extractor.'
   },
   {
     name: 'Mutagen Sample',
     uniqueName: '/Lotus/Types/Items/MiscItems/MutagenSample',
-    category: 'Ungewöhnlich',
-    description: 'Infested-Ressource, besonders wichtig für die Hema-Waffenforschung im Clan-Dojo.',
+    category: 'Uncommon',
+    description: 'Infested resource, above all for Hema research in the clan dojo.',
     planets: ['Deimos', 'Eris'],
     bestNodes: [
-      { planet: 'Deimos', node: 'Camacol', type: 'Dunkler Sektor (Überleben)', desc: 'Die beste Farm-Node für Mutagen-Samples im gesamten Spiel.' },
-      { planet: 'Deimos', node: 'Terrorem', type: 'Überleben', desc: 'Alternativer Knoten mit hoher Dichte.' }
+      { planet: 'Deimos', node: 'Camacol', type: 'Dark Sector (Survival)', desc: 'The best mutagen sample node in the game.' },
+      { planet: 'Deimos', node: 'Terrorem', type: 'Survival', desc: 'Alternative node with high density.' }
     ],
-    recommendedFrames: ['Nekros', 'Khora', 'Speed-Nova', 'Wisp'],
-    tips: 'Immer in einer 4er-Loot-Gruppe farmen, um maximale Gegner-Spawnraten zu erzielen.'
+    recommendedFrames: ['Nekros', 'Khora', 'Speed Nova', 'Wisp'],
+    tips: 'Always farm in a full squad of four — enemy spawn rates scale with squad size.'
   },
   {
     name: 'Toroids (Vega / Calda / Sola)',
     uniqueName: '/Lotus/Types/Items/Gems/Solaris/ToroidCommon',
-    category: 'Open World',
-    description: 'Spezialressourcen aus Orb Vallis (Fortuna) für Vox Solaris, Garuda & Amp-Bauten.',
+    category: 'Open world',
+    description: 'Special resources from Orb Vallis (Fortuna) for Vox Solaris, Garuda and amp builds.',
     planets: ['Orb Vallis (Fortuna, Venus)'],
     bestNodes: [
-      { planet: 'Orb Vallis', node: 'Raumhafen (Spaceport)', desc: 'Droppt Vega-Toroide bei Alarmstufe 4.' },
-      { planet: 'Orb Vallis', node: 'Bereicherungslabor (Enrichment Labs)', desc: 'Droppt Calda-Toroide bei Alarmstufe 4.' },
-      { planet: 'Orb Vallis', node: 'Tempel des Profits (Temple of Profit)', desc: 'Droppt Sola-Toroide bei Alarmstufe 4.' }
+      { planet: 'Orb Vallis', node: 'Spaceport', desc: 'Drops Vega toroids at alert level 4.' },
+      { planet: 'Orb Vallis', node: 'Enrichment Labs', desc: 'Drops Calda toroids at alert level 4.' },
+      { planet: 'Orb Vallis', node: 'Temple of Profit', desc: 'Drops Sola toroids at alert level 4.' }
     ],
     recommendedFrames: ['Nekros', 'Khora', 'Wisp', 'Smeeta Kavat'],
-    tips: 'Lass die Kontrollbaken der Corpus auf Stufe 4 anwachsen und zerstöre sie nicht, damit kontinuierlich Verstärkung spawnt.'
+    tips: 'Let the Corpus control beacons climb to level 4 and leave them standing, so reinforcements keep spawning.'
   },
   {
     name: 'Entrati Lanthorn',
     uniqueName: '/Lotus/Types/Items/MiscItems/ZarimanLanthorn',
-    category: 'Open World',
-    description: 'Spezial-Laterne von der Zariman Ten Zero & Albrecht Entratis Laboratorien.',
-    planets: ['Zariman', 'Albrechts Laboratorien (Sanctum Anatomica)'],
+    category: 'Open world',
+    description: 'Special lanthorn from the Zariman Ten Zero and Albrecht Entrati’s laboratories.',
+    planets: ['Zariman', 'Albrecht’s Laboratories (Sanctum Anatomica)'],
     bestNodes: [
-      { planet: 'Zariman', node: 'Halbierungs-Bounty / Auslöschung', desc: 'Kistenzerstörer-Setup mit Loot-Radar.' },
-      { planet: 'Sanctum Anatomica', node: 'Effervo (Attentat / Albrechts Labore)', desc: 'Droppt regelmäßig von Necramechs und Bossen.' }
+      { planet: 'Zariman', node: 'Halakhan bounty / Exterminate', desc: 'Container-breaker setup with loot radar.' },
+      { planet: 'Sanctum Anatomica', node: 'Effervo (Assassination / Albrecht’s Laboratories)', desc: 'Drops regularly from necramechs and bosses.' }
     ],
-    recommendedFrames: ['Xaku (Weite Weite)', 'Limbo', 'Smeeta Kavat'],
-    tips: 'Nutze einen Destillations-Extraktor auf der Zariman in der Warframe Companion App!'
+    recommendedFrames: ['Xaku (The Lost)', 'Limbo', 'Smeeta Kavat'],
+    tips: 'Run a distillation extractor on the Zariman from the Warframe companion app.'
   }
 ];
 
