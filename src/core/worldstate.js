@@ -3,6 +3,7 @@
  * Holt offizielle DE-Echtzeitdaten über die warframestat.us API mit
  * automatischem tenno.tools Live-Fallback bei Ausfällen oder veraltetem Server-Stand.
  */
+import { buildWeekly } from './weekly.js';
 
 let cachedWorldstate = null;
 let lastFetchedAt = 0;
@@ -74,7 +75,11 @@ export async function fetchWorldState({ force = false } = {}) {
         ],
         invasions: formatInvasions(data.invasions || []),
         syndicates: formatSyndicates(data.syndicateMissions || []),
-        steelPath: formatSteelPath(data.steelPath)
+        steelPath: formatSteelPath(data.steelPath),
+        /* Die Wochenansicht bekommt die ROHdaten: hier oben sind die
+           Ablaufdaten schon zu Textbausteinen verrechnet, dort werden sie
+           als Zeitpunkte gebraucht. Siehe core/weekly.js. */
+        weekly: buildWeekly(data)
       };
 
       formatted.counts = countAll(formatted);
@@ -305,7 +310,10 @@ async function fetchTennoToolsFullWorldState() {
       alerts,
       invasions,
       syndicates: [],
-      steelPath: null
+      steelPath: null,
+      /* Der Rueckfall liefert nur Risse - fuer die Wochenansicht hat er
+         nichts, und ein leeres Geruest waere schlimmer als gar keins. */
+      weekly: null
     };
   } catch (err) {
     console.warn('[WorldState] tenno.tools Vollabruf fehlgeschlagen:', err.message);

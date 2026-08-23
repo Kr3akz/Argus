@@ -24,6 +24,24 @@ follow [semantic versioning](https://semver.org/lang/en/).
 <!-- Was seit dem letzten Release dazugekommen ist. Beim Anheben der Version
      in package.json wird daraus der neue Abschnitt. -->
 
+### Added
+
+- **Weekly rotation tab** — everything that resets once a week in one place:
+  Archon Hunt, The Circuit, Deep and Temporal Archimedea, Netracells and Kahl's
+  Garrison, plus the vendor resets for Teshin, Bird 3, Archimedian Yonta,
+  Acrithis, Palladino and Nightwave. Entries carry their own expiry where the
+  world state reports one, and are marked as following the common weekly reset
+  where it does not.
+
+### Fixed
+
+- The app now identifies itself as **Argus** in the Windows taskbar. It showed
+  the full description line ("Mastery rank planner and live companion…") because
+  that is what Windows reads as the file description.
+- Running from the source folder no longer leaves the taskbar entry without a
+  name or icon.
+- The logo on the permission screen is centred instead of left-aligned.
+
 ## [1.0.0] - 2026-08-23
 
 First public release.

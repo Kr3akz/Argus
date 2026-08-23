@@ -94,6 +94,7 @@ function showTab(name) {
   }
   if (name === 'builds' && !buildsLoaded) loadBuilds();
   if (name === 'worldstate') loadWorldState();
+  if (name === 'weekly') loadWeekly();
   if (name === 'farmguide') reloadFarmTab();
   if (name === 'ducats') loadDucats();
   if (name === 'inventory') loadInventoryTab();
@@ -7973,3 +7974,107 @@ if ($('update-head-icon')) $('update-head-icon').innerHTML = Icon.download(18);
    an loadSettingsTab() - und damit an einem Abruf davor, der damit nichts zu
    tun hat. */
 loadAboutBox();
+
+/* ---------------- Wochenrotation ---------------- */
+
+/* Der zuletzt geladene Stand. Gebraucht fuer die Zaehlerpille in der
+   Seitenleiste, die auch dann stimmen soll, wenn der Reiter gar nicht offen
+   ist. */
+let weeklyState = null;
+
+/* Sinnbild je Eintrag. Steht hier und nicht im Kern: welches Zeichen etwas
+   traegt, ist eine Frage der Oberflaeche, nicht der Daten. */
+const WEEKLY_ICONS = {
+  archon: 'archon', circuit: 'bolt',
+  'deep-archimedea': 'biotics', 'temporal-archimedea': 'clock',
+  netracells: 'cube', kahl: 'steelpath',
+  teshin: 'steelpath', bird3: 'traces', yonta: 'biotics',
+  acrithis: 'star', palladino: 'lotus', nightwave: 'nightwave'
+};
+
+const weeklyIcon = (key, size) => {
+  const name = WEEKLY_ICONS[key];
+  return name && Icon[name] ? Icon[name](size) : Icon.calendar(size);
+};
+
+/* Abgeleitete Zeiten werden gekennzeichnet. Wer eine Restzeit sieht, soll
+   erkennen koennen, ob sie gemessen oder gerechnet ist - dieselbe Haltung
+   wie bei der Inventar-Quelle. */
+const weeklySrcTag = quelle => quelle === 'api'
+  ? '<span class="weekly-src weekly-src-api" title="Own expiry from the world state">live</span>'
+  : '<span class="weekly-src weekly-src-reset" title="No expiry in the API — follows the common weekly reset">reset</span>';
+
+function renderWeeklyCard(e, istHaendler) {
+  const zeilen = istHaendler
+    ? `<div class="wk-vendor-what">${esc(e.was || '')}</div>`
+    : (e.eintraege || []).map(x => `
+        <div class="wk-row">
+          <b>${esc(x.titel)}</b>
+          ${x.unter ? `<span>${esc(x.unter)}</span>` : ''}
+        </div>`).join('');
+
+  const unterschrift = [e.detail, e.ort].filter(Boolean).map(esc).join(' · ');
+
+  return `
+    <div class="wk-card">
+      <div class="wk-head">
+        <span class="wk-icon">${weeklyIcon(e.key, 17)}</span>
+        <div class="wk-id">
+          <b>${esc(e.name)}</b>
+          ${unterschrift ? `<span>${unterschrift}</span>` : ''}
+        </div>
+        <div class="wk-time">
+          ${e.eta ? `<span class="wk-eta">${esc(e.eta)}</span>` : ''}
+          ${weeklySrcTag(e.quelle)}
+        </div>
+      </div>
+      ${zeilen ? `<div class="wk-body">${zeilen}</div>` : ''}
+    </div>`;
+}
+
+function renderWeekly(w) {
+  weeklyState = w;
+
+  $('weekly-reset-eta').textContent = w.resetEta || 'unknown';
+  const wann = w.resetAt
+    ? new Date(w.resetAt).toLocaleString('en-GB', {
+        weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'
+      })
+    : '';
+  $('weekly-reset-when').textContent = wann;
+
+  $('weekly-content').innerHTML = w.content.map(e => renderWeeklyCard(e, false)).join('');
+  $('weekly-vendors').innerHTML  = w.vendors.map(e => renderWeeklyCard(e, true)).join('');
+
+  /* Die Pille zeigt, wie viele Dinge diese Woche noch offen sind - also
+     alles, was ueberhaupt eine Restzeit hat. */
+  const offen = [...w.content, ...w.vendors].filter(e => e.eta).length;
+  const pille = $('weekly-count');
+  if (pille) {
+    pille.textContent = offen;
+    pille.classList.toggle('hidden', !offen);
+  }
+}
+
+function setWeeklyError(text) {
+  const el = $('weekly-error');
+  if (!el) return;
+  el.textContent = text || '';
+  el.classList.toggle('hidden', !text);
+}
+
+async function loadWeekly(force = false) {
+  const btn = $('btn-weekly-refresh');
+  if (btn) { btn.disabled = true; btn.classList.add('is-refreshing'); }
+  try {
+    const res = await window.api.getWeekly(force);
+    if (res && res.ok) { setWeeklyError(''); renderWeekly(res.data); }
+    else setWeeklyError((res && res.error) || 'Could not load the weekly rotation');
+  } catch (err) {
+    setWeeklyError('Could not load the weekly rotation: ' + err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.classList.remove('is-refreshing'); }
+  }
+}
+
+$('btn-weekly-refresh')?.addEventListener('click', () => loadWeekly(true));

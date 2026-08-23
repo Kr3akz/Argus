@@ -29,6 +29,9 @@ contextBridge.exposeInMainWorld('api', {
   searchItems:     (q)         => ipcRenderer.invoke('items:search', q),
   getItemDetails:  (u)         => ipcRenderer.invoke('item:details', u),
   getWorldState:   (force)     => ipcRenderer.invoke('worldstate:get', force),
+  /* Wochenrotation - stammt aus demselben Abruf wie der Weltzustand,
+     siehe core/weekly.js. */
+  getWeekly:       (force)     => ipcRenderer.invoke('weekly:get', force),
   getFarmingGuide: (q)         => ipcRenderer.invoke('farming:get', q),
   getMiningGuide:  (q)         => ipcRenderer.invoke('mining:get', q),
   getDucatsData:   ()          => ipcRenderer.invoke('ducats:get'),

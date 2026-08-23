@@ -1351,6 +1351,21 @@ ipcMain.handle('worldstate:get', async (_e, force) => {
   return await fetchWorldState({ force: !!force });
 });
 
+/* Wochenrotation. Kein eigener Netzabruf: sie faellt beim Weltzustand mit
+   ab (siehe core/weekly.js), teilt sich also dessen Zwischenspeicher und
+   dessen Rueckfall. Bleibt der aus, gibt es hier ok:false statt eines
+   halben Gerippes - eine Wochenansicht ohne Zeiten waere schlimmer als
+   eine ehrliche Fehlermeldung. */
+ipcMain.handle('weekly:get', async (_e, force) => {
+  try {
+    const ws = await fetchWorldState({ force: !!force });
+    if (!ws || !ws.weekly) return { ok: false, error: 'The world state is not reachable right now' };
+    return { ok: true, data: ws.weekly };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
 /* Ressourcen und die Filterleiste kommen zusammen: die Kategorien stehen bei
    den Daten, damit eine neue Ressourcenart nicht an zwei Stellen nachgetragen
    werden muss. */
@@ -3579,8 +3594,18 @@ ipcMain.handle('app:info', async () => {
 /* ---------------------------- App ---------------------------- */
 
 if (process.platform === 'win32') {
-  /* Behaelt bewusst den alten Namen - siehe appId in electron-builder.yml. */
-  app.setAppUserModelId('com.kr3akz.cephalonargus');
+  /* Woran Windows die Anwendung wiedererkennt - Taskleiste, Gruppierung und
+     die Zustellung der Benachrichtigungen haengen daran.
+     Behaelt bewusst den alten Namen - siehe appId in electron-builder.yml.
+
+     NUR IM GEPACKTEN BUILD:
+       Die Kennung verweist auf eine INSTALLIERTE Anwendung. Aus dem
+       Quellordner heraus gibt es die nicht - Windows findet dann weder
+       Namen noch Symbol dazu und laesst in der Taskleiste beides weg
+       (Rechtsklick auf ein namenloses, leeres Feld). Der Pfad der
+       laufenden .exe ist dort die ehrlichere Kennung: dann steht
+       wenigstens Electron mit seinem Symbol da, statt gar nichts. */
+  app.setAppUserModelId(app.isPackaged ? 'com.kr3akz.cephalonargus' : process.execPath);
 }
 
 app.whenReady().then(async () => {

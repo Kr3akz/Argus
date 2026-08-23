@@ -5025,13 +5025,17 @@ body.overlay-window { background: #0b0f16; }
    Einstellungen
    ========================================================================= */
 
-/* Hero ausblenden bei spezifischen Reitern (Inventar, Dukaten, Builds, Farming Guide, Handel, Notes, Settings) */
+/* Hero ausblenden bei spezifischen Reitern (Inventar, Dukaten, Builds,
+   Farming Guide, Handel, Wochenrotation, Notes, Settings).
+   Die Trennlinie laeuft zwischen Uebersicht und Liste: wo man etwas SUCHT,
+   nimmt das Profilbanner 450px weg, bevor der erste Eintrag zu sehen ist. */
 .main-content:has(#tab-settings.active) .hero,
 .main-content:has(#tab-inventory.active) .hero,
 .main-content:has(#tab-ducats.active) .hero,
 .main-content:has(#tab-builds.active) .hero,
 .main-content:has(#tab-farmguide.active) .hero,
 .main-content:has(#tab-trading.active) .hero,
+.main-content:has(#tab-weekly.active) .hero,
 .main-content:has(#tab-notes.active) .hero {
   display: none;
 }
@@ -6877,7 +6881,10 @@ body.tags-window {
 /* 44px, weil app.js die Maske in dieser Groesse einsetzt. Vorher standen
    hier 40px - die Huelle war also 4px kleiner als ihr Inhalt, und der
    Abstand nach unten wurde von der falschen Kante gemessen. */
-.setup-logo { display: block; width: 44px; height: 44px; margin-bottom: 14px; opacity: .9; color: var(--accent); }
+/* Mittig, nicht linksbuendig: das Zeichen steht fuer die Anwendung als
+   Ganzes, nicht fuer die Ueberschrift darunter. Der Text bleibt bewusst
+   linksbuendig - zentrierte Fliesstexte liest niemand gern. */
+.setup-logo { display: block; width: 44px; height: 44px; margin: 0 auto 16px; opacity: .9; color: var(--accent); }
 .setup-card h1 { font-size: 25px; font-weight: 600; letter-spacing: -.3px; }
 .setup-lead { color: var(--text-2); font-size: 14px; line-height: 1.55; margin-top: 8px; }
 
@@ -7519,3 +7526,87 @@ input[type=number]:focus, input[type=email]:focus, input[type=password]:focus {
 .tx-source.is-remote { background: rgba(88, 166, 255, .16); color: #79c0ff; }
 .tx-source.is-manual { background: rgba(255, 255, 255, .08); color: var(--text-3); }
 .tx-source.is-local  { background: rgba(74, 222, 128, .13); color: var(--green); }
+
+/* ---------- Wochenrotation ---------- */
+
+/* Die Reset-Zeit steht ueber allem, weil sie die Frage beantwortet, mit der
+   man den Reiter oeffnet: wie lange habe ich noch? */
+.weekly-reset {
+  display: flex; align-items: center; gap: 16px;
+  padding: 16px 20px; margin-bottom: 26px;
+  background: var(--surface); border-radius: var(--r-md);
+  border-left: 3px solid var(--accent);
+}
+.weekly-reset-main { display: flex; align-items: baseline; gap: 10px; }
+.weekly-reset-label { font-size: 12px; color: var(--text-3); }
+.weekly-reset-main b {
+  font-size: 21px; font-weight: 650; color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.weekly-reset-when { font-size: 12px; color: var(--text-3); margin-left: auto; }
+.weekly-reset .btn-sm { flex-shrink: 0; }
+
+.weekly-group-title {
+  font-size: 13px; font-weight: 600; color: var(--text-2);
+  text-transform: uppercase; letter-spacing: .6px;
+  margin: 4px 0 14px;
+}
+.weekly-group-title:not(:first-of-type) { margin-top: 30px; }
+
+/* auto-fill statt auto-fit: bei zwei Karten sollen sie ihre Breite behalten
+   und nicht ueber den halben Bildschirm laufen. */
+/* align-items: start, sonst zieht das Raster jede Karte auf die Hoehe der
+   groessten ihrer Zeile - neben einer Archimedea mit drei Missionen stuende
+   "Netracells" mit einer Zeile Text und einem Handbreit Leere darunter. */
+.weekly-grid {
+  display: grid; gap: 14px; align-items: start;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+}
+/* Haendlerkarten tragen eine Zeile statt einer Liste - schmaler reicht. */
+.weekly-grid-vendors { grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); }
+
+.wk-card {
+  background: var(--surface); border-radius: var(--r-md);
+  padding: 15px 17px;
+  transition: background .18s var(--ease);
+}
+.wk-card:hover { background: var(--surface-2); }
+
+.wk-head { display: flex; align-items: flex-start; gap: 12px; }
+.wk-icon {
+  display: grid; place-items: center; flex-shrink: 0;
+  width: 32px; height: 32px; border-radius: 9px;
+  background: var(--accent-sf); color: var(--accent);
+}
+.wk-id { min-width: 0; flex: 1; }
+.wk-id b { display: block; font-size: 14px; font-weight: 600; }
+.wk-id span { display: block; font-size: 11.5px; color: var(--text-3); margin-top: 2px; }
+
+.wk-time { display: flex; align-items: center; gap: 7px; flex-shrink: 0; margin-left: auto; }
+.wk-eta {
+  font-size: 12.5px; font-weight: 600; color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Gemessen oder gerechnet - siehe die Fussnote unter dem Reiter. */
+.weekly-src {
+  font-size: 9px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase;
+  padding: 2px 6px; border-radius: 999px; cursor: default;
+}
+.weekly-src-api   { background: rgba(var(--t-green) / .16);  color: var(--green); }
+.weekly-src-reset { background: rgba(255, 255, 255, .07);    color: var(--text-3); }
+
+.wk-body { margin-top: 13px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.05); }
+.wk-row { padding: 5px 0; }
+.wk-row b { display: block; font-size: 12.5px; font-weight: 550; color: var(--text); }
+/* Die Abweichungen und Risiken der Archimedea werden lang - lieber drei
+   Zeilen als ein abgeschnittener Satz, aus dem niemand schlau wird. */
+.wk-row span { display: block; font-size: 11px; color: var(--text-3); margin-top: 2px; line-height: 1.45; }
+
+.wk-vendor-what { font-size: 12.5px; color: var(--text-2); line-height: 1.5; }
+
+.weekly-foot {
+  margin-top: 26px; font-size: 11.5px; color: var(--text-3); line-height: 1.6;
+  max-width: 92ch;
+}
+.weekly-foot .weekly-src { margin: 0 2px; }

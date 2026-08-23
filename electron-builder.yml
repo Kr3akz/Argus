@@ -14,6 +14,16 @@ appId: com.kr3akz.cephalonargus
 productName: Argus
 copyright: Copyright (c) 2026 Kr3akz
 
+# Die Beschreibung aus package.json wandert als "FileDescription" in die
+# .exe - und GENAU die zeigt Windows beim Rechtsklick in der Taskleiste an,
+# nicht den Produktnamen. Dort stand deshalb der ganze Satz "Mastery rank
+# planner and live companion for Warframe: ...", was aussieht, als hiesse
+# das Programm so.
+# extraMetadata ersetzt das Feld nur im PAKET; package.json im Repository
+# behaelt den ausfuehrlichen Text, den npm und die Startseite brauchen.
+extraMetadata:
+  description: Argus
+
 directories:
   output: release
   buildResources: build

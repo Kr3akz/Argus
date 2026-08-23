@@ -171,6 +171,17 @@
           </div>
         </button>
 
+        <!-- Direkt hinter dem Live-Tracker: beide beantworten "was ist
+             gerade dran", nur auf verschiedenen Zeitskalen. -->
+        <button class="nav-item" data-tab="weekly">
+          <span class="nav-icon" data-icon="calendar"></span>
+          <span id="weekly-count" class="nav-pill hidden">0</span>
+          <div class="nav-tooltip">
+            <b>Weekly rotation</b>
+            <span>Archon, Circuit, Archimedea & vendor resets</span>
+          </div>
+        </button>
+
         <button class="nav-item" data-tab="mastery">
           <span class="nav-icon" data-icon="mastered"></span>
           <span id="goal-count" class="nav-pill hidden">0</span>
@@ -417,7 +428,43 @@
       </div>
     </section>
 
-    <!-- ---------------- 2. Mastery & Farm-Ziele ---------------- -->
+    <!-- ---------------- 2. Wochenrotation ----------------
+         Was einmal pro Woche zurueckgesetzt wird. Zwei Gruppen, weil es
+         zwei verschiedene Fragen sind: was muss ich noch SPIELEN, und wo
+         muss ich noch EINKAUFEN, bevor der Reset kommt. -->
+    <section id="tab-weekly" class="tabpane">
+      <div class="section-head">
+        <h2>Weekly rotation</h2>
+        <p>Everything that resets once a week — and how long you still have</p>
+      </div>
+
+      <div class="weekly-reset" id="weekly-reset">
+        <div class="weekly-reset-main">
+          <span class="weekly-reset-label">Weekly reset in</span>
+          <b id="weekly-reset-eta">—</b>
+        </div>
+        <span class="weekly-reset-when" id="weekly-reset-when"></span>
+        <button class="btn-sm" id="btn-weekly-refresh">Reload</button>
+      </div>
+
+      <div id="weekly-error" class="settings-note warn hidden"></div>
+
+      <h3 class="weekly-group-title">Content</h3>
+      <div class="weekly-grid" id="weekly-content"></div>
+
+      <h3 class="weekly-group-title">Vendor resets</h3>
+      <div class="weekly-grid weekly-grid-vendors" id="weekly-vendors"></div>
+
+      <p class="weekly-foot">
+        Times marked <span class="weekly-src weekly-src-reset">reset</span> are not
+        reported by the game's API — those entries follow the common weekly reset,
+        taken from the Archon Hunt. Times marked
+        <span class="weekly-src weekly-src-api">live</span> come with their own
+        expiry straight from the world state.
+      </p>
+    </section>
+
+    <!-- ---------------- 3. Mastery & Farm-Ziele ---------------- -->
     <section id="tab-mastery" class="tabpane">
 
       <!-- Immer sichtbar: was gerade laeuft, egal ob Manager oder Katalog -->
