@@ -16,8 +16,9 @@
  */
 import { app, BrowserWindow, ipcMain, globalShortcut, shell, Notification, screen } from 'electron';
 import path from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, renameSync, cpSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import { loadCatalog, imageUrl, cleanGameText } from '../core/catalog.js';
@@ -31,12 +32,14 @@ import { loadConfig, saveConfig, DEFAULT_HOTKEYS } from '../core/config.js';
 import * as store from '../core/store.js';
 import { loadMods, POLARITIES, RARITY_LABELS, searchMods, isAuraMod, isExilusMod } from '../core/mods.js';
 import { evaluateBuild, combineBuilds, orokinTypeFor } from '../core/builds.js';
+import { indexArcanes, searchArcanes, arcaneSlotCount, maxArcaneRank, isArcaneName } from '../core/arcanes.js';
 import { fetchWorldState } from '../core/worldstate.js';
-import { getAllResourceGuides, searchResourceGuides } from '../core/farming.js';
+import { searchResourceGuides, RESOURCE_CATEGORIES } from '../core/farming.js';
+import { getMiningGuide } from '../core/mining.js';
 import { getDucatsReferenceList, buildPrimeSets, buildDucatsCatalog, buildInventoryDucats } from '../core/ducats.js';
 import { loadInventory } from '../core/inventory.js';
 import { scanCredentials } from '../core/gamecreds.js';
-import { buildInventory, SECTIONS } from '../core/inventory-items.js';
+import { buildInventory, SECTIONS, ownedUpgradeRanks } from '../core/inventory-items.js';
 import { loadDropTables, sourcesFor } from '../core/droptables.js';
 import { loadCardImages, cardUrl } from '../core/cards.js';
 import { upgradeDetails } from '../core/upgrade-details.js';
@@ -44,16 +47,25 @@ import { checkAllowed, formatWait } from '../core/ratelimit.js';
 import { matchesFissureFilter } from '../core/fissure-filter.js';
 import { captureForeground, restoreForeground } from '../core/foreground.js';
 import { LogWatcher } from '../core/logwatch.js';
-import { loadMarketItems, findMarketItem, getPrice, getPrices } from '../core/market.js';
+import { loadMarketItems, findMarketItem, getPrice, getPrices, marketImage } from '../core/market.js';
+/* Handelsteil: Anmeldung, Orders, Auktionen und das lokale Handelsbuch.
+   Vier Module, weil es vier verschiedene Dinge sind - siehe die Kopf-
+   kommentare dort. */
+import * as wfmAuth from '../core/wfm-auth.js';
+import * as wfmOrders from '../core/wfm-orders.js';
+import * as wfmAuctions from '../core/wfm-auctions.js';
+import * as ledger from '../core/transactions.js';
 import {
   loadRelicTables, allRewardNames, planRelics, resolveInventoryRelic, relicIconPath,
-  rewardsFor, relicExpectation, RELIC_STATES
+  rewardsFor, relicExpectation, indexByReward, relicsForReward, RELIC_STATES
 } from '../core/relics.js';
+import { buildBaseSets } from '../core/basesets.js';
 import { scanRewardScreen, buildRewardIndex } from '../core/rewardscan.js';
 import {
   parseBuildId, fetchBuild, toBuild, loadModMap, saveModMap,
   unknownModIds, mergeNames, USER_AGENT as OF_USER_AGENT
 } from '../core/overframe.js';
+import * as updates from '../core/updates.js';
 import { setDataDir, setResourceDir, dataFile } from '../core/paths.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -96,12 +108,20 @@ let relicTagOffset = 0.23;
 /* Nur ein selbst eingeblendetes Overlay wird danach auch selbst wieder
    ausgeblendet - wer es vorher offen hatte, soll es behalten. */
 let overlayShownForRelic = false;
+let overlayShownForRelicSelect = false;
 /* Der zuletzt gemeldete Fund. Das Overlay-Fenster entsteht oft erst, WEIL
    dieser Fund kam - eine Nachricht an ein Fenster, dessen Renderer noch laedt,
    verpufft. Deshalb wird der Stand hier gehalten und beim Start abgefragt. */
 let currentRelic = null;
 
-const WINDOW_SIZE  = { width: 1480, height: 880 };
+/* 1560 UND NICHT 1480: die Filterleiste im Inventar steht in zwei festen
+   Zeilen, und die zweite traegt bei den Mods zehn Gattungs-Chips - 1238 px.
+   Vom Fenster gehen 182 px fuer Seitenleiste und Raender ab, macht 1420 px
+   als Untergrenze fuer eine Zeile. Bei 1480 blieben davon 60 px uebrig, zu
+   wenig, sobald eine Beschriftung etwas breiter faellt (Bahnschrift ist
+   schmal geschnitten; fehlt sie, traegt der Fallback breiter). Mit 1560
+   sind es 140 px. */
+const WINDOW_SIZE  = { width: 1560, height: 880 };
 const WINDOW_MIN   = { width: 1020, height: 620 };
 const OVERLAY_SIZE = { width:  380, height: 600 };
 const OVERLAY_MIN  = { width:  300, height: 260 };
@@ -121,7 +141,7 @@ let interacting = false;
 /* Fenster, das vor dem Zeigermodus den Fokus hatte - im Spielbetrieb also
    Warframe. Nur eine Kennung, kein Zugriff auf den fremden Prozess. */
 let interactReturnTo = null;
-const cache = { catalog: null, profile: null, analysis: null, mods: null, dropTables: null, cards: null };
+const cache = { catalog: null, profile: null, analysis: null, mods: null, arcanes: null, dropTables: null, cards: null };
 
 /* Wohin geschrieben wird - siehe core/paths.js.
    Im gepackten Build liegt der Programmordner unter Programme und gehoert
@@ -131,7 +151,39 @@ const cache = { catalog: null, profile: null, analysis: null, mods: null, dropTa
    ausgetauschten Ordner liegen.
    In der Entwicklung bleibt es beim data/ des Projekts - sonst laege der
    Testbestand ploetzlich woanders als der, an dem gerade gearbeitet wird. */
+/* Bis Fassung 1.0 hiess die Anwendung "Cephalon Argus". Electron leitet den
+   Ordner unter %APPDATA% aus dem Produktnamen ab - nach der Umbenennung zeigt
+   app.getPath('userData') also woandershin, und der Bestand des Nutzers laege
+   unberuehrt im alten Ordner: Konto-Kennung, Ziele, Builds, Notizen und das
+   abgerufene Inventar. Ohne diesen Schritt staende nach dem Update wieder die
+   Ersteinrichtung da. Der Zweig greift genau einmal, danach liegt data/ am
+   neuen Ort und die erste Abfrage steigt sofort wieder aus. */
+function adoptLegacyUserData() {
+  const current = app.getPath('userData');
+  const legacy  = path.join(path.dirname(current), 'Cephalon Argus');
+  if (legacy === current) return;
+  if (existsSync(path.join(current, 'data'))) return;
+  if (!existsSync(path.join(legacy, 'data'))) return;
+
+  mkdirSync(current, { recursive: true });
+  try {
+    renameSync(path.join(legacy, 'data'), path.join(current, 'data'));
+    console.log('Datenordner aus "Cephalon Argus" uebernommen.');
+  } catch {
+    /* Verschieben scheitert, sobald eine Datei noch offen ist. Dann lieber
+       kopieren und den alten Ordner stehen lassen, als den Nutzer ohne
+       seine Daten dastehen zu lassen. */
+    try {
+      cpSync(path.join(legacy, 'data'), path.join(current, 'data'), { recursive: true });
+      console.log('Datenordner aus "Cephalon Argus" kopiert.');
+    } catch (err) {
+      console.error('Alter Datenordner liess sich nicht uebernehmen:', err.message);
+    }
+  }
+}
+
 if (app.isPackaged) {
+  adoptLegacyUserData();
   setDataDir(path.join(app.getPath('userData'), 'data'));
   setResourceDir(process.resourcesPath);   // extraResources: tools/ liegt daneben
 }
@@ -141,6 +193,7 @@ function createWindow() {
     width: WINDOW_SIZE.width, height: WINDOW_SIZE.height,
     minWidth: WINDOW_MIN.width, minHeight: WINDOW_MIN.height,
     backgroundColor: '#0d1117',
+    icon: path.join(__dirname, '../../build/icon.png'),
     frame: false,
     show: false,
     webPreferences: {
@@ -289,6 +342,7 @@ async function loadOverlayPrefs() {
     }
     if (Number.isFinite(cfg.overlayOpacity)) overlayOpacity = clampOpacity(cfg.overlayOpacity);
     if (cfg.overlayBounds) overlayBounds = cfg.overlayBounds;
+    if (typeof cfg.updateCheck === 'boolean') updateCheckEnabled = cfg.updateCheck;
     clickThrough = !!cfg.overlayClickThrough;
   } catch {
     /* Ohne Konfiguration gelten die Voreinstellungen. */
@@ -640,6 +694,9 @@ async function ensureData({ refresh = false, force = false } = {}) {
   const cfg = await loadConfig();
   if (!cache.catalog) cache.catalog = await loadCatalog();
   if (!cache.mods)    cache.mods    = await loadMods();
+  /* Arcanes stecken bereits im Katalog (ExportRelicArcane) - hier wird nur der
+     Index darueber gelegt, das kostet keinen weiteren Abruf. */
+  if (!cache.arcanes) cache.arcanes = indexArcanes(cache.catalog);
 
   const res = await loadProfile(cfg.accountId, cfg.platform, { refresh, force });
   cache.profile = res.profile;
@@ -700,8 +757,92 @@ async function buildDashboard(meta) {
   const rec = recommend(a, cache.catalog, { limit: 200 });
   const st = await store.load();
 
+  const invRes = await loadInventory({ refresh: false }).catch(() => null);
+  const inv = invRes?.inventory || null;
+
+  if (!cache.dropTables) {
+    try {
+      cache.dropTables = await loadDropTables({});
+    } catch {
+      // Ignorieren falls offline
+    }
+  }
+
   const goals = st.goals.map(g => {
     const entry = a.entries.find(e => e.uniqueName === g.uniqueName);
+    const catItem = cache.catalog?.byUniqueName?.get(g.uniqueName);
+    const isArc = isArcaneName(g.uniqueName);
+    const isMod = !isArc && (g.uniqueName.includes('/Upgrades/') || catItem?.uniqueName?.includes('/Upgrades/'));
+    const isUpgrade = isArc || isMod;
+
+    if (isUpgrade) {
+      let ownedCount = 0;
+      const ranks = [];
+      let maxRankOwned = 0;
+
+      for (const row of inv?.RawUpgrades || []) {
+        if (row.ItemType === g.uniqueName) {
+          ownedCount += (row.ItemCount || 1);
+          const rSlot = ranks.find(r => r.rank === 0);
+          if (rSlot) rSlot.count += (row.ItemCount || 1);
+          else ranks.push({ rank: 0, count: (row.ItemCount || 1) });
+        }
+      }
+      for (const row of inv?.Upgrades || []) {
+        if (row.ItemType === g.uniqueName) {
+          ownedCount += 1;
+          let lvl = 0;
+          if (row.UpgradeFingerprint) {
+            try { lvl = JSON.parse(row.UpgradeFingerprint).lvl || 0; } catch {}
+          }
+          maxRankOwned = Math.max(maxRankOwned, lvl);
+          const rSlot = ranks.find(r => r.rank === lvl);
+          if (rSlot) rSlot.count += 1;
+          else ranks.push({ rank: lvl, count: 1 });
+        }
+      }
+
+      const maxLvl = catItem?.fusionLimit ?? Math.max(0, (catItem?.levelStats?.length || 1) - 1);
+      const owned = ownedCount > 0;
+      const rank = owned ? maxRankOwned : 0;
+      const ranksLeft = Math.max(0, maxLvl - rank);
+      const isMaxed = owned && rank >= maxLvl;
+      const kind = owned ? 'level' : 'farm';
+      const dropSources = cache.dropTables ? sourcesFor(cache.dropTables, { name: g.name, uniqueName: g.uniqueName }) : null;
+
+      const copiesToMax = isArc ? ((maxLvl + 1) * (maxLvl + 2)) / 2 : null;
+      const ownedCopies = isArc ? ranks.reduce((sum, r) => sum + r.count * (((r.rank + 1) * (r.rank + 2)) / 2), 0) : null;
+      const pol = POLARITIES[catItem?.polarity];
+
+      return {
+        ...g,
+        image: imageUrl(g.uniqueName, 128),
+        gain: 0,
+        status: isMaxed ? STATUS.DONE : (owned ? STATUS.PARTIAL : STATUS.MISSING),
+        owned,
+        isUpgrade: true,
+        upgradeKind: isArc ? 'arcane' : 'mod',
+        kind,
+        rank,
+        maxLvl,
+        ranksLeft,
+        ownedCount,
+        ownedRanks: ranks,
+        ownedCopies,
+        copiesToMax,
+        rarity: catItem?.rarity || null,
+        rarityLabel: RARITY_LABELS[catItem?.rarity] || null,
+        polarity: pol ? { glyph: pol.glyph, label: pol.label } : null,
+        compat: catItem?.compatName || null,
+        dropSources,
+        components: [],
+        materials: [],
+        credits: 0,
+        buildTime: '',
+        note: st.notes[g.uniqueName] || ''
+      };
+    }
+
     const owned = entry ? entry.status === STATUS.PARTIAL : false;
     const rank = entry ? entry.rank : 0;
     const maxLvl = entry ? entry.maxLvl : 30;
@@ -713,6 +854,7 @@ async function buildDashboard(meta) {
       gain: entry ? entry.gain : 0,
       status: entry ? entry.status : 'missing',
       owned,
+      isUpgrade: false,
       kind: owned ? 'level' : 'farm',
       rank,
       maxLvl,
@@ -735,7 +877,7 @@ async function buildDashboard(meta) {
     };
   });
 
-  const openFarmGoals = goals.filter(g => !g.done && !g.owned).map(g => g.uniqueName);
+  const openFarmGoals = goals.filter(g => !g.done && !g.owned && !g.isUpgrade).map(g => g.uniqueName);
   const shopping = openFarmGoals.length
     ? combineGoals(openFarmGoals, cache.catalog)
     : { materials: [], totalCredits: 0, totalBuildSeconds: 0 };
@@ -1060,9 +1202,15 @@ const EXTERNAL_ALLOWED = [
   'https://www.warframe.com/api/user-data',
   'https://github.com/Kr3akz/Argus'
 ];
+/* Die Release-Seiten sind die eine Ausnahme von der festen Liste: ihre
+   Adresse traegt die Versionsnummer und steht deshalb nicht vorher fest. Das
+   Muster laesst nichts anderes durch als genau diesen Pfad im eigenen
+   Repository - kein Nutzername, kein Umweg ueber eine andere Domain. */
+const RELEASE_URL_RE = /^https:\/\/github\.com\/Kr3akz\/Argus\/releases(\/tag\/v[\w.+-]+)?$/;
 ipcMain.handle('shell:open', async (_e, url) => {
-  if (!EXTERNAL_ALLOWED.includes(String(url))) return { ok: false };
-  await shell.openExternal(String(url));
+  const target = String(url);
+  if (!EXTERNAL_ALLOWED.includes(target) && !RELEASE_URL_RE.test(target)) return { ok: false };
+  await shell.openExternal(target);
   return { ok: true };
 });
 
@@ -1203,8 +1351,15 @@ ipcMain.handle('worldstate:get', async (_e, force) => {
   return await fetchWorldState({ force: !!force });
 });
 
+/* Ressourcen und die Filterleiste kommen zusammen: die Kategorien stehen bei
+   den Daten, damit eine neue Ressourcenart nicht an zwei Stellen nachgetragen
+   werden muss. */
 ipcMain.handle('farming:get', async (_e, query) => {
-  return searchResourceGuides(query);
+  return { resources: searchResourceGuides(query), categories: RESOURCE_CATEGORIES };
+});
+
+ipcMain.handle('mining:get', async (_e, query) => {
+  return getMiningGuide(query);
 });
 
 /* ------------------------ Relikte: Bausteine ------------------------
@@ -1396,6 +1551,69 @@ function broadcastTrackedRelics(list) {
   }
 }
 
+/**
+ * Liest den Bestand an Spuren des Nichts (Void Traces) aus dem Inventar.
+ */
+function ownedVoidTraces(inventory) {
+  const item = (inventory?.MiscItems || []).find(e =>
+    typeof e.ItemType === 'string' && (e.ItemType === '/Lotus/Types/Items/MiscItems/VoidTearDrop' || e.ItemType.includes('VoidTearDrop')));
+  return item?.ItemCount ?? 0;
+}
+
+/**
+ * Empfohlene Relikte fuer das Overlay und die Reliktauswahl.
+ * Liefert Void Traces und alle besessenen Relikte mit Erwartungswert & Profit.
+ */
+async function describeRecommendedRelics() {
+  if (!cache.catalog) cache.catalog = await loadCatalog();
+  if (!cache.market)  cache.market  = await loadMarketItems().catch(() => null);
+  if (!cache.relicTables) cache.relicTables = await loadRelicTables().catch(() => null);
+  const invRes = cache.inventory || await loadInventory({ refresh: false }).catch(() => null);
+  const priceCache = await readPriceCache();
+
+  const traces = ownedVoidTraces(invRes?.inventory);
+  const ownedMap = ownedRelics(invRes?.inventory, cache.market);
+  const lookup = relicRewardLookup(cache.market, priceCache, cache.catalog);
+  const planned = planRelics(cache.relicTables, [...ownedMap.values()], lookup);
+
+  const saved = await store.load();
+  const trackedSet = new Set((saved.trackedRelics || []).map(t => t.key + '|' + (t.state || 'Intact')));
+
+  const relics = planned.map(r => ({
+    id: r.key + '|' + (r.state || 'Intact'),
+    key: r.key,
+    tier: r.tier,
+    name: r.name,
+    state: r.state || 'Intact',
+    count: r.count,
+    image: r.image,
+    expPlat: r.expPlat,
+    expDucats: r.expDucats,
+    bestPlat: r.bestPlat,
+    bestDucats: r.bestDucats,
+    tracked: trackedSet.has(r.key + '|' + (r.state || 'Intact'))
+  }));
+
+  return { traces, relics };
+}
+
+ipcMain.handle('relics:recommended', async () => {
+  try { return await describeRecommendedRelics(); }
+  catch (err) {
+    console.error('[Relikt] Empfehlungen nicht lesbar:', err.message);
+    return { traces: 0, relics: [] };
+  }
+});
+
+ipcMain.handle('inventory:traces', async () => {
+  try {
+    const invRes = await loadInventory({ refresh: false }).catch(() => null);
+    return { traces: ownedVoidTraces(invRes?.inventory) };
+  } catch {
+    return { traces: 0 };
+  }
+});
+
 ipcMain.handle('relics:tracked', async () => {
   try { return await describeTrackedRelics(); }
   catch (err) {
@@ -1485,6 +1703,7 @@ ipcMain.handle('ducats:get', async () => {
     sets,
     relicPlan,
     trackedRelics,
+    voidTraces: ownedVoidTraces(invRes?.inventory),
     hasInventory: !!invRes?.inventory,
     isDevelopmentInventory: !!invRes?.isDevelopmentInventory,
     pricesFetchedAt: Object.values(priceCache)[0]?.fetchedAt || null,
@@ -1497,6 +1716,277 @@ ipcMain.handle('ducats:fetchPrices', async (_e, slugs = []) => {
   const prices = await getPrices(slugs);
   return prices;
 });
+
+/* ---------------------- Handel: warframe.market ---------------------- */
+
+/**
+ * Jeder Handelsaufruf antwortet mit { ok } statt zu werfen.
+ *
+ * Eine Ausnahme durch ipcRenderer.invoke kommt im Renderer als
+ * "Error invoking remote method" an - der eigentliche Grund ("wrong e-mail
+ * or password", "this order no longer exists") geht dabei verloren. Genau
+ * der soll aber am Knopf stehen. Deshalb wird hier abgefangen und der
+ * Statuscode mitgereicht: 401 heisst neu anmelden, alles andere heisst
+ * hinsehen.
+ */
+const tradeFail = err => ({
+  ok: false,
+  error: err?.message || 'unknown error',
+  status: err?.status || 0,
+  fields: err?.fields || null
+});
+
+/* Der haeufigste Fall verdient den kuerzesten Weg. */
+async function trade(run) {
+  try { return { ok: true, ...(await run()) }; }
+  catch (err) { return tradeFail(err); }
+}
+
+ipcMain.handle('trade:authState',  () => trade(async () => await wfmAuth.authState()));
+ipcMain.handle('trade:verify',     () => trade(async () => await wfmAuth.verifySession()));
+
+/**
+ * Anmeldung. Das Passwort kommt hier an, geht einmal an warframe.market und
+ * ist danach weg - es wird nicht gespeichert, nicht protokolliert und nicht
+ * zurueckgemeldet. Was liegen bleibt, ist allein das Token in
+ * wfm-session.json (siehe wfm-auth.js).
+ */
+ipcMain.handle('trade:signIn', (_e, email, password) =>
+  trade(async () => await wfmAuth.signIn(email, password)));
+
+ipcMain.handle('trade:signOut', () => trade(async () => await wfmAuth.signOut()));
+
+/**
+ * Welche Endpunkte nehmen das Token an.
+ *
+ * Die einzige Stelle, an der sich das feststellen laesst - abgemeldet
+ * antwortet jeder Pfad unter /v2/me mit 401, auch ein erfundener.
+ */
+ipcMain.handle('trade:diagnose', () => trade(async () => await wfmAuth.diagnose()));
+
+/* ------------------------------ Orders ------------------------------ */
+
+ipcMain.handle('trade:orders', () => trade(async () => await wfmOrders.myOrders()));
+
+ipcMain.handle('trade:createOrder', (_e, data = {}) =>
+  trade(async () => {
+    const order = await wfmOrders.createOrder(data);
+    wfmOrders.forgetOfferCache(order.slug);
+    return { order };
+  }));
+
+ipcMain.handle('trade:updateOrder', (_e, id, patch = {}, opts = {}) =>
+  trade(async () => ({ order: await wfmOrders.updateOrder(id, patch, opts) })));
+
+ipcMain.handle('trade:deleteOrder', (_e, id) =>
+  trade(async () => await wfmOrders.deleteOrder(id)));
+
+/**
+ * "Sold" - Menge herunterzaehlen und den Vorgang ins Handelsbuch schreiben.
+ *
+ * Reihenfolge mit Absicht: erst der Aufruf an warframe.market, dann der
+ * lokale Eintrag. Andersherum stuende bei einem Netzfehler ein Verkauf im
+ * Buch, den es nie gab.
+ */
+ipcMain.handle('trade:markSold', (_e, id, info = {}) =>
+  trade(async () => {
+    const count = Math.max(1, Math.round(Number(info.count) || 1));
+    const result = await wfmOrders.markSold(id, { count, quantity: info.quantity });
+
+    const entry = await ledger.addTransaction({
+      direction: info.type === 'buy' ? 'bought' : 'sold',
+      kind: 'order',
+      slug: info.slug || null,
+      itemId: info.itemId || null,
+      name: info.name || 'Unknown item',
+      image: info.image || null,
+      platinum: info.platinum,
+      quantity: count,
+      partner: info.partner || null,
+      source: 'order-sold',
+      orderId: id
+    });
+
+    wfmOrders.forgetOfferCache(info.slug || null);
+    return { ...result, entry };
+  }));
+
+/** Die Angebotsliste im Bearbeiten-Fenster. */
+ipcMain.handle('trade:offers', (_e, slug, opts = {}) =>
+  trade(async () => await wfmOrders.itemOffers(slug, opts)));
+
+/**
+ * Itemsuche fuer eine neue Order.
+ *
+ * Bewusst gegen die Marktliste und nicht gegen den Spielkatalog: handelbar
+ * ist, was warframe.market fuehrt. Ein Katalogtreffer, den der Markt nicht
+ * kennt, waere ein Vorschlag, aus dem nie eine Order werden kann.
+ */
+/**
+ * Ein Markt-Item in der Form, die das Bestellformular braucht.
+ *
+ * subtypes und bulkTradable muessen mit: ohne sie baut der Renderer ein
+ * Formular, dessen Pflichtfelder fehlen oder dessen verbotene Felder
+ * mitgeschickt werden - beides laesst warframe.market die ganze Order
+ * verwerfen. Siehe orderFieldRules() in wfm-orders.js.
+ */
+const marketItemForOrder = it => ({
+  slug: it.slug,
+  itemId: it.id,
+  name: it.i18n?.en?.name || it.slug,
+  image: marketImage(it),
+  maxRank: it.maxRank ?? null,
+  subtypes: it.subtypes?.length ? it.subtypes : null,
+  bulkTradable: !!it.bulkTradable,
+  tags: it.tags || [],
+  ducats: it.ducats ?? null
+});
+
+/**
+ * Ein einzelnes Item ueber seinen Slug - fuer die Handelsknoepfe im
+ * Inventar, die den Slug schon kennen und nicht suchen muessen.
+ */
+ipcMain.handle('trade:itemBySlug', async (_e, slug) => {
+  if (!slug) return null;
+  const idx = await loadMarketItems().catch(() => null);
+  const it = idx?.bySlug?.get(slug);
+  return it ? marketItemForOrder(it) : null;
+});
+
+ipcMain.handle('trade:searchItems', async (_e, query = '') => {
+  const q = String(query || '').toLowerCase().trim();
+  if (q.length < 2) return [];
+  const idx = await loadMarketItems().catch(() => null);
+  if (!idx) return [];
+
+  const hits = [];
+  for (const it of idx.list) {
+    const name = it.i18n?.en?.name || '';
+    if (!name) continue;
+    const lower = name.toLowerCase();
+    const at = lower.indexOf(q);
+    if (at < 0) continue;
+    hits.push({
+      ...marketItemForOrder(it),
+      /* Treffer am Wortanfang zuerst: wer "brat" tippt, meint Braton und
+         nicht "Sancti Braton Blueprint". */
+      rank: at === 0 ? 0 : 1
+    });
+    if (hits.length > 400) break;
+  }
+  hits.sort((a, b) => a.rank - b.rank || a.name.length - b.name.length || a.name.localeCompare(b.name, 'en'));
+  return hits.slice(0, 40);
+});
+
+/* ----------------------------- Contracts ----------------------------- */
+
+ipcMain.handle('trade:contracts', (_e, slug = null) =>
+  trade(async () => await wfmAuctions.myAuctions({ slug })));
+
+ipcMain.handle('trade:contractReference', () =>
+  trade(async () => ({ reference: await wfmAuctions.auctionReference() })));
+
+ipcMain.handle('trade:contractOffers', (_e, opts = {}) =>
+  trade(async () => await wfmAuctions.auctionOffers(opts)));
+
+ipcMain.handle('trade:createContract', (_e, data = {}) =>
+  trade(async () => ({ contract: await wfmAuctions.createAuction(data) })));
+
+ipcMain.handle('trade:updateContract', (_e, id, patch = {}) =>
+  trade(async () => ({ contract: await wfmAuctions.updateAuction(id, patch) })));
+
+ipcMain.handle('trade:deleteContract', (_e, id) =>
+  trade(async () => await wfmAuctions.deleteAuction(id)));
+
+/** "Sold" fuer eine Auktion: schliessen und ins Handelsbuch schreiben. */
+ipcMain.handle('trade:closeContract', (_e, id, info = {}) =>
+  trade(async () => {
+    const contract = await wfmAuctions.closeAuction(id, { winnerSlug: info.partner || null });
+    const entry = await ledger.addTransaction({
+      direction: 'sold',
+      kind: 'contract',
+      name: info.name || 'Contract',
+      image: info.image || null,
+      platinum: info.platinum,
+      quantity: 1,
+      partner: info.partner || null,
+      source: 'contract-closed',
+      auctionId: id
+    });
+    return { contract, entry };
+  }));
+
+/* ---------------------------- Handelsbuch ---------------------------- */
+
+/**
+ * Derselbe Handel, zweimal aufgeschrieben - hier wird er einmal gezaehlt.
+ *
+ * Ein Verkauf kann auf beiden Wegen im Buch landen: warframe.market
+ * verzeichnet ihn, und der Klick auf "Sold" schreibt ihn lokal mit. Ohne
+ * Abgleich stuende er doppelt in der Liste und doppelt in der Summe.
+ *
+ * Der Schluessel ist bewusst grob - Item, Richtung, Preis und der Tag. Auf
+ * die Sekunde genau abzugleichen brachte nichts, weil die beiden Uhren
+ * verschieden ticken: warframe.market stempelt seine Bestaetigung, der
+ * lokale Eintrag den Klick.
+ */
+const txKey = e => [e.slug || e.name, e.direction, e.platinum, new Date(e.at).toISOString().slice(0, 10)].join('|');
+
+function mergeTransactions(remote, local) {
+  const seen = new Map();
+  /* Die Fassung von warframe.market gewinnt: sie ist der bestaetigte
+     Vorgang, der lokale Eintrag nur unsere Notiz darueber. */
+  for (const e of remote) seen.set(txKey(e), e);
+  for (const e of local) if (!seen.has(txKey(e))) seen.set(txKey(e), e);
+  return [...seen.values()].sort((a, b) => b.at - a.at);
+}
+
+ipcMain.handle('trade:transactions', (_e, opts = {}) =>
+  trade(async () => {
+    /* Ohne Anmeldung bleibt es beim lokalen Buch - und das ist kein Fehler,
+       sondern der Normalfall fuer alles, was im Spiel gehandelt wurde. */
+    const auth = await wfmAuth.authState();
+    if (!auth.signedIn) {
+      return { ...(await ledger.listTransactions(opts)), remote: { supported: false, signedIn: false } };
+    }
+
+    let remote;
+    try {
+      /* Die Historie haengt am Profilnamen. Der steht im gespeicherten
+         Konto, sofern dort ueberhaupt einer gesetzt ist. */
+      remote = await wfmOrders.remoteTransactions({ slug: auth.user?.slug || null });
+    } catch (err) {
+      /* Die Historie von warframe.market ist eine Zugabe. Faellt sie aus,
+         zeigt der Tab weiter das lokale Buch statt einer Fehlerseite. */
+      return {
+        ...(await ledger.listTransactions(opts)),
+        remote: { supported: false, error: err.message, status: err.status || 0 }
+      };
+    }
+    if (!remote.supported) {
+      return { ...(await ledger.listTransactions(opts)), remote };
+    }
+
+    /* Erst zusammenfuehren, dann filtern - andersherum kaeme jede entfernte
+       Zeile an den Filtern vorbei in die Liste. */
+    const merged = mergeTransactions(remote.entries, await ledger.allTransactions());
+    return {
+      ...ledger.selectTransactions(merged, opts),
+      remote: { supported: true, path: remote.path, count: remote.entries.length }
+    };
+  }));
+
+ipcMain.handle('trade:addTransaction', (_e, entry = {}) =>
+  trade(async () => ({ entry: await ledger.addTransaction(entry) })));
+
+ipcMain.handle('trade:updateTransaction', (_e, id, patch = {}) =>
+  trade(async () => ({ entry: await ledger.updateTransaction(id, patch) })));
+
+ipcMain.handle('trade:removeTransaction', (_e, id) =>
+  trade(async () => await ledger.removeTransaction(id)));
+
+ipcMain.handle('trade:transactionsByItem', (_e, opts = {}) =>
+  trade(async () => ({ rows: await ledger.transactionsByItem(opts) })));
 
 /* ---------------------------- Inventar ---------------------------- */
 
@@ -1548,28 +2038,54 @@ async function inventoryPayload({ refresh }) {
   await attachCards(view);
   const gate = await checkAllowed({});
 
+  const mastered = new Set([
+    ...(res.inventory?.XPInfo || []).map(e => e.ItemType),
+    ...(res.inventory?.Suits || []).map(e => e.ItemType),
+    ...(res.inventory?.Weapons || []).map(e => e.ItemType),
+    ...(res.inventory?.SpaceSuits || []).map(e => e.ItemType),
+    ...(res.inventory?.SpaceWeapons || []).map(e => e.ItemType),
+    ...(res.inventory?.MechSuits || []).map(e => e.ItemType)
+  ]);
+
   let sets = [];
   try {
     const market = await loadMarketItems().catch(() => null);
     const priceCache = await readPriceCache();
     if (market && res.inventory) {
       const invDucats = buildInventoryDucats(res.inventory, cache.catalog, market, priceCache);
-      const mastered = new Set([
-        ...(res.inventory.XPInfo || []).map(e => e.ItemType),
-        ...(res.inventory.Suits || []).map(e => e.ItemType),
-        ...(res.inventory.Weapons || []).map(e => e.ItemType),
-        ...(res.inventory.SpaceSuits || []).map(e => e.ItemType),
-        ...(res.inventory.SpaceWeapons || []).map(e => e.ItemType),
-        ...(res.inventory.MechSuits || []).map(e => e.ItemType)
-      ]);
       sets = buildPrimeSets(market, priceCache, invDucats.items, {
-        onlyOwned: true,
+        onlyOwned: false,
         catalog: cache.catalog,
         mastered
       });
     }
   } catch (err) {
     console.warn('[Inventory] Sets-Erstellung fehlgeschlagen:', err.message);
+  }
+
+  /* Basis-Bausaetze kommen aus DEs Rezepten und brauchen weder Markt noch
+     Preise - sie duerfen deshalb auch dann dastehen, wenn die Marktliste
+     gerade nicht erreichbar war. */
+  try {
+    sets = sets.concat(buildBaseSets(cache.catalog, res.inventory, { onlyOwned: false, mastered }));
+  } catch (err) {
+    console.warn('[Inventory] Basis-Bausaetze fehlgeschlagen:', err.message);
+  }
+
+  /* Belohnungen an jedes Relikt haengen. Damit kann die Suche im Relikt-Bereich
+     nach einem TEIL fragen ("Wisp Prime Neuroptics") statt nur nach dem Namen
+     des Relikts - die Frage, die man vor dem Aufbrechen tatsaechlich hat. */
+  try {
+    const relicIdx = await loadRelicTables();
+    for (const e of view.sections.relics || []) {
+      const relic = relicIdx?.byKey?.get(e.name);
+      e.rewards = relic
+        ? [...new Set((relic.states.Intact || relic.states[Object.keys(relic.states)[0]] || [])
+            .map(r => r.itemName).filter(Boolean))]
+        : [];
+    }
+  } catch (err) {
+    console.warn('[Inventory] Relikt-Belohnungen fehlgeschlagen:', err.message);
   }
 
   view.sections.sets = sets;
@@ -1663,6 +2179,116 @@ ipcMain.handle('upgrade:details', async (_e, uniqueName, owned = null) => {
   }
 });
 
+/**
+ * Der Rueckwaerts-Index ueber die Belohnungsnamen.
+ *
+ * Wird beim ersten Bedarf gebaut und dann behalten: 596 Namen ueber 380 Relikte
+ * neu durchzugehen, sobald jemand auf ein Set-Teil klickt, waere Verschwendung.
+ * Ein Neuladen der Tabellen setzt ihn zurueck - siehe relicRewardIndex().
+ */
+let rewardIndexCache = { source: null, map: null };
+
+async function relicRewardIndex() {
+  const idx = await loadRelicTables();
+  if (rewardIndexCache.source !== idx) {
+    rewardIndexCache = { source: idx, map: indexByReward(idx) };
+  }
+  return rewardIndexCache.map;
+}
+
+/**
+ * In welchen Relikten steckt dieses Teil?
+ *
+ * Die Gegenfrage zum Relikt-Datenblatt: dort steht, was drin ist, hier steht,
+ * wo es herkommt. Der eigene Bestand kommt mit - wer das Relikt schon hat,
+ * muss es nicht farmen, sondern nur aufbrechen.
+ */
+ipcMain.handle('relics:forItem', async (_e, itemName) => {
+  try {
+    const byReward = await relicRewardIndex();
+    const hits = relicsForReward(byReward, itemName);
+
+    if (!cache.catalog) cache.catalog = await loadCatalog().catch(() => null);
+    const market = await loadMarketItems().catch(() => null);
+    const priceCache = await readPriceCache().catch(() => ({}));
+    const invRes = await loadInventory({ refresh: false }).catch(() => null);
+    const owned = ownedRelics(invRes?.inventory, market);
+
+    /* Bestand ueber alle Politur-Stufen zusammen - fuer die Frage "habe ich
+       das Relikt" ist die Stufe zweitrangig, sie steht daneben. */
+    const byKey = new Map();
+    for (const entry of owned.values()) {
+      const cur = byKey.get(entry.key) || { total: 0, states: [] };
+      cur.total += entry.count;
+      cur.states.push({ state: entry.state, count: entry.count });
+      byKey.set(entry.key, cur);
+    }
+
+    /* Ein Basis-Teil faellt aus keinem Relikt - es faellt irgendwo im Sternen-
+       system. Ohne Reliktreffer waere das Blatt sonst leer, dabei ist die
+       Frage dieselbe: wo bekomme ich das her? */
+    let sources = { groups: [], origin: null };
+    if (!hits.length) {
+      if (!cache.dropTables) cache.dropTables = await loadDropTables({}).catch(() => null);
+      sources = sourcesFor(cache.dropTables, { name: itemName });
+    }
+
+    const mItem = market ? findMarketItem(market, { name: itemName }) : null;
+    const catItem = cache.catalog?.byName?.get(itemName.toLowerCase())
+      || cache.catalog?.items?.find(it => it.name?.toLowerCase() === itemName.toLowerCase());
+    const uniqueName = mItem?.gameRef || catItem?.uniqueName || null;
+    const slug = mItem?.slug || null;
+    const ducats = mItem?.ducats ?? null;
+    const price = (slug && priceCache[slug]?.price) ? priceCache[slug].price : null;
+    const image = uniqueName ? imageUrl(uniqueName, 128) : (mItem ? marketImage(mItem) : null);
+
+    let ownedCount = 0;
+    if (invRes?.inventory) {
+      const allRows = [
+        ...(invRes.inventory.MiscItems || []),
+        ...(invRes.inventory.Recipes || []),
+        ...(invRes.inventory.RawParts || [])
+      ];
+      for (const row of allRows) {
+        if (uniqueName && row.ItemType === uniqueName) {
+          ownedCount += (row.ItemCount || 1);
+        } else if (market && slug) {
+          const rowCat = cache.catalog?.byUniqueName?.get(row.ItemType);
+          const rowM = findMarketItem(market, { uniqueName: row.ItemType, name: rowCat?.name });
+          if (rowM?.slug === slug) {
+            ownedCount += (row.ItemCount || 1);
+          }
+        }
+      }
+    }
+
+    return {
+      ok: true,
+      data: {
+        itemName,
+        slug,
+        ducats,
+        price,
+        image,
+        ownedCount,
+        relics: hits.map(h => {
+          const mine = byKey.get(h.key);
+          return {
+            ...h,
+            owned: mine?.total || 0,
+            states: (mine?.states || []).sort((a, b) =>
+              RELIC_STATES.indexOf(a.state) - RELIC_STATES.indexOf(b.state))
+          };
+        }),
+        ownedTotal: hits.reduce((sum, h) => sum + (byKey.get(h.key)?.total || 0), 0),
+        sources
+      }
+    };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
 /* Die Politur-Stufen heissen in DEs Daten wie im englischen Spiel. Die
    Zuordnung bleibt als die eine Stelle stehen, an der eine Umbenennung durch
    DE aufzufangen waere. */
@@ -1744,44 +2370,121 @@ ipcMain.handle('relic:details', async (_e, uniqueName) => {
 
 /* ---------------------------- Builds ---------------------------- */
 
+/**
+ * Woher der Besitz kommt: aus dem Inventar, nicht aus der Hand.
+ *
+ * Liegt eine Inventardatei vor, beantwortet die die Frage "habe ich diesen Mod"
+ * von selbst - samt Rang, den die Handliste nie kannte. Die alte, von Hand
+ * gepflegte Liste bleibt trotzdem gueltig: sie ist gespeicherter Nutzerwille,
+ * und wer vor dem ersten Inventar-Abruf Haken gesetzt hat, soll sie behalten.
+ * Der Rang eines solchen Hakens ist unbekannt - dafuer steht null, und
+ * evaluateBuild wertet das als "Rang passt", statt eine Aufwertung zu erfinden.
+ */
+async function ownedModsMap(st) {
+  const invRes = await loadInventory({ refresh: false }).catch(() => null);
+  const fromInventory = invRes?.inventory ? ownedUpgradeRanks(invRes.inventory) : null;
+
+  const owned = new Map(fromInventory || []);
+  for (const uniqueName of st.ownedMods) {
+    if (!owned.has(uniqueName)) owned.set(uniqueName, null);
+  }
+
+  return { owned, hasInventory: !!fromInventory, manualCount: st.ownedMods.length };
+}
+
 async function buildsPayload() {
   const st = await store.load();
-  const owned = new Set(st.ownedMods);
+  const { owned, hasInventory, manualCount } = await ownedModsMap(st);
   const lookup = u => cache.catalog.byUniqueName.get(u) || null;
-  const combined = combineBuilds(st.builds, cache.mods, owned, lookup);
+  const categoryOf = b => {
+    const item = lookup(b.itemUniqueName);
+    return item ? classify(item).category : null;
+  };
+  const combined = combineBuilds(st.builds, cache.mods, owned, lookup,
+    { arcaneIndex: cache.arcanes, categoryOf });
 
   return {
-    builds: combined.perBuild.map(({ build, evaluation }) => ({
-      id: build.id,
-      name: build.name,
-      itemName: build.itemName,
-      itemUniqueName: build.itemUniqueName,
-      image: build.itemUniqueName ? imageUrl(build.itemUniqueName, 128) : null,
-      source: build.source,
-      sourceUrl: build.sourceUrl,
-      author: build.author,
-      unresolved: build.unresolved || 0,
-      capacity: evaluation.capacity,
-      used: evaluation.used,
-      free: evaluation.free,
-      overCapacity: evaluation.overCapacity,
-      requirements: evaluation.requirements,
-      mods: {
-        total: evaluation.mods.total,
-        owned: evaluation.mods.owned,
-        missing: evaluation.mods.missing
-      },
-      slots: evaluation.slots
-    })),
+    builds: combined.perBuild.map(({ build, evaluation, arcanes }) => {
+      const item = lookup(build.itemUniqueName);
+      const category = item ? classify(item).category : null;
+
+      return {
+        id: build.id,
+        name: build.name,
+        itemName: build.itemName,
+        itemUniqueName: build.itemUniqueName,
+        image: build.itemUniqueName ? imageUrl(build.itemUniqueName, 128) : null,
+        /* Die Buehne zeigt das Item gross und angeschnitten wie den Warframe im
+           Profilkopf - dafuer reicht die 128er Kachel nicht. */
+        art: build.itemUniqueName ? imageUrl(build.itemUniqueName, 512) : null,
+        category,
+        categoryLabel: category ? (CATEGORY_LABELS[category] || category) : null,
+        source: build.source,
+        sourceUrl: build.sourceUrl,
+        author: build.author,
+        unresolved: build.unresolved || 0,
+        capacity: evaluation.capacity,
+        used: evaluation.used,
+        free: evaluation.free,
+        overCapacity: evaluation.overCapacity,
+        requirements: evaluation.requirements,
+        mods: {
+          total: evaluation.mods.total,
+          owned: evaluation.mods.owned,
+          missing: evaluation.mods.missing,
+          underRanked: evaluation.mods.underRanked
+        },
+        /* Die Illustration in Kartenbreite - die 128er reicht fuer eine Zeile,
+           nicht fuer eine aufgeschlagene Karte. Gleiche Groesse wie im Inventar. */
+        slots: evaluation.slots.map(sl => sl && !sl.unknown
+          ? { ...sl, art: imageUrl(sl.uniqueName, 256) }
+          : sl),
+
+        /* Arcanes: eigene Plaetze, eigene Zaehlung. Ein Item ohne Arcane-
+           Plaetze bekommt eine leere Liste - der Renderer zeigt dann nichts. */
+        arcaneSlots: (arcanes?.slots || []).map(sl => sl && !sl.unknown
+          ? { ...sl,
+              image: imageUrl(sl.uniqueName, 128),
+              rarityLabel: RARITY_LABELS[sl.rarity] || sl.rarity }
+          : sl),
+        arcanes: {
+          total: arcanes?.total || 0,
+          owned: arcanes?.owned || 0,
+          missing: arcanes?.missing || 0,
+          underRanked: arcanes?.underRanked || 0
+        }
+      };
+    }),
     totals: combined.totals,
-    missingMods: combined.missingMods.map(m => ({
-      uniqueName: m.uniqueName, name: m.name, rank: m.rank, maxRank: m.maxRank,
-      rarity: m.rarity, rarityLabel: RARITY_LABELS[m.rarity] || m.rarity,
-      usedIn: m.usedIn
-    })),
-    ownedCount: st.ownedMods.length
+    missingMods: combined.missingMods.map(missingModRow),
+    underRankedMods: combined.underRankedMods.map(missingModRow),
+    missingArcanes: combined.missingArcanes.map(missingArcaneRow),
+    underRankedArcanes: combined.underRankedArcanes.map(missingArcaneRow),
+    /* Die Oberflaeche muss den Unterschied kennen: mit Inventar ist der Besitz
+       eine Tatsache und kein Haken, den man selbst setzt. */
+    hasInventory,
+    ownedCount: manualCount
   };
 }
+
+const missingModRow = m => ({
+  uniqueName: m.uniqueName, name: m.name, rank: m.rank, maxRank: m.maxRank,
+  ownedRank: m.ownedRank ?? null,
+  art: imageUrl(m.uniqueName, 256),
+  rarity: m.rarity, rarityLabel: RARITY_LABELS[m.rarity] || m.rarity,
+  usedIn: m.usedIn
+});
+
+/* Wie missingModRow, nur zaehlt bei einem Arcane statt Endo die Zahl der
+   Exemplare, die bis zu diesem Rang noch hineinwandern. */
+const missingArcaneRow = a => ({
+  uniqueName: a.uniqueName, name: a.name, rank: a.rank, maxRank: a.maxRank,
+  ownedRank: a.ownedRank ?? null,
+  copies: a.copies, copiesOwned: a.copiesOwned,
+  image: imageUrl(a.uniqueName, 128),
+  rarity: a.rarity, rarityLabel: RARITY_LABELS[a.rarity] || a.rarity,
+  usedIn: a.usedIn
+});
 
 ipcMain.handle('builds:get', async () => {
   try {
@@ -1796,8 +2499,12 @@ ipcMain.handle('builds:import', async (_e, input) => {
   try {
     if (!cache.mods) await ensureData({ refresh: false });
     const { build, scrapeNote } = await importOverframeBuild(input);
-    await store.addBuild(build);
-    return { ok: true, data: await buildsPayload(), note: scrapeNote, unresolved: build.unresolved };
+    const id = build.id || `b${Date.now().toString(36)}`;
+    await store.addBuild({ ...build, id });
+    return {
+      ok: true, data: await buildsPayload(), id,
+      note: scrapeNote, unresolved: build.unresolved
+    };
   } catch (err) {
     return { ok: false, error: err.message };
   }
@@ -1811,13 +2518,40 @@ ipcMain.handle('builds:remove', async (_e, id) => {
 /** Eigener Build: 8 normale Slots plus Aura/Stance und Exilus. */
 const EMPTY_SLOTS = () => Array.from({ length: 10 }, () => null);
 
+/**
+ * Das Regal der Item-Auswahl - Reihenfolge und Sinnbild wie im Arsenal.
+ *
+ * Bewusst NICHT aus CATEGORY_LABELS abgeleitet: dort stehen auch Zaw-Klingen
+ * und Kitgun-Kammern, die es ohne den Rest der Waffe gar nicht in ein Arsenal
+ * schaffen. Was hier fehlt, findet man weiterhin ueber die Suche.
+ */
+const BUILD_CATEGORIES = [
+  { key: 'Suits',           label: 'Warframes',  icon: 'catWarframe'  },
+  { key: 'LongGuns',        label: 'Primary',    icon: 'catPrimary'   },
+  { key: 'Pistols',         label: 'Secondary',  icon: 'catSecondary' },
+  { key: 'Melee',           label: 'Melee',      icon: 'catMelee'     },
+  { key: 'Sentinels',       label: 'Sentinels',  icon: 'catCompanion' },
+  { key: 'KubrowPets',      label: 'Pets',       icon: 'catCompanion' },
+  { key: 'SentinelWeapons', label: 'Robotic',    icon: 'catCompanion' },
+  { key: 'SpaceSuits',      label: 'Archwing',   icon: 'catArchwing'  },
+  { key: 'SpaceGuns',       label: 'AW guns',    icon: 'catArchwing'  },
+  { key: 'SpaceMelee',      label: 'AW melee',   icon: 'catArchwing'  },
+  { key: 'MechSuits',       label: 'Necramech',  icon: 'catNecramech' },
+  { key: 'AmpPrism',        label: 'Amps',       icon: 'catAmp'       }
+];
+
 ipcMain.handle('builds:create', async (_e, itemUniqueName, name) => {
   try {
     if (!cache.mods) await ensureData({ refresh: false });
     const item = cache.catalog.byUniqueName.get(itemUniqueName);
     if (!item) return { ok: false, error: 'Item not found.' };
 
+    /* Die Kennung wird HIER vergeben, nicht im Speicher: die Oberflaeche muss
+       den frisch angelegten Build sofort aufschlagen koennen, und aus der
+       zurueckgegebenen Liste liesse er sich nur raten. */
+    const id = `b${Date.now().toString(36)}`;
     await store.addBuild({
+      id,
       name: name || `${item.name}-Build`,
       itemUniqueName: item.uniqueName,
       itemName: item.name,
@@ -1826,7 +2560,7 @@ ipcMain.handle('builds:create', async (_e, itemUniqueName, name) => {
       slots: EMPTY_SLOTS(),
       source: 'manual'
     });
-    return { ok: true, data: await buildsPayload() };
+    return { ok: true, data: await buildsPayload(), id };
   } catch (err) {
     return { ok: false, error: err.message };
   }
@@ -1852,6 +2586,52 @@ ipcMain.handle('builds:setSlot', async (_e, buildId, slotIndex, slot) => {
 ipcMain.handle('builds:setMeta', async (_e, buildId, patch) => {
   await store.updateBuild(buildId, patch);
   return { ok: true, data: await buildsPayload() };
+});
+
+/**
+ * Einen Arcane-Platz belegen oder raeumen.
+ *
+ * Getrennt von builds:setSlot, weil die Liste eine andere Laenge hat und je
+ * nach Item auch gar nicht existiert. Sie wird hier bei Bedarf angelegt - ein
+ * Build, der vor den Arcanes entstanden ist, kennt das Feld nicht.
+ */
+ipcMain.handle('builds:setArcane', async (_e, buildId, index, slot) => {
+  try {
+    const st = await store.load();
+    const b = st.builds.find(x => x.id === buildId);
+    if (!b) return { ok: false, error: 'Build not found.' };
+
+    const item = cache.catalog.byUniqueName.get(b.itemUniqueName);
+    const count = Math.max(arcaneSlotCount(item ? classify(item).category : null), index + 1);
+
+    const arcanes = Array.isArray(b.arcanes) ? [...b.arcanes] : [];
+    while (arcanes.length < count) arcanes.push(null);
+    arcanes[index] = slot;                          // null raeumt den Platz
+
+    await store.updateBuild(buildId, { arcanes });
+    return { ok: true, data: await buildsPayload() };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+/** Arcane-Suche fuer den Editor - was auf dieses Item passt, steht oben. */
+ipcMain.handle('arcanes:search', async (_e, query, itemUniqueName) => {
+  if (!cache.arcanes) await ensureData({ refresh: false });
+  const item = itemUniqueName ? cache.catalog.byUniqueName.get(itemUniqueName) : null;
+  const category = item ? classify(item).category : null;
+  const { owned } = await ownedModsMap(await store.load());
+
+  return searchArcanes(cache.arcanes, query, { category }).map(a => ({
+    uniqueName: a.uniqueName,
+    name: a.name,
+    maxRank: maxArcaneRank(a),
+    rarity: a.rarity,
+    rarityLabel: RARITY_LABELS[a.rarity] || a.rarity,
+    image: imageUrl(a.uniqueName, 128),
+    owned: owned.has(a.uniqueName),
+    ownedRank: owned.get(a.uniqueName) ?? null
+  }));
 });
 
 /** Mod-Suche fuer den Editor - passende Mods des Items zuerst. */
@@ -1880,24 +2660,59 @@ ipcMain.handle('mods:search', async (_e, query, itemUniqueName) => {
 });
 
 /** Item-Suche fuer "neuen Build anlegen". */
-ipcMain.handle('items:forBuild', async (_e, query) => {
+/**
+ * Item-Suche fuer "neuen Build anlegen".
+ *
+ * Zwei Betriebsarten: mit Suchwort ueber alle Kategorien, oder OHNE Suchwort
+ * mit gesetzter Kategorie - dann kommt die ganze Kategorie. Die Auswahl im
+ * Build-Tab beginnt naemlich nicht mit einem Eingabefeld, sondern mit einem
+ * Regal: erst Warframes, Primaerwaffen und so fort, und wer tippt, sucht.
+ */
+ipcMain.handle('items:forBuild', async (_e, query, category = null) => {
   if (!cache.analysis) await ensureData({ refresh: false });
   const q = String(query || '').toLowerCase().trim();
-  if (q.length < 2) return [];
-  return cache.analysis.entries
-    .filter(e => (e.name || '').toLowerCase().includes(q))
-    .slice(0, 25)
+  if (q.length < 2 && !category) return [];
+
+  let list = cache.analysis.entries;
+  if (category) list = list.filter(e => e.category === category);
+  if (q.length >= 2) list = list.filter(e => (e.name || '').toLowerCase().includes(q));
+
+  return list
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name, 'en'))
+    .slice(0, category ? 400 : 25)
     .map(e => ({
       uniqueName: e.uniqueName,
       name: e.name,
+      category: e.category,
       label: CATEGORY_LABELS[e.category] || e.category,
       image: imageUrl(e.uniqueName, 128)
     }));
 });
 
-/** Alle Polaritaeten fuer die Auswahl im Editor. */
+/** Die Kategorien, zu denen sich ueberhaupt ein Build bauen laesst. */
+ipcMain.handle('items:buildCategories', async () => {
+  if (!cache.analysis) await ensureData({ refresh: false });
+  const counts = new Map();
+  for (const e of cache.analysis.entries) {
+    counts.set(e.category, (counts.get(e.category) || 0) + 1);
+  }
+  return BUILD_CATEGORIES
+    .filter(c => counts.has(c.key))
+    .map(c => ({ ...c, count: counts.get(c.key) }));
+});
+
+/**
+ * Alle Polaritaeten fuer die Auswahl im Editor.
+ *
+ * ACHTUNG bei der Reihenfolge: die Werte in POLARITIES tragen SELBST ein `key`
+ * (den Kurznamen "madurai"), waehrend der Slot den AP_*-Namen speichert. Stand
+ * der Spread hinten, ueberschrieb der Kurzname den AP_*-Namen - und was der
+ * Editor dann in den Slot schrieb, erkannte weder modDrain noch die Karte
+ * wieder: kein Rabatt, kein Zeichen, kein Forma. Deshalb `key` zuletzt.
+ */
 ipcMain.handle('mods:polarities', () =>
-  Object.entries(POLARITIES).map(([key, v]) => ({ key, ...v })));
+  Object.entries(POLARITIES).map(([key, v]) => ({ ...v, key })));
 
 ipcMain.handle('mods:setOwned', async (_e, uniqueName, owned) => {
   await store.setModOwned(uniqueName, owned);
@@ -2140,6 +2955,29 @@ function pushRelic() {
 
 function startLogWatcher() {
   logWatcher = new LogWatcher();
+
+  logWatcher.on('relic-select-open', async () => {
+    try {
+      if (relicAutoShow) {
+        overlayShownForRelicSelect = true;
+        if (!overlayVisible()) showOverlay();
+      }
+      const data = await describeRecommendedRelics();
+      sendToOverlay('relic:select-open', data);
+    } catch (err) {
+      console.error('[Relikt] Fehler bei Reliktauswahl-Ereignis:', err.message);
+    }
+  });
+
+  logWatcher.on('relic-select-closed', () => {
+    sendToOverlay('relic:select-closed', {});
+    if (overlayShownForRelicSelect) {
+      overlayShownForRelicSelect = false;
+      if (!overlayShownForRelic && !interacting && overlayVisible()) {
+        hideOverlay();
+      }
+    }
+  });
 
   logWatcher.on('relic-reward', ev => { handleRelicReward(ev).catch(err => {
     console.error('[Relikt] Ablauf abgebrochen:', err.message);
@@ -2456,9 +3294,292 @@ ipcMain.handle('notifications:test', async () => {
   return { ok: true };
 });
 
+/* --------------------------- Updates --------------------------- */
+
+/**
+ * Der Weg einer neuen Fassung, von hinten aufgezaehlt:
+ *
+ *   1. Ein Push auf main mit erhoehter Version in package.json
+ *   2. .github/workflows/release.yml baut und veroeffentlicht ein Release
+ *      samt SHA256SUMS.txt
+ *   3. Die App hier fragt stuendlich bei der Releases-API nach
+ *   4. Ist die Version dort hoeher, erscheint das Abzeichen in der Titelleiste
+ *   5. Auf Knopfdruck: laden, Pruefsumme vergleichen, Installer starten
+ *
+ * Schritt 5 ist der einzige, der etwas ausfuehrt - und nur eine Datei, deren
+ * Hash zu dem passt, den derselbe Workflow-Lauf veroeffentlicht hat. Siehe
+ * core/updates.js.
+ */
+
+let updateCheckEnabled = true;
+let updateTimer = null;
+let updateBusy = false;
+
+/* Das vollstaendige Ergebnis der letzten Abfrage - MIT den Adressen. Es
+   bleibt hier: der Renderer bekommt nur updateState zu sehen und kann
+   dadurch keinen Download auf eine selbst gewaehlte Adresse anstossen. */
+let pendingRelease = null;
+let readyInstaller = null;
+
+/* Die Sicht, die der Renderer bekommt. status ist der einzige Wert, an dem
+   die Oberflaeche haengt:
+     idle | checking | uptodate | available | downloading | ready | error   */
+let updateState = { status: 'idle', current: app.getVersion(), auto: true };
+
+/* Erst 15 Sekunden nach dem Start - beim Hochfahren laufen Katalog, Profil
+   und der Log-Beobachter an, da muss nicht noch eine Netzanfrage dazwischen. */
+const UPDATE_FIRST_DELAY = 15000;
+/* Stuendlich. GitHub laesst 60 Anfragen je Stunde und IP zu; eine davon fuer
+   den Update-Check zu verbrauchen, faellt neben dem Inventar-Abruf nicht auf. */
+const UPDATE_INTERVAL = 60 * 60 * 1000;
+
+/* Der portable Build wird nicht installiert, sondern ist die .exe selbst -
+   electron-builder setzt dafuer diese Variable. Ein Setup-Installer waere
+   dort die falsche Datei: er legte eine zweite, installierte Fassung an,
+   statt die vorhandene zu ersetzen. */
+const isPortableBuild = () => !!process.env.PORTABLE_EXECUTABLE_FILE;
+
+const updateDir = () => dataFile('updates');
+
+/**
+ * Version und Herkunft dieses Builds, fuer den Abschnitt in den
+ * Einstellungen.
+ *
+ * build-info.json schreibt der Workflow unmittelbar vor dem Paketieren.
+ * Fehlt sie, laeuft die App aus dem Quellordner - dann steht dort ehrlich
+ * "development" statt eines erfundenen Commits.
+ */
+let buildInfoCache = null;
+async function buildInfo() {
+  if (buildInfoCache) return buildInfoCache;
+  try {
+    const raw = await readFile(path.join(__dirname, '../../build-info.json'), 'utf8');
+    const parsed = JSON.parse(raw);
+    buildInfoCache = {
+      commit: String(parsed.commit || '').slice(0, 40),
+      builtAt: parsed.builtAt || null,
+      runNumber: parsed.runNumber || null
+    };
+  } catch {
+    buildInfoCache = { commit: '', builtAt: null, runNumber: null };
+  }
+  return buildInfoCache;
+}
+
+function pushUpdateState(patch) {
+  updateState = { ...updateState, ...patch, current: app.getVersion(), auto: updateCheckEnabled };
+  if (win && !win.isDestroyed() && win.webContents) {
+    win.webContents.send('update:changed', updateState);
+  }
+}
+
+/**
+ * Fragt bei GitHub nach. manual:true kommt vom Knopf in den Einstellungen und
+ * laeuft auch, wenn die automatische Pruefung aus ist - wer selbst fragt,
+ * bekommt eine Antwort.
+ */
+async function runUpdateCheck({ manual = false } = {}) {
+  if (updateBusy) return updateState;
+  if (!manual && !updateCheckEnabled) return updateState;
+  /* Ein laufender Download darf nicht von einer Pruefung ueberschrieben
+     werden - sonst springt der Balken zurueck auf "verfuegbar". */
+  if (updateState.status === 'downloading') return updateState;
+
+  updateBusy = true;
+  pushUpdateState({ status: 'checking', error: null });
+
+  const res = await updates.checkForUpdate(app.getVersion(), { portable: isPortableBuild() });
+  updateBusy = false;
+
+  if (!res.ok) {
+    pushUpdateState({ status: 'error', error: res.error, checkedAt: res.checkedAt });
+    return updateState;
+  }
+
+  if (!res.available) {
+    pendingRelease = null;
+    pushUpdateState({
+      status: 'uptodate', error: null, checkedAt: res.checkedAt,
+      latest: res.version || app.getVersion()
+    });
+    return updateState;
+  }
+
+  pendingRelease = res;
+  pushUpdateState({
+    status: 'available',
+    error: null,
+    checkedAt: res.checkedAt,
+    latest: res.version,
+    name: res.name,
+    notes: res.notes,
+    publishedAt: res.publishedAt,
+    pageUrl: res.pageUrl,
+    /* Ohne passende Datei im Release bleibt nur der Weg ueber den Browser -
+       die Oberflaeche zeigt dann "Open release page" statt "Download". */
+    downloadable: !!(res.asset && res.checksums),
+    portable: isPortableBuild(),
+    size: res.asset?.size || 0
+  });
+  return updateState;
+}
+
+function startUpdatePolling() {
+  if (updateTimer) clearInterval(updateTimer);
+  updateTimer = null;
+  if (!updateCheckEnabled) return;
+  /* Nur der gepackte Build prueft von selbst. Aus dem Quellordner heraus ist
+     die Version die aus package.json - da waere ein Abzeichen "Update
+     verfuegbar" nach jedem eigenen Release nur im Weg. Der Knopf in den
+     Einstellungen prueft trotzdem, damit sich das hier testen laesst. */
+  if (!app.isPackaged) return;
+  setTimeout(() => runUpdateCheck().catch(() => {}), UPDATE_FIRST_DELAY);
+  updateTimer = setInterval(() => runUpdateCheck().catch(() => {}), UPDATE_INTERVAL);
+}
+
+ipcMain.handle('update:state', async () => ({
+  ...updateState,
+  current: app.getVersion(),
+  auto: updateCheckEnabled,
+  portable: isPortableBuild()
+}));
+
+ipcMain.handle('update:check', async () => {
+  try {
+    return await runUpdateCheck({ manual: true });
+  } catch (err) {
+    pushUpdateState({ status: 'error', error: err.message });
+    return updateState;
+  }
+});
+
+ipcMain.handle('update:setAuto', async (_e, on) => {
+  updateCheckEnabled = !!on;
+  try {
+    const cfg = await loadConfig();
+    await saveConfig({ ...cfg, updateCheck: updateCheckEnabled });
+  } catch { /* nicht gespeichert, aber fuer diese Sitzung aktiv */ }
+  startUpdatePolling();
+  pushUpdateState({});
+  return { ok: true, auto: updateCheckEnabled };
+});
+
+/**
+ * Laden und pruefen. Der Renderer uebergibt bewusst NICHTS - welche Datei
+ * geholt wird, steht in pendingRelease aus der letzten Abfrage.
+ */
+ipcMain.handle('update:download', async () => {
+  if (!pendingRelease || !pendingRelease.asset) {
+    return { ok: false, error: 'No update to download - check again first' };
+  }
+  if (!pendingRelease.checksums) {
+    /* Ohne SHA256SUMS.txt gibt es nichts zu vergleichen, und ungeprueft
+       wird nichts ausgefuehrt. Dann lieber ehrlich in den Browser. */
+    return { ok: false, error: 'This release has no checksum file - please download it from the release page instead' };
+  }
+  if (updateState.status === 'downloading') return { ok: false, error: 'A download is already running' };
+
+  const asset = pendingRelease.asset;
+  pushUpdateState({ status: 'downloading', error: null, received: 0, size: asset.size || 0 });
+
+  try {
+    await updates.clearDownloads(updateDir());
+
+    /* Die Liste VOR der Datei holen: kommt sie nicht, ist der Download
+       ohnehin nicht verwertbar - dann muss er gar nicht erst laufen. */
+    const sums = await updates.fetchChecksums(pendingRelease.checksums.url, app.getVersion());
+    if (!sums) throw new Error('Could not read the checksum file of that release');
+
+    let lastSent = 0;
+    const file = await updates.downloadAsset(asset, updateDir(), {
+      currentVersion: app.getVersion(),
+      /* Gedrosselt: ohne das schickt ein 90-MB-Download einige tausend
+         Nachrichten an den Renderer, fuer einen Balken mit 100 Stufen. */
+      onProgress: ({ received, total }) => {
+        const now = Date.now();
+        if (now - lastSent < 150 && received !== total) return;
+        lastSent = now;
+        pushUpdateState({ status: 'downloading', received, size: total });
+      }
+    });
+
+    const verified = await updates.verifyFile(file, sums);
+    if (!verified.ok) throw new Error(verified.error);
+
+    readyInstaller = { path: file.path, name: file.name, size: file.size, sha256: verified.sha256 };
+    pushUpdateState({
+      status: 'ready', error: null, received: file.size, size: file.size,
+      fileName: file.name, sha256: verified.sha256, portable: isPortableBuild()
+    });
+    return { ok: true, ...updateState };
+  } catch (err) {
+    readyInstaller = null;
+    pushUpdateState({ status: 'available', error: err.message });
+    return { ok: false, error: err.message };
+  }
+});
+
+/**
+ * Ausfuehren, was geprueft daliegt.
+ *
+ * Beim Installer: starten und die App schliessen - NSIS kann eine laufende
+ * Fassung nicht ueberschreiben. Der Installer selbst bleibt sichtbar, mit
+ * Zielordner und Fortschritt; still im Hintergrund zu installieren waere bei
+ * einem Programm, das den Speicher des Spielprozesses liest, der falsche Ton.
+ *
+ * Beim portablen Build gibt es nichts zu installieren: dort oeffnet sich der
+ * Ordner mit der neuen .exe, und die alte ersetzt man selbst. Die laufende
+ * Datei unter sich selbst auszutauschen, waere ein Kunststueck mit einem
+ * Hilfsskript - und genau die Art Trick, die niemand nachvollziehen kann.
+ */
+ipcMain.handle('update:install', async () => {
+  if (!readyInstaller) return { ok: false, error: 'Nothing has been downloaded yet' };
+  if (!await updates.stillThere(readyInstaller.path, readyInstaller.size)) {
+    readyInstaller = null;
+    pushUpdateState({ status: 'available', error: 'The downloaded file is gone - please download it again' });
+    return { ok: false, error: 'The downloaded file is gone' };
+  }
+
+  if (isPortableBuild()) {
+    shell.showItemInFolder(readyInstaller.path);
+    return { ok: true, portable: true };
+  }
+
+  try {
+    spawn(readyInstaller.path, [], { detached: true, stdio: 'ignore' }).unref();
+  } catch (err) {
+    return { ok: false, error: 'Could not start the installer: ' + err.message };
+  }
+  /* Kurz warten, damit der Installer wirklich oben ist, bevor das Fenster
+     verschwindet - sonst sieht es aus, als waere die App abgestuerzt. */
+  setTimeout(() => app.quit(), 600);
+  return { ok: true };
+});
+
+/** Version, Build und Unterbau fuer den Abschnitt "About" in den Einstellungen. */
+ipcMain.handle('app:info', async () => {
+  const info = await buildInfo();
+  return {
+    ok: true,
+    name: app.getName(),
+    version: app.getVersion(),
+    packaged: app.isPackaged,
+    portable: isPortableBuild(),
+    commit: info.commit,
+    builtAt: info.builtAt,
+    runNumber: info.runNumber,
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+    node: process.versions.node,
+    repo: updates.REPO,
+    releasesUrl: updates.RELEASES_URL
+  };
+});
+
 /* ---------------------------- App ---------------------------- */
 
 if (process.platform === 'win32') {
+  /* Behaelt bewusst den alten Namen - siehe appId in electron-builder.yml. */
   app.setAppUserModelId('com.kr3akz.cephalonargus');
 }
 
@@ -2480,12 +3601,17 @@ app.whenReady().then(async () => {
   pollFissureTracker();
   notificationPollerTimer = setInterval(pollFissureTracker, 45000);
 
+  /* Fragt bei GitHub nach einer neueren Fassung - erst 15 Sekunden nach dem
+     Start und nur im gepackten Build, siehe startUpdatePolling(). */
+  startUpdatePolling();
+
   app.on('activate', () => { if (!BrowserWindow.getAllWindows().length) createWindow(); });
 });
 
 app.on('will-quit', () => {
   if (logWatcher) logWatcher.stop();
   if (notificationPollerTimer) clearInterval(notificationPollerTimer);
+  if (updateTimer) clearInterval(updateTimer);
   globalShortcut.unregisterAll();
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

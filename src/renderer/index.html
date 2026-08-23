@@ -2,22 +2,36 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <!-- wiki.warframe.com liefert die fertig gezeichneten Mod- und Arcane-Karten.
+  <!-- wiki.warframe.com liefert die fertig gezeichneten Mod- und Arcane-Karten,
+       warframe.market die Itembilder im Handelstab (dort steht zu einer Order nur
+       eine itemId, kein lokaler Katalogeintrag).
        Nur Bilder, nichts Ausfuehrbares: script-src bleibt bei 'self'. -->
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; img-src 'self' https://cdn.jsdelivr.net https://wiki.warframe.com data:; style-src 'self' 'unsafe-inline';">
-  <title>Cephalon Argus</title>
+        content="default-src 'self'; img-src 'self' https://cdn.jsdelivr.net https://wiki.warframe.com https://warframe.market data:; style-src 'self' 'unsafe-inline';">
+  <title>Argus</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
 <header class="titlebar">
-  <div class="drag">
+  <!-- Der Kopf der Sidebar, nur breiter: traegt Logo und Namen und geht
+       ohne waagerechte Kante in die schmale Sidebar darunter ueber. -->
+  <div class="titlebar-brand">
     <span class="logo" data-icon="argus"></span>
-    <span class="apptitle">Cephalon Argus</span>
+    <span class="apptitle">Argus</span>
+  </div>
+  <div class="drag">
     <span id="overlay-badge" class="badge hidden">Overlay</span>
   </div>
   <div class="winbtns">
+    <!-- Das Abzeichen erscheint nur, wenn wirklich eine neuere Fassung
+         veroeffentlicht ist. Es steht links vom Tastenkuerzel-Hinweis, also
+         am aeussersten linken Rand der Knopfgruppe: alles rechts davon
+         gehoert dem Fenster, das hier gehoert der Anwendung. -->
+    <button id="update-badge" class="update-badge hidden" title="A newer version is available">
+      <span class="update-dot"></span>
+      <span id="update-badge-text">Update</span>
+    </button>
     <span id="hotkey-hint" class="hotkey-hint hidden"></span>
     <button id="btn-overlay" title="Overlay mode (Alt+Shift+W)"></button>
     <button id="btn-min" title="Minimise"></button>
@@ -147,10 +161,6 @@
   <!-- Feste kompakte Icon-Sidebar links -->
   <aside class="sidebar">
     <div class="sidebar-top">
-      <div class="sidebar-brand">
-        <span class="sb-logo" data-icon="argus"></span>
-      </div>
-
       <nav class="sidebar-nav">
         <button class="nav-item active" data-tab="worldstate">
           <span class="nav-icon" data-icon="alert"></span>
@@ -162,7 +172,7 @@
         </button>
 
         <button class="nav-item" data-tab="mastery">
-          <span class="nav-icon" data-icon="upgrade"></span>
+          <span class="nav-icon" data-icon="mastered"></span>
           <span id="goal-count" class="nav-pill hidden">0</span>
           <div class="nav-tooltip">
             <b>Mastery & farming goals</b>
@@ -186,19 +196,28 @@
           </div>
         </button>
 
+        <button class="nav-item" data-tab="trading">
+          <span class="nav-icon" data-icon="trading"></span>
+          <span id="trade-count" class="nav-pill hidden">0</span>
+          <div class="nav-tooltip">
+            <b>Trading</b>
+            <span>Orders, contracts &amp; transactions</span>
+          </div>
+        </button>
+
         <button class="nav-item" data-tab="builds">
           <span class="nav-icon" data-icon="rifle"></span>
           <div class="nav-tooltip">
-            <b>Builds & Mods</b>
+            <b>Builds <span class="wip">WIP</span></b>
             <span>Overframe import & modding</span>
           </div>
         </button>
 
         <button class="nav-item" data-tab="farmguide">
-          <span class="nav-icon" data-icon="starchart"></span>
+          <span class="nav-icon" data-icon="biotics"></span>
           <div class="nav-tooltip">
             <b>Farming guide</b>
-            <span>Resources & best drop nodes</span>
+            <span>Resources, best drop nodes and mining</span>
           </div>
         </button>
 
@@ -209,23 +228,15 @@
             <span>Local notebook</span>
           </div>
         </button>
-
-        <button class="nav-item" data-tab="settings">
-          <span class="nav-icon" data-icon="sliders"></span>
-          <div class="nav-tooltip">
-            <b>Settings</b>
-            <span>Hotkeys & notifications</span>
-          </div>
-        </button>
       </nav>
     </div>
 
     <div class="sidebar-foot">
-      <button id="sb-btn-refresh" class="sb-action-btn">
-        <span class="nav-icon" data-icon="refresh"></span>
-        <div class="nav-tooltip" id="sb-refresh-tooltip">
-          <b id="sb-refresh-title">Refresh</b>
-          <span id="sb-refresh-sub">Reload profile & data</span>
+      <button class="nav-item" data-tab="settings">
+        <span class="nav-icon" data-icon="sliders"></span>
+        <div class="nav-tooltip">
+          <b>Settings</b>
+          <span>Hotkeys & notifications</span>
         </div>
       </button>
     </div>
@@ -515,25 +526,59 @@
     <!-- ---------------- 4. Farm-Routen & Ressourcen Guide ---------------- -->
     <section id="tab-farmguide" class="tabpane">
       <div class="section-head">
-        <h2>Resource & farming route guide</h2>
-        <p>The best planets, missions and warframe setups for every resource</p>
+        <h2>Resource &amp; farming route guide</h2>
+        <p>The best planets, missions and warframe setups for every resource — plus every ore and gem you can mine</p>
       </div>
 
-      <div class="searchbox" style="margin-bottom: 20px;">
+      <!-- Ressourcen und Bergbau sind zwei verschiedene Taetigkeiten, keine
+           zwei Filter derselben Liste: das eine hat Nodes, das andere Adern.
+           Deshalb ein echter Moduswechsel und nicht nur eine Chip-Reihe. -->
+      <div class="fg-modes">
+        <button class="fg-mode active" data-fgmode="resources">
+          <span data-icon="gem"></span> <span>Resources</span>
+        </button>
+        <button class="fg-mode" data-fgmode="mining">
+          <span data-icon="pickaxe"></span> <span>Mining — ores &amp; gems</span>
+        </button>
+      </div>
+
+      <div class="searchbox" style="margin-bottom: 16px;">
         <span class="ic" id="ic-fgsearch"></span>
         <input id="fg-search" type="text" placeholder="Search a resource or planet … e.g. Orokin Cell, Tellurium, Saturn, Uranus">
       </div>
 
-      <div class="fg-pro-tips">
-        <div class="pro-tip-item">
-          <span class="tip-ic" data-icon="gem"></span><b>Loot squad setup:</b> Nekros (Desecrate) + Khora (Pilfering Strangledome) + speed Nova + Wisp for maximum drop chances.
+      <!-- ---- Modus 1: Sternenkarten-Ressourcen ---- -->
+      <div id="fg-pane-resources">
+        <div class="ducats-filter-badges" id="fg-cats"></div>
+
+        <div class="fg-pro-tips">
+          <div class="pro-tip-item">
+            <span class="tip-ic" data-icon="gem"></span><b>Loot squad setup:</b> Nekros (Desecrate) + Khora (Pilfering Strangledome) + speed Nova + Wisp. Nekros and Khora stack, so a squad running both roughly doubles what a solo run yields.
+          </div>
+          <div class="pro-tip-item">
+            <span class="tip-ic" data-icon="rocket"></span><b>Boosters multiply into each other:</b> a resource booster doubles the amount picked up, a drop-chance booster raises the odds, and a Resource Drop Chance Blessing from a relay stacks on top of both. The Steel Path adds a permanent +100% drop chance.
+          </div>
+          <div class="pro-tip-item">
+            <span class="tip-ic" data-icon="paw"></span><b>Always bring a beast companion</b> with Loyal Retriever or Resourceful Retriever — both occasionally double a pickup. A Smeeta Kavat’s Charm can hand you rare resources out of thin air.
+          </div>
+          <div class="pro-tip-item">
+            <span class="tip-ic" data-icon="box"></span><b>Containers are a separate table:</b> drop-chance boosters and the Steel Path bonus do nothing for them. Only the quantity booster helps, so container farms want Xaku or Limbo, not a bigger multiplier.
+          </div>
         </div>
-        <div class="pro-tip-item">
-          <span class="tip-ic" data-icon="rocket"></span><b>Booster effect:</b> A resource booster doubles the amount you pick up (e.g. 2x Orokin Cells); a drop-chance booster raises the odds of a drop.
-        </div>
+
+        <div id="fg-grid" class="fg-grid"></div>
       </div>
 
-      <div id="fg-grid" class="fg-grid"></div>
+      <!-- ---- Modus 2: Bergbau ---- -->
+      <div id="fg-pane-mining" hidden>
+        <div class="fg-vein-key" id="fg-vein-key"></div>
+        <div id="fg-worlds" class="fg-worlds"></div>
+        <div id="fg-mining-grid" class="fg-grid"></div>
+        <div class="fg-mining-extra">
+          <div class="fg-cutters" id="fg-cutters"></div>
+          <div class="fg-facts" id="fg-facts"></div>
+        </div>
+      </div>
     </section>
 
     <!-- ---------------- 5. Baro-Dukaten & Relikt-Helper ---------------- -->
@@ -673,6 +718,122 @@
       </div>
     </section>
 
+    <!-- ---------------- 6. Handel ---------------- -->
+    <section id="tab-trading" class="tabpane">
+      <div class="section-head section-head-row">
+        <div>
+          <!-- Die Wortmarke steht neben der Ueberschrift, nicht darunter: dieser
+               Tab zeigt NICHTS aus dem Spiel, sondern durchweg Daten von
+               warframe.market. Wessen Konto und wessen Preise das sind,
+               gehoert deshalb an die Ueberschrift. -->
+          <div class="trade-head-title">
+            <h2>Trading</h2>
+            <span class="wfm-brand" data-icon="wfm" title="Data from warframe.market"></span>
+          </div>
+          <p>Your orders, contracts and everything you have traded</p>
+        </div>
+        <div class="head-actions">
+          <!-- Ein Knopf, drei Zustaende: abgemeldet, angemeldet, gestoert.
+               Er traegt den Zustand sichtbar, statt dass man ihn aus einer
+               leeren Liste erraten muss. -->
+          <button class="btn btn-account" id="btn-trade-account" title="warframe.market account">
+            <!-- Angemeldet steht hier das Profilbild mit dem Anwesenheitspunkt
+                 in der Ecke, abgemeldet nur der Punkt. -->
+            <span class="trade-avatar sm hidden" id="trade-account-avatar"></span>
+            <span class="trade-account-dot" id="trade-account-dot"></span>
+            <span id="trade-account-label">Sign in</span>
+          </button>
+          <button class="btn btn-subtle" id="btn-trade-refresh" title="Reload orders and contracts from warframe.market">
+            <span data-icon="refresh"></span> <span>Refresh</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Eine Zeile, wenn etwas im Argen liegt. Kein Formular mehr: das
+           sitzt im Kontofenster hinter dem Knopf oben. -->
+      <div class="trade-notice hidden" id="trade-notice"></div>
+
+      <!-- Zahlen ueber allem: was steht offen, was ist hereingekommen. -->
+      <div class="trade-stats-grid" id="trade-stats">
+        <div class="ducats-stat-card card-plat">
+          <img class="stat-card-ic" src="assets/icons/currency/platinum.png" alt="Platinum">
+          <div class="stat-content">
+            <span class="stat-label">Open sell orders</span>
+            <div class="stat-value"><b id="trade-kpi-sell">0</b> <small>orders</small></div>
+            <span class="stat-sub" id="trade-kpi-sell-sub">0 platinum if everything sells</span>
+          </div>
+        </div>
+
+        <div class="ducats-stat-card card-inv">
+          <span class="stat-card-svg" data-icon="tag"></span>
+          <div class="stat-content">
+            <span class="stat-label">Open buy orders</span>
+            <div class="stat-value"><b id="trade-kpi-buy">0</b> <small>orders</small></div>
+            <span class="stat-sub" id="trade-kpi-buy-sub">0 platinum committed</span>
+          </div>
+        </div>
+
+        <div class="ducats-stat-card card-baro">
+          <span class="stat-card-svg" data-icon="gem"></span>
+          <div class="stat-content">
+            <span class="stat-label">Contracts</span>
+            <div class="stat-value"><b id="trade-kpi-contracts">0</b> <small>auctions</small></div>
+            <span class="stat-sub" id="trade-kpi-contracts-sub">Rivens, liches &amp; sisters</span>
+          </div>
+        </div>
+
+        <div class="ducats-stat-card card-primary">
+          <span class="stat-card-svg" data-icon="ledger"></span>
+          <div class="stat-content">
+            <span class="stat-label">Traded (last 30 days)</span>
+            <div class="stat-value"><b id="trade-kpi-net">0</b> <small>platinum net</small></div>
+            <span class="stat-sub" id="trade-kpi-net-sub">0p in · 0p out</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="ducats-main-box">
+        <div class="ducats-toolbar-row">
+          <div class="ducats-mode-tabs">
+            <button class="ducats-tab-btn active" data-trade-mode="orders">
+              <span class="btn-ic" data-icon="tag"></span><span>Orders</span>
+              <span class="counter-badge" id="trade-badge-orders">0</span>
+            </button>
+            <button class="ducats-tab-btn" data-trade-mode="contracts">
+              <span class="btn-ic" data-icon="gem"></span><span>Contracts</span>
+              <span class="counter-badge" id="trade-badge-contracts">0</span>
+            </button>
+            <button class="ducats-tab-btn" data-trade-mode="transactions">
+              <span class="btn-ic" data-icon="ledger"></span><span>Transactions</span>
+              <span class="counter-badge" id="trade-badge-tx">0</span>
+            </button>
+          </div>
+
+          <div class="ducats-quick-actions">
+            <button class="btn btn-sm btn-action" id="btn-trade-new">
+              <span class="btn-ic" data-icon="plus"></span><span id="btn-trade-new-label">New order</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="ducats-filter-row">
+          <div class="searchbox flex-search">
+            <span class="ic" data-icon="search"></span>
+            <input id="trade-search" type="text" placeholder="Search your orders … e.g. Braton, Serration, Kulstar">
+          </div>
+
+          <div class="ducats-filter-badges" id="trade-filter-chips"></div>
+
+          <div class="ducats-sort-wrap">
+            <label for="trade-sort">Sort:</label>
+            <select id="trade-sort" class="select-sm"></select>
+          </div>
+        </div>
+
+        <div class="trade-list" id="trade-list"></div>
+      </div>
+    </section>
+
     <!-- ---------------- 6. Inventar ---------------- -->
     <section id="tab-inventory" class="tabpane">
       <div class="section-head section-head-row">
@@ -709,54 +870,80 @@
     </section>
 
     <!-- ---------------- 7. Builds ---------------- -->
+    <!--
+      ZWEI ANSICHTEN, EIN TAB. Oben das ARSENAL: jedes Item, zu dem ein Build
+      existiert, als Kachel mit seiner Illustration - wie das Regal im Spiel.
+      Ein Klick oeffnet die DETAILANSICHT: das gewaehlte Item gross, darunter
+      seine Builds als Reiter und das Mod-Brett des aktiven.
+    -->
     <section id="tab-builds" class="tabpane">
-      <div class="section-head">
-        <h2>Import an Overframe build</h2>
-        <p>Paste an overframe.gg build URL, or create your own build</p>
-      </div>
 
-      <div class="build-import-row">
-        <div class="searchbox flex-1">
-          <span class="ic" id="ic-buildimport"></span>
-          <input id="build-url" type="text" placeholder="https://overframe.gg/build/12345/...">
-        </div>
-        <button id="btn-import" class="btn btn-primary">Import</button>
-        <button id="btn-new-build" class="btn btn-secondary">+ Custom build</button>
-      </div>
-      <div id="import-status" class="hint hidden"></div>
-
-      <!-- Panel: Eigener Build erstellen -->
-      <div id="newbuild-panel" class="newbuild-panel hidden" style="margin-top: 14px;">
-        <div class="searchbox">
-          <span class="ic" id="ic-itemsearch"></span>
-          <input id="newbuild-item" type="text" placeholder="Search for an item to build … e.g. Torid, Wisp, Glaive Prime">
-          <div id="newbuild-results" class="results hidden"></div>
-        </div>
-      </div>
-
-      <!-- Summen über alle Builds -->
-      <div id="build-totals" class="build-totals hidden">
-        <div class="totals-head">
-          <h3>Total requirements across your active builds</h3>
-          <p>All the forma, catalysts and endo your builds need</p>
-        </div>
-        <div id="totals-grid" class="totals-grid"></div>
-      </div>
-
-      <!-- Fehlende Mods -->
-      <div id="missing-mods-wrap" class="missing-mods-wrap hidden">
-        <div class="missing-head">
+      <!-- ---- Ansicht 1: das Arsenal ---- -->
+      <div id="build-overview">
+        <div class="section-head barsenal-head">
           <div>
-            <h3>Mods missing from your builds</h3>
-            <p>Click an entry once you own that mod</p>
+            <h2>Builds <span class="wip">Work in progress</span></h2>
+            <p>Every frame, weapon and companion you have a build for</p>
           </div>
-          <button id="btn-all-owned" class="btn-sm">Mark all as owned</button>
+          <div class="barsenal-tools">
+            <div class="searchbox flex-1">
+              <span class="ic" id="ic-buildimport"></span>
+              <input id="build-url" type="text" placeholder="Paste an overframe.gg build URL …">
+            </div>
+            <button id="btn-import" class="btn btn-secondary">Import</button>
+          </div>
         </div>
-        <div id="missing-mods" class="missing-mods-grid"></div>
+        <div id="import-status" class="importstatus hidden"></div>
+
+        <div id="build-shelf" class="build-shelf"></div>
+
+        <!-- Summen über alle Builds -->
+        <div id="build-totals" class="build-totals hidden">
+          <div class="totals-head">
+            <h3>Total requirements across your active builds</h3>
+            <p>All the forma, catalysts and endo your builds need</p>
+          </div>
+          <div id="totals-grid" class="totals-grid"></div>
+        </div>
+
+        <!-- Fehlende Mods -->
+        <div id="missing-mods-wrap" class="missing-mods-wrap hidden">
+          <div class="missing-head">
+            <div>
+              <h3 id="missing-title">Mods missing from your builds</h3>
+              <p id="missing-sub">Read straight from your inventory</p>
+            </div>
+            <button id="btn-all-owned" class="btn-sm hidden">Mark all as owned</button>
+          </div>
+          <div id="missing-mods" class="missing-mods-grid"></div>
+        </div>
       </div>
 
-      <div class="section-head"><h2>Your builds</h2></div>
-      <div id="builds" class="buildlist"></div>
+      <!-- ---- Ansicht 2: ein Item und seine Builds ---- -->
+      <div id="build-detail" class="hidden">
+        <div class="bdetail-top">
+          <button id="bdetail-back" class="btn-sm bdetail-back" type="button">Back to all builds</button>
+          <span class="wip">Work in progress</span>
+        </div>
+
+        <!-- DIE BUEHNE: links der grosse Kasten mit dem Item, rechts Name,
+             Kapazitaet und Aufwand des aktiven Builds. -->
+        <div class="build-stage">
+          <div id="bstage-slot" class="bstage-slot">
+            <span class="bstage-glow"></span>
+            <span id="bstage-glyph" class="bstage-glyph"></span>
+            <img id="bstage-art" class="bstage-art" alt="" hidden>
+            <span id="bstage-caption" class="bstage-caption"></span>
+          </div>
+          <div id="bstage-main" class="bstage-main"></div>
+        </div>
+
+        <!-- Die Builds DIESES Items - Reiter, solange es mehr als einen gibt -->
+        <div id="build-profiles" class="build-profiles hidden"></div>
+
+        <!-- Das Mod-Brett im Aufbau des Arsenals -->
+        <div id="build-board" class="build-board hidden"></div>
+      </div>
     </section>
 
     <!-- ---------------- 8. Notizen ---------------- -->
@@ -774,7 +961,50 @@
     <section id="tab-settings" class="tabpane">
       <div class="section-head">
         <h2>Settings</h2>
-        <p>Hotkeys and notifications</p>
+        <p>Version, hotkeys and notifications</p>
+      </div>
+
+      <!-- Zwei Spalten, damit alles ohne Scrollen auf den Schirm passt.
+           Links die beiden kurzen Gruppen, rechts die lange Liste der
+           Benachrichtigungen - das gleicht die Hoehen ungefaehr aus. -->
+      <div class="settings-cols">
+      <div class="settings-col">
+
+      <!-- Version, Herkunft und Updates. Steht oben, weil es die Frage
+           beantwortet, mit der man in die Einstellungen geht, wenn etwas
+           nicht so aussieht wie im Changelog: "welche Fassung laeuft hier
+           eigentlich?" -->
+      <div class="settings-group">
+        <div class="settings-group-head">
+          <h3>About Argus</h3>
+          <p>Which version is running, where it came from, and whether a newer one exists.</p>
+        </div>
+
+        <div class="about-grid" id="about-grid">
+          <span>Version</span><b id="about-version">—</b>
+          <span>Build</span><b id="about-build">—</b>
+          <span>Platform</span><b id="about-platform">—</b>
+          <span>Runtime</span><b id="about-runtime">—</b>
+        </div>
+
+        <label class="setting-row">
+          <div class="setting-info">
+            <b>Check for updates automatically</b>
+            <span>Asks GitHub once an hour whether a newer release exists. Nothing is
+                  downloaded without your say-so — this is the only connection Argus
+                  opens on its own.</span>
+          </div>
+          <input type="checkbox" id="set-update-check" class="toggle-checkbox">
+          <span class="toggle-switch"></span>
+        </label>
+
+        <div class="settings-note settings-note-row" id="update-settings-row">
+          <span id="update-settings-text">Checking …</span>
+          <div class="about-actions">
+            <button class="btn-sm" id="btn-update-check">Check now</button>
+            <button class="btn-sm" id="btn-update-open">What's new</button>
+          </div>
+        </div>
       </div>
 
       <div class="settings-group">
@@ -826,6 +1056,9 @@
 
         <div id="inv-scan-status" class="settings-note hidden"></div>
       </div>
+
+      </div>
+      <div class="settings-col">
 
       <div class="settings-group">
         <div class="settings-group-head">
@@ -901,10 +1134,47 @@
           <button class="btn-sm" id="set-open-fissure-notif">Open filters</button>
         </div>
       </div>
+
+      </div>
+      </div>
     </section>
 
   </div>
 </main>
+
+<!-- Update-Fenster.
+     Zeigt, was in der neuen Fassung steht, bevor irgendetwas geladen wird -
+     und danach, woran die geladene Datei erkannt wurde: die Pruefsumme steht
+     ausgeschrieben da, damit sie sich mit der SHA256SUMS.txt des Releases
+     vergleichen laesst, ohne der App dabei glauben zu muessen. -->
+<div id="update-modal" class="modal hidden">
+  <div class="modal-box update-box">
+    <div class="modal-head">
+      <div class="update-head-id">
+        <span class="update-head-icon" id="update-head-icon"></span>
+        <div>
+          <h3 id="update-modal-title">Update available</h3>
+          <p id="update-modal-sub" class="hint"></p>
+        </div>
+      </div>
+      <button id="update-modal-close" class="btn-sm">Close</button>
+    </div>
+
+    <div id="update-notes" class="update-notes"></div>
+
+    <div id="update-progress" class="update-progress hidden">
+      <div class="update-bar"><div class="update-bar-fill" id="update-bar-fill"></div></div>
+      <span class="update-progress-text" id="update-progress-text"></span>
+    </div>
+
+    <div id="update-status" class="settings-note hidden"></div>
+
+    <div class="update-actions">
+      <button id="update-open-page" class="btn-sm">Release page</button>
+      <button id="update-action" class="btn btn-primary">Download update</button>
+    </div>
+  </div>
+</div>
 
 <!-- Slot-Editor Modal -->
 <div id="slot-modal" class="modal hidden">
@@ -921,6 +1191,16 @@
       <span class="ic" id="ic-modsearch"></span>
       <input id="modsearch" type="text" placeholder="Search mods … e.g. Serration, Vitality">
     </div>
+
+    <!-- DIE POLARITAET GEHOERT DEM PLATZ, NICHT DER MOD.
+         Deshalb steht sie hier oben und nicht unten bei den Werten der
+         gewaehlten Karte: sie ist das Forma, das man in diesen Platz gesetzt
+         hat, und sie gilt weiter, wenn man die Mod darin austauscht. -->
+    <div class="sc-polbar">
+      <span class="sc-polbar-label">Slot polarity</span>
+      <div id="sc-polarities" class="polrow"></div>
+    </div>
+
     <div id="modsearch-results" class="modsearch-results"></div>
 
     <div id="slot-config" class="slot-config hidden">
@@ -933,10 +1213,6 @@
         <input id="sc-rank" type="range" min="0" max="10" value="10">
         <b id="sc-rank-val">10</b>
       </label>
-      <div class="sc-row">
-        <span>Polarity</span>
-        <div id="sc-polarities" class="polrow"></div>
-      </div>
       <div class="sc-foot">
         <span id="sc-drain" class="hint">—</span>
         <div class="sc-actions">
@@ -945,6 +1221,68 @@
         </div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- Arcane-Editor. Wie der Slot-Editor, nur ohne Polaritaet und ohne
+     Kapazitaet: ein Arcane kostet beides nicht. Statt Endo zaehlt hier, wie
+     viele Exemplare bis zum eingestellten Rang hineinwandern. -->
+<div id="arcane-modal" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head">
+      <div>
+        <h3 id="arcane-modal-title">Choose an arcane</h3>
+        <p id="arcane-modal-sub" class="hint"></p>
+      </div>
+      <button id="arcane-modal-close" class="btn-sm">Close</button>
+    </div>
+
+    <div class="searchbox">
+      <span class="ic" id="ic-arcsearch"></span>
+      <input id="arcsearch" type="text" placeholder="Search arcanes … e.g. Guardian, Merciless">
+    </div>
+    <div id="arcsearch-results" class="modsearch-results"></div>
+
+    <div id="arcane-config" class="slot-config hidden">
+      <div class="sc-head">
+        <b id="ac-name">—</b>
+        <span id="ac-meta" class="hint"></span>
+      </div>
+      <label class="sc-row">
+        <span>Rank</span>
+        <input id="ac-rank" type="range" min="0" max="5" value="5">
+        <b id="ac-rank-val">5</b>
+      </label>
+      <div class="sc-foot">
+        <span id="ac-copies" class="hint">—</span>
+        <div class="sc-actions">
+          <button id="ac-clear" class="btn-sm danger">Clear slot</button>
+          <button id="ac-apply" class="btn btn-primary">Apply</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Item-Auswahl fuer einen neuen Build: erst das Regal, dann die Suche -->
+<div id="build-item-modal" class="modal hidden">
+  <div class="modal-box build-item-box">
+    <div class="modal-head">
+      <div>
+        <h3>What are you building for?</h3>
+        <p class="hint">Pick a warframe, a weapon or a companion</p>
+      </div>
+      <button id="build-item-close" class="btn-sm">Close</button>
+    </div>
+
+    <div id="build-item-cats" class="build-item-cats"></div>
+
+    <div class="searchbox">
+      <span class="ic" id="ic-itemsearch"></span>
+      <input id="newbuild-item" type="text" placeholder="Search … e.g. Torid, Wisp, Glaive Prime">
+    </div>
+
+    <div id="newbuild-results" class="build-item-grid"></div>
   </div>
 </div>
 
@@ -966,6 +1304,14 @@
 <div id="relic-modal" class="modal hidden">
   <div class="modal-box item-modal-box">
     <div id="relic-modal-content"></div>
+  </div>
+</div>
+
+<!-- Woher kommt dieses Teil? Aus "My sets" heraus: ein Klick auf ein Teil
+     zeigt die Relikte, in denen es steckt - und wenn keine, die Fundorte. -->
+<div id="part-modal" class="modal hidden">
+  <div class="modal-box item-modal-box">
+    <div id="part-modal-content"></div>
   </div>
 </div>
 
@@ -1106,6 +1452,359 @@
 
 <!-- In-App Toast Container -->
 <div id="app-toast-container" class="toast-container"></div>
+
+<!-- Order bearbeiten. Links die eigenen Zahlen, rechts was andere Spieler
+     verlangen - nebeneinander, weil die eine Zahl ohne die andere keine
+     Entscheidung ist. -->
+<div id="trade-edit-modal" class="modal hidden">
+  <div class="modal-box trade-edit-box">
+    <div class="modal-head">
+      <div class="modal-title-wrap">
+        <img class="trade-edit-icon" id="trade-edit-image" src="" alt="" hidden>
+        <div>
+          <h3 id="trade-edit-title">Edit order</h3>
+          <p id="trade-edit-sub" class="hint"></p>
+        </div>
+      </div>
+      <button id="trade-edit-close" class="modal-close-icon" title="Close">&times;</button>
+    </div>
+
+    <div class="trade-edit-body">
+      <form class="trade-edit-form" id="trade-edit-form">
+        <div class="trade-edit-fields">
+          <label class="field">
+            <span>Platinum</span>
+            <input type="number" id="trade-edit-plat" min="1" step="1" required>
+          </label>
+          <label class="field">
+            <span>Quantity</span>
+            <input type="number" id="trade-edit-qty" min="0" step="1" required>
+          </label>
+          <!-- Nur bei bulkTradable-Items (Relikte, Arcanes, Fische) erlaubt -
+               sonst weist warframe.market den ganzen Patch zurueck. -->
+          <label class="field hidden" id="trade-edit-pertrade-field">
+            <span>Per trade</span>
+            <input type="number" id="trade-edit-pertrade" min="1" step="1">
+          </label>
+          <label class="field hidden" id="trade-edit-subtype-field">
+            <span>Condition</span>
+            <select id="trade-edit-subtype" class="select-sm"></select>
+          </label>
+          <label class="field hidden" id="trade-edit-rank-field">
+            <span>Rank</span>
+            <input type="number" id="trade-edit-rank" min="0" step="1">
+          </label>
+        </div>
+
+        <div class="trade-edit-actions">
+          <button type="submit" class="btn btn-action" id="btn-trade-edit-save">
+            <span class="btn-ic" data-icon="check"></span>Save changes
+          </button>
+          <span class="trade-edit-status" id="trade-edit-status"></span>
+        </div>
+      </form>
+
+      <!-- Angebote anderer Spieler -->
+      <div class="trade-offers">
+        <div class="trade-offers-head">
+          <h4>What other players ask</h4>
+          <span class="trade-offers-count" id="trade-offers-count"></span>
+        </div>
+
+        <div class="trade-offers-filters">
+          <div class="filter-group">
+            <button class="filter-chip active" data-offer-type="sell">Sell</button>
+            <button class="filter-chip" data-offer-type="buy">Buy</button>
+            <button class="filter-chip" data-offer-type="all">Both</button>
+          </div>
+          <button class="filter-chip" id="trade-offers-online" title="Only players who are in game or online right now">
+            <span class="chip-dot"></span>Online only
+          </button>
+          <select id="trade-offers-sort" class="select-sm">
+            <option value="recent">Most recent</option>
+            <option value="price-asc">Cheapest first</option>
+            <option value="price-desc">Most expensive first</option>
+            <option value="reputation">Best reputation</option>
+          </select>
+          <select id="trade-offers-platform" class="select-sm">
+            <option value="">Every platform</option>
+            <option value="pc">PC</option>
+            <option value="ps4">PlayStation</option>
+            <option value="xbox">Xbox</option>
+            <option value="switch">Switch</option>
+          </select>
+        </div>
+
+        <div class="trade-offers-list" id="trade-offers-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Neue Order -->
+<div id="trade-new-modal" class="modal hidden">
+  <div class="modal-box trade-new-box">
+    <div class="modal-head">
+      <div class="modal-title-wrap">
+        <span class="modal-icon-badge" data-icon="plus"></span>
+        <div>
+          <h3>New order</h3>
+          <p class="hint">Pick an item, set your price — it goes straight to warframe.market</p>
+        </div>
+      </div>
+      <button id="trade-new-close" class="modal-close-icon" title="Close">&times;</button>
+    </div>
+
+    <div class="trade-new-body">
+      <div class="searchbox">
+        <span class="ic" data-icon="search"></span>
+        <input id="trade-new-search" type="text" placeholder="Search any tradeable item …" autocomplete="off">
+      </div>
+      <div class="trade-new-results" id="trade-new-results"></div>
+
+      <form class="trade-new-form hidden" id="trade-new-form">
+        <div class="trade-new-picked" id="trade-new-picked"></div>
+
+        <div class="trade-edit-fields">
+          <label class="field">
+            <span>Type</span>
+            <select id="trade-new-type" class="select-sm">
+              <option value="sell">Sell (WTS)</option>
+              <option value="buy">Buy (WTB)</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Platinum</span>
+            <input type="number" id="trade-new-plat" min="1" step="1" required>
+          </label>
+          <label class="field">
+            <span>Quantity</span>
+            <input type="number" id="trade-new-qty" min="1" step="1" value="1" required>
+          </label>
+          <label class="field hidden" id="trade-new-rank-field">
+            <span>Rank</span>
+            <input type="number" id="trade-new-rank" min="0" step="1" value="0">
+          </label>
+          <!-- Pflicht, sobald das Item Zustaende kennt: Relikt intact/radiant,
+               Fisch small/medium/large, Mod regular/atragraph. -->
+          <label class="field hidden" id="trade-new-subtype-field">
+            <span>Condition</span>
+            <select id="trade-new-subtype" class="select-sm"></select>
+          </label>
+          <!-- Pflicht bei bulkTradable und muss die Menge glatt teilen. -->
+          <label class="field hidden" id="trade-new-pertrade-field">
+            <span>Per trade</span>
+            <input type="number" id="trade-new-pertrade" min="1" step="1" value="1">
+          </label>
+        </div>
+
+        <p class="trade-new-hint" id="trade-new-hint"></p>
+
+        <div class="trade-edit-actions">
+          <button type="submit" class="btn btn-action">
+            <span class="btn-ic" data-icon="check"></span>Create order
+          </button>
+          <button type="button" class="btn btn-sm btn-subtle" id="btn-trade-new-back">Pick another item</button>
+          <span class="trade-edit-status" id="trade-new-status"></span>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Contract bearbeiten: Auktionen haben keine Menge, dafuer Start- und
+     Sofortkaufpreis. -->
+<div id="trade-contract-modal" class="modal hidden">
+  <div class="modal-box trade-edit-box">
+    <div class="modal-head">
+      <div class="modal-title-wrap">
+        <span class="modal-icon-badge" data-icon="gem"></span>
+        <div>
+          <h3 id="trade-contract-title">Edit contract</h3>
+          <p id="trade-contract-sub" class="hint"></p>
+        </div>
+      </div>
+      <button id="trade-contract-close" class="modal-close-icon" title="Close">&times;</button>
+    </div>
+
+    <div class="trade-edit-body">
+      <form class="trade-edit-form" id="trade-contract-form">
+        <div class="trade-edit-fields">
+          <label class="field">
+            <span>Starting price</span>
+            <input type="number" id="trade-contract-start" min="1" step="1" required>
+          </label>
+          <label class="field">
+            <span>Buyout</span>
+            <input type="number" id="trade-contract-buyout" min="1" step="1" placeholder="none">
+          </label>
+          <label class="field">
+            <span>Min. reputation</span>
+            <input type="number" id="trade-contract-rep" min="0" step="1">
+          </label>
+        </div>
+        <label class="field">
+          <span>Note</span>
+          <textarea id="trade-contract-note" rows="2" placeholder="Shown on your auction"></textarea>
+        </label>
+
+        <div class="trade-edit-actions">
+          <button type="submit" class="btn btn-action">
+            <span class="btn-ic" data-icon="check"></span>Save changes
+          </button>
+          <span class="trade-edit-status" id="trade-contract-status"></span>
+        </div>
+      </form>
+
+      <div class="trade-offers">
+        <div class="trade-offers-head">
+          <h4>Comparable auctions</h4>
+          <span class="trade-offers-count" id="trade-contract-offers-count"></span>
+        </div>
+        <div class="trade-offers-filters">
+          <button class="filter-chip" id="trade-contract-online">
+            <span class="chip-dot"></span>Online only
+          </button>
+          <button class="filter-chip" id="trade-contract-direct" title="Only auctions with a buyout price">
+            <span class="chip-dot"></span>Buyout only
+          </button>
+          <select id="trade-contract-sort" class="select-sm">
+            <option value="price-asc">Cheapest first</option>
+            <option value="price-desc">Most expensive first</option>
+            <option value="recent">Most recent</option>
+          </select>
+        </div>
+        <div class="trade-offers-list" id="trade-contract-offers"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Transaktion von Hand: was ausserhalb der App gehandelt wurde -->
+<div id="trade-tx-modal" class="modal hidden">
+  <div class="modal-box trade-new-box">
+    <div class="modal-head">
+      <div class="modal-title-wrap">
+        <span class="modal-icon-badge" data-icon="ledger"></span>
+        <div>
+          <h3 id="trade-tx-title">Add transaction</h3>
+          <p class="hint">Stays on this machine — warframe.market has no trade history</p>
+        </div>
+      </div>
+      <button id="trade-tx-close" class="modal-close-icon" title="Close">&times;</button>
+    </div>
+
+    <div class="trade-new-body">
+      <form id="trade-tx-form">
+        <div class="trade-edit-fields">
+          <label class="field">
+            <span>Direction</span>
+            <select id="trade-tx-direction" class="select-sm">
+              <option value="sold">Sold</option>
+              <option value="bought">Bought</option>
+            </select>
+          </label>
+          <label class="field trade-field-wide">
+            <span>Item</span>
+            <input type="text" id="trade-tx-name" placeholder="Braton Prime Set" required>
+          </label>
+          <label class="field">
+            <span>Platinum each</span>
+            <input type="number" id="trade-tx-plat" min="0" step="1" required>
+          </label>
+          <label class="field">
+            <span>Quantity</span>
+            <input type="number" id="trade-tx-qty" min="1" step="1" value="1" required>
+          </label>
+          <label class="field">
+            <span>Partner</span>
+            <input type="text" id="trade-tx-partner" placeholder="in-game name">
+          </label>
+        </div>
+
+        <div class="trade-edit-actions">
+          <button type="submit" class="btn btn-action">
+            <span class="btn-ic" data-icon="check"></span><span id="trade-tx-submit-label">Add to history</span>
+          </button>
+          <span class="trade-edit-status" id="trade-tx-status"></span>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Konto-Fenster: Anmelden, Zustand und die Endpunkt-Pruefung.
+     "Angemeldet" ist bei warframe.market keine einzelne Wahrheit - das Token
+     kommt von v1, die Orders liegen auf v2. Deshalb steht hier nicht nur ein
+     Haken, sondern welcher Teil tatsaechlich antwortet. -->
+<div id="trade-account-modal" class="modal hidden">
+  <div class="modal-box trade-account-box">
+    <div class="modal-head">
+      <div class="modal-title-wrap">
+        <span class="modal-icon-badge badge-wfm" data-icon="wfm"></span>
+        <div>
+          <h3 id="trade-account-title">warframe.market account</h3>
+          <p class="hint" id="trade-account-hint">Sign in to manage your orders and contracts</p>
+        </div>
+      </div>
+      <button id="trade-account-close" class="modal-close-icon" title="Close">&times;</button>
+    </div>
+
+    <!-- Abgemeldet: das Formular -->
+    <div id="trade-account-signedout">
+      <form class="trade-signin-form" id="trade-signin-form" autocomplete="off">
+        <label class="field">
+          <span>E-mail</span>
+          <input type="email" id="trade-email" placeholder="you@example.com" autocomplete="username" required>
+        </label>
+        <label class="field">
+          <span>Password</span>
+          <input type="password" id="trade-password" placeholder="••••••••" autocomplete="current-password" required>
+        </label>
+        <button class="btn btn-action" type="submit" id="btn-trade-signin">Sign in</button>
+      </form>
+
+      <p class="trade-signin-note">
+        <span data-icon="warning"></span>
+        Your password is sent to warframe.market once and never stored — only the
+        returned session token is kept on this machine, in <code>wfm-session.json</code>.
+      </p>
+    </div>
+
+    <!-- Angemeldet: wer, und was funktioniert -->
+    <div id="trade-account-signedin" class="hidden">
+      <div class="trade-profile">
+        <!-- Das Profilbild von warframe.market, mit dem Anwesenheitspunkt als
+             Abzeichen in der Ecke. Wer kein Bild gesetzt hat, bekommt den
+             ersten Buchstaben seines Namens - nie ein leeres Loch. -->
+        <span class="trade-avatar" id="trade-profile-avatar"></span>
+        <div class="trade-profile-text">
+          <b id="trade-profile-name">—</b>
+          <small id="trade-profile-meta"></small>
+        </div>
+        <button class="btn btn-sm btn-subtle" id="btn-trade-signout">Sign out</button>
+      </div>
+
+      <div class="trade-checks">
+        <div class="trade-checks-head">
+          <h4>Connection check</h4>
+          <button class="btn btn-sm btn-subtle" id="btn-trade-recheck">
+            <span class="btn-ic" data-icon="refresh"></span>Check again
+          </button>
+        </div>
+        <p class="hint">
+          Which parts of warframe.market accept your session. Argus signs in through their
+          v1 endpoint; orders live on v2, so both have to answer.
+        </p>
+        <div class="trade-checks-list" id="trade-checks-list"></div>
+      </div>
+    </div>
+
+    <p class="trade-signin-status hidden" id="trade-signin-status"></p>
+  </div>
+</div>
+
+
 
 <script src="icons.js"></script>
 <script src="fissure-filter.js"></script>

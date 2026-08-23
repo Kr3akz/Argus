@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('api', {
   getItemDetails:  (u)         => ipcRenderer.invoke('item:details', u),
   getWorldState:   (force)     => ipcRenderer.invoke('worldstate:get', force),
   getFarmingGuide: (q)         => ipcRenderer.invoke('farming:get', q),
+  getMiningGuide:  (q)         => ipcRenderer.invoke('mining:get', q),
   getDucatsData:   ()          => ipcRenderer.invoke('ducats:get'),
   fetchDucatPrices:(slugs)     => ipcRenderer.invoke('ducats:fetchPrices', slugs),
   /* Inventar: get liest nur die lokale Datei, refresh geht als einziger Weg
@@ -41,15 +42,19 @@ contextBridge.exposeInMainWorld('api', {
      mit, damit der Hauptprozess die Inventardatei nicht je Klick neu liest. */
   getUpgradeDetails:(u, owned) => ipcRenderer.invoke('upgrade:details', u, owned),
   getRelicDetails: (u)         => ipcRenderer.invoke('relic:details', u),
+  relicsForItem:   (name)      => ipcRenderer.invoke('relics:forItem', name),
   getChecklist:    (cat)       => ipcRenderer.invoke('checklist:get', cat),
   getBuilds:       ()          => ipcRenderer.invoke('builds:get'),
   importBuild:     (url)       => ipcRenderer.invoke('builds:import', url),
   removeBuild:     (id)        => ipcRenderer.invoke('builds:remove', id),
   createBuild:     (item, name)=> ipcRenderer.invoke('builds:create', item, name),
   setBuildSlot:    (id, i, s)  => ipcRenderer.invoke('builds:setSlot', id, i, s),
+  setBuildArcane:  (id, i, s)  => ipcRenderer.invoke('builds:setArcane', id, i, s),
   setBuildMeta:    (id, patch) => ipcRenderer.invoke('builds:setMeta', id, patch),
   searchMods:      (q, item)   => ipcRenderer.invoke('mods:search', q, item),
-  itemsForBuild:   (q)         => ipcRenderer.invoke('items:forBuild', q),
+  searchArcanes:   (q, item)   => ipcRenderer.invoke('arcanes:search', q, item),
+  itemsForBuild:   (q, cat)    => ipcRenderer.invoke('items:forBuild', q, cat),
+  buildCategories: ()          => ipcRenderer.invoke('items:buildCategories'),
   getPolarities:   ()          => ipcRenderer.invoke('mods:polarities'),
   setModOwned:     (u, owned)  => ipcRenderer.invoke('mods:setOwned', u, owned),
   setManyModsOwned:(list, own) => ipcRenderer.invoke('mods:setManyOwned', list, own),
@@ -117,6 +122,19 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('relic:closed', handler);
     return () => ipcRenderer.removeListener('relic:closed', handler);
   },
+  /* Relikt-Auswahl & Empfehlungen */
+  getRecommendedRelics:()      => ipcRenderer.invoke('relics:recommended'),
+  getVoidTraces:   ()          => ipcRenderer.invoke('inventory:traces'),
+  onRelicSelectOpen:(cb)       => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on('relic:select-open', handler);
+    return () => ipcRenderer.removeListener('relic:select-open', handler);
+  },
+  onRelicSelectClosed:(cb)     => {
+    const handler = () => cb();
+    ipcRenderer.on('relic:select-closed', handler);
+    return () => ipcRenderer.removeListener('relic:select-closed', handler);
+  },
   /* Merkliste des Relikt-Planers. Sie steht in derselben Datei wie Ziele
      und Notizen - hier laufen nur Kennungen hin und ausgerechnete Zeilen
      zurueck. Die Aenderung meldet der Hauptprozess an BEIDE Fenster, damit
@@ -128,6 +146,55 @@ contextBridge.exposeInMainWorld('api', {
     const handler = (_e, list) => cb(list);
     ipcRenderer.on('relics:tracked-changed', handler);
     return () => ipcRenderer.removeListener('relics:tracked-changed', handler);
+  },
+  /* Handel auf warframe.market.
+     Das Passwort geht NUR durch tradeSignIn und nur in diese eine Richtung.
+     Es kommt nie zurueck: tradeAuthState meldet Anzeigename und Plattform,
+     niemals Token oder Zugangsdaten. Dieselbe Zusage wie bei der AccountId
+     weiter oben. */
+  tradeAuthState:  ()          => ipcRenderer.invoke('trade:authState'),
+  tradeVerify:     ()          => ipcRenderer.invoke('trade:verify'),
+  tradeSignIn:     (mail, pw)  => ipcRenderer.invoke('trade:signIn', mail, pw),
+  tradeSignOut:    ()          => ipcRenderer.invoke('trade:signOut'),
+  tradeDiagnose:   ()          => ipcRenderer.invoke('trade:diagnose'),
+  /* Orders: eigene Verkaufs- und Kaufauftraege */
+  tradeOrders:     ()          => ipcRenderer.invoke('trade:orders'),
+  tradeCreateOrder:(data)      => ipcRenderer.invoke('trade:createOrder', data),
+  tradeUpdateOrder:(id, patch, opts) => ipcRenderer.invoke('trade:updateOrder', id, patch, opts),
+  tradeDeleteOrder:(id)        => ipcRenderer.invoke('trade:deleteOrder', id),
+  tradeMarkSold:   (id, info)  => ipcRenderer.invoke('trade:markSold', id, info),
+  tradeOffers:     (slug, o)   => ipcRenderer.invoke('trade:offers', slug, o),
+  tradeSearchItems:(q)         => ipcRenderer.invoke('trade:searchItems', q),
+  tradeItemBySlug: (slug)      => ipcRenderer.invoke('trade:itemBySlug', slug),
+  /* Contracts: Riven-, Lich- und Sister-Auktionen */
+  tradeContracts:  (slug)      => ipcRenderer.invoke('trade:contracts', slug),
+  tradeContractRef:()          => ipcRenderer.invoke('trade:contractReference'),
+  tradeContractOffers:(o)      => ipcRenderer.invoke('trade:contractOffers', o),
+  tradeCreateContract:(d)      => ipcRenderer.invoke('trade:createContract', d),
+  tradeUpdateContract:(id, p)  => ipcRenderer.invoke('trade:updateContract', id, p),
+  tradeCloseContract:(id, i)   => ipcRenderer.invoke('trade:closeContract', id, i),
+  tradeDeleteContract:(id)     => ipcRenderer.invoke('trade:deleteContract', id),
+  /* Handelsbuch - rein lokal, verlaesst den Rechner nicht */
+  tradeTransactions:(o)        => ipcRenderer.invoke('trade:transactions', o),
+  tradeAddTransaction:(e)      => ipcRenderer.invoke('trade:addTransaction', e),
+  tradeUpdateTransaction:(i,p) => ipcRenderer.invoke('trade:updateTransaction', i, p),
+  tradeRemoveTransaction:(id)  => ipcRenderer.invoke('trade:removeTransaction', id),
+  tradeStatsByItem:(o)         => ipcRenderer.invoke('trade:transactionsByItem', o),
+  /* Updates.
+     downloadUpdate und installUpdate nehmen bewusst KEINE Adresse und keinen
+     Pfad entgegen. Welche Datei geladen und welche ausgefuehrt wird, weiss
+     nur der Hauptprozess aus seiner letzten Abfrage - von hier aus laesst
+     sich also nichts anderes herunterladen oder starten. */
+  getAppInfo:      ()          => ipcRenderer.invoke('app:info'),
+  getUpdateState:  ()          => ipcRenderer.invoke('update:state'),
+  checkForUpdates: ()          => ipcRenderer.invoke('update:check'),
+  downloadUpdate:  ()          => ipcRenderer.invoke('update:download'),
+  installUpdate:   ()          => ipcRenderer.invoke('update:install'),
+  setUpdateCheck:  (on)        => ipcRenderer.invoke('update:setAuto', on),
+  onUpdateChanged: (cb)        => {
+    const handler = (_e, st) => cb(st);
+    ipcRenderer.on('update:changed', handler);
+    return () => ipcRenderer.removeListener('update:changed', handler);
   },
   minimize:        ()          => ipcRenderer.invoke('window:minimize'),
   close:           ()          => ipcRenderer.invoke('window:close')

@@ -1,4 +1,4 @@
-/* Inline-SVG-Icons für Cephalon Argus
+/* Inline-SVG-Icons für Argus
    Authentische Vektor-Glyphen im Warframe- / Tenno-Stil */
 
 const svg = (paths, size = 16) =>
@@ -24,6 +24,12 @@ const Icon = {
   radar:     s => svg('<circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="12" r="4.5"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12h2.5M19 12h2.5"/><path d="m12 12 6-6"/>', s),
   minus:     s => svg('<path d="M5 12h14"/>', s),
   close:    s => svg('<path d="M18 6 6 18M6 6l12 12"/>', s),
+
+  /* Dasselbe Kreuz wie close, aber als ZUSTAND ("nicht vorhanden") statt als
+     Handlung ("schliessen"). Eigener Name, weil die beiden sich unabhaengig
+     voneinander aendern duerfen: wer den Schliessen-Knopf umzeichnet, meint
+     nicht den Besitz-Filter im Inventar. */
+  cross:    s => svg('<path d="M18 6 6 18M6 6l12 12"/>', s),
   pip:      s => svg('<rect x="3" y="4" width="18" height="16" rx="2"/><rect x="12" y="12" width="7" height="6" rx="1"/>', s),
   clock:    s => svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', s),
   coin:     s => svg('<circle cx="12" cy="12" r="9"/><path d="M15 9.5a3 3 0 0 0-3-1.5c-1.7 0-3 .9-3 2s1.3 2 3 2 3 .9 3 2-1.3 2-3 2a3 3 0 0 1-3-1.5"/>', s),
@@ -39,6 +45,10 @@ const Icon = {
      damit die beiden sich in der Seitenleiste nicht aehnlich sehen. */
   crate:    s => svg('<path d="M4 7.5h16L18.4 3.9a1 1 0 0 0-.9-.6h-11a1 1 0 0 0-.9.6L4 7.5Z"/><path d="M4 7.5h16v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-12Z"/><path d="M10 12h4"/>', s),
   link:     s => svg('<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>', s),
+  /* Pfeil auf eine Ablagelinie - dasselbe Zeichen im Update-Abzeichen, im
+     Kopf des Update-Fensters und auf dem Knopf darin. Ein Vorgang, ein
+     Symbol; sonst sucht man beim zweiten Klick nach dem ersten. */
+  download: s => svg('<path d="M12 3v11"/><path d="m7.5 10 4.5 4.5 4.5-4.5"/><path d="M4 20h16"/>', s),
   warning:  s => svg('<path d="M12 3 2 20h20L12 3Z"/><path d="M12 9v5M12 17.5v.5"/>', s),
   globe:    s => svg('<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20M2 12h20"/>', s),
   compass:  s => svg('<circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>', s),
@@ -50,11 +60,13 @@ const Icon = {
   /* Offizielle Warframe / Tenno In-Game Symbole */
   alert: s => svgFilled('<path fill-rule="evenodd" clip-rule="evenodd" d="M13.06 3.02a1.22 1.22 0 0 0-2.12 0L1.29 20.06A1.22 1.22 0 0 0 2.35 21.9h19.3a1.22 1.22 0 0 0 1.06-1.84L13.06 3.02ZM12 8.3a1.2 1.2 0 0 0-1.2 1.2v4.9a1.2 1.2 0 0 0 2.4 0V9.5A1.2 1.2 0 0 0 12 8.3Zm0 8.05a1.35 1.35 0 1 0 0 2.7 1.35 1.35 0 0 0 0-2.7Z"/>', s),
   inventory: s => `<span class="nav-icon-mask icon-inventory" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
-  crate: s => `<span class="nav-icon-mask icon-inventory" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
   starchart: s => svg('<circle cx="12" cy="12" r="3"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/><circle cx="5" cy="6" r="2"/><path d="M12 9V8M12 16v-1M9 12H8M16 12h-1M10 10 7 7M14 14l3 3M14 10l3-3M10 14l-3 3"/>', s),
   lotus: s => svg('<path d="M12 2.5C11.5 5.2 9.8 7.5 7.2 9c2.5.2 4.8 2 4.8 4.5 0-2.5 2.3-4.3 4.8-4.5-2.6-1.5-4.3-3.8-4.8-6.5Z"/><path d="M12 13.5v7.5"/><path d="M7 11.2C4.5 11.8 2.5 13.5 2 16c2.5 0 4.5-1 5.8-3Z"/><path d="M17 11.2c2.5.6 4.5 2.3 5 4.8-2.5 0-4.5-1-5.8-3Z"/><path d="M9 16c-2 1.2-3.5 3.2-4 5.5 2.5-.5 4.5-2 5-4.5Z"/><path d="M15 16c2 1.2 3.5 3.2 4 5.5-2.5-.5-4.5-2-5-4.5Z"/>', s),
   
   ducat: s => svg('<path d="m12 2 8 4.5v11L12 22l-8-4.5v-11L12 2Z"/><path d="m12 6.5 4.5 2.5v6L12 17.5 7.5 15V9L12 6.5Z"/><path d="M12 9.5v5M9.5 12h5"/>', s),
+  
+  /* Spuren des Nichts (Void Traces) */
+  traces: s => svg('<path d="M12 2.5C12 2.5 5 10.5 5 15.5a7 7 0 0 0 14 0c0-5-7-13-7-13Z"/><path d="M12 6.5v11M8.5 13.5l3.5 4 3.5-4"/>', s),
   
   baro: s => svg('<path d="m12 2 8 4.5v11L12 22l-8-4.5v-11L12 2Z"/><path d="m12 6.5 4.5 2.5v6L12 17.5 7.5 15V9L12 6.5Z"/><circle cx="12" cy="12" r="2"/>', s),
   
@@ -69,8 +81,17 @@ const Icon = {
   /* Offizielles Upgrade- / Rang-Icon (Mastery Manager) */
   upgrade: s => `<span class="nav-icon-mask icon-upgrade" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
 
+  /* MasteredIconHeavy - das Zeichen, das im Spiel an einem gemeisterten Item
+     steht. In der Seitenleiste fuer "Mastery & farming goals". */
+  mastered: s => `<span class="nav-icon-mask icon-mastered" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
+
+  /* IconBiotics - das Ressourcen-Sinnbild aus den Item-Kategorien, passend
+     zum Farming-Guide. */
+  biotics: s => `<span class="nav-icon-mask icon-biotics" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
+
   /* Offizielles Checkmark-Icon (Farm-Ziele & Checkliste) */
   checkmark: s => `<span class="nav-icon-mask icon-checkmark" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
+  trading: s => `<span class="nav-icon-mask icon-trading" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
 
   /* Offizielles Steel Path Emblem (Difficulty2.png) */
   steelpath: s => `<span class="nav-icon-mask icon-steelpath" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
@@ -112,10 +133,27 @@ const Icon = {
   
   sliders: s => svg('<line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>', s),
   
-  /* Wortmarke: das Auge des Argus. Die Strahlen stehen fuer die hundert Augen,
-     von denen nie alle zugleich schlafen - das Sinnbild fuer den Waechter, der
-     im Hintergrund den Weltzustand beobachtet. */
-  argus: s => svg('<path d="M12 5.5c5 0 8.4 4 9.3 6.1a1 1 0 0 1 0 .8c-.9 2.1-4.3 6.1-9.3 6.1s-8.4-4-9.3-6.1a1 1 0 0 1 0-.8C3.6 9.5 7 5.5 12 5.5Z"/><circle cx="12" cy="12" r="3.2"/><path d="M12 1.8v1.8M12 20.4v1.8M3.9 4.6l1.3 1.3M18.8 18.1l1.3 1.3M20.1 4.6l-1.3 1.3M5.2 18.1l-1.3 1.3"/>', s),
+  /* Symbole aus dem Schnellzugriff des Spiels. Eigene Namen statt der
+     bestehenden relic/codex/rifle, weil die an anderen Stellen der
+     Oberflaeche weiterlaufen - der Relikt-Planer etwa braucht sein
+     Relikt-Symbol unabhaengig davon, was in der Seitenleiste steht. */
+  qaBaro:       s => `<span class="nav-icon-mask icon-qa-baro" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
+  qaNavigation: s => `<span class="nav-icon-mask icon-qa-navigation" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
+  qaCodex:      s => `<span class="nav-icon-mask icon-qa-codex" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
+  qaArsenal:    s => `<span class="nav-icon-mask icon-qa-arsenal" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
+  qaSumbaat:    s => `<span class="nav-icon-mask icon-qa-sumbaat" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
+
+  /* Wappen der fuenf Fokus-Schulen. Bewusst die Schulzeichen des Wikis
+     (IconFocusClean*) und nicht die gleichnamigen Polaritaeten - die
+     stehen fuer Mod-Steckplaetze und sehen voellig anders aus. */
+  focusSchool: (s, school) => {
+    const key = String(school || '').toLowerCase();
+    if (!FOCUS_SCHOOLS.includes(key)) return Icon.star(s);
+    return `<span class="nav-icon-mask icon-focus-${key}" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`;
+  },
+
+  /* Wortmarke: das Auge des Argus */
+  argus: s => `<span class="nav-icon-mask icon-argus" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
 
   /* Ersetzen Emojis in der Oberflaeche. Emoji werden je nach System und
      Schriftart anders gezeichnet, tragen fremde Farben in ein abgestimmtes
@@ -124,9 +162,43 @@ const Icon = {
   bulb:   s => svg('<path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2Z"/>', s),
   gem:    s => svg('<path d="M6 3h12l4 6-10 12L2 9Z"/><path d="M2 9h20"/><path d="m11 3-3 6 4 12 4-12-3-6"/>', s),
   rocket: s => svg('<path d="M4.5 16.5c-1.5 1.3-2 5-2 5s3.7-.5 5-2c.7-.8.7-2.1-.1-2.9a2.2 2.2 0 0 0-2.9-.1Z"/><path d="m12 15-3-3a22 22 0 0 1 2-4A12.9 12.9 0 0 1 22 2c0 2.7-.8 7.5-6 11a22 22 0 0 1-4 2Z"/><path d="M9 12H4s.6-3 2-4c1.6-1.1 5 0 5 0"/><path d="M12 15v5s3-.6 4-2c1.1-1.6 0-5 0-5"/>', s),
-  copy:   s => svg('<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>', s)
+  copy:   s => svg('<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>', s),
+
+  /* Farm-Guide. pickaxe steht fuer den Bergbau-Modus, paw fuer den
+     Begleiter-Hinweis, box fuer Behaelter - alle drei kommen dort in
+     Fliesstext vor, wo vorher ein Emoji stand. */
+  pickaxe: s => svg('<path d="M14.5 12.5 6.6 20.4a1 1 0 1 1-3-3l7.9-7.9"/><path d="M15.7 4.3A12.5 12.5 0 0 0 5.5 3a1 1 0 0 0 .1 1.8 22 22 0 0 1 6.3 3.4"/><path d="M17.7 3.7a1 1 0 0 0-1.4 0l-4.6 4.6a1 1 0 0 0 0 1.4l2.6 2.6a1 1 0 0 0 1.4 0l4.6-4.6a1 1 0 0 0 0-1.4Z"/><path d="M19.7 8.3a12.5 12.5 0 0 1 1.35 10.2 1 1 0 0 1-1.75-.1 22 22 0 0 0-3.4-6.3"/>', s),
+  paw:     s => svg('<circle cx="7" cy="8" r="2"/><circle cx="12" cy="5.5" r="2"/><circle cx="17" cy="8" r="2"/><circle cx="19" cy="13.5" r="1.8"/><path d="M12 11c-2.5 0-4.5 2-5.5 4-.9 1.8.3 3.8 2.3 3.9 1 .1 2 .6 3.2.6s2.2-.5 3.2-.6c2-.1 3.2-2.1 2.3-3.9-1-2-3-4-5.5-4Z"/>', s),
+  box:     s => svg('<path d="M3 8.5 12 4l9 4.5v7L12 20l-9-4.5Z"/><path d="M3 8.5 12 13l9-4.5M12 13v7"/>', s),
+
+  /* Handelstab: die Knopfreihe einer Order. eye/eyeOff zeigen den
+     Sichtbarkeitszustand AN, nicht die Aktion - ein durchgestrichenes Auge
+     an einer sichtbaren Order liest sich sonst als "ist versteckt". */
+  eye:    s => svg('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>', s),
+  eyeOff: s => svg('<path d="M10.6 6.2A9.9 9.9 0 0 1 12 6c6.5 0 10 6 10 6a17 17 0 0 1-3 3.6M6.6 6.7A17 17 0 0 0 2 12s3.5 6 10 6a9.7 9.7 0 0 0 4.3-1"/><path d="M14.1 14.1a3 3 0 0 1-4.2-4.2"/><path d="m3 3 18 18"/>', s),
+  pencil: s => svg('<path d="M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>', s),
+  tag:    s => svg('<path d="M20.6 13.4 12 22l-9-9V4a1 1 0 0 1 1-1h9l7.6 7.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.5"/>', s),
+  ledger: s => svg('<path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H19a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H5.5A1.5 1.5 0 0 1 4 19.5Z"/><path d="M4 17.5h16"/><path d="M8 7h8M8 11h5"/>', s),
+
+  /* Wortmarke von warframe.market.
+
+     BREITER ALS HOCH, deshalb kein svg()-Aufruf: dessen Kasten ist quadratisch,
+     und ein Schriftzug im Quadrat wird entweder gestaucht oder winzig. `s` ist
+     hier die HOEHE, die Breite folgt dem Seitenverhaeltnis.
+
+     Der mittlere Zug traegt das Rot der Seite, die beiden aeusseren nehmen die
+     Textfarbe an - so sitzt die Marke in einer hellen Ueberschrift genauso
+     richtig wie in einer gedaempften Zeile. */
+  wfm: (s = 14) => `<svg viewBox="0 0 1952 735" height="${s}" width="${(s * 1952 / 735).toFixed(1)}"
+       class="wfm-logo" role="img" aria-label="warframe.market">
+    <path fill="currentColor" d="m1436.62 603.304 56.39-142.599h162.82l-77.27-216.315L1675.2 0 1952 734.934h-204.13l-47.3-131.629h-263.95z"/>
+    <path fill="var(--wfm-red)" d="M1262.47 734.935 1558.79.002h-196.45l-202.7 474.931L1015.5.003H864.499l-154.768 474.93-109.146-216.416-98.773 304.302 100.284 172.116h193.331l139.857-425.91 133.346 425.91h193.84z"/>
+    <path fill="currentColor" d="M186.476 482.643h121.003c36.654 0 69.293-4.091 97.917-12.273l31.293-96.408 87.459-269.446c-6.664-10.563-14.272-20.55-22.824-29.96C456.419 24.853 390.719 0 304.222 0H0v734.933h186.476v-252.29zm160.166-313.564c17.54 17.653 26.309 41.276 26.309 70.871 0 29.822-7.713 53.474-23.138 70.956-16.91 19.425-48.047 29.137-93.409 29.137h-69.928V142.598h70.442c42.277 0 72.185 8.827 89.724 26.481z"/>
+  </svg>`
 };
 
+
+const FOCUS_SCHOOLS = ['madurai', 'vazarin', 'naramon', 'unairu', 'zenurik'];
 
 /* ------------------------------------------------------------------
    Polaritaeten

@@ -1,6 +1,6 @@
 {
-  "name": "cephalon-argus",
-  "productName": "Cephalon Argus",
+  "name": "argus",
+  "productName": "Argus",
   "version": "1.0.0",
   "description": "Mastery rank planner and live companion for Warframe: world state, inventory, builds and an in-game overlay",
   "type": "module",
@@ -21,6 +21,7 @@
   "scripts": {
     "start": "electron .",
     "icon": "node tools/make-icon.mjs",
+    "check-farm": "node tools/check-farm-nodes.mjs",
     "dist": "electron-builder",
     "dist:dir": "electron-builder --dir",
     "sync": "node src/cli/sync.js",

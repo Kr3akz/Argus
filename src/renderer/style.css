@@ -1,4 +1,4 @@
-/* Cephalon Argus
+/* Argus
    Gestaltung nach PS5-Home-Vorbild: Flaechen trennen sich durch Helligkeit,
    nicht durch Linien. Tiefe entsteht durch Schatten und sanftes Anheben. */
 
@@ -16,6 +16,9 @@
   --gold:      #f0b849;
   --green:     #4ade80;
   --red:       #ff5c5c;
+  /* Radius der einspringenden Ecke zwischen Markenbalken und Sidebar.
+     Steht in drei Regeln gleichzeitig, deshalb hier einmal zentral. */
+  --rail-fillet: 12px;
   --r-sm:  10px;
   --r-md:  16px;
   --r-lg:  22px;
@@ -31,6 +34,14 @@
   --t-silver: 168 190 210;
   --t-bronze: 210 153 34;
   --t-green:  74 222 128;
+
+  /* Das Rot aus der Wortmarke von warframe.market. Gegenueber dem Original
+     (#a52f31) eine Spur aufgehellt: auf dem Grau ihrer Webseite traegt der
+     Originalton, auf unserem fast schwarzen Grund saeuft er ab.
+     Wie die uebrigen Akzente einmal als Kanaele und einmal als fertige Farbe -
+     die Wortmarke braucht sie als fill, die Flaechen darum als rgb(... / a). */
+  --t-wfm:    208 69 63;
+  --wfm-red:  rgb(var(--t-wfm));
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -89,9 +100,78 @@ body {
   display: flex; align-items: center; justify-content: space-between;
   height: 46px; flex-shrink: 0; position: relative; z-index: 10;
 }
-.drag { -webkit-app-region: drag; display: flex; align-items: center; gap: 11px; padding: 0 22px; flex: 1; height: 100%; }
-.logo { color: var(--accent); display: inline-flex; align-items: center; }
-.apptitle { font-weight: 600; font-size: 13.5px; letter-spacing: .2px; color: var(--text-2); }
+.drag { -webkit-app-region: drag; display: flex; align-items: center; gap: 11px; padding: 0 16px; flex: 1; height: 100%; }
+/* Der Markenbalken ist der Kopf der Sidebar - gleicher Untergrund, gleiche
+   Haarlinie, nahtlos verbunden. Breiter als die Sidebar, damit der Name
+   neben dem Logo steht statt allein in der Leiste; rechts unten abgerundet,
+   darunter laeuft die schmale Sidebar weiter.
+   Untergrund und Kante nur, solange die Sidebar wirklich darunter steht -
+   auf dem Einrichtungsbildschirm haengt der Balken sonst frei in der Ecke. */
+.titlebar-brand {
+  -webkit-app-region: drag;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  /* 23px links: das 26px-Logo steht so mittig ueber der 72px-Sidebar. */
+  padding: 0 26px 0 23px;
+  height: 100%;
+  flex-shrink: 0;
+}
+body:has(#app:not(.hidden)) .titlebar-brand {
+  background: rgba(11, 15, 22, 0.88);
+  backdrop-filter: blur(28px);
+  border-bottom-right-radius: var(--r-md);
+}
+/* Die Haarlinie laeuft nur rechts der Sidebar-Kante und unter dem Ueberhang.
+   Ein normales border-bottom zoege den Strich quer ueber den Kopf der
+   Sidebar - genau die waagerechte Kante, die hier weg soll. */
+body:has(#app:not(.hidden)) .titlebar-brand::after {
+  content: '';
+  position: absolute;
+  left: calc(72px + var(--rail-fillet));
+  right: 0;
+  top: 0;
+  bottom: 0;
+  border-right: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom-right-radius: var(--r-md);
+  pointer-events: none;
+}
+.logo {
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+  filter: drop-shadow(0 0 14px rgba(74, 158, 255, 0.45));
+}
+/* Wortmarke. Bahnschrift ist die DIN-artige Schrift, die Windows seit 10
+   (1709) mitliefert - technische Anmutung ohne eine einzige mitgelieferte
+   Datei, und die Anwendung laeuft ohnehin nur auf Windows. Versalien mit
+   weiter Sperrung machen aus dem Wort ein Zeichen; der blaue Schein ist
+   derselbe wie am Auge daneben, damit Symbol und Name als eine Einheit lesen
+   statt als Bild mit Beschriftung.
+   Kein font-stretch: Chromium loest hier nur zwei feste Schnitte auf, normal
+   und schmal, und schaltet bei 87.5% um. Jeder Wert daneben ist wirkungslos -
+   eine Angabe, die nichts tut, steht besser gar nicht da. Fuer den schmalen
+   Schnitt genuegt font-stretch: 87.5%.
+   Die Titelleiste und die Kopfzeile des Overlays teilen sich das Aussehen -
+   es ist dieselbe Marke, sie darf nicht an zwei Stellen auseinanderlaufen. */
+.apptitle,
+.ov-id b {
+  font-family: Bahnschrift, 'DIN Next', 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #dbe6f4;
+}
+/* Die Sperrung haengt auch hinter dem letzten Buchstaben. Der negative
+   Aussenabstand holt sie zurueck, sonst steht das Wort in seinem Balken
+   optisch links. */
+.apptitle {
+  font-size: 15px;
+  letter-spacing: 2.6px;
+  margin-right: -2.6px;
+  text-shadow: 0 0 14px rgba(74, 158, 255, .6), 0 0 3px rgba(74, 158, 255, .35);
+}
 .badge {
   background: var(--accent); color: #04121f; font-size: 10px; font-weight: 700;
   padding: 3px 9px; border-radius: 20px; letter-spacing: .6px; text-transform: uppercase;
@@ -118,6 +198,51 @@ body {
 }
 .winbtns button:hover { background: var(--surface-2); color: var(--text); }
 .winbtns button.danger:hover { background: var(--red); color: #fff; }
+
+/* ---------- Update-Abzeichen ---------- */
+/* Eine Pille, kein Fensterknopf: sie soll sich von Minimieren und Schliessen
+   daneben absetzen, sonst greift man beim Schliessen daneben.
+   Der Selektor nennt .winbtns mit, weil `.winbtns button` sonst gewinnt -
+   dessen feste 38x32 und der eckige Radius sind genau das, was hier NICHT
+   gelten soll. */
+.winbtns button.update-badge {
+  display: flex; align-items: center; gap: 7px;
+  width: auto; height: 28px;
+  margin-right: 10px; padding: 0 12px 0 10px;
+  background: var(--accent-sf);
+  border: 1px solid rgba(var(--t-accent) / .35);
+  border-radius: 999px;
+  color: #9cc8ff;
+  font-size: 11px; font-weight: 650; letter-spacing: .3px;
+  cursor: pointer;
+  animation: fade .3s var(--ease);
+  transition: background .18s var(--ease), color .18s var(--ease), border-color .18s var(--ease);
+}
+.winbtns button.update-badge:hover {
+  background: rgba(var(--t-accent) / .28);
+  border-color: rgba(var(--t-accent) / .55);
+  color: #cfe4ff;
+}
+/* Geladen und geprueft - ab hier geht es nicht mehr ums Bemerken, sondern
+   ums Ausfuehren. Gruen sagt das ohne ein weiteres Wort. */
+.winbtns button.update-badge.is-ready {
+  background: rgba(var(--t-green) / .16);
+  border-color: rgba(var(--t-green) / .4);
+  color: var(--green);
+}
+.winbtns button.update-badge.is-ready:hover { background: rgba(var(--t-green) / .26); }
+
+.update-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor; flex-shrink: 0;
+  /* Langsam und schwach - es soll auffallen, wenn man hinsieht, und nicht
+     stoeren, wenn man auf etwas anderes sieht. */
+  animation: update-pulse 2.4s var(--ease) infinite;
+}
+@keyframes update-pulse {
+  0%, 100% { opacity: 1;  box-shadow: 0 0 0 0 currentColor; }
+  50%      { opacity: .5; box-shadow: 0 0 0 3px transparent; }
+}
 
 /* ---------- Laden / Fehler ---------- */
 .loading { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; gap: 18px; color: var(--text-3); }
@@ -147,7 +272,6 @@ body {
   flex-shrink: 0;
   background: rgba(11, 15, 22, 0.88);
   backdrop-filter: blur(28px);
-  border-right: 1px solid rgba(255, 255, 255, 0.04);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -158,28 +282,48 @@ body {
   position: relative;
 }
 
+/* Hohlkehle: fuellt die einspringende Ecke unter dem Ueberhang des
+   Markenbalkens, sodass dessen Unterkante in einem Bogen in die rechte
+   Kante der Sidebar laeuft statt in einem harten Absatz. Die aeussere
+   Lage zeichnet die Haarlinie auf dem Bogen, die innere die Flaeche. */
+.sidebar::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 100%;
+  width: var(--rail-fillet);
+  height: var(--rail-fillet);
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 100% 100%,
+      rgba(255, 255, 255, 0) 0,
+      rgba(255, 255, 255, 0) calc(var(--rail-fillet) - 0.4px),
+      rgba(255, 255, 255, 0.04) calc(var(--rail-fillet) + 0.4px),
+      rgba(255, 255, 255, 0.04) calc(var(--rail-fillet) + 1px),
+      rgba(255, 255, 255, 0) calc(var(--rail-fillet) + 1.6px)),
+    radial-gradient(circle at 100% 100%,
+      rgba(11, 15, 22, 0) 0,
+      rgba(11, 15, 22, 0) calc(var(--rail-fillet) - 0.4px),
+      rgba(11, 15, 22, 0.88) calc(var(--rail-fillet) + 0.4px));
+}
+/* Die Kante beginnt erst unter der Hohlkehle - oberhalb davon uebernimmt
+   deren Bogen, ein durchgehendes border-right zoege einen Strich hinein. */
+.sidebar::after {
+  content: '';
+  position: absolute;
+  top: var(--rail-fillet);
+  right: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.04);
+  pointer-events: none;
+}
+
 .sidebar-top {
   display: flex;
   flex-direction: column;
   align-items: center;
   width: 100%;
-}
-
-.sidebar-brand {
-  display: grid;
-  place-items: center;
-  width: 48px;
-  height: 48px;
-  margin-bottom: 16px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-}
-
-.sb-logo {
-  color: var(--accent);
-  display: grid;
-  place-items: center;
-  filter: drop-shadow(0 0 14px rgba(74, 158, 255, 0.45));
 }
 
 .sidebar-nav {
@@ -247,9 +391,30 @@ body {
   pointer-events: none;
 }
 
+.icon-argus {
+  -webkit-mask-image: url('assets/icons/logo.png');
+  mask-image: url('assets/icons/logo.png');
+}
+
+/* Schnellzugriff-Symbole aus dem Spiel. Die Zeichnungen haben von Haus aus
+   sehr verschiedene Seitenverhaeltnisse - Baro ist eine hohe Gestalt, der
+   Codex ein breites Buch - deshalb stehen die Ausgleichsfaktoren daneben. */
+.icon-qa-baro       { -webkit-mask-image: url('assets/icons/quickaccess/baro.png');       mask-image: url('assets/icons/quickaccess/baro.png'); }
+.icon-qa-navigation { -webkit-mask-image: url('assets/icons/quickaccess/navigation.png'); mask-image: url('assets/icons/quickaccess/navigation.png'); }
+.icon-qa-codex      { -webkit-mask-image: url('assets/icons/quickaccess/codex.png');      mask-image: url('assets/icons/quickaccess/codex.png'); }
+.icon-qa-arsenal    { -webkit-mask-image: url('assets/icons/quickaccess/arsenal.png');    mask-image: url('assets/icons/quickaccess/arsenal.png'); }
+.icon-qa-sumbaat    { -webkit-mask-image: url('assets/icons/quickaccess/sumbaat.png');    mask-image: url('assets/icons/quickaccess/sumbaat.png'); }
+
+.icon-focus-madurai { -webkit-mask-image: url('assets/icons/focus/madurai.png'); mask-image: url('assets/icons/focus/madurai.png'); }
+.icon-focus-vazarin { -webkit-mask-image: url('assets/icons/focus/vazarin.png'); mask-image: url('assets/icons/focus/vazarin.png'); }
+.icon-focus-naramon { -webkit-mask-image: url('assets/icons/focus/naramon.png'); mask-image: url('assets/icons/focus/naramon.png'); }
+.icon-focus-unairu  { -webkit-mask-image: url('assets/icons/focus/unairu.png');  mask-image: url('assets/icons/focus/unairu.png'); }
+.icon-focus-zenurik { -webkit-mask-image: url('assets/icons/focus/zenurik.png'); mask-image: url('assets/icons/focus/zenurik.png'); }
+
 .icon-rifle {
   -webkit-mask-image: url('assets/icons/rifle.png');
   mask-image: url('assets/icons/rifle.png');
+  transform: scale(1.18);
 }
 
 .icon-relic {
@@ -267,6 +432,24 @@ body {
   -webkit-mask-image: url('assets/icons/upgrade.png');
   mask-image: url('assets/icons/upgrade.png');
   transform: scale(1.22);
+}
+
+.icon-mastered {
+  -webkit-mask-image: url('assets/icons/mastered.png');
+  mask-image: url('assets/icons/mastered.png');
+  transform: scale(1.18);
+}
+
+.icon-biotics {
+  -webkit-mask-image: url('assets/icons/biotics.png');
+  mask-image: url('assets/icons/biotics.png');
+  transform: scale(1.22);
+}
+
+.icon-trading {
+  -webkit-mask-image: url('assets/icons/trading.png');
+  mask-image: url('assets/icons/trading.png');
+  transform: scale(1.15);
 }
 
 .icon-checkmark {
@@ -621,7 +804,7 @@ body {
   font-size: 11.5px; font-weight: 500;
   padding: 5px 12px; border-radius: 999px;
 }
-.htag svg { color: var(--text-3); }
+.htag svg, .htag .nav-icon-mask { color: var(--text-3); }
 
 .mr-block { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
 .mr-big { display: flex; align-items: center; gap: 8px; }
@@ -711,6 +894,42 @@ button { font: inherit; }
 .section-head { margin: 38px 0 16px; }
 .section-head:first-child { margin-top: 0; }
 .section-head h2 { font-size: 19px; font-weight: 600; letter-spacing: -.2px; }
+
+/* ---------- "Work in progress" ----------
+
+   Ein Schild neben der Ueberschrift, nicht darueber: es gehoert zum Namen des
+   Bereichs, nicht zum Inhalt darunter. Gold statt Rot - hier ist nichts kaputt,
+   es ist nur noch nicht fertig.
+
+   Die Groesse haengt an der Schrift daneben (em statt px), damit dasselbe
+   Schild an einer 19px-Ueberschrift und in einem 13px-Tooltip passt. */
+.wip {
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: .55em;
+  padding: .25em .6em;
+  border-radius: 999px;
+  background: rgb(var(--t-gold) / .14);
+  box-shadow: inset 0 0 0 1px rgb(var(--t-gold) / .3);
+  color: var(--gold);
+  font-size: .58em;
+  font-weight: 700;
+  text-transform: uppercase;
+  white-space: nowrap;
+  /* Sonst erbt es das negative Kerning der Ueberschrift und klebt zusammen. */
+  letter-spacing: .1em;
+}
+
+/* Freistehend neben dem Zurueck-Knopf gibt es keine grosse Schrift, an der sich
+   das em orientieren koennte - dort eine feste Groesse. */
+.bdetail-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.bdetail-top .bdetail-back { margin-bottom: 0; }
+.bdetail-top .wip { margin-left: 0; font-size: 9.5px; }
 .section-head p { font-size: 12.5px; color: var(--text-3); margin-top: 3px; }
 
 /* ---------- Karten ---------- */
@@ -909,18 +1128,661 @@ select option { background: #161b25; color: var(--text); }
   text-align: center; background: var(--surface); border-radius: var(--r-md);
 }
 
-/* ---------- Builds ---------- */
-.importrow { display: flex; gap: 11px; align-items: center; margin-bottom: 12px; }
-.importrow .searchbox { flex: 1; margin-bottom: 0; }
-.importstatus { border-radius: var(--r-md); padding: 13px 17px; font-size: 12.5px; margin-bottom: 18px; display: flex; gap: 10px; align-items: flex-start; }
+/* ---------- Builds ----------
+
+   Der Tab hat ZWEI Ansichten. Das ARSENAL ist ein Regal aus Item-Kacheln: eine
+   je Frame, Waffe oder Begleiter, zu dem ein Build existiert - die Illustration
+   fuellt den Kopf der Kachel und laeuft ueber einen Verlauf in den Text darunter
+   aus.
+
+   Die DETAILANSICHT zeigt oben die BUEHNE (links der grosse Kasten mit dem Item,
+   rechts Name, Kapazitaet und Aufwand), darunter die Fassungen dieses Items als
+   Reiter und zuletzt das BRETT mit den zehn Plaetzen in genau der Aufteilung,
+   die das Spiel zeigt - die Sonderplaetze (Aura/Stance links, Exilus rechts) in
+   einer eigenen Reihe darueber.
+
+   Die Karten im Brett sind DIESELBEN wie im Inventar und liegen zugeklappt da:
+   sichtbar ist nur der Name, beim Zeigen faehrt die Karte auf. Deshalb darf am
+   Brett NICHTS clippen - kein overflow, keine Hoehenbegrenzung. Sonst schneidet
+   der Kasten die aufgeklappte Karte ab.
+   -------------------------------------------------------------------- */
+
+.hint { font-size: 11.5px; color: var(--text-3); }
+
+.importstatus { border-radius: var(--r-md); padding: 13px 17px; font-size: 12.5px; display: flex; gap: 10px; align-items: flex-start; }
 .importstatus.ok   { background: rgba(74,222,128,.12); color: #bff2d3; }
 .importstatus.err  { background: rgba(255,92,92,.12);  color: #ffb4b4; }
 .importstatus.busy { background: var(--surface-2); color: var(--text-2); }
 .importstatus svg { flex-shrink: 0; margin-top: 1px; }
 
-.totalsgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(178px, 1fr)); gap: 12px; }
+.flex-1 { flex: 1; min-width: 0; }
+
+/* Kopf des Arsenals: Ueberschrift links, Import rechts - der Import gehoert
+   dorthin, wo die Builds stehen, nicht in ein eigenes Blatt. */
+.barsenal-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+.barsenal-tools { display: flex; gap: 10px; align-items: center; width: min(480px, 100%); }
+.barsenal-tools .searchbox { margin-bottom: 0; }
+
+/* ---------- Ansicht 1: das Arsenal ---------- */
+
+.build-shelf {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(206px, 1fr));
+  gap: 16px;
+  margin: 18px 0 24px;
+}
+
+/* `align-items` MUSS hier stehen. Die Kachel ist ein <button>, und Chromiums
+   eigener Stil setzt fuer Knoepfe `align-items: center` - damit waere die
+   Illustration nicht kachelbreit, sondern nur so breit wie ihr Inhalt. Da das
+   Bild darin absolut liegt, heisst das: Breite 0 und ein leerer Kasten. Genau
+   dieser Fehler war zu sehen. Die Kinder setzen zusaetzlich `width: 100%`,
+   damit es auch dann haelt, wenn ein Browser hier eigene Wege geht. */
+.bitem {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(255,255,255,.04), var(--surface) 58%);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.06);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform .2s var(--ease), box-shadow .2s var(--ease), background .2s var(--ease);
+}
+.bitem:hover {
+  transform: translateY(-3px);
+  background: linear-gradient(180deg, rgba(74,158,255,.13), var(--surface) 58%);
+  box-shadow: inset 0 0 0 1px rgb(var(--t-accent) / .45), 0 16px 34px rgba(0,0,0,.5);
+}
+.bitem:focus-visible { outline: none; box-shadow: inset 0 0 0 2px rgb(var(--t-accent) / .7); }
+
+/* Die Illustration fuellt den Kopf der Kachel aus - Figuren stehen auf dem
+   Boden und werden unten angeschnitten, Gegenstaende schweben mittig. */
+.bitem-art {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 168px;
+  overflow: hidden;
+}
+.bitem-art img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 10px 20px rgba(0,0,0,.75));
+  transition: transform .28s var(--ease);
+}
+.bitem.is-figure .bitem-art img {
+  object-position: 50% 100%;
+  transform-origin: bottom center;
+  transform: scale(1.2);
+}
+.bitem.is-figure:hover .bitem-art img { transform: scale(1.27); }
+.bitem.is-object .bitem-art img { object-position: 50% 48%; transform: scale(1.06); }
+.bitem.is-object:hover .bitem-art img { transform: scale(1.13); }
+
+/* Ersatz, wenn der Bilderdienst dieses Item nicht fuehrt. Liegt hinter dem
+   Bild und kommt erst zum Vorschein, wenn das Bild ausfaellt. */
+.bitem-glyph {
+  position: absolute;
+  inset: 0;
+  display: none;
+  place-items: center;
+  color: var(--text-3);
+  opacity: .5;
+}
+.bitem-art.is-blank .bitem-glyph { display: grid; }
+.bitem:hover .bitem-art.is-blank .bitem-glyph { color: var(--accent); opacity: .75; }
+
+/* Die Figur wird unten angeschnitten - ein Verlauf laesst sie in die Kachel
+   auslaufen, statt sie an einer Kante abzuschneiden. */
+.bitem-art::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 58px;
+  background: linear-gradient(to top, rgba(6,9,14,.72), transparent);
+  pointer-events: none;
+}
+
+/* Der Schein unter der Figur - dasselbe Mittel wie auf der Buehne. */
+.bitem-art::before {
+  content: '';
+  position: absolute;
+  left: 50%; bottom: -60px;
+  width: 180px; height: 180px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(74,158,255,.22) 0%, rgba(74,158,255,.05) 55%, transparent 70%);
+  filter: blur(26px);
+  pointer-events: none;
+}
+
+/* Kein eigener Untergrund: die Kachel hat schon einen, und ein zweiter zoege
+   quer durch die Kachel eine sichtbare Naht. */
+.bitem-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  width: 100%;
+  padding: 12px 15px 15px;
+}
+.bitem-cat {
+  font-size: 9.5px; font-weight: 700; letter-spacing: 1.1px; text-transform: uppercase;
+  color: var(--accent);
+}
+.bitem b {
+  max-width: 100%;
+  font-size: 14.5px; font-weight: 600; letter-spacing: -.2px; line-height: 1.25;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bitem-sub {
+  max-width: 100%;
+  font-size: 11px; color: var(--text-3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bitem-flags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+
+/* Ohne Builds steht die Erklaerung ueber der Kachel, die den ersten anlegt. */
+.shelf-empty { grid-column: 1 / -1; text-align: left; padding: 22px 24px; line-height: 1.6; }
+
+.bflag {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-3);
+  font: 650 10px/1.5 inherit;
+  white-space: nowrap;
+}
+.bflag svg { flex-shrink: 0; }
+.bflag.good { background: rgb(var(--t-green) / .14); color: #a9e9c2; }
+.bflag.warn { background: rgba(255,92,92,.14);       color: #ffb4b4; }
+.bflag.half { background: rgba(240,184,73,.14);      color: var(--gold); }
+
+/* Die letzte Kachel legt einen neuen Build an - gestrichelt, damit sie als
+   Aufforderung und nicht als Bestand gelesen wird. */
+.bitem.is-new {
+  background: rgba(255,255,255,.02);
+  box-shadow: none;
+  outline: 2px dashed rgba(255,255,255,.11);
+  outline-offset: -6px;
+}
+.bitem.is-new:hover { background: rgba(74,158,255,.07); outline-color: rgb(var(--t-accent) / .5); }
+.bitem.is-new .bitem-art { display: grid; place-items: center; width: 100%; color: var(--text-3); }
+.bitem.is-new .bitem-art::before,
+.bitem.is-new .bitem-art::after { display: none; }
+.bitem.is-new:hover .bitem-art { color: var(--accent); }
+.bitem.is-new .bitem-body { background: none; }
+
+/* ---------- Ansicht 2: die Buehne ---------- */
+
+.bdetail-back { margin-bottom: 16px; }
+
+.build-stage {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 30px;
+  padding: 24px 30px;
+  margin-bottom: 18px;
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+/* DER KASTEN. Er ist bewusst gross und hochkant wie eine Arsenal-Kachel, und
+   das Item darin steht nicht brav mittig, sondern fuellt ihn aus - Figuren auf
+   dem Boden stehend und unten angeschnitten, Gegenstaende schwebend. Anders als
+   frueher ist er KEIN Schalter mehr: gewechselt wird im Arsenal. */
+.bstage-slot {
+  position: relative;
+  flex: 0 0 auto;
+  width: 250px;
+  height: 292px;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(255,255,255,.035), rgba(0,0,0,.22));
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.07);
+}
+
+/* Der Schein unter der Figur - dasselbe Mittel wie im Profilkopf. */
+.bstage-glow {
+  position: absolute;
+  left: 50%;
+  bottom: -40px;
+  width: 240px;
+  height: 240px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(74,158,255,.24) 0%, rgba(74,158,255,.05) 55%, transparent 70%);
+  filter: blur(30px);
+  pointer-events: none;
+}
+
+.bstage-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 12px 24px rgba(0,0,0,.8));
+}
+
+/* Ersatz fuer Items ohne Illustration beim Bilderdienst. */
+.bstage-glyph {
+  position: absolute;
+  inset: 0;
+  display: none;
+  place-items: center;
+  color: var(--text-3);
+  opacity: .45;
+}
+.bstage-slot.is-blank .bstage-glyph { display: grid; }
+.bstage-slot.is-figure .bstage-art {
+  object-position: 50% 100%;
+  transform-origin: bottom center;
+  transform: scale(1.24);
+}
+.bstage-slot.is-object .bstage-art {
+  object-position: 50% 46%;
+  transform: scale(1.16);
+}
+
+.bstage-caption {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  padding: 20px 12px 10px;
+  background: linear-gradient(to top, rgba(6,9,14,.92), transparent);
+  color: var(--text-2);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* Die rechte Spalte */
+.bstage-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 24px;
+}
+.bstage-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.bstage-id { min-width: 0; }
+.bstage-cat {
+  font-size: 10px; font-weight: 700; letter-spacing: 1.1px; text-transform: uppercase;
+  color: var(--accent);
+}
+.bstage-id h2 { font-size: 27px; font-weight: 650; letter-spacing: -.5px; line-height: 1.15; margin-top: 2px; }
+
+/* Der Build-Name ist ein Eingabefeld, sieht aber nicht danach aus - erst beim
+   Hineinklicken bekommt er einen Rahmen. Umbenennen ohne Umweg ueber ein Modal. */
+.bstage-name {
+  width: min(360px, 100%);
+  margin-top: 8px;
+  padding: 5px 9px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px transparent;
+  color: var(--text-2);
+  font: 550 13px/1.4 inherit;
+  transition: background .16s var(--ease), box-shadow .16s var(--ease), color .16s var(--ease);
+}
+.bstage-name:hover { background: var(--surface-2); color: var(--text); }
+.bstage-name:focus {
+  outline: none;
+  background: rgba(0,0,0,.3);
+  box-shadow: inset 0 0 0 1px rgb(var(--t-accent) / .55);
+  color: var(--text);
+}
+.bstage-by { display: block; margin-top: 6px; font-size: 11px; color: var(--text-3); }
+.bstage-actions { display: flex; align-items: center; gap: 9px; flex-shrink: 0; }
+
+.bstage-cap .capbar-label { margin-top: 8px; }
+.bstage-cap .capbar-label b { font-weight: 700; color: var(--text-2); }
+.capbar-label .is-over { color: var(--red); font-weight: 650; }
+
+.bstage-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.bchip {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 13px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 550;
+  white-space: nowrap;
+}
+.bchip svg { flex-shrink: 0; color: var(--text-3); }
+.bchip.good { background: rgb(var(--t-green) / .13); color: #bff2d3; }
+.bchip.good svg { color: var(--green); }
+.bchip.warn { background: rgba(255,92,92,.13); color: #ffc2c2; }
+.bchip.warn svg { color: var(--red); }
+.bchip.half { background: rgba(240,184,73,.13); color: #ffe3a8; }
+.bchip.half svg { color: var(--gold); }
+
+/* ---------- Die Fassungen eines Items ---------- */
+
+.build-profiles { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
+
+.bprofile {
+  position: relative;
+  display: flex; flex-direction: column; gap: 2px;
+  min-width: 168px;
+  padding: 11px 38px 11px 15px;
+  border: none;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.05);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background .18s var(--ease), box-shadow .18s var(--ease);
+}
+.bprofile:hover { background: var(--surface-2); }
+.bprofile:focus-visible { outline: none; box-shadow: inset 0 0 0 2px rgb(var(--t-accent) / .6); }
+.bprofile.on { background: var(--accent-sf); box-shadow: inset 0 0 0 1px rgb(var(--t-accent) / .5); }
+.bprofile b { font-size: 12.5px; font-weight: 600; }
+.bprofile small { font-size: 10.5px; color: var(--text-3); }
+.bprofile small .is-warn { color: #ff9d9d; }
+
+.bprofile-del {
+  position: absolute;
+  top: 50%; right: 9px;
+  transform: translateY(-50%);
+  display: grid; place-items: center;
+  width: 24px; height: 24px;
+  border: none; border-radius: 7px;
+  background: transparent;
+  color: var(--text-3);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity .16s var(--ease), background .16s var(--ease), color .16s var(--ease);
+}
+.bprofile:hover .bprofile-del { opacity: 1; }
+.bprofile-del:hover { background: rgba(255,92,92,.2); color: var(--red); }
+.bprofile-del.armed { opacity: 1; background: var(--red); color: #1a0505; }
+.btn-sm.danger.armed { background: rgba(255, 92, 92, .22); color: var(--red); }
+
+.bprofile.is-new {
+  flex-direction: row; align-items: center; gap: 8px;
+  min-width: 0;
+  padding: 11px 17px;
+  background: rgba(255,255,255,.02);
+  box-shadow: none;
+  outline: 2px dashed rgba(255,255,255,.11);
+  outline-offset: -5px;
+  color: var(--text-3);
+  font: 650 11.5px/1 inherit;
+}
+.bprofile.is-new:hover {
+  background: rgba(74,158,255,.07);
+  outline-color: rgb(var(--t-accent) / .5);
+  color: var(--accent);
+}
+
+/* ---------- Das Mod-Brett ---------- */
+
+/* KEIN overflow hier. Die Karten fahren beim Zeigen ueber ihre Nachbarn hinaus
+   auf; jede Art von Clipping wuerde sie abschneiden. Das z-index haelt das
+   Brett ueber der Reiterreihe darueber, damit eine aufgefahrene Karte der
+   obersten Reihe nicht dahinter verschwindet. */
+.build-board {
+  position: relative;
+  z-index: 1;
+  padding: 26px 24px 30px;
+  margin-bottom: 22px;
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+/* Feste Spaltenbreite statt anteiliger: eine Mod-Karte ist 184 px breit und
+   waechst nicht mit. Zusammen zentriert, sonst kleben sie am linken Rand. */
+.board-special,
+.board-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 4), 184px);
+  justify-content: center;
+  gap: 26px 20px;
+}
+
+/* Die Sonderreihe traegt Aura/Stance links und Exilus rechts - dazwischen
+   bleibt es leer, genau wie im Spiel. */
+.board-special {
+  margin-bottom: 26px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+}
+
+/* Ein Platz ist so hoch wie die ZUGEKLAPPTE Karte. Faehrt sie beim Zeigen auf,
+   waechst der Platz NICHT mit - sonst rutschte das ganze Brett bei jeder
+   Zeigerbewegung. Stattdessen legt sich die Karte ueber ihre Nachbarn. */
+.bslot { position: relative; width: 184px; display: flex; flex-direction: column; gap: 6px; }
+.bslot:hover { z-index: 40; }
+
+.bslot-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  height: 13px;
+  font-size: 9.5px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--text-3);
+}
+/* Lange Beschriftungen duerfen das Polaritaetszeichen nicht aus der Zeile
+   schieben - es ist die wichtigere Angabe von beiden. */
+.bslot-kind { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bslot-pol { display: inline-flex; flex-shrink: 0; color: var(--gold); }
+
+.bslot-card { cursor: pointer; }
+
+/* Der leere Platz. Genau so hoch wie eine zugeklappte Karte, damit die Reihe
+   nicht ins Rutschen kommt, sobald eine Mod gesetzt wird. */
+.bslot-blank {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  width: 184px;
+  height: 90px;
+  border-radius: 6px;
+  background: rgba(0,0,0,.22);
+  outline: 2px dashed rgba(255,255,255,.09);
+  outline-offset: -6px;
+  color: var(--text-3);
+  transition: background .16s var(--ease), outline-color .16s var(--ease), color .16s var(--ease);
+}
+.bslot-blank span { font-size: 9.5px; font-weight: 700; letter-spacing: 1.1px; text-transform: uppercase; }
+.bslot-card:hover .bslot-blank {
+  background: rgba(74,158,255,.09);
+  outline-color: rgb(var(--t-accent) / .5);
+  color: var(--accent);
+}
+.bslot.is-unknown .bslot-blank { color: var(--red); outline-color: rgba(255,92,92,.3); }
+
+/* Was man nicht besitzt, steht blasser da - die Karte ist eine Absicht, kein
+   Besitz. Beim Zeigen faellt der Schleier, sonst liesse sich die Wirkung der
+   fehlenden Karte schlechter lesen als die der vorhandenen. */
+.bslot.is-missing .mod-card { filter: saturate(.35) brightness(.72); }
+.bslot.is-short   .mod-card { filter: saturate(.8) brightness(.92); }
+.bslot:hover .mod-card { filter: none; }
+
+.bslot-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  min-height: 18px;
+  font-size: 10.5px; color: var(--text-3);
+}
+.bslot-rank { font: 650 10.5px/1 ui-monospace, "Cascadia Mono", Consolas, monospace; }
+
+/* Der Besitz wird nicht mehr angehakt, sondern gemeldet: das Inventar weiss es.
+   Drei Zustaende - da, da-aber-zu-niedrig, gar nicht da. */
+.bslot-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font: 700 9.5px/1.5 inherit; letter-spacing: .6px; text-transform: uppercase;
+}
+.bslot-tag.owned   { padding: 2px 6px; background: rgb(var(--t-green) / .15); color: var(--green); }
+.bslot-tag.short   { background: rgba(240,184,73,.16); color: var(--gold); }
+.bslot-tag.missing { background: rgba(255,92,92,.15);  color: var(--red); }
+
+/* ---------- Arcanes im Brett ----------
+
+   Ein Arcane ist im Spiel kein Kartenblatt, sondern ein Gefaess - quer, ohne
+   Rahmen, mit dem Namen darunter. Genau so steht es im Inventar, und genau so
+   steht es hier: eigene Reihe unter den Mods, durch eine Linie getrennt.
+   -------------------------------------------------------------------- */
+
+.board-arcanes {
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(255,255,255,.06);
+}
+.board-arcanes-label {
+  display: block;
+  margin-bottom: 14px;
+  text-align: center;
+  font-size: 9.5px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase;
+  color: var(--text-3);
+}
+.arcane-row { display: flex; justify-content: center; flex-wrap: wrap; gap: 20px; }
+
+.aslot { width: 184px; display: flex; flex-direction: column; gap: 6px; }
+/* Feste Hoehe, damit belegter und leerer Platz gleich hoch stehen - sonst
+   springt die Reihe, sobald ein Arcane gesetzt wird. */
+.aslot-card {
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  min-height: 115px;
+  padding: 10px 10px 9px;
+  border-radius: 8px;
+  background: rgba(0,0,0,.24);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.05);
+  cursor: pointer;
+  transition: background .16s var(--ease), box-shadow .16s var(--ease);
+}
+.aslot-card:hover { background: rgba(74,158,255,.09); box-shadow: inset 0 0 0 1px rgb(var(--t-accent) / .45); }
+
+.aslot-art { display: grid; place-items: center; width: 100%; height: 62px; }
+.aslot-art img {
+  max-width: 104px; max-height: 62px; object-fit: contain;
+  filter: drop-shadow(0 3px 10px rgba(0,0,0,.55));
+}
+.aslot-card b {
+  font-size: 11.5px; font-weight: 650; line-height: 1.25; text-align: center;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;
+}
+.aslot-pips { display: flex; gap: 1px; }
+.aslot-pips i { font-size: 8px; font-style: normal; color: #4b5563; }
+.aslot-pips i.on { color: #a6e6ff; filter: drop-shadow(0 0 1px #a6e6ff); }
+
+/* Leerer Platz - gleich hoch UND gleich breit wie ein belegter, damit die Reihe
+   still steht.
+   `width: 100%` ist Pflicht: .aslot-card zentriert seine Kinder, und ohne
+   Breitenangabe schrumpft der gestrichelte Rahmen auf die Breite des Wortes
+   darin - dann steht ein schmaler Kasten mitten in einem breiten. */
+.aslot-blank {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  flex: 1;
+  width: 100%;
+  border-radius: 6px;
+  outline: 2px dashed rgba(255,255,255,.11);
+  outline-offset: -5px;
+  color: var(--text-3);
+  transition: outline-color .16s var(--ease), color .16s var(--ease);
+}
+.aslot-blank span { font-size: 9.5px; font-weight: 700; letter-spacing: 1.1px; text-transform: uppercase; }
+/* Ohne Inhalt traegt der leere Platz NUR den gestrichelten Rahmen - der feste
+   Rand des Kastens waere daneben eine zweite Linie um dieselbe Flaeche. */
+.aslot.is-empty .aslot-card,
+.aslot.is-unknown .aslot-card { padding: 0; background: rgba(0,0,0,.22); box-shadow: none; }
+.aslot.is-empty .aslot-card:hover,
+.aslot.is-unknown .aslot-card:hover { background: rgba(74,158,255,.09); }
+.aslot-card:hover .aslot-blank { color: var(--accent); outline-color: rgb(var(--t-accent) / .5); }
+.aslot.is-unknown .aslot-blank { color: var(--red); outline-color: rgba(255,92,92,.3); }
+
+.aslot.is-missing .aslot-art img { filter: grayscale(.85) brightness(.6); }
+.aslot.is-short   .aslot-art img { filter: saturate(.75) brightness(.88); }
+.aslot:hover .aslot-art img { filter: none; }
+
+/* Ein Arcane in der Auswahlliste und in "fehlt noch" - Bild statt Kartenblatt. */
+.arcopt-ic { width: 34px; height: 26px; object-fit: contain; flex-shrink: 0; }
+.modrow.is-arcane { cursor: default; }
+.modrow.is-arcane:hover { background: var(--surface-2); }
+
+/* ---------- Item-Auswahl fuer einen neuen Build ---------- */
+
+.modal-box.build-item-box { width: min(980px, 100%); }
+.build-item-cats { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 14px; }
+.icat {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 13px;
+  border: none; border-radius: 999px;
+  background: var(--surface-2); color: var(--text-2);
+  font-size: 12px; font-weight: 550; cursor: pointer;
+  transition: background .16s var(--ease), color .16s var(--ease);
+}
+.icat:hover { background: var(--surface-3); color: var(--text); }
+.icat.on { background: var(--accent); color: #04121f; }
+
+.build-item-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 10px;
+  max-height: 46vh;
+  overflow-y: auto;
+  margin-top: 12px;
+  padding-bottom: 2px;
+}
+.itile {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 11px 9px 13px;
+  border: none; border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer; text-align: center;
+  transition: background .16s var(--ease), transform .16s var(--ease);
+}
+.itile:hover { background: var(--surface-2); transform: translateY(-2px); }
+.itile:disabled { opacity: .5; cursor: progress; }
+.itile-art { display: grid; place-items: center; width: 100%; height: 78px; overflow: hidden; }
+.itile-art img { width: 100%; height: 100%; object-fit: contain; }
+.itile.is-figure .itile-art img {
+  object-position: 50% 100%;
+  transform: scale(1.14);
+  transform-origin: bottom center;
+}
+.itile b { font-size: 12px; font-weight: 600; line-height: 1.3; }
+.itile small { font-size: 10px; color: var(--text-3); }
+
+/* ---------- Summen ueber alle Builds ---------- */
+
+.build-totals,
+.missing-mods-wrap {
+  padding: 22px 26px 24px;
+  margin-bottom: 22px;
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.totals-head, .missing-head { margin-bottom: 16px; }
+.missing-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.totals-head h3, .missing-head h3 { font-size: 15.5px; font-weight: 600; }
+.totals-head p, .missing-head p { font-size: 12px; color: var(--text-3); margin-top: 3px; }
+
+.totals-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(178px, 1fr)); gap: 12px; }
 .tcard {
-  background: var(--surface); border-radius: var(--r-md); padding: 17px;
+  background: var(--surface-2); border-radius: var(--r-md); padding: 17px;
   display: flex; align-items: center; gap: 14px;
 }
 .tcard .ticon {
@@ -931,21 +1793,30 @@ select option { background: #161b25; color: var(--text); }
 .tcard span { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: .8px; font-weight: 600; }
 .tcard small { font-size: 10.5px; color: var(--text-3); display: block; margin-top: 2px; }
 
-/* Fehlende Mods */
-.modlist { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 9px; }
+/* ---------- Fehlende Mods ---------- */
+
+.missing-mods-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 9px; }
 .modrow {
   display: flex; align-items: center; gap: 12px;
-  background: var(--surface); border-radius: var(--r-sm); padding: 11px 14px;
+  background: var(--surface-2); border-radius: var(--r-sm); padding: 11px 14px;
   cursor: pointer; transition: background .18s var(--ease);
 }
-.modrow:hover { background: var(--surface-2); }
+.modrow:hover { background: var(--surface-3); }
 .modrow.owned { opacity: .45; }
+/* Kommt der Besitz aus dem Inventar, gibt es nichts anzuklicken - die Zeile ist
+   eine Feststellung. Ohne data-mod also auch kein Zeigefinger. */
+.modrow:not([data-mod]) { cursor: default; }
+.modrow:not([data-mod]):hover { background: var(--surface-2); }
 .mcheck {
   width: 19px; height: 19px; border-radius: 6px; flex-shrink: 0;
   background: var(--surface-3); display: grid; place-items: center; color: transparent;
   transition: background .18s var(--ease), color .18s var(--ease);
 }
 .modrow.owned .mcheck { background: var(--green); color: #04121f; }
+/* Zwei Sorten Rueckstand: gar nicht da (rot) und da, aber zu niedrig (gold). */
+.modrow.gone:not([data-mod])  .mcheck { background: rgba(255,92,92,.18); color: var(--red); }
+.modrow.short .mcheck { background: rgba(240,184,73,.18); color: var(--gold); }
+.modrow.short small { color: #e6c88a; }
 .modrow-body { flex: 1; min-width: 0; }
 .modrow b { font-size: 13px; font-weight: 600; display: block; }
 .modrow small { font-size: 11px; color: var(--text-3); }
@@ -955,52 +1826,22 @@ select option { background: #161b25; color: var(--text); }
 .rarity.RARE      { background: rgba(240,184,73,.16);  color: var(--gold); }
 .rarity.LEGENDARY { background: rgba(124,108,255,.18); color: #b0a5ff; }
 
-/* Build-Karten */
-.buildlist { display: flex; flex-direction: column; gap: 16px; }
-.build { background: var(--surface); border-radius: var(--r-lg); overflow: hidden; }
-.build-head { display: flex; align-items: center; gap: 16px; padding: 18px 22px; }
-.build-head img { width: 52px; height: 52px; object-fit: contain; border-radius: 12px; background: rgba(0,0,0,.25); padding: 5px; }
-.build-head h3 { font-size: 16.5px; font-weight: 600; }
-.build-sub { font-size: 12px; color: var(--text-3); margin-top: 3px; display: flex; gap: 13px; flex-wrap: wrap; }
-.build-sub span { display: inline-flex; align-items: center; gap: 5px; }
-.build-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+/* ---------- Kapazitaetsbalken ---------- */
 
-.capbar { padding: 0 22px 4px; }
 .capbar-track { height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
-.capbar-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, #2d7fd8, var(--accent)); }
+.capbar-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, #2d7fd8, var(--accent)); transition: width .3s var(--ease); }
 .capbar-fill.over { background: linear-gradient(90deg, #c74444, var(--red)); }
-.capbar-label { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--text-3); margin-top: 7px; }
+.capbar-label { display: flex; justify-content: space-between; gap: 12px; font-size: 11.5px; color: var(--text-3); margin-top: 7px; }
 
-.slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 8px; padding: 14px 22px 20px; }
-.slot {
-  background: rgba(0,0,0,.24); border-radius: var(--r-sm); padding: 11px 13px;
-  cursor: pointer; transition: background .18s var(--ease);
+/* Schmales Fenster. Der Kasten SCHRUMPFT, er legt sich nicht quer: das
+   kleinste zugelassene Fenster ist 1020 px breit, und ein breiter flacher
+   Kasten liesse die Figur darin verloren aussehen. Das Brett behaelt seine
+   184-px-Karten und scrollt lieber (overflow-x am Brett selbst). */
+@media (max-width: 1240px) {
+  .build-stage { gap: 22px; padding: 22px 24px; }
+  .bstage-slot { width: 210px; height: 262px; }
+  .bstage-id h2 { font-size: 23px; }
 }
-.slot:hover { background: rgba(0,0,0,.34); }
-.slot.missing { box-shadow: inset 2px 0 0 var(--red); }
-.slot.owned   { box-shadow: inset 2px 0 0 var(--green); }
-.slot.aura    { background: rgba(74,158,255,.1); }
-.slot-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.slot-name { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.slot-drain { font-size: 11.5px; color: var(--text-3); font-weight: 650; white-space: nowrap; }
-.slot-drain.aura { color: var(--accent); }
-.slot-meta { display: flex; align-items: center; gap: 7px; margin-top: 5px; font-size: 10.5px; color: var(--text-3); }
-.slot-pol { color: var(--gold); font-weight: 700; }
-.slot-empty { opacity: .4; font-style: italic; }
-
-/* ---------- Eigener Build ---------- */
-.newbuild { background: var(--surface); border-radius: var(--r-md); padding: 18px 20px; margin-bottom: 20px; }
-.newbuild .searchbox { margin-bottom: 8px; }
-.hint { font-size: 11.5px; color: var(--text-3); }
-
-.slot.editable { cursor: pointer; }
-.slot.editable:hover { background: rgba(74,158,255,.14); }
-.slot.addslot {
-  display: grid; place-items: center; min-height: 62px;
-  color: var(--text-3); background: rgba(255,255,255,.03);
-}
-.slot.addslot:hover { color: var(--accent); background: rgba(74,158,255,.1); }
-.slot-kind { font-size: 9.5px; text-transform: uppercase; letter-spacing: .8px; color: var(--text-3); font-weight: 650; }
 
 /* ---------- Modal ---------- */
 .modal {
@@ -1010,6 +1851,7 @@ select option { background: #161b25; color: var(--text); }
   animation: fade .2s var(--ease);
 }
 .modal-box {
+  position: relative;
   background: #161b25; border-radius: var(--r-lg); box-shadow: var(--shadow-lg);
   width: min(680px, 100%); max-height: 100%; overflow-y: auto; padding: 24px 26px;
 }
@@ -1034,15 +1876,27 @@ select option { background: #161b25; color: var(--text); }
 .sc-row > span:first-child { width: 78px; color: var(--text-3); font-size: 12px; }
 .sc-row input[type=range] { flex: 1; accent-color: var(--accent); background: none; padding: 0; }
 .sc-row > b { width: 26px; text-align: right; }
+/* Die Polaritaetsreihe des Platzes - direkt unter der Suche, weil sie zum
+   PLATZ gehoert und nicht zur Mod, die man gleich hineinlegt. */
+.sc-polbar {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  margin: -4px 0 14px;
+}
+.sc-polbar-label {
+  width: 78px; flex-shrink: 0;
+  color: var(--text-3); font-size: 12px;
+}
+
 .polrow { display: flex; gap: 6px; flex-wrap: wrap; }
 .polbtn {
-  min-width: 34px; height: 32px; padding: 0 10px; border-radius: 9px; border: none;
+  display: inline-grid; place-items: center;
+  width: 34px; height: 32px; padding: 0; border-radius: 9px; border: none;
   background: var(--surface-2); color: var(--text-2); cursor: pointer;
-  font-size: 13px; font-weight: 700;
   transition: background .15s var(--ease), color .15s var(--ease);
 }
-.polbtn:hover { background: var(--surface-3); }
+.polbtn:hover { background: var(--surface-3); color: var(--text); }
 .polbtn.on { background: var(--accent); color: #04121f; }
+.polbtn .pol-glyph { display: block; }
 .sc-foot { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 18px; }
 .sc-actions { display: flex; gap: 9px; }
 
@@ -1571,33 +2425,58 @@ select option { background: #161b25; color: var(--text); }
   gap: 14px;
   margin-bottom: 24px;
 }
+/* Drei Lagen: unten das Landschaftsbild, darueber ein Schleier aus
+   Zustandsfarbe und Dunkel, obenauf die Schrift. isolation haelt die
+   negativen z-index der Pseudoelemente in der Karte - ohne das rutschen
+   sie hinter den Seitenhintergrund. */
 .ws-cycle-card {
-  background: var(--surface);
+  --tint: rgba(255, 255, 255, 0.05);
+  background: #0d1118;
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: var(--r-md);
   padding: 18px 20px;
+  min-height: 150px;
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
   gap: 12px;
   position: relative;
   overflow: hidden;
+  isolation: isolate;
 }
-.ws-cycle-card.day {
-  border-color: rgba(240, 184, 73, 0.25);
-  background: linear-gradient(135deg, rgba(240, 184, 73, 0.08), rgba(0, 0, 0, 0.2));
+.ws-cycle-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background-size: cover;
+  background-position: center;
+  opacity: .62;
+  transform: scale(1.02);
+  transition: transform .55s var(--ease), opacity .35s var(--ease);
 }
-.ws-cycle-card.night {
-  border-color: rgba(74, 158, 255, 0.25);
-  background: linear-gradient(135deg, rgba(74, 158, 255, 0.08), rgba(0, 0, 0, 0.2));
+/* Links dicht, rechts offen: Titel und Restzeit tragen, vom Bild bleibt
+   trotzdem etwas zu sehen. */
+.ws-cycle-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(125deg, var(--tint), transparent 58%),
+    linear-gradient(100deg, rgba(8, 11, 17, .94) 0%, rgba(8, 11, 17, .78) 38%, rgba(8, 11, 17, .34) 100%);
 }
-.ws-cycle-card.warm {
-  border-color: rgba(255, 120, 70, 0.25);
-  background: linear-gradient(135deg, rgba(255, 120, 70, 0.08), rgba(0, 0, 0, 0.2));
-}
-.ws-cycle-card.cold {
-  border-color: rgba(100, 210, 255, 0.25);
-  background: linear-gradient(135deg, rgba(100, 210, 255, 0.08), rgba(0, 0, 0, 0.2));
-}
+.ws-cycle-card:hover::before { transform: scale(1.07); opacity: .78; }
+
+/* Offizielle Landschaftsbilder aus dem Warframe-Wiki. */
+.ws-cycle-card.map-cetus::before   { background-image: url('assets/worlds/cetus.jpg'); }
+.ws-cycle-card.map-vallis::before  { background-image: url('assets/worlds/vallis.jpg'); }
+.ws-cycle-card.map-cambion::before { background-image: url('assets/worlds/cambion.jpg'); }
+
+.ws-cycle-card.day   { border-color: rgba(240, 184, 73, 0.28); --tint: rgba(240, 184, 73, 0.22); }
+.ws-cycle-card.night { border-color: rgba(74, 158, 255, 0.28); --tint: rgba(74, 158, 255, 0.22); }
+.ws-cycle-card.warm  { border-color: rgba(255, 120, 70, 0.28); --tint: rgba(255, 120, 70, 0.22); }
+.ws-cycle-card.cold  { border-color: rgba(100, 210, 255, 0.28); --tint: rgba(100, 210, 255, 0.22); }
 .ws-cycle-head {
   display: flex;
   align-items: center;
@@ -1607,6 +2486,7 @@ select option { background: #161b25; color: var(--text); }
   font-size: 14px;
   font-weight: 650;
   color: var(--text);
+  text-shadow: 0 1px 14px rgba(0, 0, 0, .8);
 }
 .ws-cycle-sub {
   font-size: 11px;
@@ -1614,6 +2494,10 @@ select option { background: #161b25; color: var(--text); }
   margin-top: 1px;
 }
 .ws-cycle-badge {
+  background:
+    linear-gradient(var(--badge-tint, transparent), var(--badge-tint, transparent)),
+    rgba(8, 11, 17, 0.5);
+  backdrop-filter: blur(10px);
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1624,17 +2508,18 @@ select option { background: #161b25; color: var(--text); }
   text-transform: uppercase;
   letter-spacing: 0.6px;
 }
-.ws-cycle-badge.day { background: rgba(240, 184, 73, 0.16); color: var(--gold); }
-.ws-cycle-badge.night { background: rgba(74, 158, 255, 0.16); color: var(--accent); }
-.ws-cycle-badge.warm { background: rgba(255, 120, 70, 0.16); color: #ff884d; }
-.ws-cycle-badge.cold { background: rgba(100, 210, 255, 0.16); color: #70d8ff; }
-.ws-cycle-badge.fass { background: rgba(255, 150, 50, 0.16); color: #ffa84d; }
-.ws-cycle-badge.vome { background: rgba(100, 160, 255, 0.16); color: var(--accent); }
+.ws-cycle-badge.day { --badge-tint: rgba(240, 184, 73, 0.24); color: var(--gold); }
+.ws-cycle-badge.night { --badge-tint: rgba(74, 158, 255, 0.24); color: var(--accent); }
+.ws-cycle-badge.warm { --badge-tint: rgba(255, 120, 70, 0.24); color: #ff884d; }
+.ws-cycle-badge.cold { --badge-tint: rgba(100, 210, 255, 0.24); color: #70d8ff; }
+.ws-cycle-badge.fass { --badge-tint: rgba(255, 150, 50, 0.24); color: #ffa84d; }
+.ws-cycle-badge.vome { --badge-tint: rgba(100, 160, 255, 0.24); color: var(--accent); }
 .ws-cycle-time {
   font-size: 24px;
   font-weight: 700;
   color: var(--text);
   letter-spacing: -0.5px;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, .85);
 }
 .ws-cycle-time small {
   font-size: 12px;
@@ -1755,6 +2640,7 @@ select option { background: #161b25; color: var(--text); }
   gap: 10px;
 }
 .ws-fissure-card {
+  position: relative;
   background: var(--surface-2);
   border-radius: var(--r-sm);
   padding: 12px 14px;
@@ -1767,27 +2653,27 @@ select option { background: #161b25; color: var(--text); }
   background: var(--surface-3);
 }
 .ws-fissure-img {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   object-fit: contain;
   filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.45));
   flex-shrink: 0;
 }
-.ws-fissure-head-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 3px;
+.ws-fissure-img.tier-lith,
+.ws-fissure-img.tier-meso,
+.ws-fissure-img.tier-neo,
+.ws-fissure-img.tier-axi {
+  transform: scale(1.3);
 }
 .ws-fissure-tier {
-  padding: 3px 7px;
+  padding: 2.5px 7px;
   border-radius: 5px;
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .3px;
   flex-shrink: 0;
+  display: inline-block;
 }
 .ws-fissure-tier.Lith { background: rgba(180, 130, 80, 0.18); color: #d4a373; }
 .ws-fissure-tier.Meso { background: rgba(180, 180, 190, 0.18); color: #ccd6dd; }
@@ -1798,6 +2684,10 @@ select option { background: #161b25; color: var(--text); }
 .ws-fissure-info {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
 }
 .ws-fissure-info b {
   font-size: 13px;
@@ -1808,10 +2698,15 @@ select option { background: #161b25; color: var(--text); }
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 100%;
 }
-.ws-fissure-info span {
+.ws-fissure-info span.ws-fissure-node {
   font-size: 11.5px;
   color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 .ws-fissure-eta {
   font-size: 11.5px;
@@ -1820,9 +2715,294 @@ select option { background: #161b25; color: var(--text); }
 }
 
 /* ---------- 2. Farm Guide ---------- */
-.fg-pro-tips {
+
+/* Ressourcen und Bergbau sind zwei Taetigkeiten, keine zwei Filter. Der
+   Wechsel dazwischen ist deshalb ein Segment und traegt seinen Zustand
+   flaechig, nicht als Unterstrich - er wiegt schwerer als ein Chip daneben. */
+.fg-modes {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 16px;
+  background: var(--surface);
+  border-radius: 999px;
+}
+.fg-mode {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: 0;
+  color: var(--text-3);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 7px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background .15s var(--ease), color .15s var(--ease);
+}
+.fg-mode:hover { color: var(--text-2); }
+.fg-mode.active {
+  background: rgb(var(--t-accent) / .16);
+  color: var(--accent);
+}
+.fg-mode svg { display: block; }
+
+#fg-cats { margin-bottom: 18px; }
+.chip-count {
+  opacity: .55;
+  font-variant-numeric: tabular-nums;
+  margin-left: 2px;
+}
+
+/* Wiederkehrende Kleinueberschrift in den Karten. Stand vorher dreimal als
+   style-Attribut im Markup. */
+.fg-label {
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--text-3);
+}
+.fg-desc {
+  font-size: 12.5px;
+  color: var(--text-2);
+  line-height: 1.4;
+}
+.fg-also ul {
+  margin: 6px 0 0;
+  padding-left: 16px;
+  font-size: 11.5px;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+.fg-also li { margin-bottom: 2px; }
+.fg-tip {
+  font-size: 11.5px;
+  color: var(--gold);
+  background: rgb(var(--t-gold) / .08);
+  padding: 8px 12px;
+  border-radius: var(--r-sm);
+  line-height: 1.45;
+}
+.fg-tip .tip-ic { margin-right: 5px; }
+.fg-tip svg { vertical-align: -2px; }
+
+/* ---- Bergbau ---- */
+
+/* Die Aderlegende ist der Einstieg des Abschnitts: rot/gelb heisst Erz, blau
+   heisst Edelstein. Sie steht deshalb oben und breit, nicht als Fussnote. */
+.fg-vein-key {
+  display: grid;
+  grid-template-columns: repeat(3, auto) 1fr;
+  align-items: center;
+  gap: 18px;
+  padding: 14px 18px;
+  margin-bottom: 18px;
+  background: var(--surface);
+  border-radius: var(--r-md);
+}
+.fg-vein-key-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.fg-vein-key-item b {
+  display: block;
+  font-size: 12.5px;
+  color: var(--vein);
+}
+.fg-vein-key-item span {
+  font-size: 11px;
+  color: var(--text-3);
+}
+.fg-vein-key-note {
+  font-size: 11.5px;
+  color: var(--text-2);
+  line-height: 1.45;
+  border-left: 1px solid rgba(255, 255, 255, .08);
+  padding-left: 18px;
+  min-width: 260px;
+}
+.fg-vein-key-note b { color: var(--text); }
+
+.vein-swatch { flex-shrink: 0; }
+
+.fg-worlds {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+  margin-bottom: 22px;
+}
+.fg-world {
+  background: var(--surface);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.fg-world-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.fg-world-head h3 { font-size: 15px; font-weight: 650; }
+.fg-world-head span { font-size: 11.5px; color: var(--text-3); }
+.fg-world-veins { display: flex; gap: 8px; }
+.fg-vein-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--vein);
+  background: rgba(255, 255, 255, .04);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vein) 35%, transparent);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+.fg-vein-tag::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--vein);
+  box-shadow: 0 0 7px var(--vein);
+}
+.fg-world-meta {
+  font-size: 11.5px;
+  color: var(--text-2);
+  line-height: 1.6;
+}
+.fg-world-meta b { color: var(--text-3); font-weight: 600; }
+
+/* Die Erzkarte traegt den Ton ihrer Ader - so ist rot/gelb/blau schon vor dem
+   Lesen sortiert. Wie bei .pro-tip-item ein Verlauf aus der Ecke statt eines
+   aufgeklebten Balkens. */
+.fg-mine-card {
+  background:
+    radial-gradient(120% 100% at 0% 0%, color-mix(in srgb, var(--vein) 14%, transparent), transparent 60%),
+    var(--surface);
+  box-shadow: var(--shadow), inset 0 0 0 1px color-mix(in srgb, var(--vein) 18%, transparent);
+}
+.fg-mine-card .fg-head .mat-icon {
+  width: 38px;
+  height: 38px;
+  margin-left: auto;
+  opacity: .9;
+}
+.fg-vein-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+.fg-vein-line b { color: var(--vein); }
+.fg-vein-line > span:last-child { color: var(--text-3); }
+.fg-vein-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--vein);
+  box-shadow: 0 0 9px var(--vein);
+  flex-shrink: 0;
+}
+.fg-refined {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface-2);
+  border-radius: var(--r-sm);
+  padding: 8px 12px;
+}
+.fg-refined .mat-icon { width: 30px; height: 30px; object-fit: contain; }
+.fg-refined b { display: block; }
+.fg-refined span { font-size: 12.5px; color: var(--text); }
+.fg-mine-meta {
+  font-size: 11.5px;
+  color: var(--text-2);
+  line-height: 1.6;
+}
+.fg-mine-meta b { color: var(--text-3); font-weight: 600; }
+
+.fg-mining-extra {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 16px;
+  margin-top: 22px;
+}
+.fg-cutters, .fg-facts {
+  background: var(--surface);
+  border-radius: var(--r-md);
+  padding: 18px 20px;
+}
+/* Zwei Spalten, nicht auto-fit: bei vier Cuttern legt auto-fit drei in die
+   erste Reihe und laesst den besten allein in der zweiten stehen. Zu zweit
+   liegen ausserdem die beiden ohne Sondersteine nebeneinander - der Sprung
+   zwischen Reihe eins und zwei IST der Unterschied. */
+.fg-cutter-list {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-top: 12px;
+}
+.fg-cutter {
+  background: var(--surface-2);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+/* Cutter ohne Sondersteine sind kein Zwischenschritt, sondern eine Sackgasse -
+   das darf man ihnen ansehen. */
+.fg-cutter.is-weak { opacity: .62; }
+.fg-cutter-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12.5px;
+}
+.fg-cutter-special {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--gold);
+  white-space: nowrap;
+}
+.fg-cutter.is-weak .fg-cutter-special { color: var(--text-3); }
+.fg-cutter-meta { font-size: 11px; color: var(--text-3); }
+.fg-facts ul {
+  margin: 12px 0 0;
+  padding-left: 16px;
+  font-size: 11.5px;
+  color: var(--text-2);
+  line-height: 1.55;
+}
+.fg-facts li { margin-bottom: 7px; }
+
+@media (max-width: 1100px) {
+  .fg-vein-key { grid-template-columns: repeat(3, auto); }
+  .fg-vein-key-note {
+    grid-column: 1 / -1;
+    border-left: 0;
+    padding-left: 0;
+    border-top: 1px solid rgba(255, 255, 255, .08);
+    padding-top: 12px;
+  }
+  .fg-mining-extra { grid-template-columns: 1fr; }
+}
+
+/* Die Mindestbreite haelt vier Hinweise auf zwei mal zwei statt drei plus
+   einem einsamen. min(100%, …) laesst sie auf schmalen Fenstern trotzdem
+   einspaltig umbrechen, statt aus dem Raster zu ragen. */
+.fg-pro-tips {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr));
   gap: 12px;
   margin-bottom: 20px;
 }
@@ -2985,27 +4165,32 @@ select option { background: #161b25; color: var(--text); }
     0 4px 18px rgb(var(--t-accent) / .10);
 }
 
-.fissure-alert-tag {
+.fissure-alert-badge {
+  position: absolute;
+  top: 7px;
+  right: 8px;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 10px;
-  font-weight: 700;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
   color: var(--accent);
-  background: rgba(74, 158, 255, 0.18);
-  padding: 2px 7px;
-  border-radius: 4px;
-  margin-left: 6px;
+  background: rgba(74, 158, 255, 0.2);
+  box-shadow: 0 0 8px rgba(74, 158, 255, 0.25);
+  pointer-events: none;
 }
 
 /* Modal Box */
 .notif-modal-box {
+  position: relative;
   width: 720px;
   max-width: 95vw;
   max-height: 88vh;
   display: flex;
   flex-direction: column;
   background: #141923;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-lg);
   overflow: hidden;
@@ -3019,6 +4204,7 @@ select option { background: #161b25; color: var(--text); }
   display: flex;
   align-items: center;
   justify-content: space-between;
+  position: relative;
 }
 
 .modal-title-wrap {
@@ -3036,6 +4222,19 @@ select option { background: #161b25; color: var(--text); }
   display: grid;
   place-items: center;
   flex-shrink: 0;
+}
+
+/* Im Kontofenster steht die Marke der Seite, zu der das Konto gehoert - nicht
+   das allgemeine Personen-Zeichen. Deshalb auch ihr Rot statt unseres Blaus.
+
+   BREITER ALS DIE ANDEREN: dies ist ein Schriftzug, kein Zeichen. Ins Quadrat
+   der uebrigen Abzeichen gezwungen bliebe er ein roter Fleck. */
+.modal-icon-badge.badge-wfm {
+  width: auto;
+  min-width: 42px;
+  padding: 0 13px;
+  background: rgb(var(--t-wfm) / .12);
+  color: var(--text);
 }
 
 .notif-modal-scroll {
@@ -3537,13 +4736,44 @@ body.overlay-window { background: #0b0f16; }
   box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.06);
 }
 .ov-logo { color: var(--accent); display: inline-flex; align-items: center; }
-.ov-logo svg { width: 15px; height: 15px; }
+.ov-logo svg, .ov-logo .nav-icon-mask { width: 15px; height: 15px; }
 .ov-id { display: flex; align-items: baseline; gap: 7px; flex: 1; min-width: 0; }
-.ov-id b { font-size: 12px; letter-spacing: .3px; }
+/* Im Overlay kleiner und mit schwaecherem Schein: das Fenster steht ueber
+   dem Spiel, dort geht Schaerfe vor Wirkung. */
+.ov-id b {
+  font-size: 12px;
+  letter-spacing: 1.8px;
+  margin-right: -1.8px;
+  text-shadow: 0 0 10px rgba(74, 158, 255, .45);
+}
 .ov-mr {
   font: 600 10px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
   color: var(--text-3);
   letter-spacing: .4px;
+}
+.ov-traces {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font: 600 10px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  color: #5fe4ff;
+  background: rgba(95, 228, 255, 0.12);
+  border: 1px solid rgba(95, 228, 255, 0.26);
+  padding: 2px 6px;
+  border-radius: 999px;
+  letter-spacing: .3px;
+}
+.ov-traces-ic {
+  display: inline-flex;
+  align-items: center;
+  color: #5fe4ff;
+}
+.ov-traces-ic svg { width: 10px; height: 10px; }
+.ov-traces b {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-shadow: none;
 }
 
 .ov-bar-actions { -webkit-app-region: no-drag; display: flex; gap: 1px; }
@@ -3580,6 +4810,82 @@ body.overlay-window { background: #0b0f16; }
 .ov-sec-note {
   font: 600 9.5px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
   color: var(--text-3);
+}
+
+/* Reliktauswahl-Hervorhebung */
+#ov-rec-sec.selecting {
+  background: linear-gradient(180deg, rgba(74, 158, 255, 0.16), rgba(74, 158, 255, 0.05));
+  border-radius: var(--r-md);
+  padding: 6px 7px 8px;
+  box-shadow: 0 0 14px rgba(74, 158, 255, 0.22), inset 0 0 0 1px rgba(74, 158, 255, 0.32);
+}
+#ov-rec-sec.selecting #ov-rec-title {
+  color: var(--accent);
+}
+
+/* Filterchips fuer Relikt-Aeren */
+.ov-filter-chips {
+  display: flex;
+  gap: 3px;
+  margin-bottom: 5px;
+  overflow-x: auto;
+}
+.ov-filter-chips::-webkit-scrollbar { display: none; }
+.ov-chip {
+  background: var(--surface);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  color: var(--text-3);
+  font: 600 9px/1 var(--font-sans, system-ui, sans-serif);
+  padding: 3px 6px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .12s ease, color .12s ease, border-color .12s ease;
+}
+.ov-chip:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.ov-chip.active {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.ov-rec-values {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  flex-shrink: 0;
+  min-width: 38px;
+}
+.ov-rec-plat {
+  font: 700 11px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  color: var(--text);
+}
+.ov-rec-duc {
+  font: 600 9px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  color: var(--gold);
+}
+.ov-track-btn {
+  background: none;
+  border: none;
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  transition: color .12s ease, background .12s ease;
+}
+.ov-track-btn:hover {
+  color: var(--gold);
+  background: var(--surface-2);
+}
+.ov-track-btn.active {
+  color: var(--gold);
 }
 
 /* ---------- Zyklen ---------- */
@@ -3719,15 +5025,45 @@ body.overlay-window { background: #0b0f16; }
    Einstellungen
    ========================================================================= */
 
+/* Hero ausblenden bei spezifischen Reitern (Inventar, Dukaten, Builds, Farming Guide, Handel, Notes, Settings) */
+.main-content:has(#tab-settings.active) .hero,
+.main-content:has(#tab-inventory.active) .hero,
+.main-content:has(#tab-ducats.active) .hero,
+.main-content:has(#tab-builds.active) .hero,
+.main-content:has(#tab-farmguide.active) .hero,
+.main-content:has(#tab-trading.active) .hero,
+.main-content:has(#tab-notes.active) .hero {
+  display: none;
+}
+.main-content:has(#tab-settings.active) { padding-bottom: 28px; }
+
+.settings-cols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+.settings-col { display: flex; flex-direction: column; gap: 18px; }
+/* Die Zeilenlaenge war auf 60-62ch gedeckelt, als die Gruppen noch ueber die
+   ganze Breite liefen. In einer Spalte bremst das die Beschreibungen frueher
+   aus als noetig und kostet 50px Hoehe. 84ch greift erst auf sehr breiten
+   Fenstern - dort bleibt der Schutz vor ellenlangen Zeilen erhalten. */
+.settings-col .setting-info span,
+.settings-col .settings-group-head p { max-width: 84ch; }
+/* Das Fenster laesst sich nicht schmaler als 1020px ziehen (WINDOW_MIN in
+   main.js), zwei Spalten halten also ueberall. Der Rueckfall bleibt als
+   Sicherheitsnetz, falls diese Grenze einmal faellt. */
+@media (max-width: 1000px) {
+  .settings-cols { grid-template-columns: 1fr; }
+}
+
 .settings-group {
   background: var(--surface);
   border-radius: var(--r-md);
-  padding: 2px 20px 18px;
-  margin-bottom: 18px;
-  max-width: 780px;
+  padding: 2px 20px 16px;
 }
 
-.settings-group-head { padding: 18px 0 6px; }
+.settings-group-head { padding: 16px 0 4px; }
 .settings-group-head h3 { font-size: 15px; font-weight: 600; }
 .settings-group-head p {
   font-size: 12px; color: var(--text-3); margin-top: 4px; max-width: 60ch; line-height: 1.5;
@@ -3735,7 +5071,7 @@ body.overlay-window { background: #0b0f16; }
 
 .setting-row {
   display: flex; align-items: center; justify-content: space-between;
-  gap: 18px; padding: 13px 0;
+  gap: 16px; padding: 11px 0;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 /* Nur die Umschalt-Zeilen sind als Ganzes anklickbar - bei den Tastenkuerzeln
@@ -3802,6 +5138,100 @@ label.setting-row { cursor: pointer; user-select: none; }
   display: flex; align-items: center; justify-content: space-between; gap: 14px;
 }
 .settings-note-row .btn-sm { flex-shrink: 0; }
+.settings-note-row.warn { color: var(--gold);  background: rgba(240, 184, 73, 0.09); }
+.settings-note-row.ok   { color: var(--green); background: rgba(74, 222, 128, 0.08); }
+
+/* ---------- About: Version und Herkunft ---------- */
+/* Zwei Spalten, Beschriftung und Wert. Eine Tabelle waere fuer vier Zeilen zu
+   viel Geruest, und untereinander gesetzt liest man die Werte nicht mehr
+   gegeneinander. */
+.about-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 7px 20px;
+  padding: 12px 0 4px;
+  font-size: 12px;
+}
+.about-grid span { color: var(--text-3); }
+.about-grid b {
+  font-weight: 600; color: var(--text-2);
+  /* Commit-Kuerzel und Versionsnummern stehen in Ziffernbreite - sonst
+     wandert die zweite Spalte bei jedem Build ein Stueck. */
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: 11.5px;
+}
+.about-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+/* ---------- Update-Fenster ---------- */
+.update-box { width: min(560px, 100%); }
+.update-head-id { display: flex; align-items: flex-start; gap: 13px; }
+.update-head-icon {
+  display: grid; place-items: center;
+  width: 38px; height: 38px; flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--accent-sf);
+  color: var(--accent);
+}
+
+/* Die Notizen kommen von GitHub und sind mal drei Zeilen, mal dreissig -
+   deshalb eine Hoehengrenze mit eigenem Rollbereich statt eines Fensters,
+   das aus dem Bild waechst. */
+.update-notes {
+  max-height: 280px; overflow-y: auto;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: var(--r-md);
+  font-size: 12.5px; line-height: 1.6; color: var(--text-2);
+}
+.update-notes h4 { font-size: 12px; color: var(--text); margin: 12px 0 6px; }
+.update-notes h4:first-child { margin-top: 0; }
+.update-notes p { margin: 6px 0; }
+.update-notes ul { margin: 4px 0; padding-left: 18px; }
+.update-notes li { margin: 3px 0; }
+.update-notes code {
+  font: 600 11px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  background: rgba(0, 0, 0, .3); padding: 2px 5px; border-radius: 4px;
+}
+
+.update-progress { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+.update-bar {
+  flex: 1; height: 6px; border-radius: 999px;
+  background: var(--surface-2); overflow: hidden;
+}
+.update-bar-fill {
+  height: 100%; width: 0;
+  background: var(--accent); border-radius: 999px;
+  transition: width .25s var(--ease);
+}
+/* Ohne Content-Length gibt es keinen ehrlichen Prozentwert. Dann laeuft ein
+   Streifen durch, statt eine Zahl zu erfinden. */
+.update-bar-fill.indeterminate {
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation: update-sweep 1.2s linear infinite;
+  transition: none;
+}
+@keyframes update-sweep {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.update-progress-text {
+  font-size: 11.5px; color: var(--text-3); flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Die Pruefsumme muss sich mit dem Auge gegen die SHA256SUMS.txt halten
+   lassen - dafuer braucht sie feste Zeichenbreite und darf umbrechen. */
+.update-hash {
+  display: inline-block; margin-top: 6px;
+  font: 500 10px/1.5 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  color: var(--text-3); word-break: break-all;
+}
+
+.update-actions {
+  display: flex; align-items: center; justify-content: flex-end;
+  gap: 10px; margin-top: 20px;
+}
+.update-actions .btn-sm { margin-right: auto; }
 
 /* Ersetzt die drei Hauptschalter, die in die Einstellungen gewandert sind. */
 .notif-moved-note {
@@ -4243,6 +5673,7 @@ body.tags-window {
   content-visibility: auto;
   contain-intrinsic-size: 320px 200px;
   contain: layout;
+  min-height: 175px;
   transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
 }
 .set-card:hover {
@@ -4258,8 +5689,9 @@ body.tags-window {
 
 .set-card-body {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 14px;
+  flex: 1;
 }
 
 .set-art-showcase {
@@ -4310,15 +5742,33 @@ body.tags-window {
 .set-progress-fill { height: 100%; background: var(--accent); border-radius: 999px; }
 .set-card.complete .set-progress-fill { background: var(--green); }
 
-.set-parts { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px; }
+.set-parts {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 5px;
+  margin-top: 2px;
+}
 
+/* Jedes Teil ist ein Knopf: ein Klick zeigt, aus welchen Relikten es faellt.
+   `border`/`font` muessen dafuer zurueckgesetzt werden - der Browser gibt
+   Knoepfen beides von sich aus mit. */
 .set-part {
   display: flex; align-items: center; gap: 5px;
   padding: 4px 8px 4px 5px;
+  border: none;
   border-radius: var(--r-sm);
   background: var(--surface-2);
+  color: inherit;
+  font: inherit;
   font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+  transition: background .15s var(--ease), transform .15s var(--ease);
 }
+.set-part:hover { background: var(--surface-3); transform: translateY(-1px); }
+.set-part:hover .set-part-name { color: var(--text); }
+.set-part:focus-visible { outline: none; box-shadow: inset 0 0 0 2px rgb(var(--t-accent) / .6); }
 .set-part.missing { opacity: .42; }
 .set-part.partial {
   box-shadow: inset 0 0 0 1px rgba(250, 204, 21, 0.4);
@@ -4334,69 +5784,305 @@ body.tags-window {
   color: var(--text);
 }
 .set-part.missing .set-part-count { color: var(--text-3); }
+/* Was fehlt, ist gedaempft - aber nicht so weit, dass man es nicht mehr
+   anklicken moechte. Beim Zeigen kommt es ganz zurueck. */
+.set-part.missing:hover { opacity: .85; }
+
+/* ---------- "Woher kommt dieses Teil?" (Part Modal) ---------- */
+
+.part-art-wrap {
+  width: 72px;
+  height: 72px;
+  flex-shrink: 0;
+}
+.part-header-stats {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 5px;
+}
+.part-stat-val {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.part-stat-val b {
+  font-size: 13.5px;
+  color: var(--text);
+  font-weight: 650;
+}
+.part-stat-val small {
+  font-size: 10.5px;
+  color: var(--text-3);
+}
+.part-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.prel-lead { font-size: 12.5px; color: var(--text-2); line-height: 1.55; margin-bottom: 16px; }
+.prel-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 7px; margin-bottom: 18px; }
+
+.prel {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+/* Ein Relikt, das man schon hat, ist eine andere Auskunft als eines, das man
+   noch farmen muss - deshalb hebt es sich ab. */
+.prel.has { background: rgb(var(--t-green) / .1); box-shadow: inset 0 0 0 1px rgb(var(--t-green) / .25); }
+.prel-ic { width: 26px; height: 26px; object-fit: contain; flex-shrink: 0; }
+.prel-body { flex: 1; min-width: 0; }
+.prel-body b { display: block; font-size: 12.5px; font-weight: 600; }
+.prel-body small { font-size: 10.5px; color: var(--text-3); }
+.prel-own {
+  display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0;
+  font: 700 11px/1 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  color: var(--green);
+}
+.prel-own.is-none { color: var(--text-3); font-weight: 400; }
+
+/* Der Treffer in der Reliktsuche: warum steht diese Zeile hier? */
+.inv-tag.is-hit {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: var(--accent-sf);
+  color: #a8ccff;
+}
 
 .set-foot {
   display: flex; align-items: center; gap: 16px;
-  margin-top: 11px; padding-top: 10px;
+  margin-top: auto; padding-top: 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
-.set-val { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-3); }
+.set-val { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-3); white-space: nowrap; flex-shrink: 0; }
 .set-val b { font-size: 13px; color: var(--text); font-weight: 600; }
 .set-val small { font-size: 10.5px; }
+.set-val.is-done { color: var(--green); }
 
-/* ---------- Aera-Filter im Inventar ---------- */
+/* ---------- Handelsknoepfe auf der Set-Karte ----------
+   Rechtsbuendig, damit sie die Zahlen links nicht auseinanderdruecken - die
+   liest man beim Ueberfliegen, die Knoepfe sucht man gezielt. */
+.set-trade { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; flex-shrink: 0; }
 
+.set-trade-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 10px;
+  background: var(--surface-2);
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: var(--r-sm);
+  color: var(--text-2);
+  font: inherit; font-size: 10.5px; font-weight: 700; letter-spacing: .3px;
+  cursor: pointer;
+  transition: all .15s var(--ease);
+}
+.set-trade-btn:hover { background: var(--surface-3); color: var(--text); border-color: rgba(255,255,255,.18); }
+.set-trade-btn:active { transform: scale(.95); }
+.set-trade-btn svg { flex-shrink: 0; }
+/* Die Stueckzahl, wenn mehr als ein vollstaendiges Set zusammenkommt. */
+.set-trade-btn b {
+  font-size: 10px; padding: 0 4px; border-radius: 4px;
+  background: rgba(0,0,0,.3); color: inherit;
+}
+
+.set-trade-btn.is-sell { color: #79c0ff; border-color: rgba(88,166,255,.25); }
+.set-trade-btn.is-sell:hover { background: rgba(88,166,255,.16); border-color: rgba(88,166,255,.45); }
+.set-trade-btn.is-buy { color: var(--gold); border-color: rgba(240,184,73,.25); }
+.set-trade-btn.is-buy:hover { background: rgba(240,184,73,.16); border-color: rgba(240,184,73,.45); }
+
+/* Gesperrt statt versteckt: die Karte soll nicht je nach Bestand anders
+   aussehen, und der Titel sagt, warum es nicht geht. */
+.set-trade-btn.is-disabled {
+  opacity: .35; cursor: not-allowed; color: var(--text-3);
+  border-color: rgba(255,255,255,.06);
+}
+.set-trade-btn.is-disabled:hover { background: var(--surface-2); border-color: rgba(255,255,255,.06); transform: none; }
+
+/* ---------- Die Filterleiste im Inventar ----------
+
+   Dieselben Chips wie im Regal unter "What are you building for?": weiche
+   Pille, Symbol vor dem Wort, gewaehlt wird sie ausgefuellt und die Schrift
+   dunkel. Was hier dazukommt, ist die Trefferzahl - im Regal waehlt man eine
+   Kategorie, hier will man vorher wissen, wie viel dahinter steckt.        */
+
+/* ZWEI FESTE ZEILEN, in jedem Bereich dieselben: oben der Zustand (All,
+   Owned, Not owned), unten alles, was die Liste weiter zuschneidet. Frueher
+   floss alles in einer Reihe um, und wo der Umbruch sass, hing an der
+   Fensterbreite - beim Wechsel von Relikten (eine Zeile) zu Mods (zwei)
+   sprang das Kachelraster darunter. Die Spalte macht den Ort des Umbruchs
+   zur Entscheidung statt zum Zufall. */
 .inv-tier-filter {
   display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 12px 0 6px;
+}
+
+.chip-row {
+  display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin: 12px 0 4px;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
 }
 
 .tier-chip {
   display: inline-flex;
-  /* Beschriftung und Zahl stehen in verschiedenen Schriften und Groessen.
-     Zentriert wuerden ihre Kaesten ausgerichtet, nicht die Schrift - die
-     Ziffern saessen sichtbar tiefer. An der Grundlinie sitzen sie richtig. */
-  align-items: baseline;
-  line-height: 1;
-  gap: 6px;
-  padding: 6px 11px;
-  border-radius: 999px;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px;
+  /* Nicht jeder Chip traegt ein Symbol - die Aeren im Relikt-Bereich kommen
+     ohne aus. Ohne feste Mindesthoehe sind die drei Pixel niedriger als ihre
+     Nachbarn und sitzen in der Zeile sichtbar schief. */
+  min-height: 29px;
   border: none;
-  background: var(--surface);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+  background: var(--surface-2);
   color: var(--text-2);
-  font-size: 11.5px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 550;
+  line-height: 1;
   cursor: pointer;
-  transition: background .16s var(--ease), color .16s var(--ease), box-shadow .16s var(--ease);
+  white-space: nowrap;
+  flex-shrink: 0;
+  user-select: none;
+  transition: background .16s var(--ease), color .16s var(--ease);
 }
-.tier-chip span {
-  font: 600 10px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+.tier-chip:hover { background: var(--surface-3); color: var(--text); }
+
+/* Das Symbol. <i> und nicht <span>, weil <span> im Chip schon die Zahl ist -
+   sonst traefe jede Regel fuer die Zahl auch das Symbol. */
+.tier-chip .chip-ic {
+  display: grid;
+  place-items: center;
+  width: 15px; height: 15px;
+  flex-shrink: 0;
+  color: inherit;
+  opacity: .75;
+  transition: opacity .16s var(--ease);
+}
+.tier-chip .chip-ic svg,
+.tier-chip .chip-ic .nav-icon-mask { display: block; }
+.tier-chip:hover .chip-ic { opacity: 1; }
+
+/* Die Trefferzahl - gedaempft und schmal, nicht als Plakette.
+
+   Im Regal tragen die Chips gar keine Zahl. Eine Pille in der Pille waere hier
+   also doppelt fremd: sie sieht aus wie ein zweiter Knopf, und sie kostet je
+   Chip zwoelf Pixel Polster. Die zehn Mod-Gattungen kaemen damit auf 1365 px
+   und passten bei 1480 px Fensterbreite nicht mehr in eine Zeile; so sind es
+   1238 px.
+
+   NUR DIREKTE KINDER. Die Kategoriezeichen sind Masken-<span>s in .chip-ic;
+   als Nachfahren-Regel traf diese hier auch sie - und faerbte sie mit einer
+   Flaeche ein, wo currentColor die Maske zeichnen sollte. Aus dem
+   Warframe-Zeichen wurde so ein grauer Fleck. */
+.tier-chip > span {
+  font: 700 9.5px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-variant-numeric: tabular-nums;
   color: var(--text-3);
+  transition: color .16s var(--ease), opacity .16s var(--ease);
 }
-.tier-chip:hover { background: var(--surface-2); color: var(--text); }
+.tier-chip:hover > span { color: var(--text-2); }
 
-/* Die Aeren tragen die Farben, die das Spiel ihnen gibt - so findet man sie
-   hier genauso wieder wie in der Reliktauswahl. */
-.tier-chip.active { color: var(--text); }
-.tier-chip.tier-lith.active    { background: rgba(180, 130, 80, .18);  box-shadow: inset 0 0 0 1px rgba(212, 163, 115, .45); }
-.tier-chip.tier-meso.active    { background: rgba(180, 180, 190, .18); box-shadow: inset 0 0 0 1px rgba(204, 214, 221, .45); }
-.tier-chip.tier-neo.active     { background: rgb(var(--t-gold) / .18);  box-shadow: inset 0 0 0 1px rgb(var(--t-gold) / .45); }
-.tier-chip.tier-axi.active     { background: rgb(var(--t-accent) / .18); box-shadow: inset 0 0 0 1px rgb(var(--t-accent) / .45); }
-.tier-chip.tier-requiem.active { background: rgba(190, 120, 255, .18); box-shadow: inset 0 0 0 1px rgba(190, 120, 255, .45); }
-.tier-chip.tier-omnia.active   { background: rgb(var(--t-green) / .16); box-shadow: inset 0 0 0 1px rgb(var(--t-green) / .40); }
-.tier-chip[data-tier="all"].active { background: var(--surface-3); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14); }
+/* ---- Gewaehlt: gefuellt, dunkle Schrift ----
 
-/* Der Merk-Chip traegt ein Symbol - an der Grundlinie saesse es schief. */
-.tier-chip.chip-tracked { align-items: center; }
-.tier-chip.chip-tracked svg { flex-shrink: 0; }
-.tier-chip.chip-tracked.active {
-  background: rgb(var(--t-gold) / .16);
-  box-shadow: inset 0 0 0 1px rgb(var(--t-gold) / .45);
-  color: var(--gold);
+   Die Fuellfarbe sagt, WELCHE Achse gemeint ist. Blau ist die Gattung - das
+   ist derselbe Zustand wie im Regal. Gruen heisst besessen, das helle Grau
+   fehlt noch (so redet die App auch sonst ueber Fehlendes, siehe
+   .im-badge.status.missing), Gold und Silber trennen Prime von Basis, und die
+   Aeren tragen die Farben, die das Spiel ihnen gibt.
+
+   Eine Tinte fuer alle: #04121f, wie im Regal. Sie sitzt auf jedem der Toene
+   hier hell genug.                                                        */
+.tier-chip.active { color: #04121f; }
+.tier-chip.active .chip-ic { opacity: 1; }
+/* Auf der gefuellten Flaeche traegt die dunkle Tinte selbst - gedaempft
+   wird sie ueber die Deckkraft, nicht ueber eine zweite Farbe. */
+.tier-chip.active > span { color: inherit; opacity: .58; }
+
+.tier-chip.tier-lith.active    { background: #d4a373; }
+.tier-chip.tier-meso.active    { background: #ccd6dd; }
+.tier-chip.tier-neo.active     { background: var(--gold); }
+.tier-chip.tier-axi.active     { background: var(--accent); }
+.tier-chip.tier-requiem.active { background: #be78ff; }
+.tier-chip.tier-omnia.active   { background: var(--green); }
+
+/* Alles-Chip und Gattung beantworten dieselbe Frage - welcher Ausschnitt der
+   Liste - und tragen deshalb dieselbe Farbe. Beide zugleich kann es nicht
+   geben: sobald eine Gattung steht, ist "All" nicht mehr aktiv. */
+.tier-chip[data-tier="all"].active,
+.tier-chip[data-inv-all].active,
+.tier-chip[data-set-kind].active,
+.tier-chip[data-mod-kind].active,
+.tier-chip[data-arcane-kind].active {
+  background: var(--accent);
 }
+
+.tier-chip[data-set-ownership="owned"].active,
+.tier-chip[data-mod-ownership="owned"].active,
+.tier-chip[data-arcane-ownership="owned"].active {
+  background: var(--green);
+}
+
+.tier-chip[data-set-ownership="not_owned"].active,
+.tier-chip[data-mod-ownership="not_owned"].active,
+.tier-chip[data-arcane-ownership="not_owned"].active {
+  background: var(--text-2);
+}
+
+.tier-chip[data-set-origin="prime"].active { background: var(--gold); }
+.tier-chip[data-set-origin="base"].active  { background: rgb(var(--t-silver)); }
+
+/* ---- Sonderchips des Relikt-Planers ---- */
+
+.tier-chip.chip-tracked.active { background: var(--gold); }
+
+/* Kein Filter, sondern eine Auskunft - deshalb kein Zeigefinger und kein
+   Zustand. Hier steht Text ("1.240 Traces"), keine Zahl; die Plakette der
+   anderen Chips wuerde daraus einen Knopf machen, der er nicht ist. */
+.tier-chip.chip-traces {
+  color: #5fe4ff;
+  background: rgba(95, 228, 255, 0.1);
+  cursor: default;
+  margin-left: auto;
+}
+.tier-chip.chip-traces:hover { background: rgba(95, 228, 255, 0.1); color: #5fe4ff; }
+.tier-chip.chip-traces .chip-ic { opacity: 1; }
+/* Hier steht Text ("1.240 Traces"), keine Zahl - er darf so gross sein wie
+   die Beschriftung der anderen Chips. */
+.tier-chip.chip-traces > span { color: #5fe4ff; font-weight: 600; font-size: 11.5px; }
+
+/* ---- Die Gruppen ----
+
+   In der zweiten Zeile stehen bei den Sets zwei Achsen nebeneinander, Gattung
+   und Herkunft. Passen beide nicht, soll die zweite als GANZES nachrutschen
+   und nicht mitten in "Prime | Base" abreissen: `width: max-content` ist ihre
+   Breite ohne inneren Umbruch, damit meldet sie der Zeile ihre volle Breite an.
+
+   `max-width: 100%` faengt den Fall ab, dass eine Gruppe allein breiter ist
+   als die Zeile - bei den Mods sind die zehn Gattungen 1238 px breit, mehr als
+   ein schmales Fenster hergibt. Dann und nur dann bricht sie doch intern.
+
+   Getrennt wird mit Abstand, nicht mit einem Strich: ein senkrechter Strich am
+   Anfang einer umgebrochenen Zeile sieht aus wie ein Versehen. Der Abstand
+   nach RECHTS, damit eine umgebrochene Gruppe nicht eingerueckt dasteht.   */
+.chip-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: center;
+  width: max-content;
+  max-width: 100%;
+}
+.chip-group:not(:last-child) { margin-right: 12px; }
 
 /* ============================================================================
    Relikt-Planer
@@ -4422,11 +6108,12 @@ body.tags-window {
 .plan-head {
   display: flex; align-items: center; gap: 10px;
   margin-bottom: 9px;
+  padding: 0 6px;
 }
 /* Das Relikt selbst - dasselbe Bild wie im Inventar, damit man die Karte
    wiedererkennt, ohne den Namen zu lesen. */
 .plan-img { width: 34px; height: 34px; object-fit: contain; flex-shrink: 0; }
-.plan-title { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; min-width: 0; flex: 1 1 auto; }
+.plan-title { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; min-width: 0; flex: 1 1 auto; }
 .plan-tier {
   font-size: 9.5px; font-weight: 700; letter-spacing: .8px; text-transform: uppercase;
   color: var(--text-3);
@@ -4434,7 +6121,7 @@ body.tags-window {
 .plan-title b { font-size: 14px; font-weight: 600; }
 .plan-state { font-size: 10.5px; color: var(--text-3); }
 
-.plan-exp { display: flex; gap: 12px; flex-shrink: 0; }
+.plan-exp { display: flex; gap: 12px; flex-shrink: 0; align-items: center; }
 .plan-exp-val { display: inline-flex; align-items: center; gap: 5px; }
 .plan-exp-val b {
   font: 700 15px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
@@ -4446,11 +6133,12 @@ body.tags-window {
 .plan-track {
   flex-shrink: 0;
   display: inline-flex; align-items: center; justify-content: center;
-  width: 26px; height: 26px;
-  border: none; border-radius: 8px;
+  width: 22px; height: 22px;
+  border: none; border-radius: 6px;
   background: transparent;
   color: var(--text-3);
   cursor: pointer;
+  padding: 0;
   transition: color .16s var(--ease), background .16s var(--ease);
 }
 .plan-track:hover { background: var(--surface-2); color: var(--text-2); }
@@ -4680,10 +6368,18 @@ body.tags-window {
   pointer-events: none;
   user-select: none;
 }
-.mod-slot:hover .mod-card {
+/* AUFGESCHLAGEN. Im Inventar geschieht das beim Zeigen, im Build-Brett steht
+   die Karte dauerhaft offen (.is-open): einen Build liest man an seinen zehn
+   Karten, nicht an zehn Namenszeilen. Nur das Anheben bleibt dem Zeiger - ein
+   Brett aus lauter vergroesserten Karten haette keine Ordnung mehr. */
+.mod-slot.is-open { height: 282px; }
+
+.mod-slot:hover .mod-card,
+.mod-slot.is-open .mod-card {
   height: 282px;
-  transform: scale(1.1);
 }
+.mod-slot:hover .mod-card { transform: scale(1.1); }
+.mod-slot.is-open:hover .mod-card { transform: scale(1.035); }
 
 /* Rahmen oben und unten. Werden proportional mit den exakten Originalverhältnissen (281/242 & 292/242) skaliert */
 .mod-card::before,
@@ -4724,7 +6420,8 @@ body.tags-window {
   position: relative;
   z-index: 5;
 }
-.mod-slot:hover .mod-inner {
+.mod-slot:hover .mod-inner,
+.mod-slot.is-open .mod-inner {
   height: calc(100% - 16px);
   margin-top: 2px;
 }
@@ -4756,11 +6453,13 @@ body.tags-window {
 .mod-edge::after {
   right: -2px;
 }
-.mod-slot:hover .mod-edge::before {
+.mod-slot:hover .mod-edge::before,
+.mod-slot.is-open .mod-edge::before {
   opacity: 1;
   transform: scale(-1, 1);
 }
-.mod-slot:hover .mod-edge::after {
+.mod-slot:hover .mod-edge::after,
+.mod-slot.is-open .mod-edge::after {
   opacity: 1;
   transform: scale(1, 1);
 }
@@ -4834,14 +6533,17 @@ body.tags-window {
   filter: grayscale(.8) brightness(.32);
   transition: filter .12s var(--ease);
 }
-.mod-slot:hover .mod-art {
+.mod-slot:hover .mod-art,
+.mod-slot.is-open .mod-art {
   position: relative;
   inset: unset;
   flex: 1 1 auto;
   min-height: 35px;
 }
-.mod-slot:hover .mod-art::after { opacity: .4; }
-.mod-slot:hover .mod-art img { filter: grayscale(0) brightness(1); }
+.mod-slot:hover .mod-art::after,
+.mod-slot.is-open .mod-art::after { opacity: .4; }
+.mod-slot:hover .mod-art img,
+.mod-slot.is-open .mod-art img { filter: grayscale(0) brightness(1); }
 
 /* Textbereich */
 .mod-text {
@@ -4865,7 +6567,8 @@ body.tags-window {
   font-size: 10px;
   line-height: 1.2;
 }
-.mod-slot:hover .mod-text {
+.mod-slot:hover .mod-text,
+.mod-slot.is-open .mod-text {
   position: relative;
   inset: unset;
   flex: 0 0 auto;
@@ -4873,7 +6576,8 @@ body.tags-window {
   padding: 5px 8px 42px;
   justify-content: flex-end;
 }
-.mod-slot:hover .mod-stat {
+.mod-slot:hover .mod-stat,
+.mod-slot.is-open .mod-stat {
   display: block;
 }
 
@@ -4889,7 +6593,8 @@ body.tags-window {
   line-height: 1.15;
   text-align: center;
 }
-.mod-slot:hover .mod-name {
+.mod-slot:hover .mod-name,
+.mod-slot.is-open .mod-name {
   margin: 0 0 1px;
   font-size: 12px !important;
 }
@@ -4922,7 +6627,8 @@ body.tags-window {
   font-weight: 700;
   letter-spacing: .6px;
 }
-.mod-slot:hover .mod-compat { opacity: 1; }
+.mod-slot:hover .mod-compat,
+.mod-slot.is-open .mod-compat { opacity: 1; }
 
 /* Rangsterne */
 .mod-pips {
@@ -4937,7 +6643,8 @@ body.tags-window {
   opacity: 0;
   transition: opacity .12s var(--ease);
 }
-.mod-slot:hover .mod-pips { opacity: 1; }
+.mod-slot:hover .mod-pips,
+.mod-slot.is-open .mod-pips { opacity: 1; }
 .mod-pips i {
   font-size: 7.5px;
   font-style: normal;
@@ -4986,7 +6693,8 @@ body.tags-window {
 .mod-card.rar-common .mod-art::after {
   background: radial-gradient(transparent 0, rgba(139, 59, 42, .1) 64%, rgba(255, 40, 5, .09) 100%);
 }
-.mod-slot:hover .mod-card.rar-common .mod-art::after { box-shadow: inset 1px 1px 100px #c79989; }
+.mod-slot:hover .mod-card.rar-common .mod-art::after,
+.mod-slot.is-open .mod-card.rar-common .mod-art::after { box-shadow: inset 1px 1px 100px #c79989; }
 
 .mod-card.rar-uncommon::before { background-image: url(assets/mod/SilverFrameTop.png); }
 .mod-card.rar-uncommon::after  { background-image: url(assets/mod/SilverFrameBottom.png); }
@@ -4997,7 +6705,8 @@ body.tags-window {
 .mod-card.rar-uncommon .mod-art::after {
   background: radial-gradient(transparent 0, rgba(39, 88, 177, .22) 64%, rgba(5, 70, 255, .17) 100%);
 }
-.mod-slot:hover .mod-card.rar-uncommon .mod-art::after { box-shadow: inset 1px 1px 100px #466afd; }
+.mod-slot:hover .mod-card.rar-uncommon .mod-art::after,
+.mod-slot.is-open .mod-card.rar-uncommon .mod-art::after { box-shadow: inset 1px 1px 100px #466afd; }
 
 .mod-card.rar-rare::before { background-image: url(assets/mod/GoldFrameTop.png); }
 .mod-card.rar-rare::after  { background-image: url(assets/mod/GoldFrameBottom.png); }
@@ -5008,7 +6717,8 @@ body.tags-window {
 .mod-card.rar-rare .mod-art::after {
   background: radial-gradient(transparent 0, rgba(177, 141, 39, .18) 64%, rgba(255, 213, 5, .09) 100%);
 }
-.mod-slot:hover .mod-card.rar-rare .mod-art::after { box-shadow: inset 1px 1px 100px #ffca3e; }
+.mod-slot:hover .mod-card.rar-rare .mod-art::after,
+.mod-slot.is-open .mod-card.rar-rare .mod-art::after { box-shadow: inset 1px 1px 100px #ffca3e; }
 
 .mod-card.rar-legendary::before { background-image: url(assets/mod/LegendaryFrameTop.png); }
 .mod-card.rar-legendary::after  { background-image: url(assets/mod/LegendaryFrameBottom.png); }
@@ -5023,7 +6733,8 @@ body.tags-window {
 .mod-card.rar-legendary .mod-art::after {
   background: radial-gradient(transparent 0, rgba(143, 193, 255, .32) 64%, rgba(95, 122, 199, .27) 100%);
 }
-.mod-slot:hover .mod-card.rar-legendary .mod-art::after { box-shadow: inset 1px 1px 100px #5bf4ff; }
+.mod-slot:hover .mod-card.rar-legendary .mod-art::after,
+.mod-slot.is-open .mod-card.rar-legendary .mod-art::after { box-shadow: inset 1px 1px 100px #5bf4ff; }
 
 
 /* ---------- Arcanes ---------- */
@@ -5163,7 +6874,10 @@ body.tags-window {
   background: var(--surface); border-radius: var(--r-lg);
   padding: 30px 36px 26px; box-shadow: var(--shadow-lg);
 }
-.setup-logo { display: block; width: 40px; height: 40px; margin-bottom: 14px; opacity: .9; }
+/* 44px, weil app.js die Maske in dieser Groesse einsetzt. Vorher standen
+   hier 40px - die Huelle war also 4px kleiner als ihr Inhalt, und der
+   Abstand nach unten wurde von der falschen Kante gemessen. */
+.setup-logo { display: block; width: 44px; height: 44px; margin-bottom: 14px; opacity: .9; color: var(--accent); }
 .setup-card h1 { font-size: 25px; font-weight: 600; letter-spacing: -.3px; }
 .setup-lead { color: var(--text-2); font-size: 14px; line-height: 1.55; margin-top: 8px; }
 
@@ -5254,3 +6968,554 @@ body.tags-window {
   text-underline-offset: 2px;
 }
 .linkish:hover { color: #66aeff; }
+
+/* ---------- Unbesessene Mods & Arcanes im Inventar ---------- */
+.mod-slot.is-unowned {
+  opacity: 0.62;
+  filter: grayscale(0.2);
+}
+.mod-slot.is-unowned:hover {
+  opacity: 1;
+  filter: none;
+}
+.mod-count.is-unowned {
+  background: rgba(14, 17, 23, 0.92);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+  color: var(--text-3);
+}
+.arc-tile.is-unowned {
+  opacity: 0.62;
+  filter: grayscale(0.2);
+}
+.arc-tile.is-unowned:hover {
+  opacity: 1;
+  filter: none;
+}
+.inv-tag.is-unowned-tag {
+  color: var(--text-3);
+  font-size: 10px;
+  opacity: 0.8;
+}
+
+/* ---------- Mod & Arcane Ziele ---------- */
+.agoal-gain.agoal-upgrade-type {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.4px;
+}
+.gain.gain-upgrade {
+  color: var(--accent);
+}
+.goal-sources-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+.goal-sources-list .up-src-group {
+  background: rgba(0, 0, 0, 0.24);
+  padding: 10px 14px;
+  border-radius: var(--r-sm);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+.goal-sources-list .up-src-head {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+.goal-sources-list .up-src-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  padding: 3px 0;
+  color: var(--text);
+}
+.goal-sources-list .up-src-place {
+  color: var(--text-2);
+}
+.goal-sources-list .up-src-chance {
+  color: var(--gold);
+  font-weight: 600;
+}
+.goal-sources-list .up-src-detail {
+  color: var(--text-3);
+  font-size: 11px;
+  margin-left: 6px;
+}
+
+/* ================= Handel: Orders, Contracts, Transaktionen =================
+
+   Die Knopfreihe einer Order sitzt bewusst so wie auf warframe.market -
+   Sold, Edit, +1, Visible, Loeschen. Wer von der Webseite kommt, greift
+   dieselben Knoepfe an derselben Stelle. Sie umbricht in zwei Reihen, statt
+   die Zeile zu strecken: bei fuenf Knoepfen bliebe fuer den Itemnamen sonst
+   nichts uebrig.                                                          */
+
+.trade-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+  align-items: stretch;
+}
+@media (max-width: 1200px) { .trade-stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 680px)  { .trade-stats-grid { grid-template-columns: 1fr; } }
+
+/* ---------------------------- Kontokopf ---------------------------- */
+
+.trade-account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px 6px 12px;
+  background: var(--surface);
+  border-radius: 999px;
+}
+.trade-account-text { display: flex; flex-direction: column; line-height: 1.25; }
+.trade-account-text b { font-size: 12.5px; }
+.trade-account-text small { font-size: 10.5px; color: var(--text-3); }
+
+/* Anwesenheit als Punkt. ingame ist gruen, weil nur dort gehandelt wird -
+   "online" heisst nur, dass jemand die Webseite offen hat. */
+.trade-account-dot,
+.offer-status {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--text-3);
+  flex-shrink: 0;
+}
+.status-ingame { background: var(--green); box-shadow: 0 0 8px rgba(74, 222, 128, .6); }
+.status-online { background: var(--gold); }
+.status-offline { background: rgba(255, 255, 255, .22); }
+
+/* ---------------------------- Anmeldung ---------------------------- */
+
+.trade-signin-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.trade-signin-form .field { flex: 1 1 220px; }
+.trade-signin-form button { flex-shrink: 0; }
+
+.field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.field > span { font-size: 11px; color: var(--text-3); font-weight: 600; letter-spacing: .2px; }
+
+/* Die Basisregel deckt nur text/select/textarea ab - die Handelsformulare
+   arbeiten mit number, email und password. */
+input[type=number], input[type=email], input[type=password] {
+  background: var(--surface); border: none; color: var(--text);
+  padding: 11px 14px; border-radius: var(--r-sm); font: inherit; width: 100%;
+  transition: background .18s var(--ease), box-shadow .18s var(--ease);
+}
+input[type=number]:focus, input[type=email]:focus, input[type=password]:focus {
+  outline: none; background: var(--surface-2);
+  box-shadow: 0 0 0 2px var(--accent-sf);
+}
+
+.trade-signin-note {
+  display: flex; align-items: flex-start; gap: 8px;
+  margin-top: 14px;
+  font-size: 11.5px; color: var(--text-3); line-height: 1.5;
+}
+.trade-signin-note svg { flex-shrink: 0; margin-top: 1px; color: var(--gold); }
+.trade-signin-note code {
+  background: var(--surface-2); padding: 1px 5px; border-radius: 4px;
+  font-size: 11px; color: var(--text-2);
+}
+.trade-signin-status { margin-top: 10px; font-size: 12px; color: var(--gold); }
+
+/* ------------------------------ Liste ------------------------------ */
+
+.trade-list { display: flex; flex-direction: column; gap: 8px; }
+
+.trade-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 11px 14px;
+  background: var(--surface);
+  border-radius: var(--r-sm);
+  transition: background .15s var(--ease), opacity .15s var(--ease);
+}
+.trade-row:hover { background: var(--surface-2); }
+/* Eine stillgelegte Order ist noch da, handelt aber nicht - halb so
+   praesent, nicht versteckt. */
+.trade-row.is-hidden-order { opacity: .55; }
+.trade-row.is-closed { opacity: .45; }
+.trade-row.is-busy { opacity: .5; pointer-events: none; }
+
+.trade-row-main { display: flex; align-items: center; gap: 13px; min-width: 0; flex: 1; }
+.trade-row-img {
+  width: 42px; height: 42px; object-fit: contain; flex-shrink: 0;
+  border-radius: 8px; background: rgba(0, 0, 0, .25); padding: 3px;
+}
+.trade-row-text { min-width: 0; }
+.trade-row-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 3px; }
+.trade-row-title b { font-size: 13.5px; font-weight: 600; }
+.trade-row-meta {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  font-size: 11.5px; color: var(--text-2);
+}
+.trade-row-attrs { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 5px; }
+
+.trade-price { display: inline-flex; align-items: center; gap: 4px; color: var(--text); }
+.trade-price b { font-size: 13px; font-weight: 700; }
+.trade-price .currency-ic { width: 13px; height: 13px; }
+.trade-qty { color: var(--text-2); font-weight: 600; }
+.trade-dim { color: var(--text-3); font-size: 11px; }
+
+.trade-type-chip {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .4px;
+  padding: 2px 7px; border-radius: 999px;
+}
+.trade-type-chip.is-sell { background: rgba(88, 166, 255, .18); color: #79c0ff; }
+.trade-type-chip.is-buy  { background: rgba(240, 184, 73, .18); color: var(--gold); }
+.trade-hidden-chip {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .3px;
+  padding: 2px 7px; border-radius: 999px;
+  background: rgba(255, 255, 255, .09); color: var(--text-3);
+}
+.trade-rank {
+  font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 5px;
+  background: rgba(74, 222, 128, .14); color: var(--green);
+}
+.trade-readonly { font-size: 10.5px; color: var(--text-3); font-style: italic; }
+
+/* Art der Auktion statt eines Bildes: Auktionen haben kein Itembild. */
+.trade-row-kind {
+  width: 42px; height: 42px; flex-shrink: 0;
+  display: grid; place-items: center;
+  border-radius: 8px;
+  font-size: 9px; font-weight: 800; letter-spacing: .4px;
+  text-transform: uppercase;
+}
+.kind-riven  { background: rgba(88, 166, 255, .16); color: #79c0ff; }
+.kind-lich   { background: rgba(255, 92, 92, .16); color: #ff8f8f; }
+.kind-sister { background: rgba(196, 132, 252, .16); color: #d8b4fe; }
+
+.riven-attr {
+  font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 5px;
+  background: var(--surface-2); color: var(--text-2);
+}
+.riven-attr.is-pos { color: #7ee787; }
+.riven-attr.is-neg { color: #ff8f8f; }
+
+/* --------------------------- Knopfreihe --------------------------- */
+
+.trade-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+  max-width: 232px;
+}
+
+.trade-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 7px 12px;
+  background: var(--surface-2);
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: var(--r-sm);
+  color: var(--text-2);
+  font: inherit; font-size: 11.5px; font-weight: 600;
+  cursor: pointer;
+  transition: all .15s var(--ease);
+}
+.trade-btn:hover { background: var(--surface-3); color: var(--text); border-color: rgba(255, 255, 255, .18); }
+.trade-btn:active { transform: scale(.96); }
+.trade-btn svg { flex-shrink: 0; }
+
+.trade-btn.is-sold { color: var(--green); border-color: rgba(74, 222, 128, .25); }
+.trade-btn.is-sold:hover { background: rgba(74, 222, 128, .16); color: var(--green); border-color: rgba(74, 222, 128, .45); }
+.trade-btn.is-plus { min-width: 44px; font-weight: 700; }
+.trade-btn.is-visible { color: var(--accent); border-color: rgba(74, 158, 255, .25); }
+.trade-btn.is-visible:hover { background: var(--accent-sf); border-color: rgba(74, 158, 255, .45); }
+.trade-btn.is-invisible { color: var(--text-3); }
+.trade-btn.is-danger { color: var(--red); border-color: rgba(255, 92, 92, .25); padding: 7px 10px; }
+.trade-btn.is-danger:hover { background: rgba(255, 92, 92, .18); border-color: rgba(255, 92, 92, .5); }
+.trade-btn.armed { background: rgba(255, 92, 92, .22); color: var(--red); border-color: rgba(255, 92, 92, .6); }
+
+@media (max-width: 900px) {
+  .trade-row { flex-direction: column; align-items: stretch; }
+  .trade-row-actions { max-width: none; justify-content: flex-start; }
+}
+
+/* ----------------------- Bearbeiten-Fenster ----------------------- */
+
+.modal-box.trade-edit-box { width: min(920px, 100%); }
+.modal-box.trade-new-box  { width: min(680px, 100%); }
+
+.trade-edit-icon {
+  width: 46px; height: 46px; object-fit: contain; flex-shrink: 0;
+  border-radius: 8px; background: rgba(0, 0, 0, .25); padding: 3px;
+}
+.trade-edit-body { display: flex; flex-direction: column; gap: 22px; }
+.trade-edit-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+}
+.trade-edit-fields .trade-field-wide { grid-column: span 2; }
+.trade-edit-actions { display: flex; align-items: center; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
+.trade-edit-status { font-size: 12px; color: var(--text-3); }
+
+/* ------------------------- Angebotsliste ------------------------- */
+
+.trade-offers { border-top: 1px solid rgba(255, 255, 255, .07); padding-top: 18px; }
+.trade-offers-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
+.trade-offers-head h4 { font-size: 14px; font-weight: 600; }
+.trade-offers-count { font-size: 11px; color: var(--text-3); margin-left: auto; }
+
+.trade-offers-filters {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.filter-group { display: flex; gap: 4px; }
+
+.trade-offers-list { display: flex; flex-direction: column; gap: 4px; max-height: 320px; overflow-y: auto; }
+.trade-offers-empty { font-size: 12px; color: var(--text-3); padding: 14px 2px; }
+
+.trade-offer {
+  display: grid;
+  grid-template-columns: 10px auto 42px 1fr auto auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  font-size: 12px;
+}
+.trade-offer:hover { background: var(--surface-2); }
+.trade-offer.trade-offer-wide { grid-template-columns: 10px auto 1fr auto auto; }
+
+.offer-price { display: inline-flex; align-items: center; gap: 4px; }
+.offer-price b { font-size: 13px; font-weight: 700; }
+.offer-price .currency-ic { width: 13px; height: 13px; }
+.offer-qty { color: var(--text-3); font-size: 11px; }
+.offer-user { display: flex; flex-direction: column; line-height: 1.3; min-width: 0; }
+.offer-user small { font-size: 10px; color: var(--text-3); }
+.offer-rank {
+  font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 5px;
+  background: var(--surface-2); color: var(--text-2);
+}
+.offer-age { font-size: 10.5px; color: var(--text-3); white-space: nowrap; }
+.offer-attrs { display: flex; gap: 4px; flex-wrap: wrap; }
+
+/* Der Vergleich zum eigenen Preis ist der Grund fuer die Liste - deshalb
+   traegt er die Farbe und nicht der Preis selbst. */
+.offer-diff { font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+.trade-offer.is-cheaper .offer-diff { color: #ff8f8f; }
+.trade-offer.is-pricier .offer-diff { color: #7ee787; }
+.trade-offer.is-same .offer-diff { color: var(--text-3); }
+
+/* --------------------------- Neue Order --------------------------- */
+
+.trade-new-body { display: flex; flex-direction: column; gap: 14px; }
+.trade-new-results { display: flex; flex-direction: column; gap: 3px; max-height: 320px; overflow-y: auto; }
+
+.trade-pick {
+  display: flex; align-items: center; gap: 11px;
+  padding: 9px 12px;
+  background: none; border: none; border-radius: var(--r-sm);
+  color: var(--text); font: inherit; text-align: left;
+  cursor: pointer; width: 100%;
+  transition: background .15s var(--ease);
+}
+.trade-pick:hover { background: var(--surface-2); }
+.trade-pick img { width: 30px; height: 30px; object-fit: contain; flex-shrink: 0; }
+.trade-pick .pick-name { font-size: 13px; font-weight: 600; flex: 1; min-width: 0; }
+
+.trade-new-picked {
+  display: flex; align-items: center; gap: 11px;
+  padding: 10px 12px; margin-bottom: 14px;
+  background: var(--surface-2); border-radius: var(--r-sm);
+}
+.trade-new-picked img { width: 34px; height: 34px; object-fit: contain; }
+.trade-new-picked b { font-size: 13.5px; }
+.trade-new-hint { font-size: 11.5px; color: var(--text-3); margin-top: 10px; }
+.trade-new-hint b { color: var(--accent); }
+
+/* -------------------------- Handelsbuch -------------------------- */
+
+.trade-tx-summary {
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  padding: 10px 14px; margin-bottom: 4px;
+  background: var(--surface-2); border-radius: var(--r-sm);
+  font-size: 12px; color: var(--text-2);
+}
+.is-positive { color: var(--green); }
+.is-negative { color: var(--red); }
+
+.tx-dir {
+  width: 34px; height: 34px; flex-shrink: 0;
+  display: grid; place-items: center; border-radius: 50%;
+}
+.tx-dir.is-sold { background: rgba(74, 222, 128, .14); color: var(--green); }
+.tx-dir.is-bought { background: rgba(255, 92, 92, .14); color: var(--red); }
+.trade-tx-row .trade-row-actions { max-width: 160px; }
+
+/* ---------------- Kontoknopf, Konto-Fenster, Verbindungspruefung ----------------
+
+   Der Knopf traegt den Zustand: grauer Punkt = abgemeldet, gruener = drin und
+   alles antwortet, gelber Rahmen = angemeldet, aber etwas nimmt die Sitzung
+   nicht an. Der dritte Fall ist der Grund fuer die ganze Konstruktion - er
+   sah vorher aus wie gar keine Anmeldung.                                    */
+
+.btn-account {
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.btn-account.is-signedin { border-color: rgba(74, 222, 128, .3); }
+.btn-account.is-trouble {
+  border-color: rgba(240, 184, 73, .55);
+  background: rgba(240, 184, 73, .1);
+  color: var(--gold);
+}
+.btn-account .trade-account-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); flex-shrink: 0; }
+
+/* Hinweiszeile unter dem Kopf */
+.trade-notice {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 14px; margin-bottom: 16px;
+  border-radius: var(--r-sm);
+  font-size: 12.5px;
+}
+.trade-notice.notice-warn {
+  background: rgba(240, 184, 73, .1);
+  border: 1px solid rgba(240, 184, 73, .3);
+  color: #f5d78e;
+}
+.trade-notice .notice-ic { display: grid; place-items: center; flex-shrink: 0; color: var(--gold); }
+.trade-notice button { margin-left: auto; flex-shrink: 0; }
+
+/* Das Fenster */
+.modal-box.trade-account-box { width: min(620px, 100%); }
+
+.trade-profile {
+  display: flex; align-items: center; gap: 12px;
+  padding: 13px 15px; margin-bottom: 20px;
+  background: var(--surface-2); border-radius: var(--r-sm);
+}
+.trade-profile-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--text-3); flex-shrink: 0; }
+.trade-profile-text { display: flex; flex-direction: column; line-height: 1.35; }
+.trade-profile-text b { font-size: 14px; }
+.trade-profile-text small { font-size: 11px; color: var(--text-3); }
+.trade-profile button { margin-left: auto; }
+
+/* ---------- Die Marke von warframe.market ----------
+
+   Der Handelstab zeigt nichts aus dem Spiel: jede Zahl darin kommt von
+   warframe.market. Die Wortmarke neben der Ueberschrift sagt das in einem
+   Blick - und macht nebenbei klar, wessen Konto der Knopf daneben meint. */
+
+.trade-head-title { display: flex; align-items: center; gap: 12px; }
+
+.wfm-brand {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: rgb(var(--t-wfm) / .1);
+  box-shadow: inset 0 0 0 1px rgb(var(--t-wfm) / .3);
+  color: var(--text);
+  cursor: default;
+  flex-shrink: 0;
+}
+.wfm-logo { display: block; }
+
+/* ---------- Profilbild ----------
+
+   Rund, mit dem Anwesenheitspunkt als Abzeichen an der Kante. Solange kein
+   Bild da ist - keins gesetzt, oder noch nicht geladen - steht der erste
+   Buchstabe des Namens darin; ein leerer grauer Kreis saehe aus wie ein
+   Ladefehler, ein Buchstabe sagt "es gibt hier kein Bild".                */
+
+.trade-avatar {
+  position: relative;
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: grid; place-items: center;
+  background: var(--surface-3);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08);
+}
+.trade-avatar b {
+  font-size: 16px; font-weight: 700;
+  color: var(--text-2);
+  line-height: 1;
+  user-select: none;
+}
+.trade-avatar img {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+/* Der Punkt sitzt AUF dem Bild, nicht daneben - deshalb ein dunkler Saum,
+   damit er sich von jedem Portrait abhebt. Der Saum als outline und nicht
+   als box-shadow: den braucht status-ingame fuer sein Leuchten. */
+.trade-avatar .trade-profile-dot {
+  position: absolute;
+  right: 0; bottom: 0;
+  width: 12px; height: 12px;
+  outline: 2px solid rgba(8, 10, 14, .85);
+}
+
+/* Kleine Fassung im Kontoknopf oben rechts. */
+.trade-avatar.sm { width: 20px; height: 20px; margin-left: -4px; }
+.trade-avatar.sm b { font-size: 9.5px; }
+.trade-avatar.sm .trade-profile-dot {
+  width: 8px; height: 8px;
+  right: -2px; bottom: -2px;
+  outline-width: 1.5px;
+}
+
+.trade-checks { border-top: 1px solid rgba(255, 255, 255, .07); padding-top: 16px; }
+.trade-checks-head { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+.trade-checks-head h4 { font-size: 14px; font-weight: 600; }
+.trade-checks-head button { margin-left: auto; }
+.trade-checks .hint { margin-bottom: 12px; line-height: 1.5; }
+.trade-checks-list { display: flex; flex-direction: column; gap: 4px; }
+
+.trade-check {
+  display: grid;
+  grid-template-columns: 20px minmax(90px, auto) minmax(0, 1fr) auto;
+  align-items: center; gap: 10px;
+  padding: 8px 12px;
+  background: var(--surface); border-radius: var(--r-sm);
+  font-size: 12px;
+}
+.trade-check .check-mark { display: grid; place-items: center; }
+.trade-check.is-ok .check-mark { color: var(--green); }
+.trade-check.is-fail .check-mark { color: var(--red); }
+.trade-check.is-missing .check-mark { color: var(--text-3); }
+.trade-check .check-label { font-weight: 600; }
+.trade-check .check-path {
+  font-size: 10.5px; color: var(--text-3);
+  background: rgba(0, 0, 0, .25); padding: 2px 6px; border-radius: 4px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.trade-check .check-result { font-size: 10.5px; color: var(--text-3); text-align: right; }
+.trade-check.is-fail .check-result { color: #ff8f8f; }
+
+/* Die Deutung unter der Liste - Statuscodes allein sind keine Auskunft. */
+.trade-checks-note {
+  margin-top: 12px; padding: 10px 12px;
+  background: var(--accent-sf); border-radius: var(--r-sm);
+  font-size: 12px; color: var(--text-2); line-height: 1.5;
+}
+
+/* Herkunft einer Zeile im Handelsbuch */
+.tx-source {
+  font-size: 9px; font-weight: 700; letter-spacing: .3px;
+  padding: 2px 6px; border-radius: 999px; text-transform: uppercase;
+}
+.tx-source.is-remote { background: rgba(88, 166, 255, .16); color: #79c0ff; }
+.tx-source.is-manual { background: rgba(255, 255, 255, .08); color: var(--text-3); }
+.tx-source.is-local  { background: rgba(74, 222, 128, .13); color: var(--green); }

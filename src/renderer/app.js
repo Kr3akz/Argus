@@ -32,7 +32,9 @@ $('btn-close').innerHTML   = Icon.close(15);
 if ($('ic-goalsearch')) $('ic-goalsearch').innerHTML   = Icon.search(16);
 if ($('ic-filtersearch')) $('ic-filtersearch').innerHTML = Icon.search(16);
 if ($('ic-buildimport')) $('ic-buildimport').innerHTML  = Icon.link(16);
+if ($('ic-arcsearch')) $('ic-arcsearch').innerHTML   = Icon.search(16);
 if ($('ic-modsearch')) $('ic-modsearch').innerHTML    = Icon.search(16);
+if ($('ic-itemsearch')) $('ic-itemsearch').innerHTML  = Icon.search(16);
 if ($('ic-fgsearch')) $('ic-fgsearch').innerHTML     = Icon.search(16);
 if ($('ic-ducatsearch')) $('ic-ducatsearch').innerHTML  = Icon.search(16);
 if ($('ic-baro-kaufkraft')) $('ic-baro-kaufkraft').innerHTML = Icon.baro(36);
@@ -44,9 +46,14 @@ if ($('btn-refresh-worldstate')) $('btn-refresh-worldstate').innerHTML = Icon.re
 document.querySelectorAll('[data-icon]').forEach(el => {
   const name = el.dataset.icon;
   if (Icon[name]) {
-    const size = el.classList.contains('sb-logo')    ? 26
+    /* Die Wortmarke von warframe.market ist breiter als hoch - fuer sie ist
+       die Zahl die HOEHE, nicht die Kantenlaenge. Deshalb kleinere Werte als
+       bei den quadratischen Glyphen daneben. */
+    const size = el.classList.contains('logo')       ? 26
                : el.classList.contains('nav-icon')   ? 22
                : el.classList.contains('setup-logo') ? 44
+               : el.classList.contains('wfm-brand')  ? 16
+               : el.classList.contains('badge-wfm')  ? 16
                : 15;
     el.innerHTML = Icon[name](size);
   }
@@ -79,6 +86,7 @@ function showTab(name) {
   if (name === 'dashboard') { name = 'mastery'; masteryMode = 'manager'; }
   document.querySelectorAll('.nav-item').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
   document.querySelectorAll('.tabpane').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
+
   if (name === 'mastery') {
     if (!checklistCache.length) loadChecklist();
     if (state) renderGoals(state);
@@ -86,9 +94,10 @@ function showTab(name) {
   }
   if (name === 'builds' && !buildsLoaded) loadBuilds();
   if (name === 'worldstate') loadWorldState();
-  if (name === 'farmguide') loadFarmGuide();
+  if (name === 'farmguide') reloadFarmTab();
   if (name === 'ducats') loadDucats();
   if (name === 'inventory') loadInventoryTab();
+  if (name === 'trading') { initTradingEvents(); loadTrading(); }
   if (name === 'settings') loadSettingsTab();
 }
 
@@ -310,24 +319,13 @@ let refreshTimer = null;
 
 async function doRefreshProfile() {
   const btnHero = $('btn-refresh');
-  const btnSb   = $('sb-btn-refresh');
-  const sbTitle = $('sb-refresh-title');
-  const sbSub   = $('sb-refresh-sub');
 
   if (refreshTimer) clearTimeout(refreshTimer);
 
   if (btnHero) {
     btnHero.disabled = true;
     btnHero.classList.add('is-refreshing');
-    btnHero.innerHTML = Icon.refresh(15) + '<span>Frage ab …</span>';
-  }
-
-  if (btnSb) {
-    btnSb.disabled = true;
-    btnSb.classList.add('is-refreshing');
-    btnSb.classList.add('show-feedback');
-    if (sbTitle) sbTitle.textContent = 'Aktualisiere …';
-    if (sbSub)   sbSub.textContent   = 'Frage Warframe-API ab …';
+    btnHero.innerHTML = Icon.refresh(15) + '<span>Loading …</span>';
   }
 
   const res = await window.api.refreshProfile();
@@ -338,30 +336,11 @@ async function doRefreshProfile() {
     btnHero.innerHTML = Icon.refresh(15) + '<span>Refresh profile</span>';
   }
 
-  if (btnSb) {
-    btnSb.disabled = false;
-    btnSb.classList.remove('is-refreshing');
-    if (res.ok) {
-      if (sbTitle) sbTitle.textContent = 'Aktualisiert!';
-      if (sbSub)   sbSub.textContent   = 'Profile is up to date';
-    } else {
-      if (sbTitle) sbTitle.textContent = 'Error';
-      if (sbSub)   sbSub.textContent   = res.error || 'Could not load';
-    }
-
-    refreshTimer = setTimeout(() => {
-      btnSb.classList.remove('show-feedback');
-      if (sbTitle) sbTitle.textContent = 'Aktualisieren';
-      if (sbSub)   sbSub.textContent   = 'Reload profile & data';
-    }, 2500);
-  }
-
   if (res.ok) render(res.data);
   else $('meta-info').textContent = res.error;
 }
 
 if ($('btn-refresh')) $('btn-refresh').onclick = doRefreshProfile;
-if ($('sb-btn-refresh')) $('sb-btn-refresh').onclick = doRefreshProfile;
 
 /* ---------------- Rendern ---------------- */
 function render(data) {
@@ -434,7 +413,7 @@ function renderLoadout(p) {
 function renderHeroTags(p) {
   const tags = [];
   if (p.clan)         tags.push([Icon.users(13),    p.clan]);
-  if (p.loadout?.focus) tags.push([Icon.star(13),   p.loadout.focus]);
+  if (p.loadout?.focus) tags.push([Icon.focusSchool(15, p.loadout.focus), p.loadout.focus]);
   if (p.yearsPlayed)  tags.push([Icon.calendar(13), 'Since ' + new Date(p.createdMs).getFullYear() + ' · ' + p.yearsPlayed + ' years']);
   if (p.nodes)        tags.push([Icon.map(13),      nf(p.nodes) + ' Nodes · ' + p.junctions + ' Junctions']);
 
@@ -467,18 +446,41 @@ function renderXpSplit(breakdown, total) {
 
 /* ---------------- Aktive Ziele auf dem Dashboard ---------------- */
 function renderActiveGoals(data) {
-  const open = data.goals.filter(g => !g.done);
+  const open = (data.goals || []).filter(g => !g.done);
   const wrap = $('active-goals-wrap');
 
   if (!open.length) { wrap.classList.add('hidden'); return; }
   wrap.classList.remove('hidden');
 
-  $('active-goals').innerHTML = open.map(g => {
+  /* VIER, nicht drei: das Raster darunter ist repeat(auto-fill, minmax(330px,
+     1fr)) und stellt bei der Fensterbreite von 1560 px vier Spalten. Drei
+     Karten liessen die vierte Spalte leer - die Reihe sah aus, als fehlte
+     etwas. */
+  const shownGoals = open.slice(0, 4);
+
+  $('active-goals').innerHTML = shownGoals.map(g => {
     const isLevel = g.owned || g.kind === 'level';
+    const isArcane = g.upgradeKind === 'arcane';
     const compList = (g.components && g.components.length > 0) ? g.components : (g.materials || []);
     const shown = compList.slice(0, 5);
     const rest  = compList.length - shown.length;
-    const progressPct = g.maxLvl ? Math.min(100, (g.rank / g.maxLvl) * 100).toFixed(1) : 0;
+    const progressPct = isArcane
+      ? Math.min(100, ((g.ownedCopies || 0) / (g.copiesToMax || 21)) * 100).toFixed(1)
+      : (g.maxLvl ? Math.min(100, (g.rank / g.maxLvl) * 100).toFixed(1) : 0);
+
+    const subText = g.isUpgrade
+      ? (isLevel
+          ? (isArcane
+              ? `<span>In inventory</span> · <span>Rank ${g.rank}/${g.maxLvl}</span> · <span>${g.ownedCopies || 0}/${g.copiesToMax || 21} copies</span>`
+              : `<span>In inventory</span> · <span>Rank ${g.rank}/${g.maxLvl}</span>`)
+          : `<span>${esc(g.compat ? g.compat + ' · ' : '')}${esc(g.rarityLabel || '')} ${isArcane ? 'Arcane' : 'Mod'}</span>`)
+      : (isLevel
+          ? `<span>In inventory</span> · <span>Rank ${g.rank}/${g.maxLvl}</span>`
+          : `<span>${Icon.coin(12)} ${nf(g.credits)}</span> <span>${Icon.clock(12)} ${esc(g.buildTime)}</span>`);
+
+    const topDropSources = g.isUpgrade && !isLevel
+      ? (g.dropSources?.groups || []).flatMap(grp => grp.entries).slice(0, 3)
+      : [];
 
     return `
     <div class="agoal ${isLevel ? 'agoal-level' : 'agoal-farm'}" data-item-u="${esc(g.uniqueName)}">
@@ -491,15 +493,10 @@ function renderActiveGoals(data) {
               ${isLevel ? Icon.bolt(12) + ' Leveln' : Icon.target(12) + ' Farmen'}
             </span>
           </div>
-          <div class="agoal-meta">
-            ${isLevel
-              ? `<span>In inventory</span> · <span>Rank ${g.rank}/${g.maxLvl}</span>`
-              : `<span>${Icon.coin(12)} ${nf(g.credits)}</span> <span>${Icon.clock(12)} ${esc(g.buildTime)}</span>`
-            }
-          </div>
+          <div class="agoal-meta">${subText}</div>
         </div>
         <div class="agoal-head-right">
-          <span class="agoal-gain">+${nf(g.gain)}</span>
+          ${g.gain > 0 ? `<span class="agoal-gain">+${nf(g.gain)}</span>` : (g.isUpgrade ? `<span class="agoal-gain agoal-upgrade-type">${isArcane ? 'Arcane' : 'Mod'}</span>` : '')}
           <div class="agoal-actions">
             <button class="btn-icon ${g.done ? 'on' : ''}" data-goal-toggle="${esc(g.uniqueName)}" title="${g.done ? 'Mark as open' : 'Mark as done'}">
               ${Icon.check(13)}
@@ -514,10 +511,18 @@ function renderActiveGoals(data) {
       ${isLevel ? `
         <div class="agoal-level-box">
           <div class="level-box-head">
-            <span>Level progress</span>
-            <b>${g.ranksLeft} more ${g.ranksLeft === 1 ? 'rank' : 'ranks'}</b>
+            <span>${isArcane ? 'Copies progress' : 'Level progress'}</span>
+            <b>${isArcane ? `${Math.max(0, (g.copiesToMax || 21) - (g.ownedCopies || 0))} more copies` : `${g.ranksLeft} more ${g.ranksLeft === 1 ? 'rank' : 'ranks'}`}</b>
           </div>
           <div class="level-track"><div class="level-fill" style="width: ${progressPct}%"></div></div>
+        </div>
+      ` : (g.isUpgrade ? `
+        <div class="agoal-mats">
+          ${topDropSources.length ? topDropSources.map(s => `
+            <span class="chip">
+              <span>${esc(s.place)}</span>
+              ${s.chanceText ? `<b>${esc(s.chanceText)}</b>` : ''}
+            </span>`).join('') : '<span class="chip"><span>Open data sheet for drop sources</span></span>'}
         </div>
       ` : `
         <div class="agoal-mats">
@@ -529,7 +534,7 @@ function renderActiveGoals(data) {
             </span>`).join('')}
           ${rest > 0 ? `<span class="chip more">+${rest} more</span>` : ''}
         </div>
-      `}
+      `)}
 
       ${g.note && g.note.trim()
         ? `<div class="agoal-note">${Icon.note(13)}<span>${esc(g.note)}</span></div>` : ''}
@@ -539,7 +544,20 @@ function renderActiveGoals(data) {
   $('active-goals').querySelectorAll('.agoal').forEach(card => {
     card.onclick = e => {
       if (e.target.closest('[data-goal-toggle]') || e.target.closest('[data-goal-remove]')) return;
-      openItemModal(card.dataset.itemU);
+      const u = card.dataset.itemU;
+      const g = (data.goals || []).find(x => x.uniqueName === u);
+      if (g?.isUpgrade) {
+        openUpgradeModal({
+          uniqueName: g.uniqueName,
+          name: g.name,
+          count: g.ownedCount || 0,
+          ranks: g.ownedRanks || [],
+          maxRank: g.rank ?? null,
+          resolved: true
+        });
+      } else {
+        openItemModal(u);
+      }
     };
   });
 
@@ -639,7 +657,7 @@ function renderGoals(data) {
   if (!el) return;
 
   if (!data.goals || !data.goals.length) {
-    el.innerHTML = '<div class="empty">No goals set yet. Switch to <b>Catalogue</b> above, pick an item and click <b>Set as goal</b>.</div>';
+    el.innerHTML = '<div class="empty">No goals set yet. Switch to <b>Catalogue</b> or <b>Inventory</b> above, pick an item, mod or arcane and click <b>Set as goal</b>.</div>';
     /* Ohne Ziele ist dieser Hinweis der einzige Wegweiser - der darf nicht
        hinter einem zugeklappten Abschnitt verschwinden. */
     setGoalDetailsOpen(true);
@@ -650,7 +668,22 @@ function renderGoals(data) {
 
   el.innerHTML = data.goals.map(g => {
     const isLevel = g.owned || g.kind === 'level';
-    const progressPct = g.maxLvl ? Math.min(100, (g.rank / g.maxLvl) * 100).toFixed(1) : 0;
+    const isArcane = g.upgradeKind === 'arcane';
+    const progressPct = isArcane
+      ? Math.min(100, ((g.ownedCopies || 0) / (g.copiesToMax || 21)) * 100).toFixed(1)
+      : (g.maxLvl ? Math.min(100, (g.rank / g.maxLvl) * 100).toFixed(1) : 0);
+
+    const subText = g.isUpgrade
+      ? (isLevel
+          ? (isArcane
+              ? `<span>In inventory</span> · <span>Rank ${g.rank}/${g.maxLvl}</span> · <span>${g.ownedCopies || 0}/${g.copiesToMax || 21} copies</span>`
+              : `<span>In inventory</span> · <span>Rank ${g.rank}/${g.maxLvl}</span>${g.ranksLeft > 0 ? ` · <span>${g.ranksLeft} ranks to max</span>` : ' · <span>Maxed</span>'}`)
+          : `<span>${esc(g.compat ? g.compat + ' · ' : '')}${esc(g.rarityLabel || '')} ${isArcane ? 'Arcane' : 'Mod'}</span>`)
+      : (isLevel
+          ? `<span>In inventory</span> · <span>Rank ${g.rank}/${g.maxLvl}</span>`
+          : `<span>${Icon.coin(13)} ${nf(g.credits)}</span> <span>${Icon.clock(13)} ${esc(g.buildTime)}</span>`);
+
+    const dropGroups = g.isUpgrade && !isLevel ? (g.dropSources?.groups || []) : [];
 
     return `
     <div class="goal ${g.done ? 'done' : ''} ${isLevel ? 'goal-level' : 'goal-farm'}" data-item-u="${esc(g.uniqueName)}">
@@ -664,11 +697,8 @@ function renderGoals(data) {
             </span>
           </div>
           <div class="goal-sub">
-            <span class="gain">+${nf(g.gain)} MR-XP</span>
-            ${isLevel
-              ? `<span>In inventory</span> · <span>Rank ${g.rank}/${g.maxLvl}</span>`
-              : `<span>${Icon.coin(13)} ${nf(g.credits)}</span> <span>${Icon.clock(13)} ${esc(g.buildTime)}</span>`
-            }
+            ${g.gain > 0 ? `<span class="gain">+${nf(g.gain)} MR-XP</span>` : (g.isUpgrade ? `<span class="gain gain-upgrade">${isArcane ? 'Arcane' : 'Mod'}</span>` : '')}
+            ${subText}
           </div>
         </div>
         <div class="goal-actions">
@@ -684,11 +714,27 @@ function renderGoals(data) {
         ${isLevel ? `
           <div class="goal-level-box">
             <div class="level-box-head">
-              <span>Current rank: <b>${g.rank} / ${g.maxLvl}</b></span>
-              <span><b>${g.ranksLeft} more ${g.ranksLeft === 1 ? 'rank' : 'ranks'}</b> to max (${progressPct}%)</span>
+              <span>Current rank: <b>${g.rank} / ${g.maxLvl}</b>${isArcane ? ` (${g.ownedCopies || 0}/${g.copiesToMax || 21} copies)` : ''}</span>
+              <span><b>${isArcane ? `${Math.max(0, (g.copiesToMax || 21) - (g.ownedCopies || 0))} more copies` : `${g.ranksLeft} more ${g.ranksLeft === 1 ? 'rank' : 'ranks'}`}</b> to max (${progressPct}%)</span>
             </div>
             <div class="level-track"><div class="level-fill" style="width: ${progressPct}%"></div></div>
           </div>
+        ` : (g.isUpgrade ? `
+          <div class="goal-section-label">Where do I get this?</div>
+          ${dropGroups.length ? `
+            <div class="goal-sources-list">
+              ${dropGroups.slice(0, 3).map(grp => `
+                <div class="up-src-group">
+                  <div class="up-src-head">${esc(grp.label)}</div>
+                  ${grp.entries.slice(0, 4).map(e => `
+                    <div class="up-src-row">
+                      <span class="up-src-place">${esc(e.place)}</span>
+                      ${e.detail ? `<span class="up-src-detail">${esc(e.detail)}</span>` : ''}
+                      ${e.chanceText ? `<span class="up-src-chance">${esc(e.chanceText)}</span>` : ''}
+                    </div>`).join('')}
+                  ${grp.hidden ? `<div class="up-src-more">… and ${nf(grp.hidden)} more</div>` : ''}
+                </div>`).join('')}
+            </div>` : '<div class="up-empty">No drop locations found in official drop tables. Click card to open data sheet or look up in wiki.</div>'}
         ` : `
           ${g.components && g.components.length > 0 ? `
             <div class="goal-section-label">Required parts & components</div>
@@ -717,7 +763,7 @@ function renderGoals(data) {
                 </div>`).join('')}
             </div>
           ` : ''}
-        `}
+        `)}
         <textarea class="goal-note" data-note="${esc(g.uniqueName)}"
           placeholder="A note on this goal …">${esc(g.note)}</textarea>
       </div>
@@ -729,7 +775,21 @@ function renderGoals(data) {
     gh.onclick = e => {
       if (e.target.closest('[data-toggle]') || e.target.closest('[data-remove]')) return;
       const gEl = gh.closest('.goal');
-      if (gEl && gEl.dataset.itemU) openItemModal(gEl.dataset.itemU);
+      if (!gEl || !gEl.dataset.itemU) return;
+      const u = gEl.dataset.itemU;
+      const g = data.goals?.find(x => x.uniqueName === u);
+      if (g?.isUpgrade) {
+        openUpgradeModal({
+          uniqueName: g.uniqueName,
+          name: g.name,
+          count: g.ownedCount || 0,
+          ranks: g.ownedRanks || [],
+          maxRank: g.rank ?? null,
+          resolved: true
+        });
+      } else {
+        openItemModal(u);
+      }
     };
   });
 
@@ -798,7 +858,111 @@ if ($('goal-search')) {
   });
 }
 
-/* ---------------- Builds ---------------- */
+/* ---------------- Builds ----------------
+
+   ZWEI ANSICHTEN IN EINEM TAB.
+
+   Das ARSENAL zeigt jedes Item, zu dem ein Build existiert, als Kachel mit
+   seiner Illustration - so, wie das Spiel sein Regal zeigt. Ein Klick oeffnet
+   die DETAILANSICHT: das Item gross auf der Buehne, darunter seine Builds als
+   Reiter und das Mod-Brett des aktiven.
+
+   WARUM NICHT MEHR EIN BUILD PRO TAB: Wer drei Fassungen fuer einen Frame und je
+   eine fuer vier Waffen gebaut hat, will nicht durch ein Modal blaettern, um zu
+   sehen, was er ueberhaupt besitzt. Die Kacheln beantworten das ohne Klick, und
+   mehrere Builds desselben Items liegen dort beieinander, wo sie hingehoeren -
+   unter dem Item.
+
+   Die Mods im Brett sind dieselben gezeichneten Karten wie im Inventar - und
+   verhalten sich auch so: zugeklappt steht nur der Name da, beim Zeigen faehrt
+   die Karte auf. Nur so passen alle zehn Plaetze auf ein Bild, statt dass man
+   an einem Brett aus aufgeschlagenen Karten scrollen muss.
+
+   BESITZ WIRD NICHT MEHR ANGEHAKT. Solange eine Inventardatei vorliegt, weiss
+   die App selbst, welche Mods da sind und auf welchem Rang. Die Haken von Hand
+   bleiben nur als Rueckfallebene fuer den Fall, dass noch nie ein Inventar
+   geholt wurde.
+   -------------------------------------------------------------------- */
+
+let buildData = null;       // letzte Antwort von builds:get
+let activeItem = null;      // welches Item offen ist - null heisst: Arsenal
+let activeBuildId = null;   // welcher Build dieses Items auf der Buehne liegt
+let buildsRestored = false; // gemerkte Auswahl nur EINMAL aufgreifen
+
+/* Der Tab soll beim naechsten Start dort weitermachen, wo man aufgehoert hat.
+   Das ist Zustand der Oberflaeche, keine Nutzdaten - deshalb localStorage und
+   nicht die Datei mit den Builds. Faellt der Speicher aus, ist es auch recht:
+   dann steht eben wieder das Arsenal offen. */
+const LAST_BUILD_KEY = 'argus.builds.active';
+const LAST_ITEM_KEY  = 'argus.builds.item';
+
+const remember = (key, value) => {
+  try { value ? localStorage.setItem(key, value) : localStorage.removeItem(key); }
+  catch { /* kein Speicher - dann eben nicht */ }
+};
+const recall = key => {
+  try { return localStorage.getItem(key); } catch { return null; }
+};
+
+/**
+ * Der Aufbau des Bretts je Item-Art - so, wie das Spiel ihn zeigt.
+ *
+ * `special` sind die Sonderplaetze ueber dem Raster: [Slot-Index, Beschriftung,
+ * Rasterspalte]. `normal` ist die Zahl der gewoehnlichen Plaetze. Was ein Item
+ * gar nicht hat, wird nicht gezeigt - AUSSER es ist belegt: importierte Builds
+ * kennen unsere Aufteilung nicht, und eine verschluckte Mod waere schlimmer
+ * als ein Platz zu viel.
+ */
+const BOARD_LAYOUTS = {
+  Suits:           { special: [[8, 'Aura', 1], [9, 'Exilus', 4]],   normal: 8 },
+  SpaceSuits:      { special: [[8, 'Aura', 1], [9, 'Exilus', 4]],   normal: 8 },
+  MechSuits:       { special: [[8, 'Aura', 1], [9, 'Exilus', 4]],   normal: 8 },
+  Melee:           { special: [[8, 'Stance', 1], [9, 'Exilus', 4]], normal: 8 },
+  SpaceMelee:      { special: [[8, 'Stance', 1], [9, 'Exilus', 4]], normal: 8 },
+  LongGuns:        { special: [[9, 'Exilus', 4]], normal: 8 },
+  Pistols:         { special: [[9, 'Exilus', 4]], normal: 8 },
+  SpaceGuns:       { special: [[9, 'Exilus', 4]], normal: 8 },
+  SentinelWeapons: { special: [[9, 'Exilus', 4]], normal: 8 },
+  Sentinels:       { special: [], normal: 10 },   // Begleiter: zehn gleichwertige Plaetze
+  KubrowPets:      { special: [], normal: 10 }
+};
+const DEFAULT_LAYOUT = { special: [[8, 'Aura', 1], [9, 'Exilus', 4]], normal: 8 };
+
+const boardLayout = category => BOARD_LAYOUTS[category] || DEFAULT_LAYOUT;
+
+/** Beschriftung eines Platzes - "Aura", "Exilus" oder schlicht die Nummer. */
+function slotLabel(category, i) {
+  const hit = boardLayout(category).special.find(([idx]) => idx === i);
+  return hit ? hit[1] : `Slot ${i + 1}`;
+}
+
+/* Warframes, Mechs und Begleiter stehen auf dem Boden, Waffen schweben.
+   Das entscheidet, wo die Illustration im Kasten verankert wird. */
+const FIGURE_CATEGORIES = new Set(['Suits', 'SpaceSuits', 'MechSuits', 'Sentinels', 'KubrowPets']);
+const figureClass = cat => (FIGURE_CATEGORIES.has(cat) ? 'is-figure' : 'is-object');
+
+/* Nicht jedes Item hat beim Bilderdienst eine Illustration - Atlas etwa nicht.
+   Statt eines leeren Kastens steht dann das Sinnbild seiner Gattung da. */
+const CATEGORY_GLYPH = {
+  Suits: 'catWarframe', SpaceSuits: 'catArchwing', MechSuits: 'catNecramech',
+  LongGuns: 'catPrimary', SpaceGuns: 'catArchwing',
+  Pistols: 'catSecondary',
+  Melee: 'catMelee', SpaceMelee: 'catArchwing',
+  Sentinels: 'catCompanion', KubrowPets: 'catCompanion', SentinelWeapons: 'catCompanion',
+  AmpPrism: 'catAmp'
+};
+const categoryGlyph = (cat, size) => (Icon[CATEGORY_GLYPH[cat]] || Icon.cube)(size);
+
+/* Reihenfolge im Arsenal - dieselbe wie im Spiel: erst der Frame, dann die drei
+   Waffen, dann alles Weitere. Was hier fehlt, haengt sich hinten an. */
+const SHELF_ORDER = ['Suits', 'LongGuns', 'Pistols', 'Melee', 'Sentinels', 'KubrowPets',
+                     'SentinelWeapons', 'SpaceSuits', 'SpaceGuns', 'SpaceMelee',
+                     'MechSuits', 'AmpPrism'];
+const shelfRank = cat => {
+  const i = SHELF_ORDER.indexOf(cat);
+  return i === -1 ? SHELF_ORDER.length : i;
+};
+
 async function loadBuilds() {
   const res = await window.api.getBuilds();
   if (res.ok) { buildsLoaded = true; renderBuilds(res.data); }
@@ -813,6 +977,567 @@ function showImportStatus(kind, text) {
   el.innerHTML = ic + '<span>' + esc(text) + '</span>';
 }
 
+/**
+ * Builds nach Item buendeln - das ist die Einheit, die das Arsenal zeigt.
+ *
+ * Der Schluessel ist der uniqueName des Items; ein Build ohne Item (kaputter
+ * Import) bekommt seine eigene Kachel, statt mit anderen zusammenzufallen.
+ */
+function buildGroups() {
+  const map = new Map();
+
+  for (const b of buildData?.builds || []) {
+    const key = b.itemUniqueName || b.id;
+    if (!map.has(key)) map.set(key, { key, item: b, builds: [] });
+    map.get(key).builds.push(b);
+  }
+
+  return [...map.values()].sort((a, b) =>
+    shelfRank(a.item.category) - shelfRank(b.item.category)
+    || (a.item.itemName || '').localeCompare(b.item.itemName || '', 'en'));
+}
+
+/** Der Build, der gerade auf der Buehne liegt. */
+function activeBuild(group) {
+  if (!group) return null;
+  return group.builds.find(b => b.id === activeBuildId) || group.builds[0];
+}
+
+function openItem(key) {
+  activeItem = key;
+  activeBuildId = null;
+  remember(LAST_ITEM_KEY, key);
+  remember(LAST_BUILD_KEY, null);
+  renderBuilds(buildData);
+  document.querySelector('.main-content')?.scrollTo({ top: 0 });
+}
+
+function backToArsenal() {
+  activeItem = null;
+  activeBuildId = null;
+  remember(LAST_ITEM_KEY, null);
+  remember(LAST_BUILD_KEY, null);
+  renderBuilds(buildData);
+}
+
+function selectBuild(id) {
+  activeBuildId = id;
+  remember(LAST_BUILD_KEY, id);
+  renderBuilds(buildData);
+}
+
+$('bdetail-back').onclick = backToArsenal;
+
+function renderBuilds(data) {
+  if (!data) return;
+  buildData = data;
+  if ($('build-count')) $('build-count').textContent = data.builds.length;
+
+  const groups = buildGroups();
+
+  /* Beim ersten Zeichnen die gemerkte Auswahl aufgreifen. Danach nicht mehr -
+     sonst risse ein "Zurueck" die alte Ansicht wieder auf. */
+  if (activeItem === null && !buildsRestored) {
+    buildsRestored = true;
+    activeItem = recall(LAST_ITEM_KEY);
+    activeBuildId = recall(LAST_BUILD_KEY);
+  }
+
+  /* Das gemerkte Item kann weg sein - dann faellt die Ansicht zurueck aufs
+     Arsenal, statt auf einen Build zu zeigen, den es nicht mehr gibt. */
+  const group = groups.find(g => g.key === activeItem) || null;
+  if (!group && activeItem) {
+    activeItem = null;
+    remember(LAST_ITEM_KEY, null);
+    remember(LAST_BUILD_KEY, null);
+  }
+  if (!group) activeBuildId = null;
+
+  const b = activeBuild(group);
+  activeBuildId = b ? b.id : null;
+
+  $('build-overview').classList.toggle('hidden', !!group);
+  $('build-detail').classList.toggle('hidden', !group);
+
+  if (group) {
+    renderStage(group, b);
+    renderProfiles(group, b);
+    renderBoard(b);
+  } else {
+    renderShelf(groups);
+  }
+
+  renderTotals(data.totals, data.builds);
+  renderMissingMods(data);
+}
+
+/* ---------------- Ansicht 1: das Arsenal ---------------- */
+
+/**
+ * Eine Kachel je Item. Die Illustration fuellt ihren Kopf aus und laeuft nach
+ * unten in die Kachel aus - so, wie das Arsenal des Spiels seine Plaetze zeigt.
+ *
+ * Unter dem Namen steht nur, was ohne Klick beantwortet werden soll: wie viele
+ * Fassungen es gibt, und ob noch etwas fehlt. Genau EIN Zustandsabzeichen, sonst
+ * liest man drei Zahlen und weiss danach weniger als vorher.
+ */
+function renderShelf(groups) {
+  const shelf = $('build-shelf');
+
+  const intro = groups.length ? '' : `
+    <div class="empty shelf-empty">
+      No builds yet. Start one below — or paste an overframe.gg URL above and
+      let Argus read it in.
+    </div>`;
+
+  shelf.innerHTML = intro + groups.map(g => {
+    const sum     = pick => g.builds.reduce((n, b) => n + (pick(b) || 0), 0);
+    const total   = sum(b => b.mods.total)       + sum(b => b.arcanes?.total);
+    const missing = sum(b => b.mods.missing)     + sum(b => b.arcanes?.missing);
+    const short   = sum(b => b.mods.underRanked) + sum(b => b.arcanes?.underRanked);
+    const forma   = sum(b => b.requirements.forma);
+
+    /* Ein frisch angelegter Build hat nichts, was fehlen koennte - "Ready"
+       waere dort eine Luege. */
+    const state =
+      !total  ? `<span class="bflag">${Icon.plus(11)}empty</span>` :
+      missing ? `<span class="bflag warn">${Icon.layers(11)}${missing} missing</span>` :
+      short   ? `<span class="bflag half">${Icon.star(11)}${short} to rank up</span>` :
+                `<span class="bflag good">${Icon.check(11)}Ready</span>`;
+
+    const flags = state + (forma ? `<span class="bflag">${Icon.bolt(11)}${forma}</span>` : '');
+
+    return `
+      <button class="bitem ${figureClass(g.item.category)}" type="button"
+              data-item="${esc(g.key)}" title="${esc(g.item.itemName || '')}">
+        <span class="bitem-art ${g.item.art ? '' : 'is-blank'}">
+          <span class="bitem-glyph">${categoryGlyph(g.item.category, 40)}</span>
+          ${g.item.art ? `<img src="${esc(g.item.art)}" alt="" loading="lazy">` : ''}
+        </span>
+        <span class="bitem-body">
+          <span class="bitem-cat">${esc(g.item.categoryLabel || 'Build')}</span>
+          <b>${esc(g.item.itemName || g.item.name)}</b>
+          <span class="bitem-sub">${g.builds.length === 1
+            ? esc(g.builds[0].name)
+            : g.builds.length + ' builds'}</span>
+          <span class="bitem-flags">${flags}</span>
+        </span>
+      </button>`;
+  }).join('')
+  + `<button class="bitem is-new" id="bitem-new" type="button">
+       <span class="bitem-art">${Icon.plus(30)}</span>
+       <span class="bitem-body">
+         <b>New build</b>
+         <span class="bitem-sub">Pick a frame, weapon or companion</span>
+       </span>
+     </button>`;
+
+  shelf.classList.toggle('is-empty', !groups.length);
+
+  shelf.querySelectorAll('[data-item]').forEach(el =>
+    el.onclick = () => openItem(el.dataset.item));
+
+  $('bitem-new').onclick = () => openItemPicker();
+
+  /* Fehlt die Illustration, tritt das Gattungssinnbild an ihre Stelle - ein
+     ausgeblendetes Bild liesse nur ein leeres Rechteck zurueck. */
+  onImageFail(shelf, '.bitem-art img', img => {
+    img.closest('.bitem-art')?.classList.add('is-blank');
+    img.remove();
+  });
+}
+
+/* ---------------- Ansicht 2: die Buehne ---------------- */
+
+function renderStage(group, b) {
+  const slot = $('bstage-slot');
+  const art  = $('bstage-art');
+
+  slot.classList.remove('is-figure', 'is-object');
+  slot.classList.add(figureClass(group.item.category));
+  $('bstage-caption').textContent = group.item.categoryLabel || 'Build';
+
+  /* Dasselbe Sinnbild wie auf der Kachel, falls der Bilderdienst dieses Item
+     nicht fuehrt - der grosse Kasten waere sonst schlicht leer. */
+  $('bstage-glyph').innerHTML = categoryGlyph(group.item.category, 76);
+  slot.classList.remove('is-blank');
+
+  if (group.item.art) {
+    art.hidden = false;
+    art.src = group.item.art;
+    art.alt = group.item.itemName || '';
+    onImageFail(slot, '#bstage-art', img => { img.hidden = true; slot.classList.add('is-blank'); });
+  } else {
+    art.hidden = true;
+    art.removeAttribute('src');
+    slot.classList.add('is-blank');
+  }
+
+  $('bstage-main').innerHTML = stageInfo(group, b);
+  wireStage(b);
+}
+
+function stageInfo(group, b) {
+  const pct = Math.min(100, Math.max(0, b.used / b.capacity * 100));
+  const r = b.requirements;
+
+  /* Ueber dem Item-Namen steht, WELCHE Fassung offen liegt - bei nur einer
+     waere die Zaehlung Unsinn, dort steht stattdessen die Herkunft. */
+  const lead = group.builds.length > 1
+    ? `Build ${group.builds.indexOf(b) + 1} of ${group.builds.length}`
+    : (b.author ? 'Overframe import' : 'Your build');
+
+  const arc = b.arcanes || { total: 0 };
+
+  const chips = [
+    [Icon.layers(13), `${b.mods.owned} / ${b.mods.total} mods owned`, b.mods.missing ? 'warn' : 'good'],
+    arc.total ? [Icon.gem(13), `${arc.owned} / ${arc.total} arcanes owned`,
+                 arc.missing ? 'warn' : 'good'] : null,
+    b.mods.underRanked + (arc.underRanked || 0)
+      ? [Icon.star(13), `${b.mods.underRanked + (arc.underRanked || 0)} not ranked up yet`, 'half'] : null,
+    r.forma      ? [Icon.bolt(13), `${r.forma} Forma`,                ''] : null,
+    r.auraForma  ? [Icon.star(13), `${r.auraForma} Aura Forma`,       ''] : null,
+    r.umbraForma ? [Icon.star(13), `${r.umbraForma} Umbra Forma`,     ''] : null,
+    r.endo       ? [Icon.coin(13), `${nf(r.endo)} Endo${r.endoEstimated ? ' (est.)' : ''}`, ''] : null,
+    [Icon.cube(13), r.orokinLabel, '']
+  ].filter(Boolean);
+
+  return `
+    <div class="bstage-top">
+      <div class="bstage-id">
+        <span class="bstage-cat">${esc(lead)}</span>
+        <h2>${esc(group.item.itemName)}</h2>
+        <input id="bstage-name" class="bstage-name" value="${esc(b.name)}"
+               spellcheck="false" title="Rename this build">
+        ${b.author ? `<span class="bstage-by">from Overframe · by ${esc(b.author)}</span>` : ''}
+      </div>
+      <div class="bstage-actions">
+        <button id="bstage-del" class="btn-sm danger">${Icon.trash(13)}<span>Remove</span></button>
+      </div>
+    </div>
+
+    <div class="bstage-cap">
+      <div class="capbar-track">
+        <div class="capbar-fill ${b.overCapacity ? 'over' : ''}" style="width:${pct}%"></div>
+      </div>
+      <div class="capbar-label">
+        <span>Capacity <b>${b.used}</b> / ${b.capacity}</span>
+        <span class="${b.overCapacity ? 'is-over' : ''}">
+          ${b.overCapacity ? 'Over by ' + (b.used - b.capacity) : b.free + ' free'}
+        </span>
+      </div>
+    </div>
+
+    <div class="bstage-chips">
+      ${chips.map(([ic, text, tone]) => `<span class="bchip ${tone}">${ic}${esc(text)}</span>`).join('')}
+    </div>`;
+}
+
+/**
+ * Zweistufiges Loeschen.
+ *
+ * In einem Build steckt Arbeit - zehn Karten mit Raengen und Polaritaeten -,
+ * und beide Loeschknoepfe liegen dort, wo man ohnehin klickt: auf der Buehne
+ * und auf dem Reiter. Der erste Klick bewaffnet nur, der zweite loescht; nach
+ * drei Sekunden entschaerft sich der Knopf von selbst.
+ */
+function armDelete(btn, armedHtml, run) {
+  const idle = btn.innerHTML;
+  let armed = false;
+  let timer;
+
+  const reset = () => {
+    armed = false;
+    clearTimeout(timer);
+    btn.classList.remove('armed');
+    btn.innerHTML = idle;
+  };
+
+  btn.onclick = e => {
+    e.stopPropagation();
+    if (armed) { reset(); run(); return; }
+    armed = true;
+    btn.classList.add('armed');
+    btn.innerHTML = armedHtml;
+    timer = setTimeout(reset, 3000);
+  };
+}
+
+function wireStage(b) {
+  armDelete($('bstage-del'), Icon.trash(13) + '<span>Sure?</span>', async () => {
+    const r = await window.api.removeBuild(b.id);
+    if (!r.ok) return;
+    activeBuildId = null;
+    remember(LAST_BUILD_KEY, null);
+    renderBuilds(r.data);
+  });
+
+  // Umbenennen beim Verlassen des Feldes - kein Speichern-Knopf noetig.
+  const name = $('bstage-name');
+  const commit = async () => {
+    const value = name.value.trim();
+    if (!value || value === b.name) { name.value = b.name; return; }
+    const r = await window.api.setBuildMeta(b.id, { name: value });
+    if (r.ok) renderBuilds(r.data);
+  };
+  name.onblur = commit;
+  name.onkeydown = e => {
+    if (e.key === 'Enter') name.blur();
+    if (e.key === 'Escape') { name.value = b.name; name.blur(); }
+  };
+}
+
+/* ---------------- Die Fassungen eines Items ---------------- */
+
+/**
+ * Ein Reiter je Build desselben Items - plus einer, der eine weitere Fassung
+ * anlegt. Die Reihe steht auch bei nur einem Build da: sie ist der Ort, an dem
+ * man den zweiten baut, und der muss sichtbar sein.
+ */
+function renderProfiles(group, active) {
+  const wrap = $('build-profiles');
+  wrap.classList.remove('hidden');
+
+  wrap.innerHTML = group.builds.map(b => `
+    <div class="bprofile ${b.id === active.id ? 'on' : ''}" data-build="${esc(b.id)}"
+         role="button" tabindex="0">
+      <b>${esc(b.name)}</b>
+      <small>
+        ${b.mods.total} mods
+        ${b.mods.missing ? `· <span class="is-warn">${b.mods.missing} missing</span>` : ''}
+        ${b.requirements.forma ? `· ${b.requirements.forma} Forma` : ''}
+      </small>
+      <button class="bprofile-del" type="button" data-del="${esc(b.id)}"
+              title="Remove this build">${Icon.trash(12)}</button>
+    </div>`).join('')
+    + `<button class="bprofile is-new" id="bprofile-new" type="button"
+               title="Another build for ${esc(group.item.itemName || '')}">
+         ${Icon.plus(15)}<span>Another build</span>
+       </button>`;
+
+  wrap.querySelectorAll('[data-build]').forEach(el => {
+    const pick = () => selectBuild(el.dataset.build);
+    el.onclick = pick;
+    el.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } };
+  });
+
+  wrap.querySelectorAll('[data-del]').forEach(btn =>
+    armDelete(btn, Icon.check(12), async () => {
+      const r = await window.api.removeBuild(btn.dataset.del);
+      if (!r.ok) return;
+      activeBuildId = null;
+      remember(LAST_BUILD_KEY, null);
+      renderBuilds(r.data);
+    }));
+
+  $('bprofile-new').onclick = () =>
+    createBuildFor(group.item.itemUniqueName, group.item.itemName);
+}
+
+/** Weitere Fassung fuer ein Item, das schon im Arsenal steht - ohne Umweg. */
+async function createBuildFor(itemUniqueName, itemName) {
+  const n = (buildData?.builds || []).filter(b => b.itemUniqueName === itemUniqueName).length + 1;
+  const res = await window.api.createBuild(itemUniqueName, `${itemName} Build ${n}`);
+  if (!res.ok) { showImportStatus('err', res.error); return; }
+  if (res.id) { activeBuildId = res.id; remember(LAST_BUILD_KEY, res.id); }
+  renderBuilds(res.data);
+}
+
+/* ---------------- Das Mod-Brett ---------------- */
+
+function renderBoard(b) {
+  const board = $('build-board');
+  if (!b) { board.classList.add('hidden'); board.innerHTML = ''; return; }
+  board.classList.remove('hidden');
+
+  const layout = boardLayout(b.category);
+  const special = new Set(layout.special.map(([i]) => i));
+
+  /* Zehn gleichwertige Plaetze (Begleiter) stehen als 5x2, alles andere als
+     4x2 - so, wie das Spiel sie anordnet. */
+  board.style.setProperty('--cols', layout.normal === 10 ? 5 : 4);
+
+  const normal = [];
+  for (let i = 0; i < Math.max(layout.normal, b.slots.length); i++) {
+    if (special.has(i)) continue;
+    if (i < layout.normal || b.slots[i]) normal.push(i);
+  }
+
+  const arcanes = b.arcaneSlots || [];
+
+  board.innerHTML = `
+    ${layout.special.length ? `
+      <div class="board-special">
+        ${layout.special.map(([i, kind, col]) => boardCell(b, i, kind, col)).join('')}
+      </div>` : ''}
+    <div class="board-grid">
+      ${normal.map(i => boardCell(b, i, null, null)).join('')}
+    </div>
+    ${arcanes.length ? `
+      <div class="board-arcanes">
+        <span class="board-arcanes-label">Arcanes</span>
+        <div class="arcane-row">
+          ${arcanes.map((_, i) => arcaneCell(b, i)).join('')}
+        </div>
+      </div>` : ''}`;
+
+  board.querySelectorAll('[data-slot]').forEach(cell => {
+    cell.querySelector('.bslot-card').onclick = () =>
+      openSlotEditor(b.id, Number(cell.dataset.slot), b);
+  });
+
+  board.querySelectorAll('[data-arcane]').forEach(cell => {
+    cell.querySelector('.aslot-card').onclick = () =>
+      openArcaneEditor(b.id, Number(cell.dataset.arcane), b);
+  });
+
+  onImageFail(board, '.mod-art img', img => { img.style.visibility = 'hidden'; });
+  onImageFail(board, '.aslot-art img', img => { img.style.visibility = 'hidden'; });
+}
+
+/**
+ * Ein Arcane-Platz.
+ *
+ * Bewusst NICHT als Mod-Karte gezeichnet: ein Arcane ist im Spiel kein
+ * Kartenblatt, sondern ein Gefaess - quer, ohne Rahmen, mit dem Namen darunter.
+ * Genauso steht es im Inventar, und genauso soll es hier stehen.
+ */
+function arcaneCell(b, i) {
+  const a = (b.arcaneSlots || [])[i];
+  const head = `<span class="bslot-kind">Arcane ${i + 1}</span>`;
+
+  if (!a) {
+    return `
+      <div class="aslot is-empty" data-arcane="${i}">
+        <div class="bslot-head">${head}</div>
+        <div class="aslot-card" title="Choose an arcane">
+          <div class="aslot-blank">${Icon.plus(18)}<span>Arcane</span></div>
+        </div>
+        <div class="bslot-foot"></div>
+      </div>`;
+  }
+
+  if (a.unknown) {
+    return `
+      <div class="aslot is-unknown" data-arcane="${i}">
+        <div class="bslot-head">${head}</div>
+        <div class="aslot-card" title="No catalogue entry for this arcane">
+          <div class="aslot-blank">${Icon.warning(18)}<span>Unmatched</span></div>
+        </div>
+        <div class="bslot-foot"></div>
+      </div>`;
+  }
+
+  const state = !a.owned ? 'is-missing' : a.underRanked ? 'is-short' : 'is-owned';
+  const tag = !a.owned
+    ? '<span class="bslot-tag missing">missing</span>'
+    : a.underRanked
+      ? `<span class="bslot-tag short" title="You own it at rank ${a.ownedRank}">rank ${a.ownedRank}</span>`
+      : `<span class="bslot-tag owned">${Icon.check(11)}</span>`;
+
+  return `
+    <div class="aslot ${state}" data-arcane="${i}">
+      <div class="bslot-head">${head}</div>
+      <div class="aslot-card" title="${esc(a.stats.join(' · '))}">
+        <span class="aslot-art"><img src="${esc(a.image)}" alt="" loading="lazy"></span>
+        <b>${esc(a.name)}</b>
+        <span class="aslot-pips">
+          ${Array.from({ length: a.maxRank }, (_, p) =>
+            `<i class="${p < a.rank ? 'on' : ''}">★</i>`).join('')}
+        </span>
+      </div>
+      <div class="bslot-foot">
+        <span class="bslot-rank">${a.rank}/${a.maxRank}</span>
+        ${tag}
+      </div>
+    </div>`;
+}
+
+/**
+ * Ein Platz im Brett: Beschriftung, Karte, Fussnote.
+ *
+ * Die Karte liegt in einem gewoehnlichen .mod-slot, nicht in .mod-slot.is-open -
+ * sie ist also zugeklappt und faehrt erst beim Zeigen auf. Zehn aufgeschlagene
+ * Karten passen auf kein Bild; zehn zugeklappte schon, und das Aufklappen
+ * beantwortet die Frage nach der Wirkung genau dann, wenn sie gestellt wird.
+ */
+function boardCell(b, i, kind, col) {
+  const s = b.slots[i];
+  const style = col ? ` style="grid-column:${col}"` : '';
+  const head = `<span class="bslot-kind">${esc(kind || String(i + 1))}</span>`;
+
+  if (!s) {
+    return `
+      <div class="bslot is-empty"${style} data-slot="${i}">
+        <div class="bslot-head">${head}</div>
+        <div class="bslot-card" title="Choose a mod">
+          <div class="bslot-blank">
+            ${Icon.plus(18)}
+            <span>${esc(kind || 'Mod')}</span>
+          </div>
+        </div>
+        <div class="bslot-foot"></div>
+      </div>`;
+  }
+
+  if (s.unknown) {
+    return `
+      <div class="bslot is-unknown"${style} data-slot="${i}">
+        <div class="bslot-head">${head}</div>
+        <div class="bslot-card" title="No catalogue entry for this mod">
+          <div class="bslot-blank">
+            ${Icon.warning(18)}
+            <span>Unmatched</span>
+          </div>
+        </div>
+        <div class="bslot-foot"></div>
+      </div>`;
+  }
+
+  const card = modCardHtml({
+    name: s.name,
+    art: s.art,
+    stats: s.stats,
+    compat: s.compat,
+    // Auras GEBEN Kapazitaet - auf der Karte steht der Bonus, nicht das Minus.
+    drain: s.isAura ? Math.abs(s.drain) : s.drain,
+    isAura: s.isAura,
+    polarity: s.modPolarityGlyph ? { glyph: s.modPolarityGlyph } : null,
+    rarity: s.rarity,
+    pips: s.pips,
+    rank: s.rank
+  });
+
+  /* Drei Zustaende statt zwei: da, da-aber-zu-niedrig, gar nicht da. Den
+     mittleren gibt es erst, seit der Rang aus dem Inventar kommt. */
+  const state = !s.owned ? 'is-missing' : s.underRanked ? 'is-short' : 'is-owned';
+  const tag = !s.owned
+    ? '<span class="bslot-tag missing">missing</span>'
+    : s.underRanked
+      ? `<span class="bslot-tag short" title="You own it at rank ${s.ownedRank}">rank ${s.ownedRank}</span>`
+      : `<span class="bslot-tag owned">${Icon.check(11)}</span>`;
+
+  return `
+    <div class="bslot ${state}"${style} data-slot="${i}">
+      <div class="bslot-head">
+        ${head}
+        ${s.polarityGlyph ? `
+          <span class="bslot-pol" title="Polarised: ${esc(s.polarityLabel || '')}">
+            ${Icon.polarity(s.polarityGlyph, 12)}
+          </span>` : ''}
+      </div>
+      <div class="bslot-card" title="Edit this slot">
+        <div class="mod-slot">${card}</div>
+      </div>
+      <div class="bslot-foot">
+        <span class="bslot-rank">${s.rank}/${s.maxRank}</span>
+        ${tag}
+      </div>
+    </div>`;
+}
+
+/* ---------------- Overframe-Import ---------------- */
+
 $('btn-import').onclick = async () => {
   const input = $('build-url').value.trim();
   if (!input) return;
@@ -825,7 +1550,7 @@ $('btn-import').onclick = async () => {
 
   if (!res.ok) { showImportStatus('err', res.error); return; }
 
-  let msg = 'Build importiert.';
+  let msg = 'Build imported.';
   if (res.note) msg += ' ' + res.note + '.';
   if (res.unresolved) {
     msg += ` ${res.unresolved} entries could not be matched `
@@ -833,146 +1558,105 @@ $('btn-import').onclick = async () => {
   }
   showImportStatus('ok', msg);
   $('build-url').value = '';
+
+  /* Direkt aufschlagen: der Import ist erst dann fertig, wenn man sieht, was
+     angekommen ist - und was davon fehlt. */
+  const fresh = (res.data?.builds || []).find(b => b.id === res.id);
+  if (fresh) {
+    activeBuildId = fresh.id;
+    remember(LAST_BUILD_KEY, fresh.id);
+    activeItem = fresh.itemUniqueName || fresh.id;
+    remember(LAST_ITEM_KEY, activeItem);
+  }
   renderBuilds(res.data);
 };
 
 $('build-url').addEventListener('keydown', e => { if (e.key === 'Enter') $('btn-import').click(); });
 
-function renderBuilds(data) {
-  if ($('build-count')) $('build-count').textContent = data.builds.length;
-  renderTotals(data.totals, data.builds);
-  renderMissingMods(data.missingMods);
+/* ---------------- Item-Auswahl fuer einen neuen Build ---------------- */
 
-  const el = $('builds');
-  if (!data.builds.length) {
-    el.innerHTML = '<div class="empty">No builds yet. Paste an Overframe link above.</div>';
+let BUILD_CATS = [];
+let itemCat = 'Suits';          // Warframes zuerst - damit steht das Regal sofort voll
+
+async function openItemPicker() {
+  $('build-item-modal').classList.remove('hidden');
+  $('newbuild-item').value = '';
+
+  if (!BUILD_CATS.length) BUILD_CATS = await window.api.buildCategories();
+  renderItemCats();
+  loadPickerItems();
+  $('newbuild-item').focus();
+}
+const closeItemPicker = () => $('build-item-modal').classList.add('hidden');
+
+$('build-item-close').onclick = closeItemPicker;
+$('build-item-modal').addEventListener('click', e => {
+  if (e.target.id === 'build-item-modal') closeItemPicker();
+});
+
+function renderItemCats() {
+  // "All" sucht ueber alle Kategorien - ohne Suchwort bleibt es dort leer.
+  const cats = [{ key: null, label: 'All', icon: 'search' }, ...BUILD_CATS];
+
+  $('build-item-cats').innerHTML = cats.map(c => `
+    <button class="icat ${c.key === itemCat ? 'on' : ''}" type="button"
+            data-cat="${esc(c.key || '')}">
+      ${Icon[c.icon] ? Icon[c.icon](15) : ''}<span>${esc(c.label)}</span>
+    </button>`).join('');
+
+  $('build-item-cats').querySelectorAll('[data-cat]').forEach(btn => btn.onclick = () => {
+    itemCat = btn.dataset.cat || null;
+    renderItemCats();
+    loadPickerItems();
+  });
+}
+
+let pickerTimer;
+$('newbuild-item').oninput = () => {
+  clearTimeout(pickerTimer);
+  pickerTimer = setTimeout(loadPickerItems, 200);
+};
+
+async function loadPickerItems() {
+  const q = $('newbuild-item').value.trim();
+  const box = $('newbuild-results');
+
+  if (!itemCat && q.length < 2) {
+    box.innerHTML = '<div class="empty">Type at least two letters, or pick a category above.</div>';
     return;
   }
 
-  el.innerHTML = data.builds.map(b => {
-    const pct = Math.min(100, Math.max(0, b.used / b.capacity * 100));
-    return `
-    <div class="build">
-      <div class="build-head">
-        ${b.image ? `<img src="${esc(b.image)}" alt="" onerror="this.style.visibility='hidden'">` : ''}
-        <div>
-          <h3>${esc(b.name)}</h3>
-          <div class="build-sub">
-            <span>${esc(b.itemName)}</span>
-            ${b.author ? `<span>by ${esc(b.author)}</span>` : ''}
-            <span>${Icon.bolt(12)} ${b.requirements.forma} Forma</span>
-            <span>${b.mods.owned} / ${b.mods.total} mods owned</span>
-          </div>
-        </div>
-        <div class="build-actions">
-          <button class="btn-sm danger" data-delbuild="${esc(b.id)}">${Icon.trash(13)}<span>Entfernen</span></button>
-        </div>
-      </div>
-      <div class="capbar">
-        <div class="capbar-track">
-          <div class="capbar-fill ${b.overCapacity ? 'over' : ''}" style="width:${pct}%"></div>
-        </div>
-        <div class="capbar-label">
-          <span>Capacity ${b.used} / ${b.capacity}</span>
-          <span>${b.overCapacity ? 'Over by ' + (b.used - b.capacity) : b.free + ' free'}</span>
-        </div>
-      </div>
-      <div class="slots">${b.slots.map((s, i) => renderSlot(s, i, b.source === 'manual', b.id)).join('')}</div>
-    </div>`;
-  }).join('');
-
-  el.querySelectorAll('[data-delbuild]').forEach(btn => btn.onclick = async () => {
-    const r = await window.api.removeBuild(btn.dataset.delbuild);
-    if (r.ok) renderBuilds(r.data);
-  });
-
-  // Klick auf einen Mod-Slot schaltet den Besitz um
-  el.querySelectorAll('[data-slotmod]').forEach(sl => sl.onclick = async () => {
-    const r = await window.api.setModOwned(sl.dataset.slotmod, sl.dataset.owned !== 'true');
-    if (r.ok) renderBuilds(r.data);
-  });
-
-  // Bei eigenen Builds oeffnet der Klick stattdessen den Slot-Editor
-  el.querySelectorAll('[data-editslot]').forEach(sl => sl.onclick = () => {
-    const build = data.builds.find(b => b.id === sl.dataset.buildid);
-    if (build) openSlotEditor(build.id, Number(sl.dataset.editslot), build);
-  });
-}
-
-/** Slot 9 ist der Aura-/Stance-Platz, Slot 10 der Exilus-Platz. */
-function slotKind(i) {
-  if (i === 8) return 'Aura / Stance';
-  if (i === 9) return 'Exilus';
-  return null;
-}
-
-function renderSlot(s, i, editable, buildId) {
-  const kind = slotKind(i);
-  const edit = editable ? ` data-editslot="${i}" data-buildid="${esc(buildId)}"` : '';
-
-  if (!s) {
-    if (!editable) return '<div class="slot slot-empty"><div class="slot-top"><span class="slot-name">leer</span></div></div>';
-    return `<div class="slot addslot editable"${edit}>
-      ${Icon.plus(15)}<span class="slot-kind">${esc(kind || 'Choose a mod')}</span></div>`;
-  }
-  if (s.unknown) {
-    return `<div class="slot"><div class="slot-top">
-      <span class="slot-name">Nicht zugeordnet</span></div>
-      <div class="slot-meta">${Icon.warning(11)} kein Katalog-Eintrag</div></div>`;
+  const results = await window.api.itemsForBuild(q, itemCat);
+  if (!results.length) {
+    box.innerHTML = '<div class="empty">Nothing found.</div>';
+    return;
   }
 
-  const cls = s.isAura ? 'aura' : (s.owned ? 'owned' : 'missing');
-  // Im Editor oeffnet der Klick den Slot, sonst schaltet er den Besitz um.
-  const attrs = editable ? edit : ` data-slotmod="${esc(s.uniqueName)}" data-owned="${s.owned}"`;
-  return `
-    <div class="slot ${cls} ${editable ? 'editable' : ''}"${attrs}
-         title="${esc((s.stats || []).join(' · '))}">
-      <div class="slot-top">
-        <span class="slot-name">${esc(s.name)}</span>
-        <span class="slot-drain ${s.isAura ? 'aura' : ''}">${s.isAura ? '↑' + Math.abs(s.drain) : s.drain}</span>
-      </div>
-      <div class="slot-meta">
-        <span>Rank ${s.rank}/${s.maxRank}</span>
-        ${s.polaritySymbol ? `<span class="slot-pol">${esc(s.polaritySymbol)}</span>` : ''}
-        <span>${s.owned ? '✓ owned' : 'missing'}</span>
-      </div>
-    </div>`;
+  box.innerHTML = results.map(r => `
+    <button class="itile ${figureClass(r.category)}" type="button"
+            data-item="${esc(r.uniqueName)}" data-name="${esc(r.name)}">
+      <span class="itile-art"><img src="${esc(r.image)}" alt="" loading="lazy"></span>
+      <b>${esc(r.name)}</b>
+      <small>${esc(r.label)}</small>
+    </button>`).join('');
+
+  onImageFail(box, '.itile img', img => { img.style.visibility = 'hidden'; });
+
+  box.querySelectorAll('[data-item]').forEach(tile => tile.onclick = async () => {
+    tile.disabled = true;
+    const res = await window.api.createBuild(tile.dataset.item, `${tile.dataset.name} Build`);
+    if (!res.ok) { showImportStatus('err', res.error); return; }
+
+    /* Ein frisch angelegter Build ist leer - er will sofort befuellt werden,
+       nicht erst im Arsenal wiedergefunden. */
+    if (res.id) { activeBuildId = res.id; remember(LAST_BUILD_KEY, res.id); }
+    activeItem = tile.dataset.item;
+    remember(LAST_ITEM_KEY, activeItem);
+
+    renderBuilds(res.data);
+    closeItemPicker();
+  });
 }
-
-/* ---------------- Eigenen Build anlegen ---------------- */
-$('btn-new-build').onclick = () => {
-  const p = $('newbuild-panel');
-  p.classList.toggle('hidden');
-  if (!p.classList.contains('hidden')) $('newbuild-item').focus();
-};
-
-let newBuildTimer;
-$('newbuild-item').oninput = e => {
-  clearTimeout(newBuildTimer);
-  const q = e.target.value;
-  newBuildTimer = setTimeout(async () => {
-    const results = await window.api.itemsForBuild(q);
-    const box = $('newbuild-results');
-    if (!results.length) { box.classList.add('hidden'); return; }
-    box.classList.remove('hidden');
-    box.innerHTML = results.map(r => `
-      <div class="result" data-item="${esc(r.uniqueName)}" data-name="${esc(r.name)}">
-        <img src="${esc(r.image)}" alt="" onerror="this.style.visibility='hidden'">
-        <span>${esc(r.name)}</span>
-        <span class="result-meta">${esc(r.label)}</span>
-      </div>`).join('');
-    box.querySelectorAll('.result').forEach(row => row.onclick = async () => {
-      const res = await window.api.createBuild(row.dataset.item, row.dataset.name + '-Build');
-      if (res.ok) {
-        renderBuilds(res.data);
-        $('newbuild-item').value = '';
-        box.classList.add('hidden');
-        $('newbuild-panel').classList.add('hidden');
-        showImportStatus('ok', `Build for ${row.dataset.name} created — now fill the slots.`);
-      } else showImportStatus('err', res.error);
-    });
-  }, 220);
-};
 
 /* ---------------- Slot-Editor ---------------- */
 const editor = { buildId: null, slotIndex: null, mod: null, rank: 0, polarity: null, itemUniqueName: null };
@@ -987,12 +1671,18 @@ async function openSlotEditor(buildId, slotIndex, build) {
   if (!POLARITY_LIST.length) POLARITY_LIST = await window.api.getPolarities();
 
   const existing = build.slots[slotIndex];
-  $('slot-modal-title').textContent = slotKind(slotIndex) || `Slot ${slotIndex + 1}`;
+  $('slot-modal-title').textContent = slotLabel(build.category, slotIndex);
   $('slot-modal-sub').textContent = build.itemName + ' · ' + build.name;
   $('modsearch').value = '';
   $('modsearch-results').innerHTML = '';
   $('slot-config').classList.add('hidden');
   $('slot-modal').classList.remove('hidden');
+
+  /* Die Polaritaet des Platzes steht von Anfang an da - auch ohne gewaehlte
+     Mod. Sie beschreibt den Platz, nicht die Karte darin. */
+  editor.polarity = existing?.polarity || null;
+  renderPolarities();
+
   $('modsearch').focus();
 
   // Belegten Slot direkt zum Bearbeiten oeffnen
@@ -1005,10 +1695,46 @@ async function openSlotEditor(buildId, slotIndex, build) {
   }
 }
 
+/**
+ * Die Polaritaetsreihe.
+ *
+ * Zeichen statt Buchstaben: im Spiel steht dort das Symbol der Schule, kein
+ * "V" oder "D". Die Glyphen liegen bereits in icons.js - dieselben, die auch
+ * ueber den Mod-Karten sitzen.
+ */
+function renderPolarities() {
+  const row = $('sc-polarities');
+
+  row.innerHTML =
+    `<button class="polbtn ${!editor.polarity ? 'on' : ''}" type="button"
+             data-pol="" title="No polarity">${Icon.minus(14)}</button>` +
+    POLARITY_LIST.filter(p => !['AP_ANY', 'AP_PRECEPT'].includes(p.key)).map(p =>
+      `<button class="polbtn ${editor.polarity === p.key ? 'on' : ''}" type="button"
+               data-pol="${esc(p.key)}" title="${esc(p.label)}">
+         ${Icon.polarity(p.glyph, 15)}
+       </button>`).join('');
+
+  row.querySelectorAll('.polbtn').forEach(b => b.onclick = () => {
+    editor.polarity = b.dataset.pol || null;
+    row.querySelectorAll('.polbtn').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    updateDrainPreview();
+  });
+}
+
 function closeSlotEditor() { $('slot-modal').classList.add('hidden'); }
 $('slot-modal-close').onclick = closeSlotEditor;
 $('slot-modal').addEventListener('click', e => { if (e.target.id === 'slot-modal') closeSlotEditor(); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSlotEditor(); });
+document.addEventListener('keydown', e => {
+  /* Escape schliesst immer nur das oberste Blatt: erst den Slot-Editor, dann
+     die Item-Auswahl, zuletzt fuehrt es aus der Detailansicht zurueck ins
+     Arsenal. Sonst faellt bei einem Tastendruck die ganze Kette zu. */
+  if (e.key !== 'Escape') return;
+  if (!$('slot-modal').classList.contains('hidden')) { closeSlotEditor(); return; }
+  if (!$('arcane-modal').classList.contains('hidden')) { closeArcaneEditor(); return; }
+  if (!$('build-item-modal').classList.contains('hidden')) { closeItemPicker(); return; }
+  if (activeItem && $('tab-builds')?.classList.contains('active')) backToArsenal();
+});
 
 let modSearchTimer;
 $('modsearch').oninput = e => {
@@ -1036,7 +1762,10 @@ $('modsearch').oninput = e => {
 function selectMod(mod, rank = null, polarity = null) {
   editor.mod = mod;
   editor.rank = rank ?? mod.maxRank ?? 0;
-  editor.polarity = polarity ?? null;
+
+  /* Eine bereits gesetzte Polaritaet des Platzes bleibt stehen, wenn man nur
+     die Mod darin wechselt - das Forma verschwindet ja auch nicht. */
+  if (polarity !== null) { editor.polarity = polarity; renderPolarities(); }
 
   $('slot-config').classList.remove('hidden');
   $('sc-name').textContent = mod.name;
@@ -1048,18 +1777,6 @@ function selectMod(mod, rank = null, polarity = null) {
   rangeEl.value = editor.rank;
   $('sc-rank-val').textContent = editor.rank;
 
-  $('sc-polarities').innerHTML =
-    `<button class="polbtn ${!editor.polarity ? 'on' : ''}" data-pol="">–</button>` +
-    POLARITY_LIST.filter(p => !['AP_ANY', 'AP_PRECEPT'].includes(p.key)).map(p =>
-      `<button class="polbtn ${editor.polarity === p.key ? 'on' : ''}" data-pol="${esc(p.key)}"
-               title="${esc(p.label)}">${esc(p.symbol)}</button>`).join('');
-
-  $('sc-polarities').querySelectorAll('.polbtn').forEach(b => b.onclick = () => {
-    editor.polarity = b.dataset.pol || null;
-    $('sc-polarities').querySelectorAll('.polbtn').forEach(x => x.classList.remove('on'));
-    b.classList.add('on');
-    updateDrainPreview();
-  });
   updateDrainPreview();
 }
 
@@ -1102,6 +1819,125 @@ $('sc-clear').onclick = async () => {
   if (res.ok) { renderBuilds(res.data); closeSlotEditor(); }
 };
 
+/* ---------------- Arcane-Editor ---------------- */
+
+const arcEditor = { buildId: null, index: null, arcane: null, rank: 0, itemUniqueName: null };
+
+async function openArcaneEditor(buildId, index, build) {
+  arcEditor.buildId = buildId;
+  arcEditor.index = index;
+  arcEditor.itemUniqueName = build.itemUniqueName;
+  arcEditor.arcane = null;
+  arcEditor.rank = 0;
+
+  const existing = (build.arcaneSlots || [])[index];
+  $('arcane-modal-title').textContent = `Arcane ${index + 1}`;
+  $('arcane-modal-sub').textContent = build.itemName + ' · ' + build.name;
+  $('arcsearch').value = '';
+  $('arcane-config').classList.add('hidden');
+  $('arcane-modal').classList.remove('hidden');
+
+  /* Ohne Suchwort steht die passende Auswahl schon da - bei 176 Arcanes ist
+     ein leeres Feld keine Hilfe, sondern eine Huerde. */
+  await loadArcaneResults();
+  $('arcsearch').focus();
+
+  if (existing && existing.uniqueName) {
+    selectArcane({
+      uniqueName: existing.uniqueName, name: existing.name,
+      maxRank: existing.maxRank, rarityLabel: existing.rarityLabel,
+      owned: existing.owned, ownedRank: existing.ownedRank
+    }, existing.rank);
+  }
+}
+
+const closeArcaneEditor = () => $('arcane-modal').classList.add('hidden');
+$('arcane-modal-close').onclick = closeArcaneEditor;
+$('arcane-modal').addEventListener('click', e => {
+  if (e.target.id === 'arcane-modal') closeArcaneEditor();
+});
+
+let arcSearchTimer;
+$('arcsearch').oninput = () => {
+  clearTimeout(arcSearchTimer);
+  arcSearchTimer = setTimeout(loadArcaneResults, 200);
+};
+
+async function loadArcaneResults() {
+  const results = await window.api.searchArcanes($('arcsearch').value, arcEditor.itemUniqueName);
+  const box = $('arcsearch-results');
+
+  box.innerHTML = results.map((a, i) => `
+    <div class="modopt arcopt" data-i="${i}">
+      <img class="arcopt-ic" src="${esc(a.image)}" alt="" loading="lazy">
+      <b>${esc(a.name)}</b>
+      <span class="mo-meta">
+        <span>${esc(a.rarityLabel)}</span>
+        <span>${a.owned ? `✓ rank ${a.ownedRank}/${a.maxRank}` : 'missing'}</span>
+      </span>
+    </div>`).join('') || '<div class="empty">Nothing found.</div>';
+
+  onImageFail(box, '.arcopt-ic', img => { img.style.visibility = 'hidden'; });
+  box.querySelectorAll('.arcopt').forEach(el => {
+    el.onclick = () => selectArcane(results[Number(el.dataset.i)]);
+  });
+}
+
+function selectArcane(arcane, rank = null) {
+  arcEditor.arcane = arcane;
+  arcEditor.rank = rank ?? arcane.maxRank ?? 0;
+
+  $('arcane-config').classList.remove('hidden');
+  $('ac-name').textContent = arcane.name;
+  $('ac-meta').textContent = [
+    arcane.rarityLabel,
+    arcane.owned ? `you own rank ${arcane.ownedRank ?? 0}` : 'not owned yet'
+  ].filter(Boolean).join(' · ');
+
+  const range = $('ac-rank');
+  range.max = arcane.maxRank ?? 5;
+  range.value = arcEditor.rank;
+  $('ac-rank-val').textContent = arcEditor.rank;
+  updateCopiesPreview();
+}
+
+$('ac-rank').oninput = e => {
+  arcEditor.rank = Number(e.target.value);
+  $('ac-rank-val').textContent = arcEditor.rank;
+  updateCopiesPreview();
+};
+
+/**
+ * Was der eingestellte Rang an Exemplaren kostet.
+ *
+ * Dieselbe Dreieckszahl wie im Kern: Rang 1 zwei Karten, Rang 5 einundzwanzig.
+ * Wer schon eines auf Rang N besitzt, zahlt nur die Differenz.
+ */
+function updateCopiesPreview() {
+  const a = arcEditor.arcane;
+  if (!a) return;
+  const copies = r => ((r + 1) * (r + 2)) / 2;
+  const need = copies(arcEditor.rank);
+  const have = a.owned ? copies(a.ownedRank ?? 0) : 0;
+
+  $('ac-copies').textContent = have >= need
+    ? `You already have this at rank ${a.ownedRank}`
+    : `${need} copies in total — ${need - have} still to go`;
+}
+
+$('ac-apply').onclick = async () => {
+  if (!arcEditor.arcane) return;
+  const res = await window.api.setBuildArcane(arcEditor.buildId, arcEditor.index, {
+    arcane: arcEditor.arcane.uniqueName, rank: arcEditor.rank
+  });
+  if (res.ok) { renderBuilds(res.data); closeArcaneEditor(); }
+};
+
+$('ac-clear').onclick = async () => {
+  const res = await window.api.setBuildArcane(arcEditor.buildId, arcEditor.index, null);
+  if (res.ok) { renderBuilds(res.data); closeArcaneEditor(); }
+};
+
 function renderTotals(t, builds) {
   const wrap = $('build-totals');
   if (!builds.length) { wrap.classList.add('hidden'); return; }
@@ -1109,12 +1945,14 @@ function renderTotals(t, builds) {
 
   const estimated = builds.some(b => b.requirements.endoEstimated);
   const cards = [
-    [Icon.bolt(18), t.forma,      'Forma',               null],
-    [Icon.star(18), t.auraForma,  'Aura-Forma',          null],
-    [Icon.star(18), t.umbraForma, 'Umbra-Forma',         null],
-    [Icon.cube(18), t.reactor,    'Orokin-Reaktoren',    null],
-    [Icon.cube(18), t.catalyst,   'Orokin-Katalysatoren', null],
-    [Icon.coin(18), nf(t.endo),   'Endo',                estimated ? 'estimated' : 'per Overframe']
+    [Icon.bolt(18), t.forma,        'Forma',            null],
+    [Icon.star(18), t.auraForma,    'Aura Forma',       null],
+    [Icon.star(18), t.umbraForma,   'Umbra Forma',      null],
+    [Icon.cube(18), t.reactor,      'Orokin Reactors',  null],
+    [Icon.cube(18), t.catalyst,     'Orokin Catalysts', null],
+    [Icon.coin(18), nf(t.endo),     'Endo',             estimated ? 'estimated' : 'per Overframe'],
+    /* Arcanes zahlt man in Exemplaren ihrer selbst, nicht in Endo. */
+    [Icon.gem(18),  t.arcaneCopies, 'Arcane copies',    'to fuse']
   ].filter(c => c[1] !== 0 && c[1] !== '0');
 
   $('totals-grid').innerHTML = cards.map(([ic, val, label, note]) => `
@@ -1125,24 +1963,74 @@ function renderTotals(t, builds) {
     </div>`).join('');
 }
 
-function renderMissingMods(list) {
+/**
+ * Was noch fehlt - und was nur noch aufgewertet werden muss.
+ *
+ * MIT INVENTAR ist das eine Feststellung, kein Formular: die Liste sagt, was zu
+ * farmen ist, und aendert sich beim naechsten Inventar-Abruf von selbst. OHNE
+ * Inventar bleibt der alte Weg, sonst stuende dort fuer immer alles als fehlend.
+ */
+function renderMissingMods(data) {
   const wrap = $('missing-mods-wrap');
-  if (!list.length) { wrap.classList.add('hidden'); return; }
+  const missing = data.missingMods || [];
+  const short   = data.underRankedMods || [];
+  const arcMissing = data.missingArcanes || [];
+  const arcShort   = data.underRankedArcanes || [];
+
+  if (!missing.length && !short.length && !arcMissing.length && !arcShort.length) {
+    wrap.classList.add('hidden');
+    return;
+  }
   wrap.classList.remove('hidden');
 
-  $('missing-mods').innerHTML = list.map(m => `
-    <div class="modrow" data-mod="${esc(m.uniqueName)}">
-      <span class="mcheck">${Icon.check(13)}</span>
+  const auto = data.hasInventory;
+  $('missing-title').textContent = 'Still needed for your builds';
+  $('missing-sub').textContent = auto
+    ? 'Read straight from your inventory — refresh it to update this list'
+    : 'No inventory data yet — click an entry once you own that mod';
+  $('btn-all-owned').classList.toggle('hidden', auto);
+
+  const row = (m, kind) => `
+    <div class="modrow ${kind}" ${auto ? '' : `data-mod="${esc(m.uniqueName)}"`}>
+      <span class="mcheck">${kind === 'short' ? Icon.star(13) : Icon.check(13)}</span>
       <div class="modrow-body">
         <b>${esc(m.name)}</b>
-        <small>Rank ${m.rank}/${m.maxRank} · ${esc(m.usedIn.join(', '))}</small>
+        <small>${kind === 'short'
+          ? `Rank ${m.ownedRank} → ${m.rank} · ${esc(m.usedIn.join(', '))}`
+          : `Rank ${m.rank}/${m.maxRank} · ${esc(m.usedIn.join(', '))}`}</small>
       </div>
       <span class="rarity ${esc(m.rarity)}">${esc(m.rarityLabel)}</span>
-    </div>`).join('');
+    </div>`;
 
-  $('missing-mods').querySelectorAll('[data-mod]').forEach(row => row.onclick = async () => {
-    row.classList.add('owned');
-    const r = await window.api.setModOwned(row.dataset.mod, true);
+  /* Arcanes stehen in derselben Liste, tragen aber ihre eigene Waehrung: nicht
+     Endo, sondern die Zahl der Exemplare, die noch hineinwandern. Ein Haken von
+     Hand gibt es hier nicht - ohne Inventar weiss niemand, wie viele man hat. */
+  const arcRow = (a, kind) => `
+    <div class="modrow ${kind} is-arcane">
+      <img class="arcopt-ic" src="${esc(a.image)}" alt="" loading="lazy">
+      <div class="modrow-body">
+        <b>${esc(a.name)}</b>
+        <small>${kind === 'short'
+          ? `Rank ${a.ownedRank} → ${a.rank}, ${a.copies - a.copiesOwned} more copies`
+          : `Rank ${a.rank}/${a.maxRank}, ${a.copies} ${a.copies === 1 ? 'copy' : 'copies'}`
+        } · ${esc(a.usedIn.join(', '))}</small>
+      </div>
+      <span class="rarity ${esc(a.rarity)}">${esc(a.rarityLabel)}</span>
+    </div>`;
+
+  $('missing-mods').innerHTML =
+    missing.map(m => row(m, 'gone')).join('')
+    + short.map(m => row(m, 'short')).join('')
+    + arcMissing.map(a => arcRow(a, 'gone')).join('')
+    + arcShort.map(a => arcRow(a, 'short')).join('');
+
+  onImageFail($('missing-mods'), '.arcopt-ic', img => { img.style.visibility = 'hidden'; });
+
+  if (auto) return;
+
+  $('missing-mods').querySelectorAll('[data-mod]').forEach(el => el.onclick = async () => {
+    el.classList.add('owned');
+    const r = await window.api.setModOwned(el.dataset.mod, true);
     if (r.ok) renderBuilds(r.data);
   });
 }
@@ -1425,6 +2313,7 @@ document.addEventListener('keydown', e => {
     closeSlotEditor();
     closeUpgradeModal();
     closeRelicModal();
+    closePartModal();
   }
 });
 
@@ -1467,6 +2356,40 @@ if ($('btn-refresh-worldstate')) {
   $('btn-refresh-worldstate').onclick = () => loadWorldState(true);
 }
 
+/**
+ * Die Restzeit eines Zyklus - gerechnet, nicht abgeschrieben.
+ *
+ * Zwei Gruende, warum hier nicht einfach `timeLeft` der Quelle steht: der Orb
+ * Vallis bekommt das Feld von warframestat.us gar nicht mit (Cetus und Cambion
+ * schon), und selbst wo es steht, ist es der Stand des letzten Abrufs. Aus
+ * `expiry` gerechnet stimmt die Zahl in jeder Sekunde - und tickt.
+ */
+function cycleLeftText(expiry, fallback) {
+  if (!expiry) return fallback || '—';
+  const ms = new Date(expiry).getTime() - Date.now();
+  if (!Number.isFinite(ms)) return fallback || '—';
+  if (ms <= 0) return 'now';
+
+  const total = Math.floor(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  return h ? `${h}h ${m}m` : `${m}m ${s}s`;
+}
+
+const cycleClock = cyc =>
+  `<span class="ws-cycle-clock" data-cycle-until="${esc(cyc.expiry || '')}"
+         data-cycle-fallback="${esc(cyc.timeLeft || '')}">${
+    esc(cycleLeftText(cyc.expiry, cyc.timeLeft))}</span>`;
+
+/** Sekundentakt nur fuer die drei Uhren - kein Neuzeichnen der ganzen Seite. */
+function tickCycleClocks() {
+  document.querySelectorAll('[data-cycle-until]').forEach(el => {
+    el.textContent = cycleLeftText(el.dataset.cycleUntil, el.dataset.cycleFallback);
+  });
+}
+setInterval(tickCycleClocks, 1000);
+
 function renderWorldState(d) {
   // 1. Zyklen
   const c = d.cetus || {};
@@ -1474,7 +2397,7 @@ function renderWorldState(d) {
   const cb = d.cambion || {};
 
   $('ws-cycles').innerHTML = `
-    <div class="ws-cycle-card ${c.isDay ? 'day' : 'night'}">
+    <div class="ws-cycle-card map-cetus ${c.isDay ? 'day' : 'night'}">
       <div class="ws-cycle-head">
         <div>
           <div class="ws-cycle-title">Plains of Eidolon (Cetus)</div>
@@ -1484,10 +2407,10 @@ function renderWorldState(d) {
           ${c.isDay ? Icon.sun(13) + ' Day' : Icon.moon(13) + ' Night (Eidolon)'}
         </span>
       </div>
-      <div class="ws-cycle-time">${esc(c.timeLeft || '—')} <small>remaining</small></div>
+      <div class="ws-cycle-time">${cycleClock(c)} <small>remaining</small></div>
     </div>
 
-    <div class="ws-cycle-card ${v.isWarm ? 'warm' : 'cold'}">
+    <div class="ws-cycle-card map-vallis ${v.isWarm ? 'warm' : 'cold'}">
       <div class="ws-cycle-head">
         <div>
           <div class="ws-cycle-title">Orb Vallis (Fortuna)</div>
@@ -1497,10 +2420,10 @@ function renderWorldState(d) {
           ${v.isWarm ? Icon.flame(13) + ' Warm' : Icon.snowflake(13) + ' Cold'}
         </span>
       </div>
-      <div class="ws-cycle-time">${esc(v.timeLeft || '—')} <small>remaining</small></div>
+      <div class="ws-cycle-time">${cycleClock(v)} <small>remaining</small></div>
     </div>
 
-    <div class="ws-cycle-card ${cb.isFass ? 'warm' : 'night'}">
+    <div class="ws-cycle-card map-cambion ${cb.isFass ? 'warm' : 'night'}">
       <div class="ws-cycle-head">
         <div>
           <div class="ws-cycle-title">Cambion Drift (Deimos)</div>
@@ -1510,7 +2433,7 @@ function renderWorldState(d) {
           ${cb.isFass ? 'Fass (orange)' : 'Vome (blue)'}
         </span>
       </div>
-      <div class="ws-cycle-time">${esc(cb.timeLeft || '—')} <small>remaining</small></div>
+      <div class="ws-cycle-time">${cycleClock(cb)} <small>remaining</small></div>
     </div>
   `;
 
@@ -1927,13 +2850,12 @@ function renderFissures(list) {
       const isMatch = isFissureAlertMatch(f, notificationSettings);
       return `
       <div class="ws-fissure-card ${isMatch ? 'is-alert-match' : ''}">
-        <img class="ws-fissure-img" src="${relicTierImage(f.tier)}" alt="${esc(f.tier)}" onerror="this.style.display='none'">
+        ${isMatch ? `<span class="fissure-alert-badge" title="Fissure alarm match">${Icon.bell(12)}</span>` : ''}
+        <img class="ws-fissure-img tier-${esc(String(f.tier || '').toLowerCase())}" src="${relicTierImage(f.tier)}" alt="${esc(f.tier)}" onerror="this.style.display='none'">
         <div class="ws-fissure-info">
-          <div class="ws-fissure-head-row">
-            <span class="ws-fissure-tier ${esc(f.tier)}">${esc(f.tier)}</span>
-            <b>${esc(f.missionType)}${f.isHard ? ' <small style="color:var(--red); font-size:11px;">[Steel Path]</small>' : ''}${isMatch ? `<span class="fissure-alert-tag">${Icon.bell(11)} Alarm</span>` : ''}</b>
-          </div>
-          <span>${esc(f.node)} · ${esc(f.enemy)}</span>
+          <span class="ws-fissure-tier ${esc(f.tier)}">${esc(f.tier)}</span>
+          <b class="ws-fissure-mission">${esc(f.missionType)}${f.isHard ? ' <small style="color:var(--red); font-size:11px;">[Steel Path]</small>' : ''}</b>
+          <span class="ws-fissure-node">${esc(f.node)} · ${esc(f.enemy)}</span>
         </div>
         <span class="ws-fissure-eta">${esc(f.eta)}</span>
       </div>
@@ -1952,35 +2874,83 @@ document.querySelectorAll('.fissure-tab').forEach(tab => {
 
 /* ---------------- 2. Ressourcen & Farm-Guide ---------------- */
 let farmGuideCache = [];
+let miningCache = null;
 let fgSearchTimer;
+let fgMode = 'resources';   // 'resources' | 'mining'
+let fgCategory = 'all';     // Kategoriefilter des Ressourcen-Modus
 
 async function loadFarmGuide(q = '') {
-  farmGuideCache = await window.api.getFarmingGuide(q);
+  /* Bleibt der Aufruf ohne Antwort, darf daraus kein Fehler werden, der den
+     ganzen Tab leer stehen laesst - dann eben eine leere Liste. */
+  const data = (await window.api.getFarmingGuide(q)) || {};
+  farmGuideCache = data.resources || [];
+  renderFarmCategories(data.categories || []);
   renderFarmGuide(farmGuideCache);
 }
 
-function renderFarmGuide(list) {
+async function loadMiningGuide(q = '') {
+  miningCache = (await window.api.getMiningGuide(q)) || null;
+  renderMiningGuide(miningCache);
+}
+
+/** Beide Modi haengen an derselben Suchzeile, also fuettert sie beide. */
+function reloadFarmTab() {
+  const q = $('fg-search') ? $('fg-search').value : '';
+  return fgMode === 'mining' ? loadMiningGuide(q) : loadFarmGuide(q);
+}
+
+/* ---- Modus 1: Sternenkarten-Ressourcen ---- */
+
+function renderFarmCategories(cats) {
+  const bar = $('fg-cats');
+  if (!bar || !cats.length) return;
+
+  /* Zahl je Kategorie steht am Chip: ohne sie klickt man blind auf einen
+     Filter, hinter dem drei Eintraege liegen. Gezaehlt wird auf dem, was die
+     Suche zurueckgab - der Chip zeigt also, was dieser Filter JETZT braechte. */
+  const count = key => key === 'all'
+    ? farmGuideCache.length
+    : farmGuideCache.filter(r => r.category === key).length;
+
+  bar.innerHTML = cats.map(c => `
+    <button class="filter-chip${fgCategory === c.key ? ' active' : ''}" data-fgcat="${esc(c.key)}">
+      ${esc(c.label)} <span class="chip-count">${count(c.key)}</span>
+    </button>
+  `).join('');
+
+  bar.querySelectorAll('[data-fgcat]').forEach(btn => {
+    btn.onclick = () => {
+      fgCategory = btn.dataset.fgcat;
+      renderFarmCategories(cats);
+      renderFarmGuide(farmGuideCache);
+    };
+  });
+}
+
+function renderFarmGuide(list = []) {
   const grid = $('fg-grid');
   if (!grid) return;
 
-  grid.innerHTML = list.length
-    ? list.map(r => `
+  const shown = fgCategory === 'all' ? list : list.filter(r => r.category === fgCategory);
+
+  grid.innerHTML = shown.length
+    ? shown.map(r => `
       <div class="fg-card">
         <div class="fg-head">
-          <img class="mat-icon" src="${esc(r.image)}" alt="" onerror="this.style.display='none'">
+          <img class="mat-icon" src="${esc(r.image)}" alt="">
           <div class="fg-title-info">
             <h3>${esc(r.name)}</h3>
             <span class="fg-cat-badge">${esc(r.category)}</span>
           </div>
         </div>
-        <p style="font-size: 12.5px; color: var(--text-2); line-height: 1.4;">${esc(r.description)}</p>
+        <p class="fg-desc">${esc(r.description)}</p>
 
         <div class="fg-planets">
           ${(r.planets || []).map(p => `<span class="fg-planet-tag">${esc(p)}</span>`).join('')}
         </div>
 
         <div class="fg-nodes">
-          <b style="font-size: 11.5px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-3);">Best farming nodes</b>
+          <b class="fg-label">Best farming nodes</b>
           ${(r.bestNodes || []).map(n => `
             <div class="fg-node-item">
               <div class="fg-node-head">
@@ -1992,37 +2962,232 @@ function renderFarmGuide(list) {
           `).join('')}
         </div>
 
+        ${(r.alsoFrom || []).length ? `
+          <div class="fg-also">
+            <b class="fg-label">Also comes from</b>
+            <ul>${r.alsoFrom.map(a => `<li>${esc(a)}</li>`).join('')}</ul>
+          </div>
+        ` : ''}
+
         <div class="fg-frames">
-          <b>Recommended frames / setups:</b> ${(r.recommendedFrames || []).join(', ')}
+          <b>Recommended frames / setups:</b> ${(r.recommendedFrames || []).map(esc).join(', ')}
         </div>
 
         ${r.tips ? `
-          <div style="font-size: 11.5px; color: var(--gold); background: rgba(240, 184, 73, 0.08); padding: 8px 12px; border-radius: var(--r-sm);">
+          <div class="fg-tip">
             <span class="tip-ic">${Icon.bulb(13)}</span><b>Tip:</b> ${esc(r.tips)}
           </div>
         ` : ''}
       </div>
     `).join('')
-    : '<div class="empty" style="grid-column: 1 / -1;">No resources found for that search.</div>';
+    /* Zwei verschiedene Leerfaelle: nichts gefunden, oder gefunden aber vom
+       Kategoriefilter weggeschnitten. Die zweite Meldung sagt, wo es liegt -
+       sonst sucht man den Fehler in der Suchzeile statt im Chip darueber. */
+    : list.length
+      ? `<div class="empty" style="grid-column: 1 / -1;">${list.length} match${list.length === 1 ? '' : 'es'}, but none in this category. Pick “All” to see them.</div>`
+      : '<div class="empty" style="grid-column: 1 / -1;">No resources found for that search.</div>';
+
+  /* onerror als Attribut laeuft hier NICHT - die Content-Security-Policy der
+     Seite verwirft Inline-Handler. Ohne das blieb bei einem Bild, das der
+     Bilderdienst nicht kennt, das kaputte Ersatzsymbol stehen. */
+  onImageFail(grid, '.mat-icon', img => { img.style.display = 'none'; });
 }
 
-$('fg-search').oninput = e => {
+/* ---- Modus 2: Bergbau ---- */
+
+/**
+ * Der Felsen mit der leuchtenden Ader.
+ *
+ * Das ist die eigentliche Antwort auf "woran erkenne ich das Erz?": ein Stein
+ * mit einem Riss darin, und der Riss hat die Farbe, die im Spiel darauf
+ * hinweist. Gezeichnet statt fotografiert, weil ein Screenshot aus dem Spiel
+ * weder in beiden Themes noch in dieser Groesse funktioniert - und weil die
+ * Farbe die Information ist, nicht der Felsen.
+ */
+let veinSwatchSeq = 0;
+
+function veinSwatch(vein, size = 46) {
+  const c = vein || {};
+  /* Der Verlauf braucht eine id, und die muss im Dokument einmalig sein: bei
+     dreissig Karten mit denselben drei Adernfarben gaebe es sonst dreissig
+     Elemente mit id="vgred". Sichtbar faellt das nicht auf - dieselbe
+     Definition, dasselbe Bild - aber gueltiges HTML ist es nicht, und die
+     naechste Ader mit abweichender Farbe wuerde still die erste erben. */
+  const id = 'vg' + String(c.key || 'x') + '-' + (++veinSwatchSeq);
+  return `
+    <svg class="vein-swatch" width="${size}" height="${size}" viewBox="0 0 48 48" aria-hidden="true">
+      <defs>
+        <radialGradient id="${id}" cx="50%" cy="50%" r="55%">
+          <stop offset="0%" stop-color="${esc(c.glow || '#fff')}" stop-opacity=".95"/>
+          <stop offset="100%" stop-color="${esc(c.hex || '#888')}" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <path d="M9 17 22 6l17 5 4 16-12 14-16-2-6-13Z"
+            fill="rgba(255,255,255,.07)" stroke="rgba(255,255,255,.16)" stroke-width="1.4"/>
+      <circle cx="24" cy="24" r="17" fill="url(#${id})"/>
+      <path d="M15 30c4-3 5-8 9-10s6 1 9-3"
+            fill="none" stroke="${esc(c.hex || '#888')}" stroke-width="3.4"
+            stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M15 30c4-3 5-8 9-10s6 1 9-3"
+            fill="none" stroke="${esc(c.glow || '#fff')}" stroke-width="1.2"
+            stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>`;
+}
+
+function renderMiningGuide(data) {
+  if (!data) return;
+  const { resources = [], worlds = [], cutters = [], facts = [], veinColors = {} } = data;
+
+  /* Die Legende steht ueber allem anderen, weil sie die Regel ist, aus der
+     sich der Rest ergibt - nicht als Fussnote darunter. */
+  const key = $('fg-vein-key');
+  if (key) {
+    key.innerHTML = Object.values(veinColors).map(v => `
+      <div class="fg-vein-key-item" style="--vein: ${esc(v.hex)};">
+        ${veinSwatch(v, 40)}
+        <div>
+          <b>${esc(v.label)}</b>
+          <span>yields ${esc(v.yields)}</span>
+        </div>
+      </div>
+    `).join('') + `
+      <div class="fg-vein-key-note">
+        Ore veins are <b>red</b> on the Plains and the Vallis but <b>yellow</b> on the Cambion Drift.
+        Gem veins are <b>blue</b> everywhere. That colour is the only thing you know before you cut.
+      </div>`;
+  }
+
+  const worldBox = $('fg-worlds');
+  if (worldBox) {
+    worldBox.innerHTML = worlds.map(w => `
+      <div class="fg-world">
+        <div class="fg-world-head">
+          <h3>${esc(w.name)}</h3>
+          <span>${esc(w.hub)}</span>
+        </div>
+        <div class="fg-world-veins">
+          <span class="fg-vein-tag" style="--vein: ${esc((veinColors[w.oreVein] || {}).hex || '#888')};">Ore · ${esc(w.oreVein)}</span>
+          <span class="fg-vein-tag" style="--vein: ${esc((veinColors[w.gemVein] || {}).hex || '#888')};">Gem · ${esc(w.gemVein)}</span>
+        </div>
+        <div class="fg-world-meta">
+          <b>Vendor:</b> ${esc(w.vendor)} · <b>Standing:</b> ${esc(w.syndicate)}<br>
+          <b>Tool:</b> ${esc(w.tool)}
+        </div>
+        <div class="fg-nodes">
+          <b class="fg-label">Densest mining spots</b>
+          ${(w.bestSpots || []).map(s => `
+            <div class="fg-node-item">
+              <div class="fg-node-head"><b>${esc(s.name)}</b></div>
+              <div class="fg-node-desc">${esc(s.desc)}</div>
+            </div>
+          `).join('')}
+        </div>
+        <div class="fg-tip"><span class="tip-ic">${Icon.bulb(13)}</span><b>Tip:</b> ${esc(w.tips)}</div>
+      </div>
+    `).join('');
+  }
+
+  const grid = $('fg-mining-grid');
+  if (grid) {
+    grid.innerHTML = resources.length
+      ? resources.map(r => `
+        <div class="fg-card fg-mine-card" style="--vein: ${esc(r.veinColor.hex)};">
+          <div class="fg-head">
+            ${veinSwatch(r.veinColor)}
+            <div class="fg-title-info">
+              <h3>${esc(r.name)}</h3>
+              <span class="fg-cat-badge">${esc(r.rarity)} ${esc(r.kind)} · ${esc(r.world)}</span>
+            </div>
+            <img class="mat-icon" src="${esc(r.image)}" alt="">
+          </div>
+
+          <div class="fg-vein-line">
+            <span class="fg-vein-dot"></span>
+            <b>${esc(r.veinColor.label)}</b>
+            <span>${esc(r.veinYield.multiplier)} multiplier · max ${esc(String(r.veinYield.max))} per vein</span>
+          </div>
+
+          <div class="fg-refined">
+            ${r.refinedImage ? `<img class="mat-icon" src="${esc(r.refinedImage)}" alt="">` : ''}
+            <div>
+              <b class="fg-label">Refines into</b>
+              <span>${esc(r.refined)}</span>
+            </div>
+          </div>
+
+          <div class="fg-mine-meta">
+            <div><b>Cutter:</b> ${esc(r.tool)}</div>
+            ${r.standing ? `<div><b>Standing:</b> ${esc(String(r.standing))} with ${esc(r.standingWith)}</div>`
+                         : r.standingWith ? `<div><b>Standing:</b> ${esc(r.standingWith)}</div>` : ''}
+            <div><b>Used for:</b> ${esc(r.usedFor)}</div>
+          </div>
+
+          <div class="fg-tip"><span class="tip-ic">${Icon.bulb(13)}</span>${esc(r.note)}</div>
+        </div>
+      `).join('')
+      : '<div class="empty" style="grid-column: 1 / -1;">No ore or gem matches that search.</div>';
+
+    onImageFail(grid, '.mat-icon', img => { img.style.display = 'none'; });
+  }
+
+  const cutterBox = $('fg-cutters');
+  if (cutterBox) {
+    cutterBox.innerHTML = `
+      <b class="fg-label">Cutters — only the last two can produce special gems</b>
+      <div class="fg-cutter-list">
+        ${cutters.map(c => `
+          <div class="fg-cutter${c.special === '0%' ? ' is-weak' : ''}">
+            <div class="fg-cutter-head">
+              <b>${esc(c.name)}</b>
+              <span class="fg-cutter-special">${esc(c.special)} special</span>
+            </div>
+            <div class="fg-cutter-meta">${esc(c.cost)} · ${esc(c.rank)} · ${esc(c.from)}</div>
+            <div class="fg-cutter-meta">${esc(c.detection)} · ${esc(c.bonus)} bonus bracket</div>
+            <div class="fg-node-desc">${esc(c.note)}</div>
+          </div>
+        `).join('')}
+      </div>`;
+  }
+
+  const factBox = $('fg-facts');
+  if (factBox) {
+    factBox.innerHTML = `
+      <b class="fg-label">How mining actually works</b>
+      <ul>${facts.map(f => `<li>${esc(f)}</li>`).join('')}</ul>`;
+  }
+}
+
+/* ---- Moduswechsel und Suche ---- */
+
+document.querySelectorAll('.fg-mode').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('.fg-mode').forEach(b => b.classList.toggle('active', b === btn));
+    fgMode = btn.dataset.fgmode;
+    $('fg-pane-resources').hidden = fgMode !== 'resources';
+    $('fg-pane-mining').hidden    = fgMode !== 'mining';
+    $('fg-search').placeholder = fgMode === 'mining'
+      ? 'Search an ore, gem or landscape … e.g. Hesperon, blue, Cambion Drift, rare'
+      : 'Search a resource or planet … e.g. Orokin Cell, Tellurium, Saturn, Uranus';
+    reloadFarmTab();
+  };
+});
+
+$('fg-search').oninput = () => {
   clearTimeout(fgSearchTimer);
-  const q = e.target.value;
-  fgSearchTimer = setTimeout(() => loadFarmGuide(q), 200);
+  fgSearchTimer = setTimeout(reloadFarmTab, 200);
 };
 
 function openFarmGuideFor(name) {
   if (!name) return;
   showTab('farmguide');
   $('fg-search').value = name;
-  loadFarmGuide(name);
+  reloadFarmTab();
 }
 
 /* ---------------- 3. Baro Dukaten & Relikt-Helper ---------------- */
 let ducatsData = null;
 let sellQuantities = new Map(); // slug -> count
-let currentSelectionPreset = 'all'; // 'all' | 'duplicates' | 'custom' | 'none'
+let currentSelectionPreset = 'none'; // 'all' | 'duplicates' | 'custom' | 'none'
 let ducatsMode = 'inventory';    // 'inventory' | 'catalog' | 'sets' | 'plan'
 let planTier = 'all';            // Aera-Filter des Planers
 let planSort = 'plat-desc';      // Sortierung des Planers
@@ -2042,13 +3207,12 @@ async function loadDucats() {
   ducatsData = res;
   trackedRelicIds = new Set((res?.trackedRelics || []).map(t => t.id));
 
-  // Wenn noch keine Mengen gewählt wurden und Inventar vorliegt: alles vorselektieren
-  if (sellQuantities.size === 0 && ducatsData?.inventory?.items?.length > 0) {
-    currentSelectionPreset = 'all';
-    for (const it of ducatsData.inventory.items) {
-      if (it.count > 0) sellQuantities.set(it.slug, it.count);
-    }
-  }
+  /* KEINE VORAUSWAHL. Vorher stand hier beim Oeffnen des Tabs jedes Teil des
+     Inventars auf "verkaufen" - inklusive der Einzelstuecke, von denen man
+     genau eines besitzt. Die Kopfzahlen zeigten damit einen Erloes, der eine
+     Entscheidung vorwegnimmt, die niemand getroffen hat. Was verkauft wird,
+     waehlt man selbst; "Select all" und "Duplicates only" stehen dafuer als
+     Knopf in der Leiste. */
 
   // Modus umschalten, falls kein Inventar vorhanden ist
   if (!ducatsData?.inventory?.items?.length && ducatsMode === 'inventory') {
@@ -2228,12 +3392,24 @@ function renderDucatsKPIs() {
   if ($('ducats-selected-total')) $('ducats-selected-total').textContent = nf(selectedDucats);
   if ($('ducats-selected-sub')) {
     const totalInv = ducatsData.inventory?.summary?.totalItems || 0;
-    let presetLabel = '';
-    if (currentSelectionPreset === 'all') presetLabel = ' · all selected';
-    else if (currentSelectionPreset === 'duplicates') presetLabel = ' · duplicates selected';
-    else if (currentSelectionPreset === 'none' || selectedItemsCount === 0) presetLabel = ' · no parts selected';
 
-    $('ducats-selected-sub').textContent = `${nf(selectedItemsCount)} parts selected ${totalInv ? `(of ${nf(totalInv)})` : ''}${presetLabel}`;
+    /* Nichts gewaehlt ist jetzt der Startzustand, nicht mehr eine Ausnahme -
+       hier steht deshalb der naechste Schritt statt "0 parts selected · no
+       parts selected", was zweimal dasselbe sagte. */
+    if (!selectedItemsCount) {
+      /* Kurz halten: .stat-sub ist einzeilig und schneidet mit Ellipse ab.
+         Wo die Knoepfe dafuer sitzen, steht eine Zeile tiefer in der Leiste -
+         das muss die Karte nicht wiederholen. */
+      $('ducats-selected-sub').textContent = totalInv
+        ? 'Nothing selected yet — pick parts to sell'
+        : 'No prime parts in your inventory';
+    } else {
+      const presetLabel = currentSelectionPreset === 'all' ? ' · all selected'
+                        : currentSelectionPreset === 'duplicates' ? ' · duplicates selected'
+                        : '';
+      $('ducats-selected-sub').textContent =
+        `${nf(selectedItemsCount)} parts selected ${totalInv ? `(of ${nf(totalInv)})` : ''}${presetLabel}`;
+    }
   }
 
   // KPI 2: Platin-Wert
@@ -2319,23 +3495,30 @@ function renderPlanTierFilter(all) {
      etwas gemerkt ist - ein Filter, der garantiert nichts uebrig laesst,
      gehoert nicht in die Leiste. */
   const trackedCount = trackedRelicIds.size;
-  /* Ist das letzte gemerkte Relikt abgewaehlt, verschwindet der Chip - und mit
-     ihm der Weg zurueck. Deshalb faellt der Filter hier von selbst weg. */
-  if (!trackedCount) planOnlyTracked = false;
+  const traces = ducatsData?.voidTraces ?? 0;
 
-  box.innerHTML =
-    `<button class="tier-chip ${planTier === 'all' ? 'active' : ''}" data-tier="all">
-       All <span>${all.length}</span>
+  /* ALLES IN EINER ZEILE, anders als im Inventar: hier gibt es nur eine Achse
+     (die Aera), dazu den Merk-Schalter und die Spuren-Anzeige. Der
+     Zeilen-Container ist trotzdem noetig - die Leiste ist eine Spalte, ohne
+     ihn bekaeme jeder Chip eine eigene Zeile. */
+  box.innerHTML = `<div class="chip-row">` +
+    `<button class="tier-chip ${planTier === 'all' ? 'active' : ''}" type="button" data-tier="all">
+       <i class="chip-ic">${Icon.grid(15)}</i>All <span>${all.length}</span>
      </button>` +
     tiers.map(t => `
-      <button class="tier-chip tier-${t.toLowerCase()} ${planTier === t ? 'active' : ''}" data-tier="${t}">
+      <button class="tier-chip tier-${t.toLowerCase()} ${planTier === t ? 'active' : ''}"
+              type="button" data-tier="${t}">
         ${t} <span>${counts.get(t)}</span>
       </button>`).join('') +
     (trackedCount ? `
-      <button class="tier-chip chip-tracked ${planOnlyTracked ? 'active' : ''}" data-tracked="1"
+      <button class="tier-chip chip-tracked ${planOnlyTracked ? 'active' : ''}" type="button" data-tracked="1"
               title="Only the relics shown in the overlay">
-        ${Icon.star(11)} Gemerkt <span>${trackedCount}</span>
-      </button>` : '');
+        <i class="chip-ic">${Icon.star(15)}</i>Gemerkt <span>${trackedCount}</span>
+      </button>` : '') +
+    `<span class="tier-chip chip-traces" title="Void Traces (Spuren des Nichts)">
+       <i class="chip-ic">${Icon.traces(15)}</i><span>${nf(traces)} Traces</span>
+     </span>` +
+    `</div>`;
 
   box.querySelectorAll('[data-tier]').forEach(btn => {
     btn.onclick = () => { planTier = btn.dataset.tier; renderDucatsRelicPlan(); };
@@ -2454,6 +3637,10 @@ function renderDucatsRelicPlan() {
             <span class="plan-tier">${esc(r.tier)}</span>
             <b>${esc(r.name)}</b>
             <span class="plan-state">${esc(relicStateLabel(r.state))}${r.count > 1 ? ' · ×' + r.count : ''}</span>
+            <button class="plan-track ${tracked ? 'on' : ''}" data-track="${esc(id)}"
+                    title="${tracked ? 'Aus dem Overlay nehmen' : 'Im Overlay anzeigen'}">
+              ${Icon.star(14)}
+            </button>
           </div>
           <div class="plan-exp">
             <span class="plan-exp-val" title="Expected platinum return per crack">
@@ -2465,10 +3652,6 @@ function renderDucatsRelicPlan() {
               <b>${nf(r.expDucats)}</b>
             </span>
           </div>
-          <button class="plan-track ${tracked ? 'on' : ''}" data-track="${esc(id)}"
-                  title="${tracked ? 'Aus dem Overlay nehmen' : 'Im Overlay anzeigen'}">
-            ${Icon.star(14)}
-          </button>
         </div>
 
         ${thin ? `<div class="plan-thin" title="Parts with no known price count as nothing">
@@ -2814,7 +3997,14 @@ function initDucatsEventListeners() {
 
 let inventoryData = null;
 let invSection = 'relics';
-let invTier = 'all';        // Aera-Filter, nur im Relikt-Bereich
+let invTier = 'all';            // Aera-Filter, nur im Relikt-Bereich
+let invSetOwnership = 'all';    // All, Owned, Not owned
+let invSetOrigin = 'all';       // Prime oder Basis, nur im Sets-Bereich
+let invSetKind = 'all';         // Gattung, nur im Sets-Bereich
+let invModOwnership = 'all';    // All, Owned, Not owned
+let invModKind = 'all';         // Gattung (Warframe, Primary, Secondary, Melee, Companion, Archwing, etc.)
+let invArcaneOwnership = 'all'; // All, Owned, Not owned
+let invArcaneKind = 'all';      // Gattung (Warframe, Primary, Secondary, Melee, Operator, Amp, etc.)
 
 const QUELLEN = {
   api:        { label: 'Live read from the game', stale: false },
@@ -2913,28 +4103,45 @@ function renderInventory() {
       </div>
     </div>`).join('');
 
-  $('inv-tabs').innerHTML = d.sectionMeta.map(s => `
+  $('inv-tabs').innerHTML = d.sectionMeta.map(s => {
+    const total = d.totals[s.key] || { arten: 0 };
+    const labelCount = (s.key === 'mods' || s.key === 'arcanes') && total.ownedArten != null
+      ? `${nf(total.ownedArten)} / ${nf(total.arten)}`
+      : nf(total.arten);
+    return `
     <button class="inv-tab ${s.key === invSection ? 'active' : ''}" data-inv="${s.key}">
-      ${esc(s.label)}<span>${nf(d.totals[s.key].arten)}</span>
-    </button>`).join('');
+      ${esc(s.label)}<span>${labelCount}</span>
+    </button>`;
+  }).join('');
 
   $('inv-tabs').querySelectorAll('[data-inv]').forEach(btn => {
-    btn.onclick = () => { invSection = btn.dataset.inv; invTier = 'all'; renderInventory(); };
+    btn.onclick = () => {
+      invSection = btn.dataset.inv;
+      invTier = 'all';
+      invSetOwnership = 'all';
+      invSetOrigin = 'all';
+      invSetKind = 'all';
+      invModOwnership = 'all';
+      invModKind = 'all';
+      invArcaneOwnership = 'all';
+      invArcaneKind = 'all';
+      renderInventory();
+    };
   });
 
   renderInventoryGrid();
 }
 
 /**
- * Aera-Filter fuer Relikte.
- *
- * Nur die Aeren anzeigen, die im Bestand auch vorkommen - eine Schaltflaeche
- * fuer Omnia, wenn man kein einziges hat, waere eine Sackgasse. Die Anzahl
- * steht dabei, weil sie die eigentliche Auskunft ist.
+ * Filter fuer Inventar-Sektionen (Relikte, Sets, Mods, Arcanes).
  */
 function renderInvTierFilter(all) {
   const box = $('inv-tier-filter');
   if (!box) return;
+
+  if (invSection === 'sets') return renderInvSetFilter(box, all);
+  if (invSection === 'mods') return renderInvModFilter(box, all);
+  if (invSection === 'arcanes') return renderInvArcaneFilter(box, all);
 
   if (invSection !== 'relics') {
     box.classList.add('hidden');
@@ -2953,14 +4160,26 @@ function renderInvTierFilter(all) {
 
   const total = [...counts.values()].reduce((a, b) => a + b, 0);
   box.classList.remove('hidden');
+
+  /* Dieselben zwei Zeilen wie in den anderen Bereichen: oben der Weg zurueck
+     zur vollen Liste, unten die Aeren. Relikte kennen keinen Besitz-Filter -
+     alles, was hier steht, hat man -, deshalb steht oben nur "All".
+
+     Die Aeren tragen kein Symbol: sie tragen ihre Farbe, und die sagt schon,
+     welche gemeint ist. */
   box.innerHTML =
-    `<button class="tier-chip ${invTier === 'all' ? 'active' : ''}" data-tier="all">
-       All <span>${nf(total)}</span>
-     </button>` +
+    `<div class="chip-row"><div class="chip-group">
+       <button class="tier-chip ${invTier === 'all' ? 'active' : ''}" type="button" data-tier="all">
+         <i class="chip-ic">${Icon.grid(15)}</i>All <span>${nf(total)}</span>
+       </button>
+     </div></div>
+     <div class="chip-row"><div class="chip-group">` +
     tiers.map(t => `
-      <button class="tier-chip tier-${t.toLowerCase()} ${invTier === t ? 'active' : ''}" data-tier="${t}">
+      <button class="tier-chip tier-${t.toLowerCase()} ${invTier === t ? 'active' : ''}"
+              type="button" data-tier="${t}">
         ${t} <span>${nf(counts.get(t))}</span>
-      </button>`).join('');
+      </button>`).join('') +
+    `</div></div>`;
 
   box.querySelectorAll('[data-tier]').forEach(btn => {
     btn.onclick = () => {
@@ -2970,68 +4189,338 @@ function renderInvTierFilter(all) {
   });
 }
 
-function renderInventorySets(sets) {
-  const container = $('inv-grid');
-  if (!container) return;
+/* ---------------- Filter-Definitionen ----------------
 
-  if (!sets.length) {
-    container.innerHTML = `<div class="empty" style="grid-column: 1 / -1;">No matching prime sets found.</div>`;
-    return;
+   Jede Achse (Besitz, Herkunft, Gattung) ist eine Liste aus Schluessel,
+   Beschriftung, Symbol und Pruefung. Das Symbol steht dabei nicht zur Zierde:
+   die Leiste traegt bis zu zwoelf Chips, und ein Blick auf das
+   Warframe-Zeichen findet die Gattung schneller als das Lesen von zwoelf
+   Woertern - genau wie im Regal unter "What are you building for?".        */
+
+const SET_OWNERSHIP = [
+  { key: 'owned',     label: 'Owned',     icon: 'check',  match: s => (s.ownedParts || 0) > 0 || s.complete || s.isMastered },
+  { key: 'not_owned', label: 'Not owned', icon: 'cross',  match: s => (s.ownedParts || 0) === 0 && !s.isMastered }
+];
+
+const SET_ORIGINS = [
+  { key: 'prime', label: 'Prime', icon: 'star', match: s => s.kind !== 'base' },
+  { key: 'base',  label: 'Base',  icon: 'cube', match: s => s.kind === 'base' }
+];
+
+const SET_KINDS = [
+  { key: 'Suits',     label: 'Warframes',  icon: 'catWarframe',  match: s => s.category === 'Suits' },
+  { key: 'LongGuns',  label: 'Primary',    icon: 'catPrimary',   match: s => s.category === 'LongGuns' },
+  { key: 'Pistols',   label: 'Secondary',  icon: 'catSecondary', match: s => s.category === 'Pistols' },
+  { key: 'Melee',     label: 'Melee',      icon: 'catMelee',     match: s => s.category === 'Melee' },
+  { key: 'companion', label: 'Companions', icon: 'catCompanion',
+    match: s => ['Sentinels', 'KubrowPets', 'SentinelWeapons'].includes(s.category) },
+  { key: 'archwing',  label: 'Archwing',   icon: 'catArchwing',
+    match: s => ['SpaceSuits', 'SpaceGuns', 'SpaceMelee'].includes(s.category) }
+];
+
+const MOD_OWNERSHIP = [
+  { key: 'owned',     label: 'Owned',     icon: 'check',  match: m => (m.count || 0) > 0 },
+  { key: 'not_owned', label: 'Not owned', icon: 'cross',  match: m => (m.count || 0) === 0 }
+];
+
+const MOD_KINDS = [
+  { key: 'Suits',     label: 'Warframes',  icon: 'catWarframe',  match: m => m.category === 'Suits' },
+  { key: 'LongGuns',  label: 'Primary',    icon: 'catPrimary',   match: m => m.category === 'LongGuns' },
+  { key: 'Pistols',   label: 'Secondary',  icon: 'catSecondary', match: m => m.category === 'Pistols' },
+  { key: 'Melee',     label: 'Melee',      icon: 'catMelee',     match: m => m.category === 'Melee' },
+  { key: 'companion', label: 'Companions', icon: 'catCompanion', match: m => m.category === 'companion' },
+  { key: 'archwing',  label: 'Archwing',   icon: 'catArchwing',  match: m => m.category === 'archwing' },
+  { key: 'necramech', label: 'Necramech',  icon: 'catNecramech', match: m => m.category === 'necramech' },
+  { key: 'parazon',   label: 'Parazon',    icon: 'bolt',         match: m => m.category === 'parazon' },
+  { key: 'railjack',  label: 'Railjack',   icon: 'rocket',       match: m => m.category === 'railjack' },
+  { key: 'other',     label: 'Other',      icon: 'catMods',      match: m => m.category === 'other' }
+];
+
+const ARCANE_OWNERSHIP = [
+  { key: 'owned',     label: 'Owned',     icon: 'check',  match: a => (a.count || 0) > 0 },
+  { key: 'not_owned', label: 'Not owned', icon: 'cross',  match: a => (a.count || 0) === 0 }
+];
+
+const ARCANE_KINDS = [
+  { key: 'Suits',     label: 'Warframes', icon: 'catWarframe',  match: a => a.category === 'Suits' },
+  { key: 'LongGuns',  label: 'Primary',   icon: 'catPrimary',   match: a => a.category === 'LongGuns' },
+  { key: 'Pistols',   label: 'Secondary', icon: 'catSecondary', match: a => a.category === 'Pistols' },
+  { key: 'Melee',     label: 'Melee',     icon: 'catMelee',     match: a => a.category === 'Melee' },
+  { key: 'operator',  label: 'Operator',  icon: 'lotus',        match: a => a.category === 'operator' },
+  { key: 'amp',       label: 'Amp',       icon: 'catAmp',       match: a => a.category === 'amp' },
+  { key: 'other',     label: 'Other',     icon: 'layers',       match: a => a.category === 'other' }
+];
+
+const matchOf = (defs, key) => defs.find(f => f.key === key)?.match || (() => true);
+
+const filterSets = list => list
+  .filter(invSetOwnership === 'all' ? () => true : matchOf(SET_OWNERSHIP, invSetOwnership))
+  .filter(invSetOrigin    === 'all' ? () => true : matchOf(SET_ORIGINS,   invSetOrigin))
+  .filter(invSetKind      === 'all' ? () => true : matchOf(SET_KINDS,     invSetKind));
+
+const filterMods = list => list
+  .filter(invModOwnership === 'all' ? () => true : matchOf(MOD_OWNERSHIP, invModOwnership))
+  .filter(invModKind      === 'all' ? () => true : matchOf(MOD_KINDS,     invModKind));
+
+const filterArcanes = list => list
+  .filter(invArcaneOwnership === 'all' ? () => true : matchOf(ARCANE_OWNERSHIP, invArcaneOwnership))
+  .filter(invArcaneKind      === 'all' ? () => true : matchOf(ARCANE_KINDS,     invArcaneKind));
+
+/* ---------------- Die Filterleiste ----------------
+
+   Sets, Mods und Arcanes hatten bis hierher drei fast wortgleiche Zeichner.
+   Was sie unterscheidet, sind allein ihre Achsen - der Rest ist dieselbe
+   Leiste. Deshalb hier ein Satz Bausteine und je Bereich nur noch die
+   Aufzaehlung, welche Achse in welcher Gruppe steht.                        */
+
+/** Ein Chip: Symbol, Wort, Zahl. */
+const invChip = (attr, key, label, icon, count, on) => `
+  <button class="tier-chip ${on ? 'active' : ''}" type="button" data-${attr}="${esc(key)}">
+    ${icon && Icon[icon] ? `<i class="chip-ic">${Icon[icon](15)}</i>` : ''}${esc(label)}
+    <span>${nf(count)}</span>
+  </button>`;
+
+/**
+ * Der Alles-Chip. Er steht als erster in der Leiste und raeumt JEDE Achse ab,
+ * nicht nur die eigene - er ist der Weg zurueck zur vollen Liste.
+ */
+const invAllChip = (total, on) => invChip('inv-all', 'all', 'All', 'grid', total, on);
+
+/**
+ * Wie oft trifft jede Pruefung einer Achse zu. Ein Durchlauf je Achse, damit
+ * die Zahl im Chip stehen kann, ohne die Liste dafuer mehrfach zu filtern.
+ */
+function countMatches(list, defs) {
+  const out = {};
+  for (const f of defs) out[f.key] = 0;
+  for (const item of list) {
+    for (const f of defs) if (f.match(item)) out[f.key]++;
+  }
+  return out;
+}
+
+/**
+ * Die Chips einer Achse. Was null Treffer hat, faellt weg - ausser es ist
+ * gerade gewaehlt: sonst verschwiege die Leiste die eigene Auswahl.
+ */
+const invChips = (defs, attr, active, counts) => defs
+  .map(f => ({ ...f, count: counts[f.key] || 0 }))
+  .filter(f => f.count > 0 || f.key === active)
+  .map(f => invChip(attr, f.key, f.label, f.icon, f.count, active === f.key))
+  .join('');
+
+/** Eine Gruppe zeichnet sich nur, wenn sie Chips hat. */
+const invGroup = inner => inner ? `<div class="chip-group">${inner}</div>` : '';
+
+/**
+ * Eine Zeile der Leiste.
+ *
+ * ZWEI FESTE ZEILEN IN JEDEM BEREICH: oben der Zustand (All, Owned, Not
+ * owned), unten alles, was die Liste weiter zuschneidet. Frueher floss das
+ * frei um, und wo umgebrochen wurde, hing an der Fensterbreite - beim
+ * Wechsel von Relikten zu Mods sprang das Kachelraster darunter hoch und
+ * runter. Zwei feste Zeilen stehen ueberall gleich hoch.
+ */
+const invRow = inner => inner ? `<div class="chip-row">${inner}</div>` : '';
+
+/**
+ * Leiste einhaengen. `reset` raeumt beim Klick auf "All" alle Achsen des
+ * Bereichs ab. Meldet, ob ueberhaupt etwas zu zeichnen war.
+ */
+function mountInvFilter(box, html, reset) {
+  if (!html) { box.classList.add('hidden'); return false; }
+  box.classList.remove('hidden');
+  box.innerHTML = html;
+  box.querySelector('[data-inv-all]')?.addEventListener('click', () => {
+    reset();
+    renderInventoryGrid();
+  });
+  return true;
+}
+
+/**
+ * Ein Klick auf einen bereits gewaehlten Chip nimmt die Wahl zurueck. Ohne das
+ * gaebe es fuer die Gattung keinen Weg zurueck ausser ueber "All" - und der
+ * raeumt nebenbei auch Besitz und Herkunft mit ab.
+ */
+function wireInvChips(box, attr, dsKey, get, set) {
+  box.querySelectorAll(`[data-${attr}]`).forEach(btn => {
+    btn.onclick = () => {
+      const key = btn.dataset[dsKey];
+      set(get() === key ? 'all' : key);
+      renderInventoryGrid();
+    };
+  });
+}
+
+function renderInvSetFilter(box, all) {
+  const allActive = invSetKind === 'all' && invSetOrigin === 'all' && invSetOwnership === 'all';
+
+  /* Besitz steht neben "All", weil das die Frage ist, mit der man die Liste
+     oeffnet: was habe ich, was fehlt noch. Gattung und Herkunft schneiden das
+     Ergebnis danach weiter zu - und stehen deshalb in der zweiten Zeile. */
+  const html =
+      invRow(invGroup(invAllChip(all.length, allActive)
+                    + invChips(SET_OWNERSHIP, 'set-ownership', invSetOwnership, countMatches(all, SET_OWNERSHIP))))
+    + invRow(invGroup(invChips(SET_KINDS,   'set-kind',   invSetKind,   countMatches(all, SET_KINDS)))
+           + invGroup(invChips(SET_ORIGINS, 'set-origin', invSetOrigin, countMatches(all, SET_ORIGINS))));
+
+  const ok = mountInvFilter(box, html, () => {
+    invSetKind = 'all';
+    invSetOrigin = 'all';
+    invSetOwnership = 'all';
+  });
+  if (!ok) return;
+
+  wireInvChips(box, 'set-ownership', 'setOwnership', () => invSetOwnership, v => invSetOwnership = v);
+  wireInvChips(box, 'set-kind',      'setKind',      () => invSetKind,      v => invSetKind = v);
+  wireInvChips(box, 'set-origin',    'setOrigin',    () => invSetOrigin,    v => invSetOrigin = v);
+}
+
+function renderInvModFilter(box, all) {
+  const allActive = invModKind === 'all' && invModOwnership === 'all';
+
+  const html =
+      invRow(invGroup(invAllChip(all.length, allActive)
+                    + invChips(MOD_OWNERSHIP, 'mod-ownership', invModOwnership, countMatches(all, MOD_OWNERSHIP))))
+    + invRow(invGroup(invChips(MOD_KINDS, 'mod-kind', invModKind, countMatches(all, MOD_KINDS))));
+
+  const ok = mountInvFilter(box, html, () => {
+    invModKind = 'all';
+    invModOwnership = 'all';
+  });
+  if (!ok) return;
+
+  wireInvChips(box, 'mod-ownership', 'modOwnership', () => invModOwnership, v => invModOwnership = v);
+  wireInvChips(box, 'mod-kind',      'modKind',      () => invModKind,      v => invModKind = v);
+}
+
+function renderInvArcaneFilter(box, all) {
+  const allActive = invArcaneKind === 'all' && invArcaneOwnership === 'all';
+
+  const html =
+      invRow(invGroup(invAllChip(all.length, allActive)
+                    + invChips(ARCANE_OWNERSHIP, 'arcane-ownership', invArcaneOwnership, countMatches(all, ARCANE_OWNERSHIP))))
+    + invRow(invGroup(invChips(ARCANE_KINDS, 'arcane-kind', invArcaneKind, countMatches(all, ARCANE_KINDS))));
+
+  const ok = mountInvFilter(box, html, () => {
+    invArcaneKind = 'all';
+    invArcaneOwnership = 'all';
+  });
+  if (!ok) return;
+
+  wireInvChips(box, 'arcane-ownership', 'arcaneOwnership', () => invArcaneOwnership, v => invArcaneOwnership = v);
+  wireInvChips(box, 'arcane-kind',      'arcaneKind',      () => invArcaneKind,      v => invArcaneKind = v);
+}
+
+/**
+ * Die Fusszeile einer Set-Karte.
+ *
+ * Prime-Sets sind handelbar - dort stehen Dukaten und der Platinpreis. Bei
+ * einem Basis-Bausatz waeren beide immer null: seine Teile stehen auf keinem
+ * Markt. Statt zweier Nullen steht dort die Auskunft, die es zu ihm gibt -
+ * ob das Item schon gebaut ist.
+ */
+function setFoot(s) {
+  if (s.kind === 'base') {
+    return s.isMastered
+      ? `<span class="set-val is-done">${Icon.check(13)} <small>already built</small></span>`
+      : `<span class="set-val"><small>${s.complete
+            ? 'all parts ready to build'
+            : `${s.totalParts - s.ownedParts} part${s.totalParts - s.ownedParts === 1 ? '' : 's'} to go`}</small></span>`;
   }
 
-  container.innerHTML = sets.map(s => {
-    const pct = s.totalParts ? Math.min(100, Math.round((s.ownedParts / s.totalParts) * 100)) : 0;
+  return `
+    <span class="set-val" title="Ducats for every part you own of this set, duplicates included">
+      <img class="currency-ic ducat-ic" src="assets/icons/ducats.png" alt="Ducats">
+      <b>${nf(s.ownedDucats)}</b> <small>ducats</small>
+    </span>
+    <span class="set-val">
+      <img class="currency-ic" src="assets/icons/currency/platinum.png" alt="Platin">
+      <b>${s.setPrice ? s.setPrice.min : '–'}</b> <small>Set</small>
+    </span>
+    ${setTradeButtons(s)}`;
+}
 
-    const parts = s.parts.map(p => {
-      const req = p.required || 1;
-      const hasEnough = p.count >= req;
-      const isPartial = !hasEnough && p.count > 0;
-      const countLabel = req > 1
-        ? `${p.count}/${req}`
-        : (p.count > 0 ? '×' + p.count : '–');
+/**
+ * Die Handelsknoepfe einer Set-Karte.
+ *
+ * NUR WO ES EINEN SLUG GIBT: setSlug ist die Kennung auf warframe.market.
+ * Basis-Sets haben keinen - ihre Teile sind nicht handelbar -, und ohne
+ * Slug gibt es nichts anzubieten. Ein Knopf, der nur eine Fehlermeldung
+ * erzeugen kann, gehoert nicht auf die Karte.
+ *
+ * VERKAUFEN NUR MIT VOLLSTAENDIGEM SET: fullSetsCount sagt, wie viele
+ * KOMPLETTE Sets zusammenkommen. Bei null waere das Angebot eine Zusage,
+ * die man im Handelsfenster nicht einloesen kann - der Knopf bleibt sichtbar,
+ * aber gesperrt, damit die Karte nicht je nach Bestand anders aussieht.
+ */
+function setTradeButtons(s) {
+  if (!s.setSlug) return '';
+  const have = s.fullSetsCount || 0;
+  return `
+    <span class="set-trade">
+      <button type="button" class="set-trade-btn is-sell${have ? '' : ' is-disabled'}"
+              data-set-wts="${esc(s.setSlug)}" data-set-qty="${have}"
+              title="${have
+                ? `List ${have} complete set${have === 1 ? '' : 's'} for sale on warframe.market`
+                : 'You do not have a complete set yet'}">
+        ${Icon.tag(12)}<span>WTS</span>${have > 1 ? `<b>${have}</b>` : ''}
+      </button>
+      <button type="button" class="set-trade-btn is-buy"
+              data-set-wtb="${esc(s.setSlug)}"
+              title="Post a buy order for this set on warframe.market">
+        ${Icon.plus(12)}<span>WTB</span>
+      </button>
+    </span>`;
+}
 
-      return `
-      <div class="set-part ${hasEnough ? 'has' : (isPartial ? 'partial' : 'missing')}" title="${esc(p.name)} · ${req > 1 ? req + 'x needed · ' : ''}${p.ducats} ducats${p.price ? ' · ' + p.price.min + 'p' : ''}">
-        <img class="set-part-img" src="${esc(p.image || '')}" alt=""
-             onerror="this.style.visibility='hidden'">
-        <span class="set-part-name">${esc(p.shortName)}</span>
-        <span class="set-part-count">${countLabel}</span>
-      </div>`;
-    }).join('');
+function setCardTile(s, idx) {
+  const pct = s.totalParts ? Math.min(100, Math.round((s.ownedParts / s.totalParts) * 100)) : 0;
 
+  const parts = s.parts.map(p => {
+    const req = p.required || 1;
+    const hasEnough = p.count >= req;
+    const isPartial = !hasEnough && p.count > 0;
+    const countLabel = req > 1
+      ? `${p.count}/${req}`
+      : (p.count > 0 ? '×' + p.count : '–');
+
+    /* Jedes Teil ist anklickbar: die Frage vor einem fehlenden Teil ist
+       immer dieselbe - aus welchem Relikt kommt das? */
     return `
-      <div class="set-card ${s.complete ? 'complete' : ''}">
-        <div class="set-card-body">
-          ${s.image ? `
-            <div class="set-art-showcase">
-              <img class="set-art-img" src="${esc(s.image)}" alt="" loading="lazy" onerror="this.parentElement.style.display='none'">
-            </div>` : ''}
-          <div class="set-main-content">
-            <div class="set-head">
-              <div class="set-title">
-                <b>${esc(s.name)}</b>
-                <span>${s.ownedParts} / ${s.totalParts} Teile${s.complete ? ' · komplett' : ''}</span>
-              </div>
-              <div class="set-progress" title="${pct} % beisammen">
-                <div class="set-progress-fill" style="width: ${pct}%"></div>
-              </div>
-            </div>
-            <div class="set-parts">${parts}</div>
-          </div>
-        </div>
-
-        <div class="set-foot">
-          <span class="set-val" title="Ducats for every part you own of this set, duplicates included">
-            <img class="currency-ic ducat-ic" src="assets/icons/ducats.png" alt="Ducats">
-            <b>${nf(s.ownedDucats)}</b> <small>ducats</small>
-          </span>
-          <span class="set-val">
-            <img class="currency-ic" src="assets/icons/currency/platinum.png" alt="Platin">
-            <b>${s.setPrice ? s.setPrice.min : '–'}</b> <small>Set</small>
-          </span>
-        </div>
-      </div>`;
+    <button type="button" class="set-part ${hasEnough ? 'has' : (isPartial ? 'partial' : 'missing')}"
+            data-part="${esc(p.name)}"
+            title="${esc(p.name)} · ${req > 1 ? req + 'x needed · ' : ''}${p.ducats ? p.ducats + ' ducats' : 'not tradeable'}${p.price ? ' · ' + p.price.min + 'p' : ''} — click for relics">
+      <img class="set-part-img" src="${esc(p.image || '')}" alt="" loading="lazy">
+      <span class="set-part-name">${esc(p.shortName)}</span>
+      <span class="set-part-count">${countLabel}</span>
+    </button>`;
   }).join('');
+
+  return `
+    <div class="set-card ${s.complete ? 'complete' : ''}" data-idx="${idx}">
+      <div class="set-card-body">
+        ${s.image ? `
+          <div class="set-art-showcase">
+            <img class="set-art-img" src="${esc(s.image)}" alt="" loading="lazy">
+          </div>` : ''}
+        <div class="set-main-content">
+          <div class="set-head">
+            <div class="set-title">
+              <b>${esc(s.name)}</b>
+              <span>${s.ownedParts} / ${s.totalParts} Teile${s.complete ? ' · komplett' : ''}</span>
+            </div>
+            <div class="set-progress" title="${pct} % beisammen">
+              <div class="set-progress-fill" style="width: ${pct}%"></div>
+            </div>
+          </div>
+          <div class="set-parts">${parts}</div>
+        </div>
+      </div>
+
+      <div class="set-foot">${setFoot(s)}</div>
+    </div>`;
 }
 
 let currentInvList = [];
@@ -3044,6 +4533,23 @@ function setupInvGridEvents(grid) {
   grid.dataset.delegated = 'true';
 
   grid.onclick = (e) => {
+    /* Die Handelsknoepfe zuerst: sie sitzen im Kartenfuss und wuerden sonst
+       vom Datenblatt-Zweig darunter geschluckt. */
+    const wts = e.target.closest('[data-set-wts]');
+    if (wts) {
+      if (!wts.classList.contains('is-disabled')) {
+        startOrderForSet(wts.dataset.setWts, 'sell', Number(wts.dataset.setQty) || 1);
+      }
+      return;
+    }
+    const wtb = e.target.closest('[data-set-wtb]');
+    if (wtb) { startOrderForSet(wtb.dataset.setWtb, 'buy', 1); return; }
+
+    /* Ein Set-Teil fragt nach seiner Herkunft, alles andere nach seinem
+       Datenblatt - deshalb VOR data-idx geprueft. */
+    const part = e.target.closest('[data-part]');
+    if (part) { openPartModal(part.dataset.part); return; }
+
     const el = e.target.closest('[data-idx]');
     if (!el) return;
     const idx = Number(el.dataset.idx);
@@ -3057,8 +4563,12 @@ function setupInvGridEvents(grid) {
   grid.addEventListener('error', (e) => {
     const img = e.target;
     if (!img || img.tagName !== 'IMG') return;
-    if (img.matches('.mod-art img, .arc-art img')) {
+    if (img.matches('.mod-art img, .arc-art img, .set-part-img')) {
       img.style.visibility = 'hidden';
+    } else if (img.matches('.set-art-img')) {
+      /* Beim Set-Bild verschwindet der ganze Schaukasten - ein leerer Rahmen
+       neben der Teileliste waere nur ein Loch. */
+      img.parentElement.style.display = 'none';
     } else if (img.matches('.mat-icon')) {
       img.classList.add('is-missing');
     }
@@ -3077,8 +4587,9 @@ function loadNextInvChunk() {
     return;
   }
 
-  const nextBatch = currentInvList.slice(invRenderedCount, invRenderedCount + INV_CHUNK_SIZE);
-  const tileFn = invSection === 'mods' ? modTile : (invSection === 'arcanes' ? arcaneTile : plainRow);
+  const chunkSize = invSection === 'sets' ? 36 : INV_CHUNK_SIZE;
+  const nextBatch = currentInvList.slice(invRenderedCount, invRenderedCount + chunkSize);
+  const tileFn = invSection === 'mods' ? modTile : (invSection === 'arcanes' ? arcaneTile : (invSection === 'sets' ? setCardTile : plainRow));
   const html = nextBatch.map((item, idx) => tileFn(item, invRenderedCount + idx)).join('');
   invRenderedCount += nextBatch.length;
 
@@ -3123,45 +4634,91 @@ function renderInventoryGrid() {
 
   let list = all;
   if (invSection === 'sets') {
-    list = query
-      ? all.filter(s => s.name.toLowerCase().includes(query) || s.parts.some(p => p.name.toLowerCase().includes(query)))
-      : all;
+    const hasQuery = Boolean(query);
+    const matchOwn = invSetOwnership === 'all' ? null : matchOf(SET_OWNERSHIP, invSetOwnership);
+    const matchOrigin = invSetOrigin === 'all' ? null : matchOf(SET_ORIGINS, invSetOrigin);
+    const matchKind = invSetKind === 'all' ? null : matchOf(SET_KINDS, invSetKind);
+
+    list = all.filter(s => {
+      if (matchOwn && !matchOwn(s)) return false;
+      if (matchOrigin && !matchOrigin(s)) return false;
+      if (matchKind && !matchKind(s)) return false;
+      if (hasQuery) {
+        if (!s._searchName) s._searchName = s.name.toLowerCase();
+        if (s._searchName.includes(query)) return true;
+        return s.parts.some(p => {
+          if (!p._searchName) p._searchName = p.name.toLowerCase();
+          return p._searchName.includes(query);
+        });
+      }
+      return true;
+    });
+  } else if (invSection === 'mods') {
+    list = query ? all.filter(e => e.name.toLowerCase().includes(query) || (e.compat && e.compat.toLowerCase().includes(query))) : all;
+    list = filterMods(list);
+  } else if (invSection === 'arcanes') {
+    list = query ? all.filter(e => e.name.toLowerCase().includes(query)) : all;
+    list = filterArcanes(list);
+  } else if (invSection === 'relics') {
+    /* Die Suche fragt hier ZWEI Dinge auf einmal ab: den Namen des Relikts und
+       seine Belohnungen. Wer "Wisp Prime Neuroptics" eintippt, will nicht
+       hoeren, dass kein Relikt so heisst - er will die sieben Relikte sehen,
+       in denen das Teil steckt. Was getroffen hat, merkt sich die Zeile. */
+    list = all.map(e => ({ ...e, matchedReward: null }));
+    if (query) {
+      list = list.filter(e => {
+        if (e.name.toLowerCase().includes(query)) return true;
+        const reward = (e.rewards || []).find(r => r.toLowerCase().includes(query));
+        if (!reward) return false;
+        e.matchedReward = reward;
+        return true;
+      });
+    }
+    if (invTier !== 'all') list = list.filter(e => e.tier === invTier);
   } else {
     list = query ? all.filter(e => e.name.toLowerCase().includes(query)) : all;
-    if (invSection === 'relics' && invTier !== 'all') {
-      list = list.filter(e => e.tier === invTier);
-    }
   }
 
   const total = d.totals[invSection] || { arten: all.length, stueck: 0 };
   const alt = (QUELLEN[d.source] || QUELLEN.api).stale && d.fetchedAt
     ? ` · as of ${new Date(d.fetchedAt).toLocaleDateString('en-GB')}`
     : '';
-  $('inv-meta').innerHTML = (query
-    ? `${nf(list.length)} of ${nf(all.length)} entries`
-    : invSection === 'sets'
-      ? `${nf(total.arten)} sets · ${nf(total.complete || 0)} complete`
-      : `${nf(total.arten)} kinds · ${nf(total.stueck)} items in total`) + esc(alt);
 
-  if (invSection === 'sets') {
-    currentInvList = list;
-    renderInventorySets(list);
-    return;
+  const isFiltered = query
+    || (invSection === 'sets' && (invSetOwnership !== 'all' || invSetOrigin !== 'all' || invSetKind !== 'all'))
+    || (invSection === 'mods' && (invModOwnership !== 'all' || invModKind !== 'all'))
+    || (invSection === 'arcanes' && (invArcaneOwnership !== 'all' || invArcaneKind !== 'all'))
+    || (invSection === 'relics' && invTier !== 'all');
+
+  let metaText = '';
+  if (isFiltered) {
+    metaText = `${nf(list.length)} of ${nf(all.length)} entries`;
+  } else if (invSection === 'sets') {
+    metaText = `${nf(total.arten)} sets · ${nf(total.complete || 0)} complete`;
+  } else if (invSection === 'mods' || invSection === 'arcanes') {
+    metaText = `${nf(total.ownedArten ?? total.arten)} / ${nf(total.arten)} owned · ${nf(total.stueck)} copies in total`;
+  } else {
+    metaText = `${nf(total.arten)} kinds · ${nf(total.stueck)} items in total`;
   }
+  $('inv-meta').innerHTML = esc(metaText) + esc(alt);
 
   if (!list.length) {
     currentInvList = [];
-    $('inv-grid').innerHTML = `<div class="empty">Nothing found for “${esc(query)}”.</div>`;
+    const emptyMsg = invSection === 'sets'
+      ? (query ? `No sets found matching “${esc(query)}”.` : 'No matching sets found.')
+      : `Nothing found for “${esc(query)}”.`;
+    $('inv-grid').innerHTML = `<div class="empty" style="grid-column: 1 / -1;">${emptyMsg}</div>`;
     return;
   }
 
-  /* Progressives Rendern in Chunks: die ersten 60 Karten erscheinen sofort (<5ms),
+  /* Progressives Rendern in Chunks: die ersten 36-60 Karten erscheinen sofort (<5ms),
      weitere werden beim Scrollen über einen IntersectionObserver nachgeladen. */
   currentInvList = list;
-  const initial = list.slice(0, INV_CHUNK_SIZE);
+  const chunkSize = invSection === 'sets' ? 36 : INV_CHUNK_SIZE;
+  const initial = list.slice(0, chunkSize);
   invRenderedCount = initial.length;
 
-  const tileFn = invSection === 'mods' ? modTile : (invSection === 'arcanes' ? arcaneTile : plainRow);
+  const tileFn = invSection === 'mods' ? modTile : (invSection === 'arcanes' ? arcaneTile : (invSection === 'sets' ? setCardTile : plainRow));
   const initialHtml = initial.map((item, idx) => tileFn(item, idx)).join('');
 
   if (list.length > initial.length) {
@@ -3207,6 +4764,49 @@ function onImageFail(root, selector, fix) {
 }
 
 /**
+ * Die Mod-Karte selbst - ohne den Platz, in dem sie liegt.
+ *
+ * Sie wird an ZWEI Stellen gebraucht: im Inventar-Raster und im Mod-Brett des
+ * Build-Tabs. Beide zeichnen dieselbe Karte, nur der Rahmen darum ist ein
+ * anderer - deshalb steht das Zeichnen hier und der Platz beim Aufrufer.
+ *
+ * Erwartet eine bereits vereinheitlichte Karte:
+ *   { name, art|image, stats[], compat, drain, isAura, polarity:{glyph},
+ *     rarity, pips, rank }
+ * `pips` ist die Rangzahl der KARTE, `rank` der tatsaechliche Rang - im
+ * Inventar der hoechste besessene, im Build der eingestellte.
+ */
+function modCardHtml(c) {
+  const rank = c.rank ?? 0;
+  const rarity = String(c.rarity || 'common').toLowerCase();
+
+  return `
+    <div class="mod-card rar-${esc(rarity)}">
+      <div class="mod-edge"></div>
+      <div class="mod-inner">
+        ${c.drain != null ? `
+          <div class="mod-drain ${c.isAura ? 'is-aura' : ''}">
+            ${c.isAura ? '+' : ''}${c.drain}
+            ${c.polarity ? `<span class="mod-pol">${Icon.polarity(c.polarity.glyph, 11)}</span>` : ''}
+          </div>` : ''}
+        <figure class="mod-art">
+          <img src="${esc(c.art || c.image || '')}" alt="" loading="lazy">
+        </figure>
+        <div class="mod-text">
+          <p class="mod-name">${esc(c.name)}</p>
+          ${(c.stats || []).map(s => `<p class="mod-stat">${esc(s)}</p>`).join('')}
+        </div>
+        ${c.compat ? `<div class="mod-compat"><p>${esc(c.compat)}</p></div>` : ''}
+        ${c.pips ? `
+          <div class="mod-pips ${rank >= c.pips ? 'is-max' : ''}">
+            ${Array.from({ length: c.pips }, (_, p) =>
+              `<i class="${p < rank ? 'on' : ''}">★</i>`).join('')}
+          </div>` : ''}
+      </div>
+    </div>`;
+}
+
+/**
  * Mod-Karte mit DEN ZWEI ZUSTAENDEN, die sie im Spiel auch hat.
  *
  * ZUGEKLAPPT steht nur der Name da. AUFGEKLAPPT faehrt die Karte auf und zeigt
@@ -3223,37 +4823,16 @@ function onImageFail(root, selector, fix) {
  * zugeklappte Zustand entsteht dadurch, dass die Karte nur 90 px hoch ist und
  * `overflow: hidden` alles darunter abschneidet - waehrend der Name mit einem
  * negativen `top` nach oben ueber die abgedunkelte Illustration rutscht.
+ *
+ * Im Inventar ist `maxRank` der hoechste Rang, den der Spieler von dieser Mod
+ * besitzt - das ist der Rang, den die Karte zeigen soll.
  */
 function modTile(e, i) {
-  const rank = e.maxRank ?? 0;
-  const rarity = String(e.rarity || 'common').toLowerCase();
-
+  const isOwned = (e.count || 0) > 0;
   return `
-    <div class="mod-slot" ${e.resolved ? `data-idx="${i}" title="Open data sheet"` : ''}>
-      <div class="mod-card rar-${esc(rarity)}">
-        <div class="mod-edge"></div>
-        <div class="mod-inner">
-          ${e.drain != null ? `
-            <div class="mod-drain ${e.isAura ? 'is-aura' : ''}">
-              ${e.isAura ? '+' : ''}${e.drain}
-              ${e.polarity ? `<span class="mod-pol">${Icon.polarity(e.polarity.glyph, 11)}</span>` : ''}
-            </div>` : ''}
-          <figure class="mod-art">
-            <img src="${esc(e.art || e.image)}" alt="" loading="lazy">
-          </figure>
-          <div class="mod-text">
-            <p class="mod-name">${esc(e.name)}</p>
-            ${(e.stats || []).map(s => `<p class="mod-stat">${esc(s)}</p>`).join('')}
-          </div>
-          ${e.compat ? `<div class="mod-compat"><p>${esc(e.compat)}</p></div>` : ''}
-          ${e.pips ? `
-            <div class="mod-pips ${rank >= e.pips ? 'is-max' : ''}">
-              ${Array.from({ length: e.pips }, (_, p) =>
-                `<i class="${p < rank ? 'on' : ''}">★</i>`).join('')}
-            </div>` : ''}
-        </div>
-      </div>
-      <span class="mod-count">${nf(e.count)}</span>
+    <div class="mod-slot ${isOwned ? '' : 'is-unowned'}" ${e.resolved ? `data-idx="${i}" title="${isOwned ? 'Open data sheet' : 'Not owned · Open data sheet'}"` : ''}>
+      ${modCardHtml({ ...e, rank: e.maxRank ?? 0 })}
+      <span class="mod-count ${isOwned ? '' : 'is-unowned'}">${isOwned ? nf(e.count) : '0'}</span>
     </div>`;
 }
 
@@ -3262,15 +4841,16 @@ function modTile(e, i) {
  * Rahmen, in dem ein Name stuende. Der steht deshalb darunter.
  */
 function arcaneTile(e, i) {
+  const isOwned = (e.count || 0) > 0;
   return `
-    <div class="arc-tile" ${e.resolved ? `data-idx="${i}" title="Open data sheet"` : ''}>
+    <div class="arc-tile ${isOwned ? '' : 'is-unowned'}" ${e.resolved ? `data-idx="${i}" title="${isOwned ? 'Open data sheet' : 'Not owned · Open data sheet'}"` : ''}>
       <div class="arc-art">
         <img src="${esc(e.card || e.image)}" alt="" loading="lazy">
-        <span class="mod-count">${nf(e.count)}</span>
+        <span class="mod-count ${isOwned ? '' : 'is-unowned'}">${isOwned ? nf(e.count) : '0'}</span>
       </div>
       <b>${esc(e.name)}</b>
       ${e.ranks?.length ? `<span class="inv-tag">${e.ranks.map(r =>
-        `Rank ${r.rank}${r.count > 1 ? '×' + r.count : ''}`).join(', ')}</span>` : ''}
+        `Rank ${r.rank}${r.count > 1 ? '×' + r.count : ''}`).join(', ')}</span>` : (!isOwned ? '<span class="inv-tag is-unowned-tag">Not owned</span>' : '')}
     </div>`;
 }
 
@@ -3278,13 +4858,20 @@ function arcaneTile(e, i) {
 function plainRow(e, i) {
   const extra = e.quality ? `<span class="inv-tag">${esc(e.quality)}</span>` : '';
   const clickable = invSection === 'relics';
+
+  /* Wurde nach einem TEIL gesucht, muss die Zeile sagen, WARUM sie dasteht -
+     "Axi A22" allein beantwortet die Frage nach Wisp Prime Neuroptics nicht. */
+  const hit = e.matchedReward
+    ? `<span class="inv-tag is-hit">${Icon.target(10)}${esc(e.matchedReward)}</span>`
+    : '';
+
   return `
     <div class="inv-item ${clickable ? 'is-clickable' : ''}"
          ${clickable ? `data-idx="${i}" title="Open data sheet"` : `title="${esc(e.uniqueName)}"`}>
       <img class="mat-icon" src="${esc(e.image)}" alt="" loading="lazy">
       <div class="inv-item-body">
         <b>${esc(e.name)}</b>
-        ${extra}
+        ${extra}${hit}
       </div>
       <span class="inv-item-count">${nf(e.count)}</span>
     </div>`;
@@ -3409,6 +4996,7 @@ function renderUpgradeModal() {
   ].filter(Boolean);
 
   const wikiUrl = wikiLink(d.name);
+  const inGoals = (state?.goals || []).some(g => g.uniqueName === d.uniqueName);
 
   content.innerHTML = `
     <div class="im-header">
@@ -3424,6 +5012,11 @@ function renderUpgradeModal() {
           <h2>${esc(d.name)}</h2>
           ${subline ? `<div class="up-subline">${subline}</div>` : ''}
         </div>
+      </div>
+      <div class="im-header-actions">
+        <button id="up-goal-btn" class="btn ${inGoals ? 'btn-secondary' : 'btn-primary'}" data-u="${esc(d.uniqueName)}" data-name="${esc(d.name)}">
+          ${inGoals ? Icon.trash(14) + ' <span>Remove from goals</span>' : Icon.plus(14) + ' <span>Set as goal</span>'}
+        </button>
       </div>
       <button class="modal-close-icon" id="up-close" title="Close">&times;</button>
     </div>
@@ -3500,6 +5093,22 @@ function renderUpgradeModal() {
     </div>`;
 
   $('up-close').onclick = closeUpgradeModal;
+
+  const goalBtn = $('up-goal-btn');
+  if (goalBtn) {
+    goalBtn.onclick = async () => {
+      const u = goalBtn.dataset.u;
+      const n = goalBtn.dataset.name;
+      const already = (state?.goals || []).some(g => g.uniqueName === u);
+      const res = already ? await window.api.removeGoal(u) : await window.api.addGoal(u, n);
+      if (res.ok) {
+        state = res.data;
+        render(res.data);
+        renderUpgradeModal();
+      }
+    };
+  }
+
   content.querySelectorAll('[data-rank]').forEach(btn => {
     btn.onclick = () => { upgradeRank = Number(btn.dataset.rank); renderUpgradeModal(); };
   });
@@ -3538,6 +5147,161 @@ function renderUpgradeSources(d) {
 $('upgrade-modal').onclick = e => {
   if (e.target === $('upgrade-modal')) closeUpgradeModal();
 };
+
+/* ---------------- Woher kommt dieses Teil? ----------------
+
+   Aus "My sets" heraus: ein Klick auf ein Teil beantwortet die Frage, die vor
+   jedem fehlenden Teil steht - aus welchem Relikt faellt das, und liegt eins
+   davon schon bei mir? Basis-Teile kommen aus keinem Relikt; dort steht
+   stattdessen der Fundort im Sternensystem.
+   -------------------------------------------------------------------- */
+
+const closePartModal = () => $('part-modal').classList.add('hidden');
+$('part-modal').onclick = e => { if (e.target === $('part-modal')) closePartModal(); };
+
+async function openPartModal(itemName) {
+  if (!itemName) return;
+  const modal = $('part-modal');
+  const box = $('part-modal-content');
+  modal.classList.remove('hidden');
+  box.innerHTML = `<div class="up-loading">${Icon.refresh(22)}<span>Looking it up …</span></div>`;
+
+  const res = await window.api.relicsForItem(itemName);
+  if (!res.ok) {
+    box.innerHTML = partModalShell({ itemName }, `<p class="up-empty">${esc(res.error)}</p>`);
+    $('part-close').onclick = closePartModal;
+    return;
+  }
+
+  const d = res.data;
+  const body = d.relics?.length
+    ? relicSourceList(d)
+    : renderUpgradeSources({
+        sources: d.sources,
+        dropNote: 'This part does not come from a relic. The drop tables list no '
+                + 'source for it either — that usually means it is crafted or bought.'
+      });
+
+  box.innerHTML = partModalShell(d, body);
+  $('part-close').onclick = closePartModal;
+
+  const wtsBtn = $('part-wts-btn');
+  if (wtsBtn) {
+    wtsBtn.onclick = () => {
+      if (d.ownedCount > 0 && d.slug) {
+        closePartModal();
+        startOrderForSet(d.slug, 'sell', d.ownedCount);
+      }
+    };
+  }
+
+  const wtbBtn = $('part-wtb-btn');
+  if (wtbBtn) {
+    wtbBtn.onclick = () => {
+      if (d.slug) {
+        closePartModal();
+        startOrderForSet(d.slug, 'buy', 1);
+      }
+    };
+  }
+}
+
+function partModalShell(d, body) {
+  const isObj = typeof d === 'object' && d !== null;
+  const itemName = isObj ? d.itemName : d;
+  const image = isObj ? d.image : null;
+  const price = isObj ? d.price : null;
+  const ducats = isObj ? d.ducats : null;
+  const slug = isObj ? d.slug : null;
+  const ownedCount = isObj ? (d.ownedCount || 0) : 0;
+
+  const badges = [
+    ducats != null ? `<span class="im-badge cat">Prime Part</span>` : `<span class="im-badge cat">Part</span>`,
+    ownedCount > 0
+      ? `<span class="im-badge status done">${Icon.check(11)} ${ownedCount} owned</span>`
+      : `<span class="im-badge status missing">Not owned</span>`
+  ].join('');
+
+  const stats = [
+    price ? `
+      <span class="part-stat-val" title="Lowest price on warframe.market">
+        <img class="currency-ic" src="assets/icons/currency/platinum.png" alt="Platinum">
+        <b>${price.min != null ? price.min : '–'}</b> <small>Plat</small>
+      </span>` : '',
+    ducats != null ? `
+      <span class="part-stat-val" title="Ducat value at the Void Trader">
+        <img class="currency-ic ducat-ic" src="assets/icons/ducats.png" alt="Ducats">
+        <b>${nf(ducats)}</b> <small>Ducats</small>
+      </span>` : ''
+  ].filter(Boolean).join('');
+
+  const tradeBtns = slug ? `
+    <div class="im-header-actions part-header-actions">
+      <button type="button" id="part-wts-btn" class="set-trade-btn is-sell${ownedCount > 0 ? '' : ' is-disabled'}"
+              title="${ownedCount > 0 ? `List ${ownedCount} for sale on warframe.market` : 'You do not own this part'}">
+        ${Icon.tag(12)}<span>WTS</span>${ownedCount > 1 ? `<b>${ownedCount}</b>` : ''}
+      </button>
+      <button type="button" id="part-wtb-btn" class="set-trade-btn is-buy"
+              title="Post a buy order on warframe.market">
+        ${Icon.plus(12)}<span>WTB</span>
+      </button>
+    </div>` : '';
+
+  return `
+    <div class="im-header">
+      <div class="im-header-left">
+        <div class="im-art-wrap part-art-wrap">
+          <img class="im-art" src="${esc(image || 'assets/icons/relic.png')}" alt="" onerror="this.src='assets/icons/relic.png'">
+        </div>
+        <div class="im-title-group">
+          <div class="im-tags">${badges}</div>
+          <h2>${esc(itemName)}</h2>
+          ${stats ? `<div class="part-header-stats">${stats}</div>` : ''}
+        </div>
+      </div>
+      ${tradeBtns}
+      <button class="modal-close-icon" id="part-close" title="Close">&times;</button>
+    </div>
+    <div class="im-scroll-body">${body}</div>`;
+}
+
+/**
+ * Die Relikte zu einem Teil.
+ *
+ * Was man selbst hat, steht oben und ist hervorgehoben: das ist der Unterschied
+ * zwischen "farmen gehen" und "aufbrechen". Die Chance daneben ist die des
+ * INTAKTEN Relikts - polieren hebt sie, aber das ist die Zahl, mit der man es
+ * bekommt.
+ */
+function relicSourceList(d) {
+  const mine = d.relics.filter(r => r.owned > 0);
+  const rest = d.relics.filter(r => !r.owned);
+
+  const row = r => `
+    <div class="prel ${r.owned ? 'has' : ''}">
+      <img class="prel-ic" src="${esc(relicTierImage(r.tier))}" alt="">
+      <div class="prel-body">
+        <b>${esc(r.tier)} ${esc(r.name)}</b>
+        <small>${esc(r.rarity)}${r.chance != null ? ` · ${r.chance}%` : ''}${
+          r.fromState !== 'Intact' ? ` · ${esc(r.fromState)} only` : ''}</small>
+      </div>
+      ${r.owned
+        ? `<span class="prel-own" title="${esc(r.states.map(s => `${s.count}× ${s.state}`).join(', '))}">
+             ${Icon.check(11)} ${nf(r.owned)}
+           </span>`
+        : '<span class="prel-own is-none">—</span>'}
+    </div>`;
+
+  return `
+    <p class="prel-lead">
+      ${d.relics.length} relic${d.relics.length === 1 ? '' : 's'} drop this part${
+        d.ownedTotal ? ` — you hold ${nf(d.ownedTotal)} of them` : ' — you hold none of them'}.
+    </p>
+    ${mine.length ? `<div class="up-src-head">In your inventory</div>
+      <div class="prel-list">${mine.map(row).join('')}</div>` : ''}
+    ${rest.length ? `<div class="up-src-head">${mine.length ? 'Still to farm' : 'Drops from'}</div>
+      <div class="prel-list">${rest.map(row).join('')}</div>` : ''}`;
+}
 
 /* ---------------- Datenblatt eines Relikts ---------------- */
 
@@ -3717,7 +5481,13 @@ $('relic-modal').onclick = e => {
   if (e.target === $('relic-modal')) closeRelicModal();
 };
 
-if ($('inv-search')) $('inv-search').oninput = () => renderInventoryGrid();
+let invSearchDebounce = null;
+if ($('inv-search')) {
+  $('inv-search').oninput = () => {
+    clearTimeout(invSearchDebounce);
+    invSearchDebounce = setTimeout(() => renderInventoryGrid(), 60);
+  };
+}
 
 if ($('btn-inv-refresh')) $('btn-inv-refresh').onclick = async () => {
   const btn = $('btn-inv-refresh');
@@ -4047,6 +5817,1613 @@ window.api.onNavigateTab((tab, subpane) => {
   if (tab === 'worldstate' && subpane) showWsPane(subpane);
 });
 
+/* ---------------- Handel: Orders, Contracts, Transaktionen ----------------
+
+   DREI LISTEN IN EINEM TAB, WEIL ES DREI ZUSTAENDE DERSELBEN SACHE SIND:
+   Eine Order ist ein Angebot, ein Contract ist ein Angebot fuer ein
+   Einzelstueck, eine Transaktion ist ein Angebot, aus dem etwas geworden
+   ist. Wer den Preis einer Order aendert, will danach sehen, was der
+   letzte Verkauf gebracht hat - nicht in einen anderen Reiter wechseln.
+
+   WAS VON WO KOMMT:
+   Orders und Contracts liegen auf warframe.market und werden dort geaendert.
+   Das Handelsbuch liegt lokal, weil warframe.market keines fuehrt. Deshalb
+   ueberlebt die Historie auch eine abgelaufene Anmeldung.                   */
+
+let tradeMode = 'orders';           // 'orders' | 'contracts' | 'transactions'
+let tradeAuth = null;               // { signedIn, user }
+let tradeOrders = null;             // { orders, sell, buy }
+let tradeContracts = null;          // { auctions, open, closed, readOnly }
+let tradeTx = null;                 // { entries, summary }
+let tradeFilter = 'all';
+let tradeSort = 'plat-desc';
+let tradeBusy = false;
+let editingOrder = null;            // die Order im Bearbeiten-Fenster
+let editingContract = null;
+let editingTx = null;               // Transaktion, die gerade bearbeitet wird
+let newOrderItem = null;            // im Neu-Fenster gewaehltes Item
+let offerFilters = { type: 'sell', onlineOnly: false, sort: 'recent', platform: '' };
+let contractOfferFilters = { onlineOnly: false, directSellOnly: false, sort: 'price-asc' };
+let tradeSearchTimer = null;
+/* Ergebnis der letzten Endpunkt-Pruefung und ob die Sitzung abgelaufen ist -
+   beides faerbt den Kontoknopf und die Hinweiszeile. */
+let tradeConnection = null;
+let tradeSessionExpired = false;
+/* 'unverified' | 'noprofile' | null - das Konto ist erreichbar, darf aber
+   nicht handeln. Eine andere Lage als eine kaputte Sitzung. */
+let tradeAccountBlocked = null;
+
+/* Filter und Sortierung haengen am Modus: "cheapest first" ergibt bei
+   Transaktionen keinen Sinn, "last 7 days" bei offenen Orders nicht. */
+const TRADE_FILTERS = {
+  orders: [
+    { key: 'all',     label: 'All' },
+    { key: 'sell',    label: 'Selling',  cls: 'chip-plat' },
+    { key: 'buy',     label: 'Buying',   cls: 'chip-gold' },
+    { key: 'hidden',  label: 'Hidden',   cls: 'chip-neutral', title: 'Orders you have switched to invisible' }
+  ],
+  contracts: [
+    { key: 'all',     label: 'All' },
+    { key: 'riven',   label: 'Rivens',   cls: 'chip-plat' },
+    { key: 'lich',    label: 'Liches',   cls: 'chip-gold' },
+    { key: 'sister',  label: 'Sisters',  cls: 'chip-junk' },
+    { key: 'closed',  label: 'Closed',   cls: 'chip-neutral' }
+  ],
+  transactions: [
+    { key: 'all',     label: 'All' },
+    { key: 'sold',    label: 'Sold',     cls: 'chip-plat' },
+    { key: 'bought',  label: 'Bought',   cls: 'chip-gold' },
+    { key: '7',       label: 'Last 7 days' },
+    { key: '30',      label: 'Last 30 days' }
+  ]
+};
+
+const TRADE_SORTS = {
+  orders: [
+    ['plat-desc', 'Platinum (highest)'],
+    ['plat-asc',  'Platinum (lowest)'],
+    ['qty-desc',  'Quantity'],
+    ['recent',    'Recently changed'],
+    ['name-asc',  'Name (A–Z)']
+  ],
+  contracts: [
+    ['plat-desc', 'Price (highest)'],
+    ['plat-asc',  'Price (lowest)'],
+    ['recent',    'Recently changed'],
+    ['name-asc',  'Weapon (A–Z)']
+  ],
+  transactions: [
+    ['date-desc',  'Newest first'],
+    ['date-asc',   'Oldest first'],
+    ['total-desc', 'Biggest trade'],
+    ['name-asc',   'Name (A–Z)']
+  ]
+};
+
+/* Ein Fehler aus dem Hauptprozess kommt als { ok:false, error, status }.
+   401 heisst immer dasselbe: die Anmeldung ist weg. */
+/**
+ * Fehler eines Handelsaufrufs in einen Satz - ohne dabei abzumelden.
+ *
+ * FRUEHER STAND HIER EIN signOut BEI 401, UND DAS WAR DER FEHLER:
+ *   Eine 401 aus /v2/orders/my heisst nicht zwingend "abgelaufen". Sie kann
+ *   auch heissen, dass v2 dieses Token grundsaetzlich nicht annimmt, waehrend
+ *   v1 es sehr wohl tut. Das Token wegzuwerfen und das Anmeldeformular
+ *   wieder hinzustellen sah von aussen so aus, als sei beim Anmelden nichts
+ *   passiert - der haeufigste und verwirrendste Ausgang.
+ *
+ *   Jetzt bleibt die Anmeldung stehen, der Zustand wird vermerkt, und die
+ *   Hinweiszeile sagt, was los ist. Wer wirklich abgelaufen ist, meldet sich
+ *   ueber den Kontoknopf neu an.
+ */
+function tradeError(res, where) {
+  /* NICHT JEDE 401 IST EINE SITZUNGSFRAGE.
+     warframe.market schickt auch dann 401, wenn die Sitzung tadellos ist,
+     das Konto aber nichts darf: "app.auth.user.notVerified" heisst
+     unverifiziertes Konto, nicht abgelaufenes Token. Das in einen Topf zu
+     werfen liest sich als "Anmeldung kaputt" und schickt Leute los, ein
+     Passwort zu suchen, das nie das Problem war. */
+  if (/notVerified|not verified/i.test(res?.error || '')) {
+    tradeAccountBlocked = 'unverified';
+    renderTradeAccount();
+    return 'Your warframe.market account is not verified — that is what this needs, not a new sign-in.';
+  }
+  if (res?.status === 401 || res?.status === 403) {
+    tradeSessionExpired = true;
+    tradeConnection = { ...(tradeConnection || {}), broken: true };
+    renderTradeAccount();
+    return 'warframe.market did not accept your session for this. Open the account button for details.';
+  }
+  console.error('trade: ' + where, res?.error);
+  return res?.error || 'unknown error';
+}
+
+const platImg = '<img class="currency-ic" src="assets/icons/currency/platinum.png" alt="p">';
+
+/* --------------------------- Laden --------------------------- */
+
+/**
+ * Laedt Anmeldung, Orders, Contracts und das Handelsbuch.
+ *
+ * WER SCHON LAEUFT, BEKOMMT DESSEN VERSPRECHEN - NICHT undefined:
+ *   Vorher stand hier ein blankes "if (tradeBusy) return". Ein Aufrufer, der
+ *   await loadTrading() schreibt, wartete damit auf nichts und arbeitete mit
+ *   dem Zustand von VOR dem Laden weiter. Beim Sprung aus dem Inventar in
+ *   eine neue Order fiel das auf: showTab('trading') stiess den Abruf an,
+ *   das direkt folgende await kehrte sofort zurueck, und die Pruefung auf
+ *   "angemeldet?" lief gegen ein noch leeres tradeAuth - Ergebnis war das
+ *   Anmeldefenster statt des Bestellformulars.
+ */
+let tradeLoadPromise = null;
+
+async function loadTrading({ refresh = false } = {}) {
+  if (tradeBusy) return tradeLoadPromise;
+  tradeBusy = true;
+  updateTradeRefreshButton(true);
+
+  tradeLoadPromise = (async () => {
+  try {
+    const auth = await window.api.tradeAuthState();
+    tradeAuth = auth?.ok ? auth : { signedIn: false, user: null };
+
+    /* Die lokale Historie braucht keine Anmeldung - sie wird immer geladen,
+       damit der Tab auch abgemeldet etwas zu zeigen hat. */
+    const txRes = await window.api.tradeTransactions({});
+    tradeTx = txRes?.ok ? txRes : { entries: [], summary: null, total: 0 };
+
+    if (tradeAuth.signedIn) {
+      /* Gegen /v2/me pruefen, damit ein Problem hier auffaellt und nicht
+         erst beim Klick auf "Sold". Wird die Sitzung abgelehnt, wird sie
+         VERMERKT und nicht weggeworfen - das Token kann fuer v1 weiter
+         gelten, und ein stilles Abmelden war genau der Ausgang, bei dem
+         nach dem Anmelden scheinbar nichts passierte. */
+      if (refresh || !tradeOrders) {
+        const verified = await window.api.tradeVerify();
+        if (verified?.ok) {
+          if (!verified.signedIn) {
+            tradeSessionExpired = true;
+            tradeAuth = { signedIn: false, user: null };
+          } else {
+            tradeAuth = verified;
+            tradeSessionExpired = false;
+          }
+        }
+      }
+    }
+
+    if (tradeAuth.signedIn) {
+      const [ordersRes, contractsRes] = await Promise.all([
+        window.api.tradeOrders(),
+        window.api.tradeContracts(tradeAuth.user?.slug || null)
+      ]);
+      tradeOrders = ordersRes?.ok ? ordersRes : null;
+      if (!ordersRes?.ok) tradeError(ordersRes, 'orders');
+      tradeContracts = contractsRes?.ok ? contractsRes : null;
+      if (!contractsRes?.ok) tradeError(contractsRes, 'contracts');
+
+      /* Ging etwas schief, gleich nachsehen WARUM - sonst steht in der
+         Hinweiszeile die erste plausible Vermutung aus dem Fehlercode,
+         waehrend die genaue Auskunft erst kaeme, wenn jemand von sich aus
+         das Kontofenster oeffnet. */
+      if (!ordersRes?.ok || !contractsRes?.ok) {
+        await runConnectionCheck();
+      } else {
+        /* Klappt wieder alles, muessen die Warnzustaende auch wieder weg.
+           Ohne das bliebe der Knopf auf "Account setup" stehen, nachdem das
+           Konto laengst in Ordnung ist - eine Warnung, die nicht mehr
+           stimmt, ist schlimmer als keine. */
+        tradeAccountBlocked = null;
+        tradeSessionExpired = false;
+        if (tradeConnection) tradeConnection.broken = false;
+      }
+    }
+  } finally {
+    tradeBusy = false;
+    updateTradeRefreshButton(false);
+    renderTrading();
+  }
+  })();
+  return tradeLoadPromise;
+}
+
+function updateTradeRefreshButton(loading) {
+  const btn = $('btn-trade-refresh');
+  if (!btn) return;
+  btn.disabled = loading;
+  btn.classList.toggle('is-loading', loading);
+}
+
+/* -------------------------- Rendern -------------------------- */
+
+function renderTrading() {
+  renderTradeAccount();
+  renderTradeKPIs();
+  renderTradeFilters();
+  renderTradeList();
+  updateTradeModeTabs();
+}
+
+/**
+ * Der Kontoknopf oben rechts - und damit die Antwort auf "bin ich drin?".
+ *
+ * DREI ZUSTAENDE, NICHT ZWEI:
+ *   abgemeldet  - kein Token
+ *   angemeldet  - Token da, und die Endpunkte antworten
+ *   gestoert    - Token da, aber irgendetwas nimmt es nicht an
+ *
+ * Der dritte ist der Grund, warum es diesen Knopf gibt. Vorher hat die
+ * Oberflaeche bei einer 401 das Token weggeworfen und wieder das
+ * Anmeldeformular hingestellt - von aussen sah eine erfolgreiche Anmeldung
+ * damit genauso aus wie gar keine.
+ */
+/**
+ * Das Profilbild eines warframe.market-Kontos.
+ *
+ * Die API liefert einen Pfad relativ zu ihrem Ablageort ("user/avatar/…"),
+ * gelegentlich aber auch eine fertige Adresse. Beides muss hier durch, sonst
+ * steht im einen Fall ein kaputtes Bild.
+ */
+function wfmAvatarUrl(u) {
+  const rel = u?.avatar;
+  if (!rel) return null;
+  const str = String(rel).trim();
+  if (!str) return null;
+  return /^https?:\/\//i.test(str)
+    ? str
+    : 'https://warframe.market/static/assets/' + str.replace(/^\/+/, '');
+}
+
+/**
+ * Profilbild samt Anwesenheitspunkt in ein Element zeichnen.
+ *
+ * DER PUNKT SITZT AM BILD, nicht daneben: "wer" und "erreichbar?" sind eine
+ * Auskunft, und warframe.market reiht Angebote offline stehender Verkaeufer
+ * nach hinten - der Zustand gehoert also sichtbar ans Konto.
+ *
+ * Der Buchstabe steht ZUERST da und das Bild legt sich darueber, sobald es
+ * geladen ist. So gibt es keinen Moment mit leerem Feld, und ein Bild, das
+ * warframe.market gerade nicht liefert, hinterlaesst kein Loch.
+ */
+function renderTradeAvatar(el, u, size) {
+  if (!el) return;
+  const name = u?.ingameName || '';
+
+  el.classList.remove('hidden');
+  el.innerHTML =
+    `<b>${esc((name[0] || '?').toUpperCase())}</b>
+     <span class="trade-profile-dot status-${esc(u?.status || 'offline')}"></span>`;
+
+  const url = wfmAvatarUrl(u);
+  if (!url) return;
+
+  /* Der Fehlerfall haengt an der Node und nicht als onerror="" im Markup:
+     die Sicherheitsregel der Seite (CSP) laesst kein Skript im Attribut zu. */
+  const img = new Image(size, size);
+  img.alt = '';
+  img.onload = () => el.prepend(img);
+  img.src = url;
+}
+
+function renderTradeAccount() {
+  const signedIn = !!tradeAuth?.signedIn;
+  const blocked = signedIn && tradeAccountBlocked;
+  const trouble = signedIn && !blocked && (tradeAuth.v2Rejected || tradeAuth.offline || tradeConnection?.broken);
+
+  const dot = $('trade-account-dot');
+  const label = $('trade-account-label');
+  const btn = $('btn-trade-account');
+  if (!btn) return;
+
+  btn.classList.toggle('is-signedin', signedIn && !trouble && !blocked);
+  btn.classList.toggle('is-trouble', !!trouble || !!blocked);
+
+  /* Angemeldet traegt der Knopf das Profilbild, und der Anwesenheitspunkt
+     sitzt als Abzeichen darauf. Abgemeldet gibt es kein Bild - dort bleibt
+     der nackte Punkt, damit der Knopf nicht sein Zeichen verliert. */
+  const avatar = $('trade-account-avatar');
+
+  if (!signedIn) {
+    avatar?.classList.add('hidden');
+    dot.className = 'trade-account-dot';
+    label.textContent = 'Sign in';
+    btn.title = 'Sign in to warframe.market';
+  } else {
+    const u = tradeAuth.user || {};
+    renderTradeAvatar(avatar, u, 20);
+    dot.className = 'trade-account-dot hidden';
+    label.textContent = blocked ? 'Account setup' : trouble ? 'Session problem' : (u.ingameName || 'Signed in');
+    btn.title = blocked
+      ? 'Signed in, but your warframe.market account cannot trade yet — click for details'
+      : trouble
+      ? 'Signed in, but warframe.market is not accepting the session everywhere — click for details'
+      : `Signed in as ${u.ingameName || '?'} · click for account and connection check`;
+  }
+
+  renderTradeNotice();
+}
+
+/**
+ * Die Zeile unter dem Kopf. Sie erscheint nur, wenn es etwas zu sagen gibt -
+ * und sie sagt, was zu tun ist, nicht bloss dass etwas schiefging.
+ */
+function renderTradeNotice() {
+  const box = $('trade-notice');
+  if (!box) return;
+
+  let msg = null;
+  if (tradeAuth?.signedIn && tradeAccountBlocked === 'unverified') {
+    msg = { kind: 'warn', action: 'Open account',
+            text: 'Your warframe.market account is signed in but not verified, so it cannot list '
+                + 'orders or auctions yet. That is set up on warframe.market, not here.' };
+  } else if (tradeAuth?.signedIn && tradeAccountBlocked === 'noprofile') {
+    msg = { kind: 'warn', action: 'Open account',
+            text: 'No in-game name is set on your warframe.market profile — without it there is '
+                + 'nothing to list and no trade history to read.' };
+  } else if (tradeAuth?.signedIn && tradeAuth.v2Rejected) {
+    msg = { kind: 'warn', text: 'Signed in, but warframe.market refused your session for orders. '
+                             + 'Contracts and your trade history still work.', action: 'Open connection check' };
+  } else if (tradeAuth?.signedIn && tradeAuth.offline) {
+    msg = { kind: 'warn', text: 'warframe.market could not be reached. Showing what was loaded before.', action: null };
+  } else if (tradeConnection?.broken) {
+    msg = { kind: 'warn', text: 'Some parts of warframe.market are not answering with your session.',
+            action: 'Open connection check' };
+  } else if (tradeSessionExpired) {
+    msg = { kind: 'warn', text: 'Your warframe.market session expired. Sign in again to manage orders.',
+            action: 'Sign in' };
+  }
+
+  box.classList.toggle('hidden', !msg);
+  if (!msg) return;
+
+  box.className = 'trade-notice notice-' + msg.kind;
+  box.innerHTML = `
+    <span class="notice-ic" data-icon="warning"></span>
+    <span>${esc(msg.text)}</span>
+    ${msg.action ? `<button class="btn btn-sm btn-subtle" id="btn-trade-notice-action">${esc(msg.action)}</button>` : ''}
+  `;
+  box.querySelectorAll('[data-icon]').forEach(el => {
+    const fn = Icon[el.dataset.icon];
+    if (fn) el.innerHTML = fn(14);
+  });
+  $('btn-trade-notice-action')?.addEventListener('click', openAccountModal);
+}
+
+/* ------------------------- Konto-Fenster ------------------------- */
+
+function openAccountModal() {
+  const signedIn = !!tradeAuth?.signedIn;
+  $('trade-account-signedout').classList.toggle('hidden', signedIn);
+  $('trade-account-signedin').classList.toggle('hidden', !signedIn);
+  $('trade-signin-status').classList.add('hidden');
+  $('trade-signin-status').textContent = '';
+
+  if (signedIn) {
+    const u = tradeAuth.user || {};
+    $('trade-account-title').textContent = u.ingameName || 'warframe.market account';
+    $('trade-account-hint').textContent = 'Your session and what it can reach';
+    $('trade-profile-name').textContent = u.ingameName || 'signed in';
+    $('trade-profile-meta').textContent =
+      `${(u.platform || 'pc').toUpperCase()} · ${nf(u.reputation || 0)} reputation · ${u.status || 'offline'}`;
+    renderTradeAvatar($('trade-profile-avatar'), u, 44);
+    runConnectionCheck();
+  } else {
+    $('trade-account-title').textContent = 'warframe.market account';
+    $('trade-account-hint').textContent = 'Sign in to manage your orders and contracts';
+  }
+
+  $('trade-account-modal').classList.remove('hidden');
+  if (!signedIn) $('trade-email').focus();
+}
+
+const closeAccountModal = () => $('trade-account-modal').classList.add('hidden');
+
+/**
+ * Endpunkt fuer Endpunkt durchgehen und zeigen, was antwortet.
+ *
+ * Das ist die einzige Stelle, an der sich das ueberhaupt feststellen laesst:
+ * abgemeldet antwortet jeder Pfad unter /v2/me mit 401, auch ein erfundener.
+ */
+async function runConnectionCheck() {
+  const box = $('trade-checks-list');
+  if (!box) return;
+  box.innerHTML = '<p class="trade-offers-empty">Checking …</p>';
+
+  const res = await window.api.tradeDiagnose();
+  if (!res?.ok || !res.checks) {
+    box.innerHTML = `<p class="trade-offers-empty">Check failed: ${esc(res?.error || 'unknown error')}</p>`;
+    return;
+  }
+
+  /* Ein unfertiges Konto antwortet ebenfalls mit 401 - das darf nicht als
+     kaputte Sitzung durchgehen, sonst schickt die Oberflaeche zum
+     Neuanmelden, was nichts aendert. */
+  const acc = res.account;
+  tradeAccountBlocked = acc && !acc.ready
+    ? (!acc.hasName || !acc.hasProfile ? 'noprofile' : 'unverified')
+    : null;
+
+  tradeConnection = {
+    checks: res.checks,
+    account: acc,
+    broken: !tradeAccountBlocked
+         && res.checks.some(c => !c.ok && (c.status === 401 || c.status === 403))
+  };
+
+  box.innerHTML = res.checks.map(c => `
+    <div class="trade-check ${c.ok ? 'is-ok' : c.status === 404 ? 'is-missing' : 'is-fail'}">
+      <span class="check-mark">${c.ok ? Icon.check(13) : Icon.close(13)}</span>
+      <span class="check-label">${esc(c.label)}</span>
+      <code class="check-path">${esc(c.path)}</code>
+      <span class="check-result">${c.ok ? esc(c.shape || 'ok') : esc(`${c.status || '—'} ${c.error || ''}`.trim())}</span>
+    </div>
+  `).join('');
+
+  /* Die Deutung gehoert dazu - eine Liste von Statuscodes ist noch keine
+     Auskunft darueber, was jetzt zu tun ist. Die Reihenfolge ist Absicht:
+     das unfertige Konto erklaert die meisten Fehlschlaege darunter gleich
+     mit, deshalb steht es zuerst. */
+  const notes = [];
+  if (acc && !acc.hasName) {
+    notes.push('Your warframe.market profile has no in-game name. Until you set one there, you cannot '
+             + 'list anything and there is no trade history to read.');
+  }
+  if (acc && !acc.verified) {
+    notes.push('The account is not verified, which is why contracts are refused. Verification happens on '
+             + 'warframe.market' + (acc.checkCode ? ` — your check code is ${acc.checkCode}.` : '.'));
+  }
+
+  if (!notes.length) {
+    const orders = res.checks.find(c => c.key === 'orders');
+    const tx = res.checks.find(c => c.key === 'transactions');
+    if (orders && !orders.ok) {
+      notes.push(orders.status === 401
+        ? 'Orders are refusing the session — the sign-in worked, but this token may not manage orders.'
+        : `Orders answered ${orders.status}.`);
+    }
+    if (tx && !tx.ok && tx.status === 404) {
+      notes.push('warframe.market returned no trade history here — your history stays local.');
+    }
+    if (!notes.length && res.checks.every(c => c.ok)) notes.push('Everything answers. You are fully connected.');
+  }
+
+  if (notes.length) box.insertAdjacentHTML('beforeend', `<p class="trade-checks-note">${esc(notes.join(' '))}</p>`);
+
+  renderTradeAccount();
+}
+
+function renderTradeKPIs() {
+  const sell = tradeOrders?.sell || [];
+  const buy = tradeOrders?.buy || [];
+  const contracts = tradeContracts?.open || [];
+
+  /* Was alles zusammen brächte, wenn jedes Stueck wegginge - nicht der Wert
+     einer einzelnen Order. Deshalb Preis MAL Menge. */
+  const sellWorth = sell.reduce((n, o) => n + o.platinum * o.quantity, 0);
+  const buyWorth = buy.reduce((n, o) => n + o.platinum * o.quantity, 0);
+
+  $('trade-kpi-sell').textContent = nf(sell.length);
+  $('trade-kpi-sell-sub').textContent = `${nf(sellWorth)} platinum if everything sells`;
+  $('trade-kpi-buy').textContent = nf(buy.length);
+  $('trade-kpi-buy-sub').textContent = `${nf(buyWorth)} platinum committed`;
+  $('trade-kpi-contracts').textContent = nf(contracts.length);
+
+  const kinds = contracts.reduce((m, c) => (m[c.kind] = (m[c.kind] || 0) + 1, m), {});
+  $('trade-kpi-contracts-sub').textContent = contracts.length
+    ? Object.entries(kinds).map(([k, n]) => `${n} ${k}${n === 1 ? '' : 's'}`).join(' · ')
+    : 'Rivens, liches & sisters';
+
+  /* Die 30-Tage-Zahl wird hier gerechnet und nicht nachgeladen: die
+     Einträge liegen ohnehin schon vollstaendig im Speicher. */
+  const since = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const recent = (tradeTx?.entries || []).filter(e => e.at >= since);
+  const earned = recent.filter(e => e.direction === 'sold').reduce((n, e) => n + e.total, 0);
+  const spent = recent.filter(e => e.direction === 'bought').reduce((n, e) => n + e.total, 0);
+  const net = earned - spent;
+  const netEl = $('trade-kpi-net');
+  netEl.textContent = (net > 0 ? '+' : '') + nf(net);
+  netEl.classList.toggle('is-positive', net > 0);
+  netEl.classList.toggle('is-negative', net < 0);
+  $('trade-kpi-net-sub').textContent = `${nf(earned)}p in · ${nf(spent)}p out`;
+
+  $('trade-badge-orders').textContent = nf((tradeOrders?.orders || []).length);
+  $('trade-badge-contracts').textContent = nf(contracts.length);
+  $('trade-badge-tx').textContent = nf((tradeTx?.entries || []).length);
+
+  /* Zaehler an der Sidebar: was offen steht, nicht was jemals gehandelt
+     wurde - die Zahl soll zum Handeln auffordern, nicht Bilanz ziehen. */
+  const open = (tradeOrders?.orders || []).length + contracts.length;
+  const pill = $('trade-count');
+  if (pill) {
+    pill.textContent = nf(open);
+    pill.classList.toggle('hidden', open === 0);
+  }
+}
+
+function updateTradeModeTabs() {
+  document.querySelectorAll('[data-trade-mode]').forEach(b =>
+    b.classList.toggle('active', b.dataset.tradeMode === tradeMode));
+
+  const label = $('btn-trade-new-label');
+  if (label) label.textContent = tradeMode === 'transactions' ? 'Add transaction' : 'New order';
+  /* Auktionen anzulegen verlangt Waffe, Attribute, Wuerfe und MR - das ist
+     ein eigenes Formular und kein Knopf. Bis es steht, fuehrt der Weg fuer
+     Contracts ueber die Webseite. */
+  const btn = $('btn-trade-new');
+  if (btn) btn.classList.toggle('hidden', tradeMode === 'contracts');
+}
+
+function renderTradeFilters() {
+  const box = $('trade-filter-chips');
+  if (box) {
+    box.innerHTML = (TRADE_FILTERS[tradeMode] || []).map(f => `
+      <button class="filter-chip ${f.cls || ''} ${tradeFilter === f.key ? 'active' : ''}"
+              data-trade-filter="${esc(f.key)}"${f.title ? ` title="${esc(f.title)}"` : ''}>
+        ${f.cls ? '<span class="chip-dot"></span>' : ''}${esc(f.label)}
+      </button>
+    `).join('');
+    box.querySelectorAll('[data-trade-filter]').forEach(b => {
+      b.onclick = () => { tradeFilter = b.dataset.tradeFilter; renderTradeFilters(); renderTradeList(); };
+    });
+  }
+
+  const sel = $('trade-sort');
+  if (sel) {
+    const opts = TRADE_SORTS[tradeMode] || [];
+    if (!opts.some(([v]) => v === tradeSort)) tradeSort = opts[0][0];
+    sel.innerHTML = opts.map(([v, l]) =>
+      `<option value="${esc(v)}"${v === tradeSort ? ' selected' : ''}>${esc(l)}</option>`).join('');
+  }
+}
+
+function tradeEmpty(icon, title, text, actionId, actionLabel) {
+  return `
+    <div class="ducats-empty-box">
+      <div class="empty-icon">${icon}</div>
+      <h3>${esc(title)}</h3>
+      <p>${esc(text)}</p>
+      ${actionId ? `<button class="btn btn-sm btn-action" id="${actionId}">${esc(actionLabel)}</button>` : ''}
+    </div>`;
+}
+
+function renderTradeList() {
+  const box = $('trade-list');
+  if (!box) return;
+
+  if (tradeMode === 'transactions') return renderTransactionList(box);
+  if (!tradeAuth?.signedIn) {
+    box.innerHTML = tradeEmpty(Icon.coin(30), 'Not signed in',
+      'Your orders live on warframe.market. Sign in to see and change them - your trade history works without an account.',
+      'btn-trade-empty-signin', 'Sign in to warframe.market');
+    $('btn-trade-empty-signin')?.addEventListener('click', openAccountModal);
+    return;
+  }
+  if (tradeMode === 'contracts') return renderContractList(box);
+  return renderOrderList(box);
+}
+
+/* ---------------------------- Orders ---------------------------- */
+
+function filterAndSortOrders() {
+  const q = ($('trade-search')?.value || '').toLowerCase().trim();
+  let list = (tradeOrders?.orders || []).filter(o => {
+    if (q && !o.name.toLowerCase().includes(q)) return false;
+    if (tradeFilter === 'sell') return o.type === 'sell';
+    if (tradeFilter === 'buy') return o.type === 'buy';
+    if (tradeFilter === 'hidden') return !o.visible;
+    return true;
+  });
+
+  const ts = o => Date.parse(o.updatedAt || o.createdAt || 0) || 0;
+  list.sort((a, b) => {
+    if (tradeSort === 'plat-asc')  return a.platinum - b.platinum || a.name.localeCompare(b.name, 'en');
+    if (tradeSort === 'qty-desc')  return b.quantity - a.quantity || b.platinum - a.platinum;
+    if (tradeSort === 'recent')    return ts(b) - ts(a);
+    if (tradeSort === 'name-asc')  return a.name.localeCompare(b.name, 'en');
+    return b.platinum - a.platinum || a.name.localeCompare(b.name, 'en');
+  });
+  return list;
+}
+
+function renderOrderList(box) {
+  const list = filterAndSortOrders();
+
+  if (!list.length) {
+    const nothing = !(tradeOrders?.orders || []).length;
+    box.innerHTML = tradeEmpty(Icon.tag(30),
+      nothing ? 'No open orders' : 'No matches',
+      nothing ? 'You have nothing listed on warframe.market right now.'
+              : 'No order matches your search and filters.',
+      nothing ? 'btn-trade-empty-new' : null, 'Create your first order');
+    $('btn-trade-empty-new')?.addEventListener('click', openNewOrderModal);
+    return;
+  }
+
+  box.innerHTML = list.map(o => orderRowHtml(o)).join('');
+  list.forEach(o => wireOrderRow(o));
+}
+
+function orderRowHtml(o) {
+  const isSell = o.type === 'sell';
+  const rank = o.rank != null && o.maxRank != null
+    ? `<span class="trade-rank" title="Mod rank">R${o.rank}/${o.maxRank}</span>` : '';
+
+  return `
+    <div class="trade-row ${o.visible ? '' : 'is-hidden-order'}" data-order="${esc(o.id)}">
+      <div class="trade-row-main">
+        <img class="trade-row-img" src="${esc(o.image || 'assets/icons/relic.png')}" alt=""
+             onerror="this.src='assets/icons/relic.png'">
+        <div class="trade-row-text">
+          <div class="trade-row-title">
+            <b>${esc(o.name)}</b>
+            <span class="trade-type-chip ${isSell ? 'is-sell' : 'is-buy'}">${isSell ? 'WTS' : 'WTB'}</span>
+            ${rank}
+            ${o.visible ? '' : '<span class="trade-hidden-chip">hidden</span>'}
+          </div>
+          <div class="trade-row-meta">
+            <span class="trade-price">${platImg}<b>${nf(o.platinum)}</b></span>
+            <span class="trade-qty">×${nf(o.quantity)}</span>
+            ${o.perTrade > 1 ? `<span class="trade-dim">${o.perTrade} per trade</span>` : ''}
+            <span class="trade-dim">${nf(o.platinum * o.quantity)}p total</span>
+            <span class="trade-dim">· changed ${esc(relativeAge(Date.parse(o.updatedAt || o.createdAt || 0)))}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dieselbe Knopfreihe wie auf warframe.market, damit der Griff
+           sitzt, ohne neu gelernt zu werden. -->
+      <div class="trade-row-actions">
+        <button class="trade-btn is-sold" data-act="sold" title="One traded: counts the quantity down and books it into your history">
+          ${Icon.check(14)}<span>Sold</span>
+        </button>
+        <button class="trade-btn" data-act="edit" title="Change price, quantity and see what others ask">
+          ${Icon.pencil(14)}<span>Edit</span>
+        </button>
+        <button class="trade-btn is-plus" data-act="plus" title="One more in stock">+1</button>
+        <button class="trade-btn ${o.visible ? 'is-visible' : 'is-invisible'}" data-act="visible"
+                title="${o.visible ? 'Visible to others — click to hide' : 'Hidden — click to show again'}">
+          ${o.visible ? Icon.eye(14) : Icon.eyeOff(14)}<span>${o.visible ? 'Visible' : 'Hidden'}</span>
+        </button>
+        <button class="trade-btn is-danger" data-act="delete" title="Delete this order">${Icon.trash(14)}</button>
+      </div>
+    </div>`;
+}
+
+function wireOrderRow(o) {
+  const row = document.querySelector(`.trade-row[data-order="${CSS.escape(o.id)}"]`);
+  if (!row) return;
+
+  const busy = on => row.classList.toggle('is-busy', on);
+
+  row.querySelector('[data-act="edit"]').onclick = () => openEditOrder(o);
+
+  row.querySelector('[data-act="sold"]').onclick = async () => {
+    busy(true);
+    const res = await window.api.tradeMarkSold(o.id, {
+      count: 1, quantity: o.quantity, type: o.type,
+      slug: o.slug, itemId: o.itemId, name: o.name, image: o.image, platinum: o.platinum
+    });
+    busy(false);
+    if (!res?.ok) return alert(tradeError(res, 'markSold'));
+    await loadTrading();
+  };
+
+  row.querySelector('[data-act="plus"]').onclick = async () => {
+    busy(true);
+    const res = await window.api.tradeUpdateOrder(o.id, { quantity: o.quantity + 1 });
+    busy(false);
+    if (!res?.ok) return alert(tradeError(res, 'plusOne'));
+    o.quantity = res.order?.quantity ?? o.quantity + 1;
+    renderTradeKPIs();
+    renderTradeList();
+  };
+
+  row.querySelector('[data-act="visible"]').onclick = async () => {
+    busy(true);
+    const res = await window.api.tradeUpdateOrder(o.id, { visible: !o.visible });
+    busy(false);
+    if (!res?.ok) return alert(tradeError(res, 'visible'));
+    o.visible = res.order?.visible ?? !o.visible;
+    renderTradeList();
+  };
+
+  /* Loeschen fragt einmal nach - dieselbe Mechanik wie bei den Builds. */
+  armDelete(row.querySelector('[data-act="delete"]'), Icon.trash(14) + '<span>Sure?</span>', async () => {
+    busy(true);
+    const res = await window.api.tradeDeleteOrder(o.id);
+    busy(false);
+    if (!res?.ok) return alert(tradeError(res, 'deleteOrder'));
+    await loadTrading();
+  });
+}
+
+/* --------------------- Order bearbeiten + Angebote --------------------- */
+
+/**
+ * Fuellt ein Zustands-Auswahlfeld.
+ *
+ * Die erlaubten Werte kommen vom Item selbst, nicht aus einer festen Liste:
+ * ein Relikt kennt intact/exceptional/flawless/radiant, ein Fisch
+ * small/medium/large, eine Mod regular/atragraph. Fest verdrahtet waere das
+ * bei der naechsten Itemart wieder falsch.
+ */
+function fillSubtypes(select, subtypes, current) {
+  select.innerHTML = (subtypes || []).map(v =>
+    `<option value="${esc(v)}"${v === current ? ' selected' : ''}>${esc(v.replace(/_/g, ' '))}</option>`).join('');
+}
+
+function openEditOrder(o) {
+  editingOrder = o;
+  $('trade-edit-title').textContent = o.name;
+  $('trade-edit-sub').textContent =
+    `${o.type === 'sell' ? 'You are selling' : 'You are buying'} · ${nf(o.platinum)}p × ${nf(o.quantity)}`;
+
+  const img = $('trade-edit-image');
+  if (o.image) { img.src = o.image; img.hidden = false; } else { img.hidden = true; }
+
+  $('trade-edit-plat').value = o.platinum;
+  $('trade-edit-qty').value = o.quantity;
+
+  /* Nur zeigen, was warframe.market bei DIESEM Item auch annimmt - ein
+     mitgeschicktes verbotenes Feld kostet den ganzen Patch. */
+  $('trade-edit-pertrade-field').classList.toggle('hidden', !o.bulkTradable);
+  $('trade-edit-pertrade').value = o.perTrade || 1;
+
+  $('trade-edit-subtype-field').classList.toggle('hidden', !o.subtypes);
+  if (o.subtypes) fillSubtypes($('trade-edit-subtype'), o.subtypes, o.subtype);
+
+  /* Rang nur zeigen, wo es einen gibt: an einem Prime-Teil waere das Feld
+     eine Einladung, etwas einzutragen, das die API ablehnt. */
+  const hasRank = o.maxRank != null;
+  $('trade-edit-rank-field').classList.toggle('hidden', !hasRank);
+  if (hasRank) {
+    $('trade-edit-rank').value = o.rank ?? 0;
+    $('trade-edit-rank').max = o.maxRank;
+  }
+
+  $('trade-edit-status').textContent = '';
+  $('trade-edit-modal').classList.remove('hidden');
+
+  /* Beim Oeffnen den Angebotstyp auf die Gegenseite stellen: wer verkauft,
+     will wissen, was andere VERKAUFEN - das ist die Konkurrenz. */
+  offerFilters.type = o.type === 'sell' ? 'sell' : 'buy';
+  syncOfferFilterChips();
+  loadOffers();
+}
+
+const closeEditOrder = () => {
+  $('trade-edit-modal').classList.add('hidden');
+  editingOrder = null;
+};
+
+function syncOfferFilterChips() {
+  document.querySelectorAll('[data-offer-type]').forEach(b =>
+    b.classList.toggle('active', b.dataset.offerType === offerFilters.type));
+  $('trade-offers-online')?.classList.toggle('active', offerFilters.onlineOnly);
+  const sort = $('trade-offers-sort');
+  if (sort) sort.value = offerFilters.sort;
+  const plat = $('trade-offers-platform');
+  if (plat) plat.value = offerFilters.platform;
+}
+
+async function loadOffers() {
+  const box = $('trade-offers-list');
+  if (!box || !editingOrder) return;
+
+  if (!editingOrder.slug) {
+    box.innerHTML = '<p class="trade-offers-empty">warframe.market does not list this item.</p>';
+    return;
+  }
+
+  box.innerHTML = '<p class="trade-offers-empty">Loading offers …</p>';
+  const res = await window.api.tradeOffers(editingOrder.slug, {
+    type: offerFilters.type,
+    onlineOnly: offerFilters.onlineOnly,
+    platform: offerFilters.platform || null,
+    sort: offerFilters.sort,
+    /* Gegen den eigenen Zustand vergleichen, nicht gegen alle - siehe
+       itemOffers(). Der Zustand kann im Formular daneben geaendert werden,
+       deshalb wird er dort abgelesen und nicht aus der Order. */
+    subtype: editingOrder.subtypes ? $('trade-edit-subtype').value : null,
+    limit: 10
+  });
+
+  if (!res?.ok) {
+    box.innerHTML = `<p class="trade-offers-empty">Could not load offers: ${esc(tradeError(res, 'offers'))}</p>`;
+    return;
+  }
+
+  $('trade-offers-count').textContent = res.total
+    ? `showing ${Math.min(10, res.offers.length)} of ${nf(res.total)}`
+    : '';
+
+  if (!res.offers.length) {
+    box.innerHTML = '<p class="trade-offers-empty">No offer matches these filters.</p>';
+    return;
+  }
+
+  const mine = editingOrder.platinum;
+  box.innerHTML = res.offers.map(f => {
+    /* Der Vergleich zum eigenen Preis ist der Grund, warum die Liste hier
+       steht - deshalb faerbt er sich, statt nur dazustehen. */
+    const diff = f.platinum - mine;
+    const cls = diff < 0 ? 'is-cheaper' : diff > 0 ? 'is-pricier' : 'is-same';
+    const label = diff === 0 ? 'same as yours' : `${diff > 0 ? '+' : ''}${nf(diff)}p vs. yours`;
+    return `
+      <div class="trade-offer ${cls}">
+        <span class="offer-status status-${esc(f.user.status)}" title="${esc(f.user.status)}"></span>
+        <span class="offer-price">${platImg}<b>${nf(f.platinum)}</b></span>
+        <span class="offer-qty">×${nf(f.quantity)}</span>
+        <span class="offer-user">
+          ${esc(f.user.name)}
+          <small>${nf(f.user.reputation)} rep · ${esc((f.user.platform || 'pc').toUpperCase())}</small>
+        </span>
+        ${f.rank != null ? `<span class="offer-rank">R${f.rank}</span>` : ''}
+        <span class="offer-diff">${esc(label)}</span>
+        <span class="offer-age">${esc(relativeAge(Date.parse(f.updatedAt || f.createdAt || 0)))}</span>
+      </div>`;
+  }).join('');
+}
+
+/* ---------------------------- Contracts ---------------------------- */
+
+function contractTitle(c) {
+  const weapon = (c.item.weapon || '').replace(/_/g, ' ').replace(/\b\w/g, m => m.toUpperCase());
+  if (c.kind === 'riven') return `${weapon} ${c.item.name || ''}`.trim();
+  return `${weapon}${c.item.element ? ` · ${c.item.element}` : ''}`;
+}
+
+function renderContractList(box) {
+  const q = ($('trade-search')?.value || '').toLowerCase().trim();
+  const all = tradeContracts?.auctions || [];
+
+  let list = all.filter(c => {
+    if (q && !contractTitle(c).toLowerCase().includes(q)) return false;
+    if (tradeFilter === 'closed') return c.closed;
+    if (['riven', 'lich', 'sister'].includes(tradeFilter)) return c.kind === tradeFilter && !c.closed;
+    return !c.closed;
+  });
+
+  const price = c => c.buyoutPrice ?? c.startingPrice ?? 0;
+  const ts = c => Date.parse(c.updatedAt || c.createdAt || 0) || 0;
+  list.sort((a, b) => {
+    if (tradeSort === 'plat-asc') return price(a) - price(b);
+    if (tradeSort === 'recent')   return ts(b) - ts(a);
+    if (tradeSort === 'name-asc') return contractTitle(a).localeCompare(contractTitle(b), 'en');
+    return price(b) - price(a);
+  });
+
+  if (!list.length) {
+    box.innerHTML = tradeEmpty(Icon.gem(30),
+      all.length ? 'No matches' : 'No contracts',
+      all.length ? 'No contract matches your search and filters.'
+                 : 'You have no riven, lich or sister auctions running on warframe.market.');
+    return;
+  }
+
+  const readOnly = !!tradeContracts?.readOnly;
+  box.innerHTML = list.map(c => contractRowHtml(c, readOnly)).join('');
+  list.forEach(c => wireContractRow(c, readOnly));
+}
+
+function contractRowHtml(c, readOnly) {
+  const attrs = (c.item.attributes || []).map(a =>
+    `<span class="riven-attr ${a.positive ? 'is-pos' : 'is-neg'}">${a.positive ? '+' : '−'}${esc(a.slug.replace(/_/g, ' '))}</span>`
+  ).join('');
+
+  const meta = c.kind === 'riven'
+    ? `<span class="trade-dim">MR${c.item.masteryLevel ?? '?'}</span>
+       <span class="trade-dim">${nf(c.item.reRolls ?? 0)} rolls</span>
+       ${c.item.polarity ? `<span class="trade-dim">${esc(c.item.polarity)}</span>` : ''}`
+    : `${c.item.damage != null ? `<span class="trade-dim">${c.item.damage}% ${esc(c.item.element || '')}</span>` : ''}
+       ${c.item.hasEphemera ? '<span class="trade-chip chip-gold">ephemera</span>' : ''}`;
+
+  return `
+    <div class="trade-row ${c.visible ? '' : 'is-hidden-order'} ${c.closed ? 'is-closed' : ''}" data-contract="${esc(c.id)}">
+      <div class="trade-row-main">
+        <span class="trade-row-kind kind-${esc(c.kind)}">${esc(c.kind)}</span>
+        <div class="trade-row-text">
+          <div class="trade-row-title">
+            <b>${esc(contractTitle(c))}</b>
+            ${c.closed ? '<span class="trade-hidden-chip">closed</span>' : ''}
+            ${c.visible || c.closed ? '' : '<span class="trade-hidden-chip">hidden</span>'}
+          </div>
+          <div class="trade-row-meta">
+            <span class="trade-price">${platImg}<b>${nf(c.startingPrice ?? 0)}</b></span>
+            ${c.buyoutPrice != null ? `<span class="trade-dim">buyout ${nf(c.buyoutPrice)}p</span>` : '<span class="trade-dim">no buyout</span>'}
+            ${c.topBid != null ? `<span class="trade-chip chip-plat">top bid ${nf(c.topBid)}p</span>` : ''}
+            ${meta}
+          </div>
+          ${attrs ? `<div class="trade-row-attrs">${attrs}</div>` : ''}
+        </div>
+      </div>
+
+      <div class="trade-row-actions">
+        ${readOnly || c.closed ? '' : `
+          <button class="trade-btn is-sold" data-act="sold" title="Close this auction and book it into your history">
+            ${Icon.check(14)}<span>Sold</span>
+          </button>
+          <button class="trade-btn" data-act="edit" title="Change price and note, compare with other auctions">
+            ${Icon.pencil(14)}<span>Edit</span>
+          </button>
+          <button class="trade-btn ${c.visible ? 'is-visible' : 'is-invisible'}" data-act="visible"
+                  title="${c.visible ? 'Visible to others — click to hide' : 'Hidden — click to show again'}">
+            ${c.visible ? Icon.eye(14) : Icon.eyeOff(14)}<span>${c.visible ? 'Visible' : 'Hidden'}</span>
+          </button>
+          <button class="trade-btn is-danger" data-act="delete" title="Delete this auction">${Icon.trash(14)}</button>
+        `}
+        ${readOnly ? '<span class="trade-readonly" title="Loaded from your public profile — sign in to change these">read-only</span>' : ''}
+      </div>
+    </div>`;
+}
+
+function wireContractRow(c, readOnly) {
+  const row = document.querySelector(`.trade-row[data-contract="${CSS.escape(c.id)}"]`);
+  if (!row || readOnly || c.closed) return;
+  const busy = on => row.classList.toggle('is-busy', on);
+
+  row.querySelector('[data-act="edit"]').onclick = () => openEditContract(c);
+
+  row.querySelector('[data-act="sold"]').onclick = async () => {
+    const partner = prompt('Who bought it? (in-game name, optional)') ?? '';
+    busy(true);
+    const res = await window.api.tradeCloseContract(c.id, {
+      partner: partner.trim() || null,
+      name: contractTitle(c),
+      platinum: c.buyoutPrice ?? c.topBid ?? c.startingPrice
+    });
+    busy(false);
+    if (!res?.ok) return alert(tradeError(res, 'closeContract'));
+    await loadTrading();
+  };
+
+  row.querySelector('[data-act="visible"]').onclick = async () => {
+    busy(true);
+    const res = await window.api.tradeUpdateContract(c.id, { visible: !c.visible });
+    busy(false);
+    if (!res?.ok) return alert(tradeError(res, 'contractVisible'));
+    c.visible = res.contract?.visible ?? !c.visible;
+    renderTradeList();
+  };
+
+  armDelete(row.querySelector('[data-act="delete"]'), Icon.trash(14) + '<span>Sure?</span>', async () => {
+    busy(true);
+    const res = await window.api.tradeDeleteContract(c.id);
+    busy(false);
+    if (!res?.ok) return alert(tradeError(res, 'deleteContract'));
+    await loadTrading();
+  });
+}
+
+function openEditContract(c) {
+  editingContract = c;
+  $('trade-contract-title').textContent = contractTitle(c);
+  $('trade-contract-sub').textContent = `${c.kind} auction · ${c.topBid != null ? `top bid ${nf(c.topBid)}p` : 'no bids yet'}`;
+  $('trade-contract-start').value = c.startingPrice ?? 1;
+  $('trade-contract-buyout').value = c.buyoutPrice ?? '';
+  $('trade-contract-rep').value = c.minimalReputation ?? 0;
+  $('trade-contract-note').value = c.note || '';
+  $('trade-contract-status').textContent = '';
+  $('trade-contract-modal').classList.remove('hidden');
+  loadContractOffers();
+}
+
+const closeEditContract = () => {
+  $('trade-contract-modal').classList.add('hidden');
+  editingContract = null;
+};
+
+async function loadContractOffers() {
+  const box = $('trade-contract-offers');
+  if (!box || !editingContract) return;
+
+  box.innerHTML = '<p class="trade-offers-empty">Loading auctions …</p>';
+  const res = await window.api.tradeContractOffers({
+    kind: editingContract.kind,
+    weapon: editingContract.item.weapon,
+    onlineOnly: contractOfferFilters.onlineOnly,
+    directSellOnly: contractOfferFilters.directSellOnly,
+    sort: contractOfferFilters.sort,
+    limit: 10
+  });
+
+  if (!res?.ok) {
+    box.innerHTML = `<p class="trade-offers-empty">Could not load auctions: ${esc(tradeError(res, 'contractOffers'))}</p>`;
+    return;
+  }
+
+  $('trade-contract-offers-count').textContent = res.total
+    ? `showing ${Math.min(10, res.offers.length)} of ${nf(res.total)}` : '';
+
+  if (!res.offers.length) {
+    box.innerHTML = '<p class="trade-offers-empty">No comparable auction right now.</p>';
+    return;
+  }
+
+  const mine = editingContract.buyoutPrice ?? editingContract.startingPrice ?? 0;
+  box.innerHTML = res.offers.map(a => {
+    const p = a.buyoutPrice ?? a.startingPrice ?? 0;
+    const diff = p - mine;
+    const cls = diff < 0 ? 'is-cheaper' : diff > 0 ? 'is-pricier' : 'is-same';
+    const attrs = (a.item.attributes || []).slice(0, 4).map(x =>
+      `<span class="riven-attr ${x.positive ? 'is-pos' : 'is-neg'}">${x.positive ? '+' : '−'}${esc(x.slug.replace(/_/g, ' '))}</span>`).join('');
+    return `
+      <div class="trade-offer trade-offer-wide ${cls}">
+        <span class="offer-status status-${esc(a.owner?.status || 'offline')}" title="${esc(a.owner?.status || 'offline')}"></span>
+        <span class="offer-price">${platImg}<b>${nf(p)}</b></span>
+        <span class="offer-user">
+          ${esc(a.owner?.name || '?')}
+          <small>${a.item.masteryLevel != null ? `MR${a.item.masteryLevel} · ` : ''}${nf(a.item.reRolls ?? 0)} rolls</small>
+        </span>
+        <span class="offer-diff">${esc(diff === 0 ? 'same as yours' : `${diff > 0 ? '+' : ''}${nf(diff)}p vs. yours`)}</span>
+        ${attrs ? `<span class="offer-attrs">${attrs}</span>` : ''}
+      </div>`;
+  }).join('');
+}
+
+/* --------------------------- Handelsbuch --------------------------- */
+
+/**
+ * Woher eine Zeile stammt.
+ *
+ * Es sind zwei Buecher: warframe.market verzeichnet, was ueber deren
+ * Bestaetigung lief, das lokale, was hier abgehakt oder nachgetragen wurde.
+ * Ein Handel, den du im Spiel gemacht hast, steht nur lokal. Ohne diese
+ * Plakette waere nicht zu sehen, welche Zahl woher kommt.
+ */
+function txSourceChip(e) {
+  if (e.remote || e.source === 'warframe.market')
+    return '<span class="tx-source is-remote" title="Recorded by warframe.market">market</span>';
+  if (e.source === 'manual')
+    return '<span class="tx-source is-manual" title="You added this by hand">manual</span>';
+  return '<span class="tx-source is-local" title="Recorded in Argus when you marked it sold">Argus</span>';
+}
+
+/**
+ * Ob die Historie von warframe.market ueberhaupt dabei ist.
+ *
+ * Gezaehlt wird, was GERADE IN DER LISTE steht - nicht was insgesamt
+ * abgerufen wurde. "37 von warframe.market" neben "2 trades shown" waere
+ * zwar wahr, liest sich aber als Widerspruch.
+ */
+function txRemoteNote(shown) {
+  const r = tradeTx?.remote;
+  if (!r) return '';
+  if (r.supported) {
+    const n = (shown || []).filter(e => e.remote || e.source === 'warframe.market').length;
+    return n ? `<span class="trade-dim">${nf(n)} of them from warframe.market</span>` : '';
+  }
+  if (r.signedIn === false) return '<span class="trade-dim">local only — not signed in</span>';
+  if (r.needsProfile) return '<span class="trade-dim">local only — no warframe.market profile name</span>';
+  return `<span class="trade-dim" title="${esc(r.error || '')}">local only — warframe.market has no history here</span>`;
+}
+
+function renderTransactionList(box) {
+  const q = ($('trade-search')?.value || '').toLowerCase().trim();
+  const all = tradeTx?.entries || [];
+  const days = tradeFilter === '7' ? 7 : tradeFilter === '30' ? 30 : null;
+  const since = days ? Date.now() - days * 24 * 60 * 60 * 1000 : null;
+
+  let list = all.filter(e => {
+    if (q && !(e.name.toLowerCase().includes(q) || (e.partner || '').toLowerCase().includes(q))) return false;
+    if (tradeFilter === 'sold') return e.direction === 'sold';
+    if (tradeFilter === 'bought') return e.direction === 'bought';
+    if (since) return e.at >= since;
+    return true;
+  });
+
+  if (tradeSort === 'date-asc')        list.sort((a, b) => a.at - b.at);
+  else if (tradeSort === 'total-desc') list.sort((a, b) => b.total - a.total);
+  else if (tradeSort === 'name-asc')   list.sort((a, b) => a.name.localeCompare(b.name, 'en'));
+  else                                 list.sort((a, b) => b.at - a.at);
+
+  if (!list.length) {
+    box.innerHTML = tradeEmpty(Icon.ledger(30),
+      all.length ? 'No matches' : 'Nothing traded yet',
+      all.length ? 'No transaction matches your search and filters.'
+                 : 'Hit "Sold" on an order and it lands here. You can also add trades you made outside Argus.',
+      all.length ? null : 'btn-trade-empty-tx', 'Add a transaction');
+    $('btn-trade-empty-tx')?.addEventListener('click', () => openTxModal(null));
+    return;
+  }
+
+  /* Eine Summenzeile ueber der Liste: was die gerade sichtbare Auswahl
+     ergibt, nicht was insgesamt gehandelt wurde. */
+  const earned = list.filter(e => e.direction === 'sold').reduce((n, e) => n + e.total, 0);
+  const spent = list.filter(e => e.direction === 'bought').reduce((n, e) => n + e.total, 0);
+
+  box.innerHTML = `
+    <div class="trade-tx-summary">
+      <span><b>${nf(list.length)}</b> trade${list.length === 1 ? '' : 's'} shown</span>
+      <span class="is-positive">+${nf(earned)}p earned</span>
+      <span class="is-negative">−${nf(spent)}p spent</span>
+      <span>net <b class="${earned - spent >= 0 ? 'is-positive' : 'is-negative'}">${earned - spent >= 0 ? '+' : ''}${nf(earned - spent)}p</b></span>
+      ${txRemoteNote(list)}
+    </div>
+  ` + list.map(e => `
+    <div class="trade-row trade-tx-row" data-tx="${esc(e.id)}">
+      <div class="trade-row-main">
+        <span class="tx-dir ${e.direction === 'sold' ? 'is-sold' : 'is-bought'}">
+          ${e.direction === 'sold' ? Icon.check(13) : Icon.minus(13)}
+        </span>
+        <div class="trade-row-text">
+          <div class="trade-row-title">
+            <b>${esc(e.name)}</b>
+            ${e.kind === 'contract' ? '<span class="trade-type-chip is-buy">contract</span>' : ''}
+            ${txSourceChip(e)}
+          </div>
+          <div class="trade-row-meta">
+            <span class="trade-price">${platImg}<b>${nf(e.platinum)}</b></span>
+            <span class="trade-qty">×${nf(e.quantity)}</span>
+            <span class="trade-dim ${e.direction === 'sold' ? 'is-positive' : 'is-negative'}">
+              ${e.direction === 'sold' ? '+' : '−'}${nf(e.total)}p
+            </span>
+            ${e.partner ? `<span class="trade-dim">with ${esc(e.partner)}</span>` : ''}
+            <span class="trade-dim">· ${e.dateUnknown ? 'date unknown' : esc(relativeAge(e.at))}</span>
+          </div>
+        </div>
+      </div>
+      <div class="trade-row-actions">
+        <button class="trade-btn" data-act="edit">${Icon.pencil(14)}<span>Edit</span></button>
+        <button class="trade-btn is-danger" data-act="delete">${Icon.trash(14)}</button>
+      </div>
+    </div>
+  `).join('');
+
+  list.forEach(e => {
+    const row = document.querySelector(`.trade-row[data-tx="${CSS.escape(e.id)}"]`);
+    if (!row) return;
+    row.querySelector('[data-act="edit"]').onclick = () => openTxModal(e);
+    armDelete(row.querySelector('[data-act="delete"]'), Icon.trash(14) + '<span>Sure?</span>', async () => {
+      const res = await window.api.tradeRemoveTransaction(e.id);
+      if (!res?.ok) return alert(tradeError(res, 'removeTransaction'));
+      await loadTrading();
+    });
+  });
+}
+
+function openTxModal(entry) {
+  editingTx = entry;
+  $('trade-tx-title').textContent = entry ? 'Edit transaction' : 'Add transaction';
+  $('trade-tx-submit-label').textContent = entry ? 'Save changes' : 'Add to history';
+  $('trade-tx-direction').value = entry?.direction || 'sold';
+  $('trade-tx-name').value = entry?.name || '';
+  $('trade-tx-plat').value = entry?.platinum ?? '';
+  $('trade-tx-qty').value = entry?.quantity ?? 1;
+  $('trade-tx-partner').value = entry?.partner || '';
+  $('trade-tx-status').textContent = '';
+  $('trade-tx-modal').classList.remove('hidden');
+}
+
+const closeTxModal = () => {
+  $('trade-tx-modal').classList.add('hidden');
+  editingTx = null;
+};
+
+/* ------------------------- Neue Order ------------------------- */
+
+/**
+ * Vom Set im Inventar direkt in die fertige Order.
+ *
+ * Der Sinn der Knoepfe ist, dass nach dem Klick nur noch "Create order"
+ * fehlt: Reiter wechseln, Fenster oeffnen, Item setzen, Menge setzen, Preis
+ * vorschlagen. Was der Nutzer noch aendern WILL, kann er - was er aendern
+ * MUESSTE, ist schon ausgefuellt.
+ *
+ * Ohne Anmeldung fuehrt der Weg nicht ins Leere, sondern ins Kontofenster:
+ * eine Order anzulegen ist ohne Konto nicht moeglich, und das gehoert gesagt,
+ * bevor jemand ein Formular ausfuellt.
+ */
+async function startOrderForSet(slug, type, quantity) {
+  showTab('trading');
+  await loadTrading();
+
+  if (!tradeAuth?.signedIn) { openAccountModal(); return; }
+
+  const item = await window.api.tradeItemBySlug(slug);
+  if (!item) {
+    alert('warframe.market does not list this set.');
+    return;
+  }
+
+  openNewOrderModal();
+  $('trade-new-type').value = type;
+  await pickNewOrderItem(item);
+  /* Nach pickNewOrderItem, weil das den Preisvorschlag setzt und dabei die
+     Menge nicht anfasst - andersherum wuerde die Vorbelegung ueberschrieben. */
+  $('trade-new-qty').value = Math.max(1, quantity);
+}
+
+function openNewOrderModal() {
+  newOrderItem = null;
+  $('trade-new-search').value = '';
+  $('trade-new-results').innerHTML = '';
+  /* Preis und Menge zuruecksetzen: sonst schlaegt der Vorschlag beim
+     naechsten Item nicht an (er fuellt nur ein leeres Feld) und die Menge
+     der vorigen Order steht noch da. */
+  $('trade-new-plat').value = '';
+  $('trade-new-qty').value = 1;
+  $('trade-new-type').value = 'sell';
+  $('trade-new-form').classList.add('hidden');
+  $('trade-new-status').textContent = '';
+  $('trade-new-modal').classList.remove('hidden');
+  $('trade-new-search').focus();
+}
+
+const closeNewOrderModal = () => {
+  $('trade-new-modal').classList.add('hidden');
+  newOrderItem = null;
+};
+
+async function searchNewOrderItems() {
+  const q = $('trade-new-search').value.trim();
+  const box = $('trade-new-results');
+  if (q.length < 2) { box.innerHTML = ''; return; }
+
+  const hits = await window.api.tradeSearchItems(q);
+  if (!hits.length) {
+    box.innerHTML = '<p class="trade-offers-empty">Nothing tradeable matches that.</p>';
+    return;
+  }
+  box.innerHTML = hits.map((h, i) => `
+    <button class="trade-pick" data-pick="${i}">
+      <img src="${esc(h.image || 'assets/icons/relic.png')}" alt="" onerror="this.src='assets/icons/relic.png'">
+      <span class="pick-name">${esc(h.name)}</span>
+      ${h.maxRank != null ? `<span class="trade-dim">max rank ${h.maxRank}</span>` : ''}
+      ${h.ducats ? `<span class="trade-dim">${h.ducats} ducats</span>` : ''}
+    </button>
+  `).join('');
+  box.querySelectorAll('[data-pick]').forEach(b => {
+    b.onclick = () => pickNewOrderItem(hits[+b.dataset.pick]);
+  });
+}
+
+async function pickNewOrderItem(item) {
+  newOrderItem = item;
+  $('trade-new-results').innerHTML = '';
+  $('trade-new-picked').innerHTML = `
+    <img src="${esc(item.image || 'assets/icons/relic.png')}" alt="" onerror="this.src='assets/icons/relic.png'">
+    <b>${esc(item.name)}</b>
+  `;
+  $('trade-new-rank-field').classList.toggle('hidden', item.maxRank == null);
+  if (item.maxRank != null) $('trade-new-rank').max = item.maxRank;
+
+  /* Pflichtfelder dieses Items - fehlt eines, lehnt warframe.market die
+     ganze Anlage ab ("app.field.required"). */
+  $('trade-new-subtype-field').classList.toggle('hidden', !item.subtypes);
+  if (item.subtypes) fillSubtypes($('trade-new-subtype'), item.subtypes, item.subtypes[0]);
+
+  $('trade-new-pertrade-field').classList.toggle('hidden', !item.bulkTradable);
+  if (item.bulkTradable) $('trade-new-pertrade').value = 1;
+  $('trade-new-form').classList.remove('hidden');
+  $('trade-new-plat').focus();
+  suggestNewOrderPrice();
+}
+
+/**
+ * Preisvorschlag fuer das gewaehlte Item.
+ *
+ * Steht getrennt, weil er von zwei Dingen abhaengt, die sich unabhaengig
+ * aendern: dem Item und der Richtung. Beim Umschalten von WTS auf WTB darf
+ * nicht das ganze Formular neu aufgebaut werden - sonst faellt eine bereits
+ * getroffene Zustandswahl wieder auf den ersten Wert zurueck.
+ */
+async function suggestNewOrderPrice() {
+  const item = newOrderItem;
+  if (!item) return;
+  $('trade-new-hint').textContent = 'Loading current prices …';
+
+  /* DIE RICHTUNG ENTSCHEIDET, WELCHE SEITE INTERESSIERT:
+       verkaufen -> was die anderen VERKAEUFER verlangen, guenstigste zuerst.
+                    Das ist die Konkurrenz, gegen die man sich stellt.
+       kaufen    -> was die anderen KAEUFER bieten, hoechste zuerst. Ein
+                    Kaufgesuch unter dem besten Gebot sieht niemand.
+     Ein intaktes Relikt kostet ausserdem ein Vielfaches eines strahlenden,
+     deshalb geht der gewaehlte Zustand mit in die Abfrage. */
+  const selling = $('trade-new-type').value !== 'buy';
+  const res = await window.api.tradeOffers(item.slug, {
+    type: selling ? 'sell' : 'buy',
+    sort: selling ? 'price-asc' : 'price-desc',
+    limit: 5,
+    subtype: item.subtypes ? $('trade-new-subtype').value : null
+  });
+  if (!res?.ok || !res.offers.length) {
+    $('trade-new-hint').textContent = selling
+      ? 'Nobody is selling this right now — you set the price.'
+      : 'No buy orders right now — you set the price.';
+    return;
+  }
+  const prices = res.offers.map(o => o.platinum);
+  const lead = prices[0];
+
+  /* WAS VORGESCHLAGEN WIRD, IST NICHT IMMER DER ERSTE WERT:
+       verkaufen -> der guenstigste Verkaeufer. Wer darueber liegt, verkauft
+                    nichts, also ist das die Zahl, an der man sich misst.
+       kaufen    -> der MITTLERE der besten Gebote, nicht das hoechste. Ein
+                    einzelner Bieter, der weit ueber dem Feld liegt, ist
+                    keine Marktlage - ihn als Vorgabe einzusetzen hiesse,
+                    versehentlich sein Gebot zu ueberbieten. Beobachtet bei
+                    einem Set mit Geboten von 175p, dann 69, 60, 60, 57. */
+  const median = arr => [...arr].sort((a, b) => a - b)[Math.floor(arr.length / 2)];
+  const suggestion = selling ? lead : median(prices);
+
+  $('trade-new-hint').innerHTML = selling
+    ? `Cheapest seller: <b>${nf(lead)}p</b> · next: ${prices.slice(1, 5).map(p => nf(p) + 'p').join(', ')}`
+    : `Buyers offer ${prices.map(p => nf(p) + 'p').join(', ')} — suggesting the middle one, <b>${nf(suggestion)}p</b>`;
+
+  if (!$('trade-new-plat').value) $('trade-new-plat').value = suggestion;
+}
+
+/* --------------------------- Verdrahtung --------------------------- */
+
+function initTradingEvents() {
+  if (initTradingEvents.done) return;
+  initTradingEvents.done = true;
+
+  $('btn-trade-refresh').onclick = () => loadTrading({ refresh: true });
+
+  document.querySelectorAll('[data-trade-mode]').forEach(btn => {
+    btn.onclick = () => {
+      tradeMode = btn.dataset.tradeMode;
+      tradeFilter = 'all';
+      renderTradeFilters();
+      renderTradeList();
+      updateTradeModeTabs();
+    };
+  });
+
+  $('trade-sort').onchange = e => { tradeSort = e.target.value; renderTradeList(); };
+  $('trade-search').oninput = () => {
+    /* Tippen loest sonst je Zeichen ein Neuzeichnen der ganzen Liste aus. */
+    clearTimeout(tradeSearchTimer);
+    tradeSearchTimer = setTimeout(renderTradeList, 150);
+  };
+
+  $('btn-trade-new').onclick = () =>
+    tradeMode === 'transactions' ? openTxModal(null) : openNewOrderModal();
+
+  /* ---- Konto-Fenster ---- */
+  $('btn-trade-account').onclick = openAccountModal;
+  $('trade-account-close').onclick = closeAccountModal;
+  $('trade-account-modal').onclick = e => { if (e.target.id === 'trade-account-modal') closeAccountModal(); };
+  $('btn-trade-recheck').onclick = runConnectionCheck;
+
+  $('btn-trade-signout').onclick = async () => {
+    await window.api.tradeSignOut();
+    tradeAuth = { signedIn: false, user: null };
+    tradeOrders = null;
+    tradeContracts = null;
+    tradeConnection = null;
+    tradeSessionExpired = false;
+    tradeAccountBlocked = null;
+    closeAccountModal();
+    await loadTrading();
+  };
+
+  /* ---- Anmeldung ---- */
+  $('trade-signin-form').onsubmit = async e => {
+    e.preventDefault();
+    const status = $('trade-signin-status');
+    const pwField = $('trade-password');
+    status.classList.remove('hidden');
+    status.textContent = 'Signing in …';
+    $('btn-trade-signin').disabled = true;
+
+    const res = await window.api.tradeSignIn($('trade-email').value, pwField.value);
+
+    /* Das Passwort sofort aus dem Feld nehmen, egal wie es ausging - es hat
+       im DOM nichts mehr verloren, sobald es abgeschickt ist. */
+    pwField.value = '';
+    $('btn-trade-signin').disabled = false;
+
+    if (!res?.ok) { status.textContent = res?.error || 'Sign-in failed.'; return; }
+
+    /* Ab hier ist die Anmeldung durch. Der Zustand wird uebernommen, bevor
+       irgendetwas nachgeladen wird - sonst haengt der Knopf oben noch auf
+       "Sign in", waehrend im Hintergrund schon Orders kommen. */
+    tradeAuth = { signedIn: true, user: res.user || null, v2Rejected: !!res.v2Rejected };
+    tradeSessionExpired = false;
+    renderTradeAccount();
+
+    /* Angemeldet, aber v2 nimmt das Token nicht: das Fenster bleibt offen
+       und zeigt, welcher Teil antwortet. Frueher schloss sich hier alles
+       kommentarlos und der Tab sah aus wie vor dem Anmelden - genau der
+       Ausgang, bei dem "nichts passiert". */
+    if (res.v2Rejected) {
+      status.textContent = 'Signed in, but warframe.market refused the session for orders. '
+                         + 'See the connection check below.';
+      $('trade-account-signedout').classList.add('hidden');
+      $('trade-account-signedin').classList.remove('hidden');
+      openAccountModal();
+      await loadTrading({ refresh: true });
+      return;
+    }
+
+    status.textContent = '';
+    status.classList.add('hidden');
+    closeAccountModal();
+    await loadTrading({ refresh: true });
+  };
+
+  /* ---- Order bearbeiten ---- */
+  $('trade-edit-close').onclick = closeEditOrder;
+  $('trade-edit-modal').onclick = e => { if (e.target.id === 'trade-edit-modal') closeEditOrder(); };
+
+  $('trade-edit-form').onsubmit = async e => {
+    e.preventDefault();
+    if (!editingOrder) return;
+    const status = $('trade-edit-status');
+    status.textContent = 'Saving …';
+
+    const patch = {
+      platinum: +$('trade-edit-plat').value,
+      quantity: +$('trade-edit-qty').value
+    };
+    /* perTrade nur bei bulkTradable - sonst weist warframe.market den
+       ganzen Patch zurueck und die Preisaenderung waere gleich mit weg. */
+    if (editingOrder.bulkTradable) patch.perTrade = +$('trade-edit-pertrade').value || 1;
+    if (editingOrder.subtypes) patch.subtype = $('trade-edit-subtype').value;
+    if (!$('trade-edit-rank-field').classList.contains('hidden')) patch.rank = +$('trade-edit-rank').value;
+
+    /* Menge 0 heisst auf warframe.market nicht "unsichtbar", sondern
+       "nichts mehr da" - die Order wird dann geloescht. */
+    if (patch.quantity === 0) {
+      const res = await window.api.tradeDeleteOrder(editingOrder.id);
+      if (!res?.ok) { status.textContent = tradeError(res, 'deleteOrder'); return; }
+      closeEditOrder();
+      await loadTrading();
+      return;
+    }
+
+    const res = await window.api.tradeUpdateOrder(editingOrder.id, patch, { itemId: editingOrder.itemId });
+    if (!res?.ok) { status.textContent = tradeError(res, 'updateOrder'); return; }
+    status.textContent = 'Saved.';
+    Object.assign(editingOrder, res.order || patch);
+    renderTradeKPIs();
+    renderTradeList();
+    loadOffers();
+    setTimeout(() => { if ($('trade-edit-status')) $('trade-edit-status').textContent = ''; }, 1500);
+  };
+
+  document.querySelectorAll('[data-offer-type]').forEach(b => {
+    b.onclick = () => { offerFilters.type = b.dataset.offerType; syncOfferFilterChips(); loadOffers(); };
+  });
+  $('trade-offers-online').onclick = () => {
+    offerFilters.onlineOnly = !offerFilters.onlineOnly;
+    syncOfferFilterChips();
+    loadOffers();
+  };
+  $('trade-offers-sort').onchange = e => { offerFilters.sort = e.target.value; loadOffers(); };
+  $('trade-offers-platform').onchange = e => { offerFilters.platform = e.target.value; loadOffers(); };
+  /* Anderer Zustand heisst andere Ware - die Vergleichsliste muss mit. */
+  $('trade-edit-subtype').onchange = () => loadOffers();
+
+  /* ---- Contract bearbeiten ---- */
+  $('trade-contract-close').onclick = closeEditContract;
+  $('trade-contract-modal').onclick = e => { if (e.target.id === 'trade-contract-modal') closeEditContract(); };
+
+  $('trade-contract-form').onsubmit = async e => {
+    e.preventDefault();
+    if (!editingContract) return;
+    const status = $('trade-contract-status');
+    status.textContent = 'Saving …';
+
+    const buyoutRaw = $('trade-contract-buyout').value.trim();
+    const res = await window.api.tradeUpdateContract(editingContract.id, {
+      startingPrice: +$('trade-contract-start').value,
+      buyoutPrice: buyoutRaw === '' ? null : +buyoutRaw,
+      minimalReputation: +$('trade-contract-rep').value || 0,
+      note: $('trade-contract-note').value
+    });
+    if (!res?.ok) { status.textContent = tradeError(res, 'updateContract'); return; }
+    status.textContent = 'Saved.';
+    Object.assign(editingContract, res.contract || {});
+    renderTradeKPIs();
+    renderTradeList();
+    loadContractOffers();
+  };
+
+  $('trade-contract-online').onclick = () => {
+    contractOfferFilters.onlineOnly = !contractOfferFilters.onlineOnly;
+    $('trade-contract-online').classList.toggle('active', contractOfferFilters.onlineOnly);
+    loadContractOffers();
+  };
+  $('trade-contract-direct').onclick = () => {
+    contractOfferFilters.directSellOnly = !contractOfferFilters.directSellOnly;
+    $('trade-contract-direct').classList.toggle('active', contractOfferFilters.directSellOnly);
+    loadContractOffers();
+  };
+  $('trade-contract-sort').onchange = e => { contractOfferFilters.sort = e.target.value; loadContractOffers(); };
+
+  /* ---- Neue Order ---- */
+  $('trade-new-close').onclick = closeNewOrderModal;
+  $('trade-new-modal').onclick = e => { if (e.target.id === 'trade-new-modal') closeNewOrderModal(); };
+  $('btn-trade-new-back').onclick = () => {
+    newOrderItem = null;
+    $('trade-new-form').classList.add('hidden');
+    $('trade-new-search').focus();
+  };
+
+  let newSearchTimer = null;
+  $('trade-new-search').oninput = () => {
+    clearTimeout(newSearchTimer);
+    newSearchTimer = setTimeout(searchNewOrderItems, 220);
+  };
+
+  /* Richtung gewechselt heisst andere Vergleichsseite - Vorschlag neu holen,
+     aber nur wenn der Preis noch der vorgeschlagene ist. */
+  $('trade-new-type').onchange = () => {
+    $('trade-new-plat').value = '';
+    suggestNewOrderPrice();
+  };
+  /* Anderer Zustand, anderer Preis - Relikte unterscheiden sich um ein
+     Vielfaches zwischen intakt und strahlend. */
+  $('trade-new-subtype').onchange = () => {
+    $('trade-new-plat').value = '';
+    suggestNewOrderPrice();
+  };
+
+  $('trade-new-form').onsubmit = async e => {
+    e.preventDefault();
+    if (!newOrderItem) return;
+    const status = $('trade-new-status');
+    status.textContent = 'Creating …';
+
+    const data = {
+      slug: newOrderItem.slug,
+      itemId: newOrderItem.itemId,
+      type: $('trade-new-type').value,
+      platinum: +$('trade-new-plat').value,
+      quantity: +$('trade-new-qty').value || 1
+    };
+    if (newOrderItem.maxRank != null) data.rank = +$('trade-new-rank').value || 0;
+    if (newOrderItem.subtypes) data.subtype = $('trade-new-subtype').value;
+    if (newOrderItem.bulkTradable) data.perTrade = +$('trade-new-pertrade').value || 1;
+
+    const res = await window.api.tradeCreateOrder(data);
+    if (!res?.ok) { status.textContent = tradeError(res, 'createOrder'); return; }
+    closeNewOrderModal();
+    await loadTrading();
+  };
+
+  /* ---- Transaktion ---- */
+  $('trade-tx-close').onclick = closeTxModal;
+  $('trade-tx-modal').onclick = e => { if (e.target.id === 'trade-tx-modal') closeTxModal(); };
+
+  $('trade-tx-form').onsubmit = async e => {
+    e.preventDefault();
+    const status = $('trade-tx-status');
+    status.textContent = 'Saving …';
+
+    const payload = {
+      direction: $('trade-tx-direction').value,
+      name: $('trade-tx-name').value.trim(),
+      platinum: +$('trade-tx-plat').value,
+      quantity: +$('trade-tx-qty').value || 1,
+      partner: $('trade-tx-partner').value.trim() || null
+    };
+
+    const res = editingTx
+      ? await window.api.tradeUpdateTransaction(editingTx.id, payload)
+      : await window.api.tradeAddTransaction({ ...payload, source: 'manual' });
+
+    if (!res?.ok) { status.textContent = tradeError(res, 'saveTransaction'); return; }
+    closeTxModal();
+    await loadTrading();
+  };
+}
+
+/* Esc schliesst das oberste offene Handelsfenster - dieselbe Erwartung wie
+   ueberall sonst in der Oberflaeche. */
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (!$('trade-account-modal')?.classList.contains('hidden')) return closeAccountModal();
+  if (!$('trade-edit-modal')?.classList.contains('hidden')) return closeEditOrder();
+  if (!$('trade-new-modal')?.classList.contains('hidden')) return closeNewOrderModal();
+  if (!$('trade-contract-modal')?.classList.contains('hidden')) return closeEditContract();
+  if (!$('trade-tx-modal')?.classList.contains('hidden')) return closeTxModal();
+});
+
+
 /* ---------------- App Start ---------------- */
 loadNotificationSettings();
 boot();
@@ -4284,4 +7661,316 @@ async function loadSettingsTab() {
 
   renderHotkeys();
   renderNotifToggles();
+  /* Nur, wenn der Abruf beim Start nicht durchkam - Version und Unterbau
+     aendern sich waehrend einer Sitzung nicht. */
+  if (!appInfo) loadAboutBox();
 }
+
+/* ---------------- Updates ---------------- */
+
+/* EIN Zustand, drei Anzeigen: das Abzeichen in der Titelleiste, das Fenster
+   dahinter und die Zeile in den Einstellungen. Alle drei lesen aus
+   updateState - deshalb kann keine davon etwas anderes behaupten als die
+   anderen beiden. Gefuellt wird es aus dem Hauptprozess, hier wird nichts
+   dazuerfunden. */
+let updateState = { status: 'idle' };
+let appInfo = null;
+
+const UPDATE_MB = n => (n / 1048576).toFixed(1) + ' MB';
+
+/**
+ * Die Release-Notizen sind Markdown von GitHub. Sie kommen aus dem Netz -
+ * also erst entschaerfen, dann die drei Formen nachbilden, die darin
+ * ueberhaupt vorkommen: Ueberschrift, Aufzaehlung, Absatz. Kein Markdown-
+ * Umsetzer fuer eine Handvoll Zeilen, und vor allem keiner, der HTML
+ * durchreicht.
+ */
+function renderUpdateNotes(md) {
+  const lines = String(md || '').split(/\r?\n/);
+  const out = [];
+  let list = false;
+  const closeList = () => { if (list) { out.push('</ul>'); list = false; } };
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) { closeList(); continue; }
+    if (/^#{1,6}\s/.test(line)) {
+      closeList();
+      out.push(`<h4>${inlineNotes(line.replace(/^#{1,6}\s*/, ''))}</h4>`);
+    } else if (/^[-*]\s+/.test(line)) {
+      if (!list) { out.push('<ul>'); list = true; }
+      out.push(`<li>${inlineNotes(line.replace(/^[-*]\s+/, ''))}</li>`);
+    } else {
+      closeList();
+      out.push(`<p>${inlineNotes(line)}</p>`);
+    }
+  }
+  closeList();
+  return out.join('') || '<p class="hint">No release notes for this version.</p>';
+}
+
+/* Fett und Code, nachdem alles escaped ist - die Auszeichnung entsteht also
+   aus unserem eigenen Text, nie aus dem der Notizen. Die vollen URLs, die
+   GitHub in jede Zeile haengt, fliegen raus: im Fenster ist ohnehin nichts
+   anklickbar, und sie machen jede Zeile doppelt so lang.
+   Das " in <url>" davor muss mit weg - sonst endet jede automatisch erzeugte
+   Zeile auf ein nacktes "in". Das "by @name" bleibt: bei einem fremden
+   Beitrag ist das die einzige Stelle, an der es steht. */
+const inlineNotes = s => esc(s)
+  .replace(/\s+in\s+https?:\/\/\S+/gi, '')
+  .replace(/https?:\/\/\S+/g, '')
+  .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+  .replace(/`(.+?)`/g, '<code>$1</code>')
+  .trim();
+
+function renderUpdateBadge() {
+  const badge = $('update-badge');
+  const text  = $('update-badge-text');
+  if (!badge || !text) return;
+
+  const st = updateState.status;
+  /* Sichtbar nur, wenn es wirklich etwas zu tun gibt. Ein Abzeichen, das
+     "alles aktuell" meldet, ist ein Abzeichen, das man wegsieht. */
+  const show = st === 'available' || st === 'downloading' || st === 'ready';
+  badge.classList.toggle('hidden', !show);
+  if (!show) return;
+
+  if (st === 'downloading') {
+    const pct = updateState.size ? Math.floor((updateState.received || 0) / updateState.size * 100) : 0;
+    text.textContent = updateState.size ? `${pct}%` : 'Loading …';
+    badge.title = 'Downloading the update';
+  } else if (st === 'ready') {
+    text.textContent = 'Install';
+    badge.title = `Version ${updateState.latest} is ready to install`;
+  } else {
+    text.textContent = 'Update';
+    badge.title = `Version ${updateState.latest} is available — you are on ${updateState.current}`;
+  }
+  badge.classList.toggle('is-ready', st === 'ready');
+}
+
+function renderUpdateModal() {
+  if ($('update-modal').classList.contains('hidden')) return;
+
+  const st       = updateState.status;
+  const title    = $('update-modal-title');
+  const sub      = $('update-modal-sub');
+  const action   = $('update-action');
+  const progress = $('update-progress');
+  const status   = $('update-status');
+
+  title.textContent = st === 'ready' ? 'Ready to install' : `Version ${updateState.latest || ''} is available`;
+
+  const published = updateState.publishedAt
+    ? new Date(updateState.publishedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+    : '';
+  sub.textContent = [
+    `You are running ${updateState.current}`,
+    published && `published ${published}`,
+    updateState.size && UPDATE_MB(updateState.size)
+  ].filter(Boolean).join(' · ');
+
+  $('update-notes').innerHTML = renderUpdateNotes(updateState.notes);
+
+  /* Balken nur waehrend des Ladens. Ein Balken auf 100%, der stehen bleibt,
+     sieht aus wie ein haengender Vorgang. */
+  progress.classList.toggle('hidden', st !== 'downloading');
+  if (st === 'downloading') {
+    const known = updateState.size > 0;
+    const pct = known ? Math.min(100, (updateState.received || 0) / updateState.size * 100) : 0;
+    $('update-bar-fill').style.width = known ? pct + '%' : '100%';
+    $('update-bar-fill').classList.toggle('indeterminate', !known);
+    $('update-progress-text').textContent = known
+      ? `${UPDATE_MB(updateState.received || 0)} of ${UPDATE_MB(updateState.size)}`
+      : 'Downloading …';
+  }
+
+  if (st === 'ready') {
+    /* Die Pruefsumme steht ausgeschrieben da: sie laesst sich mit der
+       SHA256SUMS.txt des Releases vergleichen, ohne uns zu glauben. */
+    status.className = 'settings-note ok';
+    status.innerHTML = `Checksum verified.<br><code class="update-hash">${esc(updateState.sha256 || '')}</code>`;
+    status.classList.remove('hidden');
+  } else if (updateState.error) {
+    status.className = 'settings-note warn';
+    status.textContent = updateState.error;
+    status.classList.remove('hidden');
+  } else {
+    status.classList.add('hidden');
+  }
+
+  action.disabled = st === 'downloading';
+  if (st === 'downloading') {
+    action.innerHTML = 'Downloading …';
+  } else if (st === 'ready') {
+    action.innerHTML = updateState.portable
+      ? Icon.download(15) + '<span>Show the file</span>'
+      : Icon.download(15) + '<span>Close Argus and install</span>';
+  } else if (updateState.downloadable) {
+    action.innerHTML = Icon.download(15) + `<span>Download ${esc(updateState.latest || '')}</span>`;
+  } else {
+    action.innerHTML = Icon.link(15) + '<span>Open the release page</span>';
+  }
+}
+
+function applyUpdateState(st) {
+  if (st) updateState = { ...updateState, ...st };
+  renderUpdateBadge();
+  renderUpdateModal();
+  renderAboutUpdateRow();
+}
+
+function openUpdateModal() {
+  $('update-modal').classList.remove('hidden');
+  renderUpdateModal();
+}
+
+const closeUpdateModal = () => $('update-modal').classList.add('hidden');
+
+$('update-badge')?.addEventListener('click', openUpdateModal);
+$('update-modal-close')?.addEventListener('click', closeUpdateModal);
+$('update-modal')?.addEventListener('click', e => {
+  if (e.target.id === 'update-modal') closeUpdateModal();
+});
+
+$('update-open-page')?.addEventListener('click', () => {
+  window.api.openExternal(updateState.pageUrl || 'https://github.com/Kr3akz/Argus/releases').catch(() => {});
+});
+
+$('update-action')?.addEventListener('click', async () => {
+  const st = updateState.status;
+
+  if (st === 'ready') {
+    const res = await window.api.installUpdate();
+    /* Beim portablen Build oeffnet sich nur der Ordner - dann bleibt das
+       Fenster stehen und sagt, was jetzt zu tun ist. Beim Installer sieht
+       man diese Zeile nie: die App ist gleich zu. */
+    if (res && res.ok && res.portable) {
+      applyUpdateState({ error: 'The new file is in the folder that just opened. Close Argus and replace the old .exe with it.' });
+    } else if (res && !res.ok) {
+      applyUpdateState({ error: res.error });
+    }
+    return;
+  }
+
+  if (!updateState.downloadable) {
+    window.api.openExternal(updateState.pageUrl || 'https://github.com/Kr3akz/Argus/releases').catch(() => {});
+    return;
+  }
+
+  /* Der Zustand kommt ueber onUpdateChanged zurueck - hier wird nur
+     angestossen und ein Fehler eingesammelt, falls es gar nicht erst
+     losgeht. */
+  const res = await window.api.downloadUpdate();
+  if (res && !res.ok) applyUpdateState({ status: 'available', error: res.error });
+});
+
+/* ---------------- "About Argus" in den Einstellungen ---------------- */
+
+function renderAboutUpdateRow() {
+  const text = $('update-settings-text');
+  const btn  = $('btn-update-check');
+  if (!text) return;
+
+  const when = updateState.checkedAt
+    ? new Date(updateState.checkedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+    : '';
+
+  switch (updateState.status) {
+    case 'checking':
+      text.textContent = 'Checking GitHub for a newer release …';
+      break;
+    case 'available':
+      text.textContent = `Version ${updateState.latest} is available. Open it from the Update badge in the title bar.`;
+      break;
+    case 'downloading':
+      text.textContent = `Downloading version ${updateState.latest} …`;
+      break;
+    case 'ready':
+      text.textContent = `Version ${updateState.latest} has been downloaded and verified.`;
+      break;
+    case 'error':
+      text.textContent = 'Could not check for updates: ' + (updateState.error || 'unknown error');
+      break;
+    case 'uptodate':
+      text.textContent = when
+        ? `You are on the latest version. Last checked at ${when}.`
+        : 'You are on the latest version.';
+      break;
+    default:
+      text.textContent = appInfo && !appInfo.packaged
+        ? 'Running from the source folder — automatic checks are off here. "Check now" still works.'
+        : 'Not checked yet.';
+  }
+
+  $('update-settings-row')?.classList.toggle('warn', updateState.status === 'error');
+  $('update-settings-row')?.classList.toggle('ok', updateState.status === 'ready');
+  if (btn) {
+    btn.disabled = updateState.status === 'checking' || updateState.status === 'downloading';
+    btn.classList.toggle('is-refreshing', updateState.status === 'checking');
+  }
+  if ($('set-update-check')) $('set-update-check').checked = updateState.auto !== false;
+}
+
+async function loadAboutBox() {
+  try {
+    appInfo = await window.api.getAppInfo();
+  } catch { appInfo = null; }
+
+  if (appInfo && appInfo.ok) {
+    $('about-version').textContent = 'v' + appInfo.version;
+    /* Der Commit beantwortet die Frage, die eine Versionsnummer offen laesst:
+       WELCHER Stand ist das - besonders, wenn zwischen zwei Releases von Hand
+       etwas nachgebaut wurde. */
+    $('about-build').textContent = appInfo.commit
+      ? appInfo.commit.slice(0, 7) + (appInfo.builtAt
+          ? ' · ' + new Date(appInfo.builtAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+          : '')
+      : 'development build';
+    $('about-platform').textContent = appInfo.packaged
+      ? (appInfo.portable ? 'Windows · portable' : 'Windows · installed')
+      : 'Windows · running from source';
+    $('about-runtime').textContent = `Electron ${appInfo.electron} · Chromium ${appInfo.chrome.split('.')[0]} · Node ${appInfo.node.split('.')[0]}`;
+  }
+
+  try {
+    applyUpdateState(await window.api.getUpdateState());
+  } catch { /* Zeile bleibt, wie sie steht */ }
+}
+
+$('set-update-check')?.addEventListener('change', async e => {
+  const res = await window.api.setUpdateCheck(e.target.checked);
+  applyUpdateState({ auto: !!(res && res.auto) });
+});
+
+$('btn-update-check')?.addEventListener('click', async () => {
+  applyUpdateState({ status: 'checking', error: null });
+  try {
+    applyUpdateState(await window.api.checkForUpdates());
+  } catch (err) {
+    applyUpdateState({ status: 'error', error: err.message });
+  }
+});
+
+$('btn-update-open')?.addEventListener('click', () => {
+  /* Gibt es eine neuere Fassung, gehoert der Klick dem Fenster mit ihren
+     Notizen - sonst der Release-Liste im Browser. */
+  if (updateState.status === 'available' || updateState.status === 'ready' || updateState.status === 'downloading') {
+    openUpdateModal();
+  } else {
+    window.api.openExternal('https://github.com/Kr3akz/Argus/releases').catch(() => {});
+  }
+});
+
+/* Der Hauptprozess meldet jeden Schritt von sich aus - Prueflauf, Fortschritt
+   und Ergebnis. Deshalb muss hier nichts abgefragt werden, was nicht
+   ohnehin ankommt. */
+window.api.onUpdateChanged(applyUpdateState);
+if ($('update-head-icon')) $('update-head-icon').innerHTML = Icon.download(18);
+
+/* Gleich beim Start, nicht erst beim Oeffnen der Einstellungen: das Abzeichen
+   in der Titelleiste ist von ueberall aus sichtbar, und die Angaben zur
+   Fassung aendern sich waehrend einer Sitzung ohnehin nicht. Frueher hing das
+   an loadSettingsTab() - und damit an einem Abruf davor, der damit nichts zu
+   tun hat. */
+loadAboutBox();

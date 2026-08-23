@@ -24,6 +24,10 @@
     <div class="ov-id">
       <b>Argus</b>
       <span id="ov-mr" class="ov-mr">MR –</span>
+      <span id="ov-traces" class="ov-traces" title="Void Traces (Spuren des Nichts)">
+        <span class="ov-traces-ic" data-icon="traces"></span>
+        <b id="ov-traces-val">–</b>
+      </span>
     </div>
     <div class="ov-bar-actions">
       <button id="ov-refresh" class="ov-btn" title="Reload world state"></button>
@@ -47,6 +51,24 @@
       <div class="ov-relic-body" id="ov-relic-body"></div>
     </section>
 
+    <!-- Empfohlene Relikte aus dem Planer & fuer die Reliktauswahl.
+         Zeigt Erwartungswert, Profit, Veredelung und Top-Drop ohne die 6 Einzel-Items. -->
+    <section class="ov-sec" id="ov-rec-sec">
+      <div class="ov-sec-head">
+        <span id="ov-rec-title">Recommended relics</span>
+        <span id="ov-rec-note" class="ov-sec-note"></span>
+      </div>
+      <div class="ov-filter-chips" id="ov-rec-filters">
+        <button class="ov-chip active" data-tier="all">All</button>
+        <button class="ov-chip" data-tier="Lith">Lith</button>
+        <button class="ov-chip" data-tier="Meso">Meso</button>
+        <button class="ov-chip" data-tier="Neo">Neo</button>
+        <button class="ov-chip" data-tier="Axi">Axi</button>
+        <button class="ov-chip" data-tier="tracked">★ Starred</button>
+      </div>
+      <div id="ov-recommended-list" class="ov-list"></div>
+    </section>
+
     <section class="ov-sec">
       <div class="ov-sec-head"><span>Cycles</span></div>
       <div id="ov-cycles" class="ov-cycles"></div>
@@ -58,18 +80,6 @@
         <span id="ov-fissure-note" class="ov-sec-note"></span>
       </div>
       <div id="ov-fissures" class="ov-list"></div>
-    </section>
-
-    <!-- Gemerkte Relikte aus dem Planer. Steht nur da, wenn welche gemerkt
-         sind: ueber dem Spiel ist jede leere Ueberschrift verschenkter Platz.
-         Direkt unter den Rissen, weil beides zusammen die Entscheidung ist -
-         welcher Riss laeuft, und welches Relikt nehme ich dafuer mit. -->
-    <section class="ov-sec hidden" id="ov-relics-sec">
-      <div class="ov-sec-head">
-        <span>Tracked relics</span>
-        <span id="ov-relics-note" class="ov-sec-note"></span>
-      </div>
-      <div id="ov-relics" class="ov-list"></div>
     </section>
 
     <section class="ov-sec" id="ov-goals-sec">

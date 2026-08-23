@@ -21,6 +21,10 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
 let dashboard = null;             // MR und Ziele
 let world     = null;             // Weltzustand
 let trackedRelics = [];           // Merkliste aus dem Relikt-Planer
+let recommendedRelics = [];       // Alle besessenen Relikte mit Erwartungswert
+let voidTraces = 0;               // Aktueller Vorrat an Spuren des Nichts
+let selectedTier = 'all';         // Filter: all, Lith, Meso, Neo, Axi, tracked
+let isSelectingRelic = false;     // Ob Warframes Reliktauswahl gerade aktiv ist
 let notifSettings = null;         // dieselbe Auswahl wie fuer die Toasts
 let clickThrough = false;
 let interacting = false;
@@ -138,6 +142,16 @@ async function loadTrackedRelics() {
   } catch { /* ohne Merkliste faellt nur dieser Abschnitt weg */ }
 }
 
+async function loadRecommendedRelics() {
+  try {
+    const res = await window.api.getRecommendedRelics();
+    if (res) {
+      voidTraces = res.traces ?? voidTraces;
+      if (Array.isArray(res.relics)) recommendedRelics = res.relics;
+    }
+  } catch { /* ohne Planer faellt nur dieser Abschnitt weg */ }
+}
+
 async function loadNotifSettings() {
   try { notifSettings = await window.api.getNotifications(); } catch { /* dann eben ohne Hervorhebung */ }
 }
@@ -175,9 +189,9 @@ function renderStale() {
 function render() {
   renderStale();
   renderHead();
+  renderRecommendedRelics();
   renderCycles();
   renderFissures();
-  renderTrackedRelics();
   renderGoals();
   renderFoot();
   tickClocks();
@@ -186,6 +200,8 @@ function render() {
 function renderHead() {
   const p = dashboard && dashboard.player;
   $('ov-mr').textContent = p ? `MR ${p.mr}` : 'MR –';
+  const tr = $('ov-traces-val');
+  if (tr) tr.textContent = nf(voidTraces);
 }
 
 function renderCycles() {
@@ -258,22 +274,31 @@ function renderFissures() {
 }
 
 /**
- * Gemerkte Relikte aus dem Planer.
+ * Empfohlene Relikte aus dem Relic Planner und fuer die Reliktauswahl.
  *
- * Die Zahlen kommen fertig aus dem Hauptprozess (siehe describeTrackedRelics)
- * - hier wird nur noch dazugestellt, was das Overlay allein weiss: ob gerade
- * ein Riss der passenden Aera offen ist. Genau daran haengt, ob das gemerkte
- * Relikt jetzt drankommt oder erst spaeter, und deshalb steht es an der Zeile
- * statt in einer zweiten Liste, die man abgleichen muesste.
+ * Zeigt kompakte Zeilen mit Aera, Name, Politur-Stufe, Erwartungswert (Platin & Dukaten)
+ * und Top-Drop. Die einzelnen 6 Belohnungen werden im schmalen Overlay nicht gezeichnet,
+ * um Platz fuer das Spiel zu sparen.
  */
-function renderTrackedRelics() {
-  const sec = $('ov-relics-sec');
-  const box = $('ov-relics');
-  const note = $('ov-relics-note');
+function renderRecommendedRelics() {
+  const sec = $('ov-rec-sec');
+  const box = $('ov-recommended-list');
+  const note = $('ov-rec-note');
+  const title = $('ov-rec-title');
   if (!sec || !box) return;
 
-  sec.classList.toggle('hidden', !trackedRelics.length);
-  if (!trackedRelics.length) return;
+  const hasTracked = trackedRelics.length > 0 || recommendedRelics.some(r => r.tracked);
+  if (!isSelectingRelic && !hasTracked) {
+    sec.classList.add('hidden');
+    return;
+  }
+  sec.classList.remove('hidden');
+
+  sec.classList.toggle('selecting', isSelectingRelic);
+  if (title) title.textContent = isSelectingRelic ? 'Relic selection' : 'Tracked relics';
+
+  const filterBar = $('ov-rec-filters');
+  if (filterBar) filterBar.classList.toggle('hidden', !isSelectingRelic && hasTracked);
 
   const openTiers = new Map();
   for (const f of (world && world.fissures) || []) {
@@ -282,39 +307,82 @@ function renderTrackedRelics() {
     openTiers.set(f.tier, (openTiers.get(f.tier) || 0) + 1);
   }
 
-  const fitting = trackedRelics.filter(r => openTiers.get(r.tier)).length;
-  note.textContent = fitting ? `${fitting} with a fissure` : `${trackedRelics.length} tracked`;
+  let list = recommendedRelics;
+  if (selectedTier === 'tracked') {
+    list = list.filter(r => r.tracked);
+  } else if (selectedTier !== 'all') {
+    list = list.filter(r => (r.tier || '').toLowerCase() === selectedTier.toLowerCase());
+  }
 
-  box.innerHTML = trackedRelics.slice(0, MAX_RELICS).map(r => {
+  /* Sortierung: Relikte mit aktiven Rissen zuerst, dann nach Platin-Erwartungswert */
+  const sorted = [...list].sort((a, b) => {
+    const openA = openTiers.get(a.tier) ? 1 : 0;
+    const openB = openTiers.get(b.tier) ? 1 : 0;
+    return (openB - openA) || ((b.expPlat || 0) - (a.expPlat || 0)) || ((b.expDucats || 0) - (a.expDucats || 0));
+  });
+
+  const matchingFissureCount = sorted.filter(r => openTiers.get(r.tier)).length;
+  if (note) {
+    if (isSelectingRelic) {
+      note.textContent = 'Active in Warframe';
+    } else if (selectedTier === 'tracked') {
+      note.textContent = `${sorted.length} starred`;
+    } else if (matchingFissureCount) {
+      note.textContent = `${matchingFissureCount} with fissure`;
+    } else {
+      note.textContent = `${sorted.length} relics`;
+    }
+  }
+
+  if (!sorted.length) {
+    box.innerHTML = `<div class="ov-empty">${selectedTier === 'tracked' ? 'No starred relics yet. Click the star next to any relic to pin it.' : 'No relics in stock for this filter.'}</div>`;
+    return;
+  }
+
+  box.innerHTML = sorted.slice(0, MAX_RELICS + 3).map(r => {
     const open = openTiers.get(r.tier) || 0;
-
-    /* Die teuerste Belohnung ist der Grund, warum man sich dieses Relikt
-       gemerkt hat - sie steht deshalb in der Zeile, nicht alle sechs. */
-    const best = [...(r.rewards || [])]
-      .sort((a, b) => (b.plat ?? -1) - (a.plat ?? -1))[0];
-
+    const best = r.bestPlat;
     const parts = [];
-    if (!r.count) parts.push('not in stock');
-    if (r.noTable) parts.push('nicht mehr farmbar');
-    else if (best && best.plat != null) parts.push(`${best.name} ${best.plat}p`);
-    else parts.push('prices unknown');
+    if (best && best.plat != null) parts.push(`${best.name} ${best.plat}p`);
     if (open) parts.push(`${open} ${open === 1 ? 'fissure' : 'fissures'} open`);
 
     return `
       <div class="ov-row ${open ? 'hit' : ''}">
-        <img class="ov-relic-img" src="${esc(r.image || '')}" alt=""
-             onerror="this.style.visibility='hidden'">
+        <img class="ov-relic-img" src="${esc(r.image || '')}" alt="" onerror="this.style.visibility='hidden'">
         <div class="ov-row-body">
           <b>${esc(r.tier)} ${esc(r.name)}
-            <span class="ov-relic-state">${esc(RELIC_STATE_LABEL[r.state] || r.state || '')}${r.count > 1 ? ' ×' + r.count : ''}</span>
+            <span class="ov-relic-state">${esc(RELIC_STATE_LABEL[r.state] || r.state || '')}${r.count > 1 ? ' · ×' + r.count : ''}</span>
           </b>
-          <span>${esc(parts.join(' · '))}</span>
+          <span>${esc(parts.join(' · ') || 'prices unknown')}</span>
         </div>
-        <span class="ov-relic-exp" title="Expected platinum return per crack">${r.noTable ? '–' : r.expPlat + 'p'}</span>
+        <div class="ov-rec-values">
+          <span class="ov-rec-plat" title="Expected platinum return">~${r.expPlat ?? 0}p</span>
+          ${r.expDucats ? `<span class="ov-rec-duc" title="Expected ducats">${r.expDucats}d</span>` : ''}
+        </div>
+        <button class="ov-track-btn ${r.tracked ? 'active' : ''}" data-track="${esc(r.id)}" title="${r.tracked ? 'Entmerken' : 'Merken'}">
+          ${Icon.star(12)}
+        </button>
       </div>`;
-  }).join('') + (trackedRelics.length > MAX_RELICS
-    ? `<div class="ov-empty">… und ${trackedRelics.length - MAX_RELICS} weitere im Planer</div>`
+  }).join('') + (sorted.length > (MAX_RELICS + 3)
+    ? `<div class="ov-empty">… und ${sorted.length - (MAX_RELICS + 3)} weitere im Planer</div>`
     : '');
+
+  /* Schnell-Stern Klickbehandlung */
+  box.querySelectorAll('.ov-track-btn').forEach(btn => {
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.track;
+      const [key, state] = id.split('|');
+      const rel = recommendedRelics.find(r => r.id === id);
+      try {
+        await window.api.toggleTrackedRelic({
+          key, state, tier: rel?.tier || '', name: rel?.name || ''
+        });
+        await loadRecommendedRelics();
+        renderRecommendedRelics();
+      } catch {}
+    };
+  });
 }
 
 function renderGoals() {
@@ -382,21 +450,34 @@ async function applyState(st) {
 
   if (!visible) { stopTimers(); hoverSent = null; return; }
 
-  /* Beim Einblenden neu laden: waehrend das Overlay weg war, koennen im
-     Hauptfenster Ziele dazugekommen oder abgehakt worden sein. */
+  /* Beim Einblenden sofort zeichnen und im Hintergrund aktualisieren,
+     damit das Fenster ohne Verzoegerung erscheint. */
   if (wasHidden) {
-    await Promise.all([loadDashboard(), loadWorld(false), loadTrackedRelics()]);
     render();
+    Promise.all([loadDashboard(), loadWorld(false), loadTrackedRelics(), loadRecommendedRelics()])
+      .then(() => render())
+      .catch(() => {});
   }
   startTimers();
 }
 
 /* ---------------- Bedienung ---------------- */
 
+function initRecFilters() {
+  $('ov-rec-filters')?.querySelectorAll('.ov-chip').forEach(btn => {
+    btn.onclick = () => {
+      $('ov-rec-filters').querySelectorAll('.ov-chip').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedTier = btn.dataset.tier || 'all';
+      renderRecommendedRelics();
+    };
+  });
+}
+
 $('ov-exit').onclick = () => window.api.toggleOverlay();
 
 $('ov-refresh').onclick = async () => {
-  await Promise.all([loadWorld(true), loadDashboard(), loadTrackedRelics()]);
+  await Promise.all([loadWorld(true), loadDashboard(), loadTrackedRelics(), loadRecommendedRelics()]);
   render();
 };
 
@@ -466,17 +547,35 @@ window.addEventListener('keydown', e => {
 window.api.onOverlayChanged(applyState);
 
 /* Der Stern im Planer wirkt sofort: der Hauptprozess schickt die fertige
-   Liste an beide Fenster, sobald sie sich geaendert hat. Ohne das muesste
-   man das Overlay aus- und wieder einblenden, um sie zu sehen. */
-window.api.onTrackedRelicsChanged(list => {
+   Liste an beide Fenster, sobald sie sich geaendert hat. */
+window.api.onTrackedRelicsChanged(async list => {
   trackedRelics = Array.isArray(list) ? list : [];
-  renderTrackedRelics();
+  await loadRecommendedRelics();
+  renderRecommendedRelics();
+});
+
+/* Relikt-Auswahl in Warframe (ThemedProjectionManager) */
+window.api.onRelicSelectOpen(data => {
+  if (data) {
+    voidTraces = data.traces ?? voidTraces;
+    if (Array.isArray(data.relics)) recommendedRelics = data.relics;
+  }
+  isSelectingRelic = true;
+  renderHead();
+  renderRecommendedRelics();
+  $('ov-rec-sec')?.scrollIntoView({ behavior: 'smooth' });
+});
+
+window.api.onRelicSelectClosed(() => {
+  isSelectingRelic = false;
+  renderRecommendedRelics();
 });
 
 /* ---------------- Start ---------------- */
 
 (async function boot() {
-  await Promise.all([loadDashboard(), loadWorld(false), loadNotifSettings(), loadTrackedRelics()]);
+  initRecFilters();
+  await Promise.all([loadDashboard(), loadWorld(false), loadNotifSettings(), loadTrackedRelics(), loadRecommendedRelics()]);
   render();
 
   /* Das Fenster entsteht oft erst, WEIL gerade ein Fund gemeldet wurde - die
