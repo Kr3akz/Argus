@@ -6,7 +6,7 @@
   "type": "module",
   "main": "src/main/main.js",
   "author": "Kr3akz",
-  "license": "MIT",
+  "license": "GPL-3.0-or-later",
   "homepage": "https://github.com/Kr3akz/Argus",
   "repository": {
     "type": "git",

@@ -85,5 +85,5 @@ which shows the exact commit the build came from.
 
 ## Licence
 
-By contributing you agree that your work is published under the [MIT licence](LICENSE),
-like the rest of the project.
+By contributing you agree that your work is published under the
+[GNU General Public License v3.0 or later](LICENSE), like the rest of the project.

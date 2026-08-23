@@ -35,9 +35,15 @@ directories:
 # ohne sie meldet ein Release denselben Stand wie ein Lauf aus dem
 # Quellordner. Fehlt sie, faellt die Anzeige auf "development build" zurueck;
 # ein lokales `npm run dist` braucht sie also nicht.
+#
+# LICENSE MUSS mit. Die GPL verlangt ausdruecklich, dass jeder Empfaenger
+# eine Kopie der Lizenz bekommt - und da asar aus ist, liegt der Quelltext
+# ohnehin im Installationsordner. Eine Fassung des Quelltexts ohne die
+# zugehoerige Lizenz daneben waere genau der Fall, den die GPL ausschliesst.
 files:
   - package.json
   - build-info.json
+  - LICENSE
   - src/main/**/*
   - src/core/**/*
   - src/renderer/**/*

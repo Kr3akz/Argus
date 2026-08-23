@@ -232,7 +232,12 @@ knowing beforehand. Security problems go the way described in
 
 ## Licence
 
-[MIT](LICENSE).
+[GNU General Public License v3.0 or later](LICENSE).
+
+That means you may use, study, change and share it freely — but if you publish a
+modified version, it has to stay open under the same licence. A closed-source fork of
+Argus is not allowed. For a program that reads another process's memory, that matters:
+every copy in circulation stays as auditable as this one.
 
 Argus is a fan project and is **not affiliated with, endorsed by or sponsored
 by Digital Extremes**. Warframe and all related assets are the property of Digital
