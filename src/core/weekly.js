@@ -156,12 +156,17 @@ function teshin(sp) {
     was: belohnung
       ? `${belohnung.name} — ${belohnung.cost} Steel Essence`
       : 'Steel Path Honors',
-    /* Einzige Stelle mit einer echten Vorschau: die Rotation steht komplett
-       in der Antwort, nicht nur der aktuelle Eintrag. */
-    rotation: (sp?.rotation || []).map(r => `${r.name} (${r.cost})`),
+    /* NICHT sp.rotation: das ist der Zyklus ueber ALLE Wochen, nicht das
+       Angebot dieser einen. Als Chips unter dem aktuellen Posten gelesen
+       sah es aus, als gaebe es diese Woche acht Dinge zu kaufen - und
+       dann steht dort "3x Forma", was diese Woche eben nicht stimmt.
+       evergreens ist das Dauersortiment: was tatsaechlich jederzeit bei
+       ihm liegt, unabhaengig von der Woche. */
+    rotation: (sp?.evergreens || []).map(r => `${r.name} (${r.cost})`),
+    rotationTitel: 'Always in stock',
     expiry: sp?.expiry || null,
     quelle: sp?.expiry ? 'api' : 'reset',
-    angebotBekannt: true
+    angebotBekannt: !!(sp?.evergreens || []).length
   };
 }
 
@@ -172,12 +177,26 @@ function teshin(sp) {
    Inventar (RecentVendorPurchases traegt nur Kaufhistorie mit rohen
    ItemIds, kein Warenangebot) einen Katalog dieser vier liefern. Erfunden
    wird hier nichts - die Oberflaeche zeigt deshalb Ort und Zweck, aber
-   keine erfundene Artikelliste. */
+   keine erfundene Artikelliste.
+
+   ORT UND ZWECK SIND NACHGESCHLAGEN, NICHT GERATEN. Die erste Fassung
+   dieser Liste stammte aus dem Gedaechtnis und hatte drei Fehler drin -
+   Palladino tauschte angeblich Voidplume (tut sie nicht, das ist Yonta),
+   und Yonta stand auf Deimos statt im Zariman. Gegengelesen am Wiki:
+     wiki.warframe.com/w/Palladino        Riven Slivers, Iron Wake
+     wiki.warframe.com/w/Archimedean_Yonta Chrysalith, Voidplume Pinions
+     wiki.warframe.com/w/Acrithis          Duviri, Pathos Clamps
+     wiki.warframe.com/w/Bird_3            Cavia, ein Posten je Woche
+   Wer hier etwas aendert: erst nachsehen, dann tippen. */
 const FESTE_HAENDLER = [
-  { key: 'bird3',     name: 'Bird 3',            ort: 'Sanctum Anatomica (Deimos)', was: 'One Archon Shard per week' },
-  { key: 'yonta',     name: 'Archimedian Yonta', ort: 'Sanctum Anatomica (Deimos)', was: 'Weekly stock, paid in Entrati Lanthorn' },
-  { key: 'acrithis',  name: 'Acrithis',          ort: 'Duviri',                     was: 'Weekly offerings for Pathos Clamps' },
-  { key: 'palladino', name: 'Palladino',         ort: 'Iron Wake (Earth)',          was: 'Voidplume trade-in for standing' }
+  { key: 'bird3',     name: 'Bird 3',             ort: 'Sanctum Anatomica (Deimos)',
+    was: 'One rotating offering per week at Rank 5 — Archon Shards among them' },
+  { key: 'yonta',     name: 'Archimedean Yonta',  ort: 'Chrysalith (Zariman)',
+    was: '35,000 Kuva for 5 Voidplume Pinions, once per week' },
+  { key: 'acrithis',  name: 'Acrithis',           ort: 'Duviri',
+    was: 'Five weekly wares for Pathos Clamps' },
+  { key: 'palladino', name: 'Palladino',          ort: 'Iron Wake (Earth)',
+    was: 'Riven Slivers for Riven Mods, Kuva, Endo and Requiem Relics — weekly limits' }
 ].map(h => ({ ...h, angebotBekannt: false }));
 
 function nightwave(nw) {
@@ -194,6 +213,7 @@ function nightwave(nw) {
     /* Die Namen der Akte selbst sind echt, kommen direkt aus der Antwort -
        kein erfundener Katalog wie bei den vier Haendlern oben. */
     rotation: aufgaben.map(c => c.title || c.desc).filter(Boolean),
+    rotationTitel: 'This week’s acts',
     /* Die Staffel laeuft Monate - als Wochenablauf taugt sie nicht.
        Gezeigt wird der Reset, an dem die Aufgaben wechseln. */
     expiry: null,

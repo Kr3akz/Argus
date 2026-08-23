@@ -8065,11 +8065,28 @@ function renderWeeklyContentCard(e) {
         : e.progress.erledigt >= e.progress.von)
     : e.manuellErledigt;
 
-  const zeilen = (e.eintraege || []).map(x => `
+  /* Der Circuit bekommt Bilder statt einer Namensliste - Warframes und
+     Waffen sind das, was man auf einen Blick erkennt. Alles andere
+     (Archimedea-Missionen, Kahl) hat keine Item-Entsprechung und bleibt
+     Text. */
+  const zeilen = (e.eintraege || []).map(x => {
+    if (x.picks && x.picks.length) {
+      const bilder = x.picks.map(p => `
+        <div class="wk-pick" title="${esc(p.name)}">
+          ${p.image ? `<img src="${esc(p.image)}" alt="" loading="eager" onerror="this.style.visibility='hidden'">` : ''}
+          <span>${esc(p.name)}</span>
+        </div>`).join('');
+      return `<div class="wk-picks-group">
+        ${x.unter ? `<div class="wk-picks-label">${esc(x.unter)}</div>` : ''}
+        <div class="wk-picks">${bilder}</div>
+      </div>`;
+    }
+    return `
     <div class="wk-row">
       <b>${esc(x.titel)}</b>
       ${x.unter ? `<span>${esc(x.unter)}</span>` : ''}
-    </div>`).join('');
+    </div>`;
+  }).join('');
 
   const unterschrift = [e.detail, e.ort].filter(Boolean).map(esc).join(' · ');
 
@@ -8097,8 +8114,13 @@ function renderWeeklyContentCard(e) {
 }
 
 function renderWeeklyVendorCard(e) {
+  /* Mit Ueberschrift, sonst liest sich jede Chipreihe als "das gibt es
+     diese Woche" - bei Teshins Dauersortiment waere das schlicht falsch. */
   const rotation = (e.angebotBekannt && e.rotation && e.rotation.length)
-    ? `<div class="wk-rotation">${e.rotation.slice(0, 10).map(r => `<span class="wk-chip">${esc(r)}</span>`).join('')}</div>`
+    ? `<div class="wk-rotation">
+         ${e.rotationTitel ? `<div class="wk-rotation-title">${esc(e.rotationTitel)}</div>` : ''}
+         <div class="wk-chips">${e.rotation.slice(0, 12).map(r => `<span class="wk-chip">${esc(r)}</span>`).join('')}</div>
+       </div>`
     : '';
 
   return `

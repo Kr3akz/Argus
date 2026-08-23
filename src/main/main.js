@@ -1375,6 +1375,31 @@ ipcMain.handle('weekly:get', async (_e, force) => {
       weekly = annotateProgress(weekly, inventory);
     } catch { /* kein Abruf vorhanden - unveraendert weiter */ }
 
+    /* Bilder fuer die Circuit-Auswahl. Nur HIER moeglich und nicht in
+       core/weekly.js: der Katalog ist eine Electron-freie, aber grosse
+       Nachschlagetabelle, die der Hauptprozess ohnehin geladen hat -
+       weekly.js kennt nur Namen und soll das auch bleiben.
+       Faellt der Katalog aus, bleiben die Namen als Text stehen. */
+    try {
+      const catalog = await loadCatalog();
+      const bild = name => {
+        const treffer = catalog.items.find(i => i.name === name);
+        return treffer ? { name, image: imageUrl(treffer.uniqueName, 128) } : { name, image: null };
+      };
+      weekly = {
+        ...weekly,
+        content: weekly.content.map(c => c.key !== 'circuit' ? c : ({
+          ...c,
+          eintraege: (c.eintraege || []).map(e => ({
+            ...e,
+            /* Der Titel traegt die Namen als "A, B, C" - fuer Bilder
+               braucht es sie einzeln. */
+            picks: e.titel.split(',').map(s => s.trim()).filter(Boolean).map(bild)
+          }))
+        }))
+      };
+    } catch { /* ohne Katalog eben ohne Bilder */ }
+
     /* Manuelle Haken fuer alles ohne Nachweis (Archimedea, Kahl). Ueberlebt
        die Fortschrittsauswertung, weil beide unterschiedliche Inhalte
        betreffen - keine Ueberschneidung. */
