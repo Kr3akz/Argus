@@ -70,6 +70,9 @@ works and what lives where in `src/`.
   node src/cli/dashboard-test.js
   npm run check-farm
   ```
+- **User-visible change? Add a line to ** under . That
+  file becomes the release notes, and the release notes are what people read in the
+  update window before downloading.
 - **Keep the diff about one thing.** A pull request that fixes a bug and also reformats
   four files is hard to judge and slow to merge.
 - **Say what you tried and what you ruled out.** For anything non-obvious that context is

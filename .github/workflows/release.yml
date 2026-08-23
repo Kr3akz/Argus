@@ -96,7 +96,13 @@ jobs:
       contents: write        # zum Anlegen von Tag und Release noetig
 
     steps:
+      # fetch-depth: 0 holt die ganze Vorgeschichte samt Tags. Standard waere
+      # ein flacher Klon mit einem einzigen Commit - dann faende
+      # tools/release-notes.mjs weder den letzten Tag noch die Commits dazwischen
+      # und koennte im Notfall nicht auf sie zurueckfallen.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -149,8 +155,24 @@ jobs:
           $lines | Out-File -FilePath release\SHA256SUMS.txt -Encoding utf8
           Get-Content release\SHA256SUMS.txt
 
+      # Der Abschnitt aus CHANGELOG.md wird zur Release-Notiz - und damit zu
+      # dem Text, den die App im Update-Fenster zeigt, BEVOR jemand etwas
+      # herunterlaedt. GitHubs generate_release_notes allein taugte dafuer
+      # nicht: es listet Pull Requests, und hier geht alles direkt auf main.
+      # Uebrig blieb eine einzige Zeile, die core/updates.js auch noch
+      # wegfiltert - das Fenster stand leer.
+      - name: Release-Notiz zusammenstellen
+        shell: bash
+        run: |
+          node tools/release-notes.mjs "${{ needs.pruefen.outputs.version }}" > RELEASE_NOTES.md
+          echo "----- so wird es aussehen -----"
+          cat RELEASE_NOTES.md
+
       # Legt den Tag v<version> am gebauten Commit gleich mit an - deshalb
       # muss lokal keiner gesetzt werden.
+      # generate_release_notes bleibt AN: es haengt unter unseren Text noch
+      # den Vergleichslink. Auf der Webseite ist der nuetzlich, und in der App
+      # faellt er ohnehin weg.
       - name: Release veroeffentlichen
         uses: softprops/action-gh-release@v2
         if: needs.pruefen.outputs.release == 'true'
@@ -158,6 +180,7 @@ jobs:
           tag_name: v${{ needs.pruefen.outputs.version }}
           name: v${{ needs.pruefen.outputs.version }}
           draft: false
+          body_path: RELEASE_NOTES.md
           generate_release_notes: true
           files: |
             release/*.exe

@@ -34,6 +34,12 @@ git commit -am "..."
 git push
 ```
 
+Write the `CHANGELOG.md` section for that version first, under a heading of exactly
+`## [1.2.3]`. That section becomes the release notes — and the text people read in the
+update window **before** they decide to download anything, so it is worth two minutes.
+Forgetting it does not break the build: `tools/release-notes.mjs` falls back to the
+commit subjects since the last tag, which is uglier but never empty.
+
 `.github/workflows/release.yml` runs on every push to `main`, reads the version out of
 `package.json` and decides for itself: if a release `v<version>` already exists, it stops
 there and nothing is built. If it does not, it builds both exes, writes `SHA256SUMS.txt`,
