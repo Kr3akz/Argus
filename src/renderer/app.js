@@ -4007,8 +4007,7 @@ let invArcaneOwnership = 'all'; // All, Owned, Not owned
 let invArcaneKind = 'all';      // Gattung (Warframe, Primary, Secondary, Melee, Operator, Amp, etc.)
 
 const QUELLEN = {
-  api:        { label: 'Live read from the game', stale: false },
-  alecaframe: { label: 'AlecaFrame-Datei (Behelf)', stale: true }
+  api: { label: 'Live read from the game', stale: false }
 };
 
 /** "vor 3 Tagen" statt eines nackten Zeitstempels. */

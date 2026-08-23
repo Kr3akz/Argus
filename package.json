@@ -24,7 +24,6 @@
     "check-farm": "node tools/check-farm-nodes.mjs",
     "dist": "electron-builder",
     "dist:dir": "electron-builder --dir",
-    "sync": "node src/cli/sync.js",
     "report": "node src/cli/report.js",
     "scan-test": "node src/cli/scan-test.js",
     "inventory": "node src/cli/inventory-fetch.js",

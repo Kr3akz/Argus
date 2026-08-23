@@ -18,7 +18,7 @@ const catalog = await loadCatalog();
 const view = buildInventory(inventory, catalog);
 
 console.log('=== Quelle ===');
-console.log(`  ${source === 'api' ? 'echter API-Abruf' : 'AlecaFrame-Notbehelf'}, Stand ${new Date(fetchedAt).toLocaleString('de-DE')}`);
+console.log(`  echter API-Abruf, Stand ${new Date(fetchedAt).toLocaleString('de-DE')}`);
 ok('ohne Netzwerkzugriff geladen', fromCache);
 
 console.log('\n=== Sektionen ===');

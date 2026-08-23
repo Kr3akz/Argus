@@ -24,7 +24,7 @@ const age = await inventoryAge();
 const gate = await checkAllowed({ force });
 const pids = await findGameProcessIds();
 
-const QUELLE = { api: 'echter API-Abruf', alecaframe: 'AlecaFrame-Notbehelf' };
+const QUELLE = { api: 'echter API-Abruf' };
 console.log('=== Stand ===');
 console.log(`  Lokale Datei   ${age ? new Date(age.fetchedAt).toLocaleString('de-DE')
                                     + '  (' + (QUELLE[age.source] || age.source) + ')' : 'noch keine'}`);

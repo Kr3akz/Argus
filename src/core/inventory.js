@@ -37,8 +37,7 @@ import { scanCredentials } from './gamecreds.js';
 
 const HOST     = 'api.warframe.com';
 const ENDPOINT = '/api/inventory.php';
-const CACHE     = 'inventory.json';        // echte API-Antwort
-const DEV_CACHE = 'inventory-dev.json';    // Notbehelf aus tools/alecaframe-dump.js
+const CACHE = 'inventory.json';            // echte API-Antwort
 
 /** Entfernt alles, was nach Zugangsdaten aussieht, aus fremdem Text. */
 function scrub(text) {
@@ -129,16 +128,17 @@ async function readFixture(file, source) {
 }
 
 /**
- * Echte API-Antwort zuerst, sonst die Entwicklungs-Fixture aus tools/alecaframe-dump.js.
+ * Der lokale Stand, sonst nichts.
  *
- * Der Ersatz existiert, weil die Sperre nach der IP-Drosselung den
- * ersten Live-Abruf blockiert hat. Er verschwindet von selbst, sobald
- * inventory.json daliegt - und source sagt der Oberflaeche, was sie anzeigt,
- * damit alte Zahlen nicht als frisch durchgehen.
+ * Frueher lag hier ein zweiter Weg: eine Fixture, die aus der Datendatei
+ * eines anderen Programms gezogen wurde, als die IP-Drosselung den ersten
+ * Live-Abruf 24 Stunden lang blockierte. Der Steigbuegel hat seinen Zweck
+ * erfuellt und ist raus - das Inventar kommt aus genau einer Quelle, dem
+ * eigenen API-Abruf. source bleibt trotzdem am Ergebnis: die Oberflaeche
+ * zeigt damit an, wie alt der Stand ist.
  */
 async function readCache(dataDir) {
-  return await readFixture(path.join(dataDir, CACHE), 'api')
-      || await readFixture(path.join(dataDir, DEV_CACHE), 'alecaframe');
+  return await readFixture(path.join(dataDir, CACHE), 'api');
 }
 
 /**
