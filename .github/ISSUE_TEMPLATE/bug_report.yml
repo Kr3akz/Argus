@@ -1,0 +1,90 @@
+name: Bug report
+description: Something does not work the way it should
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. Two things make a report much easier to act on:
+        the **exact version** (Settings → About Argus shows the commit it was built
+        from) and **what the app was doing** when it went wrong.
+
+        Found a security problem? Do not file it here — see
+        [SECURITY.md](https://github.com/Kr3akz/Argus/blob/main/SECURITY.md).
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: From Settings → About Argus — the version line and the build line.
+      placeholder: "v1.0.0 · 9f3c1ab · 23 Aug 2026"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How is it installed?
+      options:
+        - Installer (Setup.exe)
+        - Portable .exe
+        - Running from source
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open the Inventory tab
+        2. Press "Fetch inventory"
+        3. …
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part?
+      options:
+        - Mastery / goals
+        - Live world state & notifications
+        - Overlay
+        - Relic rewards / price tags
+        - Inventory
+        - Ducats
+        - Builds
+        - Trading (warframe.market)
+        - Farming & mining guide
+        - Updates
+        - Setup / first run
+        - Something else
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot
+      description: If it is a visual problem, a picture saves a lot of back and forth.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I am on the latest release (or explained above why not)
+          required: false
+        - label: My screenshot does not show my account ID or session token
+          required: false

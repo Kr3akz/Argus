@@ -1,0 +1,11 @@
+# Leitet die zwei Faelle um, die kein Fehlerbericht sind: Sicherheitsluecken
+# gehoeren nie in ein oeffentliches Issue, und eine Frage ist schneller in
+# einer Diskussion beantwortet als in einem Ticket, das jemand schliessen muss.
+blank_issues_enabled: false
+contact_links:
+  - name: Security problem
+    url: https://github.com/Kr3akz/Argus/security/advisories/new
+    about: Report it privately, never as a public issue. See SECURITY.md.
+  - name: Question or general discussion
+    url: https://github.com/Kr3akz/Argus/discussions
+    about: Not sure whether it is a bug? Ask here first.

@@ -1,0 +1,57 @@
+name: Idea or feature request
+description: Something Argus should be able to do
+labels: ["idea"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ideas are welcome. One thing up front, so nobody wastes an evening:
+
+        **Argus does not touch the game.** No injection, no automation, no input
+        simulation, no network interception. Some of that is forbidden by Warframe's
+        EULA, the rest is a line this project does not cross. Anything that needs one
+        of them will be declined regardless of how useful it would be.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: >
+        The situation, not the solution. "I want to know which relics to crack for a
+        set I am missing" says more than "add a button here".
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: How do you imagine it working?
+      description: Rough is fine. If you have seen it done well somewhere, say where.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part would it belong to?
+      options:
+        - Mastery / goals
+        - Live world state & notifications
+        - Overlay
+        - Relic rewards
+        - Inventory
+        - Ducats
+        - Builds
+        - Trading (warframe.market)
+        - Farming & mining guide
+        - Something new
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: rules
+    attributes:
+      label: Check
+      options:
+        - label: This does not require writing to the game, automating it, or reading its network traffic
+          required: true
