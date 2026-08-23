@@ -8161,7 +8161,18 @@ function renderWeekly(w) {
   $('weekly-reset-when').textContent = wann;
 
   $('weekly-content').innerHTML = w.content.map(renderWeeklyContentCard).join('');
-  $('weekly-vendors').innerHTML = w.vendors.map(renderWeeklyVendorCard).join('');
+
+  /* Zwei Spalten von Hand statt column-count: nur so lassen sich beide
+     unten buendig abschliessen. Der Spaltenumbruch des Browsers verteilt
+     zwar gleichmaessig, kennt aber kein "streck die letzte Karte auf den
+     Rest" - und genau die paar Pixel Versatz waren das Stoerende.
+     Aufgeteilt wird der Reihe nach; die letzte Karte jeder Spalte bekommt
+     per CSS flex:1 und fuellt die Differenz. */
+  const haelfte = Math.ceil(w.vendors.length / 2);
+  const spalten = [w.vendors.slice(0, haelfte), w.vendors.slice(haelfte)];
+  $('weekly-vendors').innerHTML = spalten
+    .map(sp => `<div class="wk-vcol">${sp.map(renderWeeklyVendorCard).join('')}</div>`)
+    .join('');
 
   document.querySelectorAll('.wk-manual-check').forEach(cb => {
     cb.addEventListener('change', async () => {

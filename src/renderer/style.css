@@ -452,6 +452,12 @@ body:has(#app:not(.hidden)) .titlebar-brand::after {
   transform: scale(1.15);
 }
 
+.icon-calendar {
+  -webkit-mask-image: url('assets/icons/calendar.png');
+  mask-image: url('assets/icons/calendar.png');
+  transform: scale(1.1);
+}
+
 .icon-checkmark {
   -webkit-mask-image: url('assets/icons/checkmark.png');
   mask-image: url('assets/icons/checkmark.png');
@@ -5040,6 +5046,12 @@ body.overlay-window { background: #0b0f16; }
   display: none;
 }
 .main-content:has(#tab-settings.active) { padding-bottom: 28px; }
+/* Dieselbe Ausnahme wie bei den Einstellungen: die 80px Scrollpuffer
+   unten sind fuer lange Listen gedacht. Die Wochenuebersicht soll auf
+   einen Schirm passen, und genau diese 80px waren der Grund, warum sie
+   es nicht tat - der Inhalt endete laengst, gescrollt wurde ueber
+   leeren Raum. */
+.main-content:has(#tab-weekly.active) { padding-bottom: 16px; }
 
 .settings-cols {
   display: grid;
@@ -7595,9 +7607,26 @@ input[type=number]:focus, input[type=email]:focus, input[type=password]:focus {
   -webkit-column-break-inside: avoid;
   margin-bottom: 14px;
 }
-.weekly-grid-vendors { column-count: 2; }
+/* Haendler: zwei echte Spalten statt Spaltenumbruch - siehe renderWeekly.
+   Beide enden buendig, weil die letzte Karte jeder Spalte den Rest fuellt. */
+.weekly-grid-vendors {
+  column-count: initial;
+  display: flex;
+  gap: 14px;
+  align-items: stretch;
+}
+.wk-vcol {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.wk-vcol > .wk-card { margin-bottom: 0; }
+/* Der Ausgleich: was an Hoehe fehlt, nimmt die unterste Karte auf. */
+.wk-vcol > .wk-card:last-child { flex: 1; }
 @media (max-width: 1400px) { .weekly-grid { column-count: 2; } }
-@media (max-width: 1000px) { .weekly-grid, .weekly-grid-vendors { column-count: 1; } }
+@media (max-width: 1000px) {
+  .weekly-grid { column-count: 1; }
+  .weekly-grid-vendors { flex-direction: column; }
+}
 
 .wk-card {
   position: relative; overflow: hidden;
@@ -7712,8 +7741,8 @@ input[type=number]:focus, input[type=email]:focus, input[type=password]:focus {
    Komma-Liste erkennt niemand im Vorbeigehen, acht Warframe-Silhouetten
    schon. Nur der Circuit hat eine echte Item-Entsprechung - Missionstypen
    und Haendler-Zwecke haben keine, dort waere ein Bild nur Dekoration. */
-.wk-picks-group { margin-top: 9px; }
-.wk-picks-group + .wk-picks-group { margin-top: 9px; }
+.wk-picks-group { margin-top: 8px; }
+.wk-picks-group + .wk-picks-group { margin-top: 7px; }
 .wk-picks-label {
   font-size: 9.5px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase;
   color: var(--text-3); margin-bottom: 6px;
@@ -7721,10 +7750,10 @@ input[type=number]:focus, input[type=email]:focus, input[type=password]:focus {
 .wk-picks { display: flex; flex-wrap: wrap; gap: 8px; }
 .wk-pick {
   display: flex; flex-direction: column; align-items: center; gap: 2px;
-  width: 52px;
+  width: 47px;
 }
 .wk-pick img {
-  width: 38px; height: 38px; object-fit: contain;
+  width: 33px; height: 33px; object-fit: contain;
   border-radius: 10px; background: rgba(255,255,255,.04);
   padding: 3px;
   transition: background .16s var(--ease), transform .16s var(--ease);
@@ -7747,6 +7776,7 @@ input[type=number]:focus, input[type=email]:focus, input[type=password]:focus {
    Abweichungen und Risiken - damit war der Reiter zwei Bildschirme hoch.
    Die Risiken stehen jetzt als eigene, kleinere Zeile mit engerem
    Zeilenabstand: dieselbe Information, gut die Haelfte der Hoehe. */
+#weekly-pane-content .wk-card { padding: 13px 16px; }
 #weekly-pane-content .wk-row { padding: 3px 0; }
 #weekly-pane-content .wk-row b { font-size: 12px; }
 #weekly-pane-content .wk-row span { font-size: 10.5px; line-height: 1.35; margin-top: 1px; }

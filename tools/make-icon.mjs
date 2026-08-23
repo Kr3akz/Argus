@@ -17,7 +17,11 @@ const SRC_WHITE = path.join(ROOT, 'assets', 'Logo.png');
 /* Weitere Maskenvorlagen aus assets/: weisse Silhouette auf transparent,
    beliebige Groesse - hier wird auf Icon-Mass heruntergerechnet. */
 const MASKEN = [
-  { quelle: 'trading.png', ziel: 'trading.png', groesse: 256 }
+  { quelle: 'trading.png', ziel: 'trading.png', groesse: 256 },
+  /* Die Quelle heisst calender.png (so abgelegt), das Ziel schreibt sich
+     richtig - der Dateiname in src/renderer/ ist der, den icons.js und das
+     Stylesheet ansprechen, und dort soll kein Tippfehler festwachsen. */
+  { quelle: 'calender.png', ziel: 'calendar.png', groesse: 256 }
 ];
 const OUT_BUILD = path.join(ROOT, 'build', 'icon.png');
 const OUT_ICONS_DIR = path.join(ROOT, 'src', 'renderer', 'assets', 'icons');

@@ -174,7 +174,7 @@
         <!-- Direkt hinter dem Live-Tracker: beide beantworten "was ist
              gerade dran", nur auf verschiedenen Zeitskalen. -->
         <button class="nav-item" data-tab="weekly">
-          <span class="nav-icon" data-icon="calendar"></span>
+          <span class="nav-icon" data-icon="weekly"></span>
           <span id="weekly-count" class="nav-pill hidden">0</span>
           <div class="nav-tooltip">
             <b>Weekly rotation</b>
@@ -468,16 +468,21 @@
 
       <div class="weekly-pane" id="weekly-pane-vendors">
         <div class="weekly-grid weekly-grid-vendors" id="weekly-vendors"></div>
-      </div>
 
-      <p class="weekly-foot">
-        <span class="weekly-src weekly-src-live">live</span> comes with its own expiry
-        straight from the world state.
-        <span class="weekly-src weekly-src-reset">reset</span> has none in the API and
-        follows the common weekly reset, taken from the Archon Hunt.
-        <span class="weekly-src weekly-src-auto">tracked</span> is read from your own
-        game data — nothing is guessed; where that isn't possible, tick it off yourself.
-      </p>
+        <!-- Steht NUR hier und nicht unter beiden Ansichten: im Content-Teil
+             kosteten diese vier Zeilen genau den Platz, der dort zum
+             Scrollen zwang. Verloren geht nichts - jedes der drei Schilder
+             traegt denselben Text als title-Attribut, und die Schilder
+             selbst stehen in beiden Ansichten. -->
+        <p class="weekly-foot">
+          <span class="weekly-src weekly-src-live">live</span> comes with its own expiry
+          straight from the world state.
+          <span class="weekly-src weekly-src-reset">reset</span> has none in the API and
+          follows the common weekly reset, taken from the Archon Hunt.
+          <span class="weekly-src weekly-src-auto">tracked</span> is read from your own
+          game data — nothing is guessed; where that isn't possible, tick it off yourself.
+        </p>
+      </div>
     </section>
 
     <!-- ---------------- 3. Mastery & Farm-Ziele ---------------- -->

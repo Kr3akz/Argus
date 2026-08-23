@@ -92,6 +92,10 @@ const Icon = {
   /* Offizielles Checkmark-Icon (Farm-Ziele & Checkliste) */
   checkmark: s => `<span class="nav-icon-mask icon-checkmark" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
   trading: s => `<span class="nav-icon-mask icon-trading" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
+  /* Eigener Name, statt Icon.calendar zu ersetzen: das dort ist ein
+     13px-Zeichen mitten im Profiltext ("Since 2016 · 9.8 years"), und eine
+     Seitenleisten-Maske traegt sich in dieser Groesse nicht. */
+  weekly: s => `<span class="nav-icon-mask icon-calendar" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
 
   /* Offizielles Steel Path Emblem (Difficulty2.png) */
   steelpath: s => `<span class="nav-icon-mask icon-steelpath" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
