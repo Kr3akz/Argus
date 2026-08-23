@@ -8,7 +8,9 @@
  *   kann den Spiel-Login nicht gefaehrden. Beides in denselben Topf zu werfen
  *   wuerde das knappe DE-Budget fuer Preisabfragen verbrauchen.
  *   Stattdessen: eine Warteschlange mit Mindestabstand, wie es die
- *   Nutzungsbedingungen von warframe.market verlangen.
+ *   Nutzungsbedingungen von warframe.market verlangen. Sie liegt seit der
+ *   Order-Anbindung in wfm-http.js, damit Preise, Orders und Auktionen sich
+ *   EINE Kette teilen statt drei nebeneinander zu fahren.
  *
  * API-VERSION:
  *   v1 ist abgeschaltet - /v1/items antwortet 404, /v1/items/<slug>/orders
@@ -24,9 +26,10 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { dataFile } from './paths.js';
+import { queued } from './wfm-http.js';
 
 const HOST = 'https://api.warframe.market';
-const USER_AGENT = 'Cephalon-Argus/0.1 (persoenlicher Mastery-Planer)';
+const USER_AGENT = 'Argus/0.1 (persoenlicher Mastery-Planer)';
 
 const ITEM_CACHE  = () => dataFile('market-items.json');
 const PRICE_CACHE = () => dataFile('market-prices.json');
@@ -36,29 +39,9 @@ const ITEMS_TTL_MS  = 24 * 60 * 60 * 1000;
 /* Preise altern schnell, aber nicht im Minutentakt - und ein Relikt mit sechs
    Belohnungen soll nicht sechs Abrufe pro Blick kosten. */
 const PRICE_TTL_MS  = 30 * 60 * 1000;
-/* warframe.market erlaubt drei Anfragen je Sekunde. 350 ms Abstand liegt
-   darunter und laesst Luft fuer alles andere im Prozess. */
-const MIN_GAP_MS = 350;
 
 let items = null;          // { list, bySlug, byGameRef, byName }
 let priceCache = null;     // slug -> { fetchedAt, sell, buy, sellers }
-let queueTail = Promise.resolve();
-let lastRequestAt = 0;
-
-/* Alle Abrufe laufen durch dieselbe Kette, damit sich parallele Aufrufe nicht
-   gegenseitig ueberholen und den Mindestabstand aushebeln. */
-function queued(task) {
-  const run = queueTail.then(async () => {
-    const wait = MIN_GAP_MS - (Date.now() - lastRequestAt);
-    if (wait > 0) await new Promise(r => setTimeout(r, wait));
-    lastRequestAt = Date.now();
-    return task();
-  });
-  /* Ein Fehlschlag darf die Kette nicht abreissen lassen. */
-  queueTail = run.catch(() => {});
-  return run;
-}
-
 async function getJson(url) {
   const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' } });
   if (!res.ok) {
@@ -85,13 +68,31 @@ function indexItems(list) {
   const bySlug = new Map();
   const byGameRef = new Map();
   const byName = new Map();
+  /* Orders und Auktionen verweisen ueber itemId auf den Markt-Eintrag, nicht
+     ueber den Slug - ohne diesen Index waere jede Orderzeile eine Suche
+     ueber 3.800 Eintraege. */
+  const byId = new Map();
   for (const it of list) {
     const name = it.i18n?.en?.name || '';
     bySlug.set(it.slug, it);
+    if (it.id) byId.set(it.id, it);
     if (it.gameRef) byGameRef.set(it.gameRef, it);
     if (name) byName.set(name.toLowerCase(), it);
   }
-  return { list, bySlug, byGameRef, byName };
+  return { list, bySlug, byId, byGameRef, byName };
+}
+
+/**
+ * Bildadresse eines Markt-Eintrags.
+ *
+ * warframe.market liefert im Item nur den relativen Pfad; der Host steht
+ * nirgends in der Antwort. thumb ist die 128er-Fassung und reicht fuer
+ * Listenzeilen - icon waere das Vielfache an Bytes fuer dieselbe Kachel.
+ * Die Adresse muss in der CSP von index.html stehen, sonst laedt sie nicht.
+ */
+export function marketImage(item, { full = false } = {}) {
+  const rel = full ? item?.i18n?.en?.icon : (item?.i18n?.en?.thumb || item?.i18n?.en?.icon);
+  return rel ? `https://warframe.market/static/assets/${rel}` : null;
 }
 
 /** Handelbare Items inklusive Dukatenwert. Faellt auf den Cache zurueck. */
