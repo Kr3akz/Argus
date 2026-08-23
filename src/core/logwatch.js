@@ -39,9 +39,8 @@ export const DEFAULT_LOG_PATH = () =>
   process.env.ARGUS_EE_LOG ||
   path.join(process.env.LOCALAPPDATA || '', 'Warframe', 'EE.log');
 
-/* Der Auswahlbildschirm laeuft 15 Sekunden. Haeufiger als zweimal pro Sekunde
-   nachzusehen bringt nichts, seltener verschenkt Reaktionszeit. */
-const POLL_MS = 500;
+/* Schnelle Polling-Rate (150ms) fuer sofortige Reaktion bei Reliktauswahl. */
+const POLL_MS = 150;
 
 /* Zwischen "gets reward" und "Got rewards" liegen Millisekunden. Ein aelterer
    Fund gehoert zu einer frueheren Mission und wird nicht mehr angezeigt. */
@@ -52,6 +51,12 @@ const RE_READY      = /ProjectionRewardChoice\.lua:\s*Got rewards/;
 const RE_TIMER      = /ProjectionsCountdown\.lua:\s*Initialize timer\s+\S+\s+(\d+)/;
 const RE_CLOSED     = /ProjectionRewardChoice\.lua:\s*Relic reward screen shut down/;
 
+/* Relikt-Auswahl (ThemedProjectionManager oder Orbiter-Konsole UIConsoleTrigger3):
+   Erkennt Veredelung im Schiff sofort beim Interagieren, Rissauswahl in
+   der Sternenkarte sowie Reliktwahl zwischen Runden in Endlos-Missionen. */
+const RE_SELECT_OPEN   = /ThemedProjectionManager\.lua:\s*PopulateInventoryGrid|Subscribing for \S*ThemedProjectionManager\.swf|UIConsoleTrigger::Open\(\)\s+\S*UIConsoleTrigger3/;
+const RE_SELECT_CLOSED = /InitMapping.*filter\s+\/(?:Lotus\/Types\/Player\/(?:TennoShipInputFilter|AvatarInputFilter|PlayerInputFilter)|EE\/Types\/Input\/MapReduxInputFilter|Lotus\/Types\/Input\/LoadoutReduxInputFilter)|Subscribing for \S*ChatRedux\.swf|Background\.lua:\s*(?:Update the Profile Variable|Trying to add calendar challenges)|UIConsoleTrigger::Open\(\)\s+\S*UIConsoleTrigger(?!3)|(?:ThemedMainMenu|RadialSolarMap|PauseMenu|TopMenu)\.lua|(?:TennoShipAvatar|TennoMotion|MotionController|WallSlideController).*Setting PM_|Created\s+\S*(?:Transmission|Dialog|MapRedux|ThemedMainMenu|RadialSolarMap)\.swf|MatchingService::LeaveSquad|Set squad mission/;
+
 export class LogWatcher extends EventEmitter {
   constructor(file = DEFAULT_LOG_PATH()) {
     super();
@@ -60,6 +65,8 @@ export class LogWatcher extends EventEmitter {
     this.rest = '';
     this.timer = null;
     this.pendingReward = null;   // { uniqueName, at }
+    this.relicSelectActive = false;
+    this.relicSelectOpenedAt = 0;
     this.busy = false;
   }
 
@@ -156,6 +163,25 @@ export class LogWatcher extends EventEmitter {
       return;
     }
 
-    if (RE_CLOSED.test(line)) this.emit('relic-closed', {});
+    if (RE_CLOSED.test(line)) {
+      this.emit('relic-closed', {});
+      return;
+    }
+
+    const timeMatch = /^(\d+\.\d+)/.exec(line);
+    const logSec = timeMatch ? parseFloat(timeMatch[1]) : (Date.now() / 1000);
+
+    if (!this.relicSelectActive && RE_SELECT_OPEN.test(line)) {
+      this.relicSelectActive = true;
+      this.relicSelectOpenedAt = logSec;
+      this.emit('relic-select-open', { at: Date.now() });
+      return;
+    }
+
+    if (this.relicSelectActive && (logSec - this.relicSelectOpenedAt > 0.15 || logSec < this.relicSelectOpenedAt) && RE_SELECT_CLOSED.test(line)) {
+      this.relicSelectActive = false;
+      this.emit('relic-select-closed', { at: Date.now() });
+      return;
+    }
   }
 }

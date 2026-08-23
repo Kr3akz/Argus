@@ -19,7 +19,7 @@ import { dataDir, dataFile } from './paths.js';
 
 export const MIN_INTERVAL_MS = 10 * 60 * 1000;       // 10 min zwischen Abrufen
 export const COOLDOWN_MS     = 3 * 60 * 60 * 1000;   // 3 h Sperre nach Drosselung
-export const USER_AGENT      = 'Cephalon-Argus/1.0 (personal mastery planner)';
+export const USER_AGENT      = 'Argus/1.0 (personal mastery planner)';
 
 /* Der Zaehler ist absichtlich EIN Topf fuer alle Endpunkte. DE drosselt pro IP,
    nicht pro Endpunkt - Profil- und Inventarabruf teilen sich also dasselbe

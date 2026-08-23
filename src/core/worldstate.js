@@ -28,7 +28,7 @@ export async function fetchWorldState({ force = false } = {}) {
 
   try {
     const res = await fetch('https://api.warframestat.us/pc/', {
-      headers: { 'User-Agent': 'Cephalon-Argus/2.0' },
+      headers: { 'User-Agent': 'Argus/2.0' },
       signal: AbortSignal.timeout(8000)
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -131,7 +131,7 @@ function normaliseNode(loc) {
 export async function fetchTennoToolsFissures() {
   try {
     const res = await fetch('https://api.tenno.tools/worldstate', {
-      headers: { 'User-Agent': 'Cephalon-Argus/2.0' },
+      headers: { 'User-Agent': 'Argus/2.0' },
       signal: AbortSignal.timeout(6000)
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -190,7 +190,7 @@ export async function fetchTennoToolsFissures() {
 async function fetchTennoToolsFullWorldState() {
   try {
     const res = await fetch('https://api.tenno.tools/worldstate', {
-      headers: { 'User-Agent': 'Cephalon-Argus/2.0' },
+      headers: { 'User-Agent': 'Argus/2.0' },
       signal: AbortSignal.timeout(6000)
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -313,12 +313,33 @@ async function fetchTennoToolsFullWorldState() {
   }
 }
 
+/**
+ * Restzeit eines Zyklus, Minuten und Sekunden.
+ *
+ * warframestat.us fuehrt `timeLeft` NICHT bei allen dreien: Cetus und Cambion
+ * haben es, der Orb Vallis nicht - dort standen deshalb nur Striche. `expiry`
+ * liefern alle drei, also wird die Zahl hier gerechnet und das Feld der Quelle
+ * nur noch als Rueckfall benutzt.
+ */
+function cycleLeft(expiry, fallback = '') {
+  if (!expiry) return fallback;
+  const ms = new Date(expiry).getTime() - Date.now();
+  if (!Number.isFinite(ms)) return fallback;
+  if (ms <= 0) return 'now';
+
+  const total = Math.floor(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  return h ? `${h}h ${m}m` : `${m}m ${s}s`;
+}
+
 function formatCetus(c) {
   if (!c) return null;
   return {
     state: c.state || (c.isDay ? 'day' : 'night'),
     isDay: !!c.isDay,
-    timeLeft: c.timeLeft || '',
+    timeLeft: cycleLeft(c.expiry, c.timeLeft || ''),
     expiry: c.expiry || null,
     shortString: c.shortString || `${c.timeLeft || ''} to ${c.isDay ? 'Night' : 'Day'}`
   };
@@ -329,7 +350,7 @@ function formatVallis(v) {
   return {
     state: v.state || (v.isWarm ? 'warm' : 'cold'),
     isWarm: !!v.isWarm,
-    timeLeft: v.timeLeft || '',
+    timeLeft: cycleLeft(v.expiry, v.timeLeft || ''),
     expiry: v.expiry || null,
     shortString: v.shortString || `${v.timeLeft || ''} to ${v.isWarm ? 'Cold' : 'Warm'}`
   };
@@ -340,7 +361,7 @@ function formatCambion(c) {
   return {
     state: c.state || 'fass', // 'fass' oder 'vome'
     isFass: c.state === 'fass',
-    timeLeft: c.timeLeft || '',
+    timeLeft: cycleLeft(c.expiry, c.timeLeft || ''),
     expiry: c.expiry || null
   };
 }
