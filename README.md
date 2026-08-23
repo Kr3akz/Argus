@@ -25,7 +25,7 @@ screen opens, it puts a platinum price and ducat value under all four parts.
 **Windows only.** The overlay, the log reader and the inventory lookup all rely on
 Windows APIs.
 
-![The mastery dashboard](docs/img/01-mastery.png)
+![Open goals with the materials they still need](docs/img/01-mastery.png)
 
 ---
 

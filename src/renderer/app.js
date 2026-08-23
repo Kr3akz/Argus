@@ -490,7 +490,7 @@ function renderActiveGoals(data) {
           <div class="agoal-title-row">
             <h3>${esc(g.name)}</h3>
             <span class="agoal-badge ${isLevel ? 'level' : 'farm'}">
-              ${isLevel ? Icon.bolt(12) + ' Leveln' : Icon.target(12) + ' Farmen'}
+              ${isLevel ? Icon.bolt(12) + ' Rank up' : Icon.target(12) + ' Farm'}
             </span>
           </div>
           <div class="agoal-meta">${subText}</div>
@@ -693,11 +693,11 @@ function renderGoals(data) {
           <div class="goal-title-row">
             <h3>${esc(g.name)}</h3>
             <span class="agoal-badge ${isLevel ? 'level' : 'farm'}">
-              ${isLevel ? Icon.bolt(12) + ' Leveln' : Icon.target(12) + ' Farmen'}
+              ${isLevel ? Icon.bolt(12) + ' Rank up' : Icon.target(12) + ' Farm'}
             </span>
           </div>
           <div class="goal-sub">
-            ${g.gain > 0 ? `<span class="gain">+${nf(g.gain)} MR-XP</span>` : (g.isUpgrade ? `<span class="gain gain-upgrade">${isArcane ? 'Arcane' : 'Mod'}</span>` : '')}
+            ${g.gain > 0 ? `<span class="gain">+${nf(g.gain)} MR XP</span>` : (g.isUpgrade ? `<span class="gain gain-upgrade">${isArcane ? 'Arcane' : 'Mod'}</span>` : '')}
             ${subText}
           </div>
         </div>
@@ -753,7 +753,7 @@ function renderGoals(data) {
           ` : ''}
 
           ${g.materials && g.materials.length > 0 ? `
-            <div class="goal-section-label" style="margin-top: ${g.components && g.components.length > 0 ? '14px' : '0'};">Gesamte Rohstoffe & Materialien</div>
+            <div class="goal-section-label" style="margin-top: ${g.components && g.components.length > 0 ? '14px' : '0'};">Total resources & materials</div>
             <div class="matgrid">
               ${g.materials.map(mt => `
                 <div class="mat">
@@ -2262,7 +2262,7 @@ async function openItemModal(uniqueName) {
 
     ${d.materials && d.materials.length ? `
       <div class="im-section">
-        <div class="im-section-title">Gesamte Rohstoffe & Materialien</div>
+        <div class="im-section-title">Total resources & materials</div>
         <div class="im-recipe-meta">
           <span>${Icon.coin(13)} <b>${nf(d.credits)}</b> Credits</span>
           <span>${Icon.clock(13)} <b>${esc(d.buildTime)}</b> Gesamtbauzeit</span>
@@ -5614,7 +5614,7 @@ function updateModalMatchesHint() {
   const matches = (worldStateCache.fissures || []).filter(f => isFissureAlertMatch(f, formCfg));
 
   if (!formCfg.enabled || !formCfg.fissures.enabled) {
-    hintEl.innerHTML = '<span style="color: var(--text-3);">Benachrichtigungen deaktiviert</span>';
+    hintEl.innerHTML = '<span style="color: var(--text-3);">Notifications are off</span>';
   } else if (matches.length) {
     const topMatches = matches.slice(0, 3).map(m => `<b>${esc(m.tier)} ${esc(m.missionType)}</b> (${esc(m.node)})`).join(', ');
     hintEl.innerHTML = `<span class="notif-hit-ic">${Icon.target(13)}</span><span><b>${matches.length} matching fissures</b> active now: ${topMatches}</span>`;
