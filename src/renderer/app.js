@@ -7987,7 +7987,7 @@ let weeklyMode = 'content';   // 'content' | 'vendors'
 /* Sinnbild je Eintrag. Steht hier und nicht im Kern: welches Zeichen etwas
    traegt, ist eine Frage der Oberflaeche, nicht der Daten. */
 const WEEKLY_ICONS = {
-  archon: 'archon', circuit: 'bolt',
+  archon: 'narmer', circuit: 'bolt',
   'deep-archimedea': 'biotics', 'temporal-archimedea': 'clock',
   netracells: 'cube', kahl: 'steelpath',
   teshin: 'steelpath', bird3: 'traces', yonta: 'biotics',

@@ -21,7 +21,11 @@ const MASKEN = [
   /* Die Quelle heisst calender.png (so abgelegt), das Ziel schreibt sich
      richtig - der Dateiname in src/renderer/ ist der, den icons.js und das
      Stylesheet ansprechen, und dort soll kein Tippfehler festwachsen. */
-  { quelle: 'calender.png', ziel: 'calendar.png', groesse: 256 }
+  { quelle: 'calender.png', ziel: 'calendar.png', groesse: 256 },
+  /* Narmer-Zeichen fuer die Archon-Jagd. Spielsymbol von Digital Extremes,
+     wie die uebrigen Zeichen in der Oberflaeche auch - siehe die
+     Lizenznotiz am Ende des README. */
+  { quelle: 'narmer.png', ziel: 'narmer.png', groesse: 256 }
 ];
 const OUT_BUILD = path.join(ROOT, 'build', 'icon.png');
 const OUT_ICONS_DIR = path.join(ROOT, 'src', 'renderer', 'assets', 'icons');
@@ -41,8 +45,18 @@ function decodePNG(file) {
   }
   const w = ihdr.readUInt32BE(0);
   const h = ihdr.readUInt32BE(4);
+  /* Farbtyp 6 ist RGBA (4 Bytes je Pixel), Farbtyp 4 Graustufe+Alpha (2).
+     Die zweite Sorte kommt vor: das Narmer-Zeichen aus dem Wiki ist eine
+     weisse Silhouette und deshalb graustufig gespeichert. Frueher stand
+     hier fest bpp = 4 - eine solche Datei wurde dann zeilenweise falsch
+     ausgelesen und kam als Streifenmuster heraus. */
+  const farbtyp = ihdr[9];
+  if (farbtyp !== 6 && farbtyp !== 4) {
+    throw new Error(`${file}: PNG-Farbtyp ${farbtyp} wird nicht unterstuetzt `
+                  + '(erwartet 6 = RGBA oder 4 = Graustufe+Alpha)');
+  }
+  const bpp = farbtyp === 6 ? 4 : 2;
   const raw = inflateSync(Buffer.concat(idat));
-  const bpp = 4;
   const stride = w * bpp;
   const out = Buffer.alloc(w * h * bpp);
   let srcPos = 0;
@@ -69,7 +83,16 @@ function decodePNG(file) {
       row[x] = val;
     }
   }
-  return { w, h, data: out };
+  /* Nach aussen IMMER RGBA: alles dahinter (Beschneiden, Skalieren,
+     Zusammensetzen) rechnet mit vier Kanaelen. Bei Graustufe+Alpha wird
+     der Grauwert auf R, G und B gelegt. */
+  if (bpp === 4) return { w, h, data: out };
+  const rgba = Buffer.alloc(w * h * 4);
+  for (let i = 0, j = 0; i < out.length; i += 2, j += 4) {
+    rgba[j] = rgba[j + 1] = rgba[j + 2] = out[i];
+    rgba[j + 3] = out[i + 1];
+  }
+  return { w, h, data: rgba };
 }
 
 const CRC = (() => {

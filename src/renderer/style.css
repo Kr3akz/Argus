@@ -458,6 +458,12 @@ body:has(#app:not(.hidden)) .titlebar-brand::after {
   transform: scale(1.1);
 }
 
+.icon-narmer {
+  -webkit-mask-image: url('assets/icons/narmer.png');
+  mask-image: url('assets/icons/narmer.png');
+  transform: scale(1.05);
+}
+
 .icon-checkmark {
   -webkit-mask-image: url('assets/icons/checkmark.png');
   mask-image: url('assets/icons/checkmark.png');
