@@ -16,9 +16,15 @@ export const DEFAULT_HOTKEYS = { overlay: 'Ctrl+R', interact: 'Ctrl+E' };
    weil sie dieselbe Lebensdauer haben wie die uebrige lokale Einstellung -
    und weil ein Fenster, das nach dem Neustart woanders aufgeht, als Fehler
    wahrgenommen wird. */
+/* updateCheck: fragt beim Start und danach stuendlich bei GitHub nach einer
+   neueren Fassung. Standardmaessig AN, weil eine Anwendung, die den Speicher
+   eines fremden Prozesses liest, nicht in einer halbjahrealten Fassung
+   weiterlaufen sollte - abschaltbar bleibt es trotzdem, es ist die einzige
+   Verbindung, die Argus ohne Knopfdruck von selbst aufbaut. */
 const DEFAULTS = {
   accountId: '', platform: 'pc', notes: {},
   overlayBounds: null, overlayOpacity: 0.94, overlayClickThrough: false,
+  updateCheck: true,
   hotkeys: { ...DEFAULT_HOTKEYS }
 };
 

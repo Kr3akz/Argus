@@ -1,30 +1,99 @@
-# Baut Installer und portable .exe und haengt sie an ein GitHub-Release.
+# Baut Installer und portable .exe und veroeffentlicht sie als GitHub-Release.
 #
-# Ausgeloest wird das von einem Versions-Tag:
+# WIE EINE NEUE FASSUNG ENTSTEHT:
 #
-#   npm version 1.0.0        (setzt die Version und legt den Tag an)
-#   git push --follow-tags
+#   npm version patch --no-git-tag-version    (oder minor / major)
+#   git commit -am "..."
+#   git push
 #
-# Danach passiert alles hier - der Rechner, an dem entwickelt wird, muss fuer
-# eine Veroeffentlichung nicht angeschaltet sein. Wichtiger noch: gebaut wird
-# aus dem, was im Repository liegt, nicht aus dem lokalen Arbeitsordner. Was
-# nicht committet ist, kann so auch nicht versehentlich mit ausgeliefert
-# werden - insbesondere nichts aus data/.
+# Mehr nicht. Der Ablauf hier laeuft bei JEDEM Push auf main an, sieht in
+# package.json nach und entscheidet selbst:
+#
+#   Release v<version> gibt es schon  ->  nichts tun, kein Build
+#   Release v<version> fehlt          ->  bauen, Tag setzen, veroeffentlichen
+#
+# WARUM DIE VERSIONSNUMMER ENTSCHEIDET UND NICHT DER PUSH:
+#   Ein Tippfehler im README ist kein Update. Wuerde jeder Push ein Release
+#   erzeugen, bekaeme jeder Nutzer fuer jede Kleinigkeit ein Abzeichen in der
+#   Titelleiste - und der Build liefe zwanzigmal am Tag. Die Versionsnummer
+#   ist die eine Stelle, an der bewusst steht: das hier sollen die Leute
+#   bekommen.
+#
+# WARUM KEIN ENTWURF MEHR:
+#   Frueher entstand ein Draft-Release zum Nachsehen. Die App fragt jetzt
+#   ueber /releases/latest nach neuen Fassungen, und diese Route uebergeht
+#   Entwuerfe - ein Entwurf erreicht also niemanden. Wer erst pruefen will,
+#   nimmt den Probelauf unten (workflow_dispatch ohne Haken): der baut alles,
+#   haengt es an den Lauf und veroeffentlicht nichts.
+#
+# Gebaut wird aus dem, was im Repository liegt, nicht aus dem lokalen
+# Arbeitsordner. Was nicht committet ist, kann so auch nicht versehentlich
+# mit ausgeliefert werden - insbesondere nichts aus data/.
 
 name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
-  # Erlaubt einen Probelauf ueber die Actions-Oberflaeche, ohne Tag.
+    branches:
+      - main
   workflow_dispatch:
+    inputs:
+      veroeffentlichen:
+        description: 'Release veroeffentlichen (aus = nur bauen und anhaengen)'
+        type: boolean
+        default: false
 
 jobs:
+  # Kostet ein paar Sekunden auf einem Linux-Laeufer und erspart im
+  # Regelfall den kompletten Windows-Build.
+  pruefen:
+    runs-on: ubuntu-latest
+    outputs:
+      version:  ${{ steps.entscheidung.outputs.version }}
+      bauen:    ${{ steps.entscheidung.outputs.bauen }}
+      release:  ${{ steps.entscheidung.outputs.release }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version gegen die vorhandenen Releases halten
+        id: entscheidung
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MANUELL: ${{ github.event_name == 'workflow_dispatch' }}
+          VEROEFFENTLICHEN: ${{ inputs.veroeffentlichen }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            NEU=false
+          else
+            NEU=true
+          fi
+
+          if [ "$MANUELL" = "true" ] && [ "$VEROEFFENTLICHEN" != "true" ]; then
+            # Probelauf: immer bauen, nie veroeffentlichen.
+            echo "bauen=true"    >> "$GITHUB_OUTPUT"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Probelauf fuer v$VERSION - es wird nur gebaut."
+          elif [ "$NEU" = "true" ]; then
+            echo "bauen=true"   >> "$GITHUB_OUTPUT"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::v$VERSION ist noch nicht veroeffentlicht - wird gebaut."
+          else
+            echo "bauen=false"   >> "$GITHUB_OUTPUT"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::v$VERSION ist bereits veroeffentlicht - nichts zu tun."
+          fi
+
   windows:
+    needs: pruefen
+    if: needs.pruefen.outputs.bauen == 'true'
     runs-on: windows-latest
     permissions:
-      contents: write        # zum Anlegen des Release noetig
+      contents: write        # zum Anlegen von Tag und Release noetig
 
     steps:
       - uses: actions/checkout@v4
@@ -39,14 +108,29 @@ jobs:
       - name: Abhaengigkeiten installieren
         run: npm ci
 
+      # Landet neben package.json und wird mit ausgeliefert (siehe files: in
+      # electron-builder.yml). Der Abschnitt "About Argus" in den
+      # Einstellungen liest sie - damit beantwortet eine Fehlermeldung aus dem
+      # Feld nicht nur "welche Version", sondern "welcher Stand".
+      - name: Bau-Herkunft festhalten
+        shell: bash
+        env:
+          COMMIT: ${{ github.sha }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          node -e "require('fs').writeFileSync('build-info.json', JSON.stringify({ commit: process.env.COMMIT, builtAt: new Date().toISOString(), runNumber: Number(process.env.RUN_NUMBER) }, null, 2) + '\n')"
+          cat build-info.json
+
       - name: Programmsymbol erzeugen
         run: npm run icon
 
       - name: Paketieren
         run: npm run dist
 
-      # Ohne Signatur ist die Pruefsumme das Einzige, woran ein Nutzer
-      # nachvollziehen kann, dass seine Datei die gebaute ist. Siehe README.
+      # Ohne Signatur ist die Pruefsumme das Einzige, woran sich nachvollziehen
+      # laesst, dass eine Datei die gebaute ist. Der Update-Vorgang in der App
+      # haengt daran: was hier nicht drinsteht, wird dort nicht ausgefuehrt
+      # (siehe core/updates.js).
       - name: Pruefsummen bilden
         shell: pwsh
         run: |
@@ -57,23 +141,27 @@ jobs:
           $lines | Out-File -FilePath release\SHA256SUMS.txt -Encoding utf8
           Get-Content release\SHA256SUMS.txt
 
-      - name: Release anlegen
+      # Legt den Tag v<version> am gebauten Commit gleich mit an - deshalb
+      # muss lokal keiner gesetzt werden.
+      - name: Release veroeffentlichen
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
+        if: needs.pruefen.outputs.release == 'true'
         with:
-          draft: true          # erst pruefen, dann von Hand veroeffentlichen
+          tag_name: v${{ needs.pruefen.outputs.version }}
+          name: v${{ needs.pruefen.outputs.version }}
+          draft: false
           generate_release_notes: true
           files: |
             release/*.exe
             release/SHA256SUMS.txt
 
-      # Beim Probelauf ohne Tag gibt es kein Release - dann bleiben die
-      # Dateien als Artefakt am Lauf haengen, zum Herunterladen und Testen.
+      # Beim Probelauf gibt es kein Release - dann bleiben die Dateien als
+      # Artefakt am Lauf haengen, zum Herunterladen und Testen.
       - name: Artefakte anhaengen (Probelauf)
         uses: actions/upload-artifact@v4
-        if: "!startsWith(github.ref, 'refs/tags/')"
+        if: needs.pruefen.outputs.release != 'true'
         with:
-          name: cephalon-argus-windows
+          name: argus-windows-v${{ needs.pruefen.outputs.version }}
           path: |
             release/*.exe
             release/SHA256SUMS.txt

@@ -6,8 +6,12 @@
 # gerade die Entscheidungen unten sind welche, die man in einem halben Jahr
 # nicht mehr herleiten kann.
 
-appId: com.kr3akz.cephalonargus       # muss zu app.setAppUserModelId() in main.js passen
-productName: Cephalon Argus
+# Die Kennung behaelt bewusst den alten Namen. Sie ist nirgends sichtbar,
+# aber Windows erkennt daran, dass eine neue Fassung dieselbe Anwendung ist -
+# mit einer neuen Kennung staende die alte Installation danach daneben statt
+# ersetzt zu werden. Muss zu app.setAppUserModelId() in main.js passen.
+appId: com.kr3akz.cephalonargus
+productName: Argus
 copyright: Copyright (c) 2026 Kr3akz
 
 directories:
@@ -24,8 +28,16 @@ directories:
 #
 # node_modules ergaenzt electron-builder von selbst, aber nur die
 # Produktiv-Abhaengigkeiten (also koffi, nicht electron-builder).
+#
+# build-info.json schreibt der Workflow unmittelbar vor dem Paketieren
+# (Commit und Bauzeitpunkt, sonst nichts). Sie steht bewusst mit auf der
+# Liste - der Abschnitt "About Argus" in den Einstellungen liest sie, und
+# ohne sie meldet ein Release denselben Stand wie ein Lauf aus dem
+# Quellordner. Fehlt sie, faellt die Anzeige auf "development build" zurueck;
+# ein lokales `npm run dist` braucht sie also nicht.
 files:
   - package.json
+  - build-info.json
   - src/main/**/*
   - src/core/**/*
   - src/renderer/**/*
@@ -69,7 +81,7 @@ nsis:
   perMachine: false
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: Cephalon Argus
+  shortcutName: Argus
   artifactName: ${productName}-${version}-Setup.${ext}
   # Ziele, Builds und Notizen liegen in %APPDATA% und sollen eine
   # Deinstallation ueberleben - wer neu installiert, findet seinen Stand wieder.

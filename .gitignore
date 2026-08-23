@@ -42,6 +42,12 @@ release/
 *.log
 npm-debug.log*
 
+# Commit und Bauzeitpunkt, geschrieben von .github/workflows/release.yml
+# unmittelbar vor dem Paketieren. Entsteht im Lauf, gehoert nicht ins
+# Repository - eine committete Fassung wuerde in jedem Build denselben,
+# laengst veralteten Commit ausweisen.
+build-info.json
+
 # ---------------------------------------------------------------------------
 # Zugangsdaten
 # ---------------------------------------------------------------------------
