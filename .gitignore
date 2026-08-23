@@ -25,10 +25,15 @@ data/*
 !data/config.example.json
 
 # ---------------------------------------------------------------------------
-# IDE und Betriebssystem
+# IDE, Werkzeuge und Betriebssystem
+#
+# .claude/ ist die Konfiguration eines einzelnen Entwicklerwerkzeugs, keine
+# Projektinfrastruktur - wer hier mitarbeitet, braucht sie nicht und soll
+# seine eigene nicht ueberschrieben bekommen.
 # ---------------------------------------------------------------------------
 .idea/
 .vscode/
+.claude/
 .DS_Store
 Thumbs.db
 

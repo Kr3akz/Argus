@@ -1,0 +1,38 @@
+# Zeilenenden.
+#
+# WARUM DIESE DATEI:
+#   Entwickelt wird hier unter Windows mit core.autocrlf=true - im
+#   Repository landet LF, im Arbeitsordner steht CRLF. Das haelt genau so
+#   lange, wie alle dieselbe Einstellung haben. Wer mit autocrlf=false
+#   committet, legt CRLF ab, und ab da zeigt jeder zweite Diff eine ganze
+#   Datei als geaendert, obwohl niemand sie angefasst hat.
+#
+#   text=auto entscheidet das nicht mehr pro Rechner, sondern hier: im
+#   Repository ist Text immer LF, ausgecheckt wird plattformueblich.
+* text=auto
+
+# Sicherheitshalber ausgeschrieben, wo es darauf ankommt.
+*.js    text
+*.cjs   text
+*.mjs   text
+*.json  text
+*.html  text
+*.css   text
+*.md    text
+*.yml   text
+
+# PowerShell mit CRLF: Windows PowerShell 5.1 stolpert bei manchen
+# Konstrukten ueber reine LF-Zeilenenden, und diese Skripte laufen
+# ausschliesslich dort.
+*.ps1   text eol=crlf
+
+# Binaerdateien - nie anfassen, nie als Text vergleichen.
+*.png   binary
+*.jpg   binary
+*.ico   binary
+*.exe   binary
+*.node  binary
+
+# SVG ist Text (und soll auch als Diff lesbar sein), zaehlt aber nicht als
+# Programmiersprache in der Sprachstatistik von GitHub.
+*.svg   text linguist-detectable=false
