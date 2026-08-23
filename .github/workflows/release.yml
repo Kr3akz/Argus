@@ -124,6 +124,14 @@ jobs:
       - name: Programmsymbol erzeugen
         run: npm run icon
 
+      # npm run dist traegt --publish never, und das ist hier entscheidend:
+      # electron-builder erkennt von sich aus, dass es in einem CI-Lauf
+      # steckt, und versucht die fertigen Dateien selbst hochzuladen
+      # ("artifacts will be published ... reason=CI detected"). Dafuer will
+      # es ein GH_TOKEN, das es nicht bekommt - der Schritt scheitert dann
+      # NACH einem vollstaendig geglueckten Build.
+      # Veroeffentlicht wird weiter unten, von action-gh-release, und nur
+      # von dort. Zwei Wege zum selben Release waeren einer zu viel.
       - name: Paketieren
         run: npm run dist
 

@@ -22,7 +22,7 @@
     "start": "electron .",
     "icon": "node tools/make-icon.mjs",
     "check-farm": "node tools/check-farm-nodes.mjs",
-    "dist": "electron-builder",
+    "dist": "electron-builder --publish never",
     "dist:dir": "electron-builder --dir",
     "report": "node src/cli/report.js",
     "scan-test": "node src/cli/scan-test.js",
