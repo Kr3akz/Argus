@@ -26,7 +26,7 @@ import { dataDir as defaultDataDir } from './paths.js';
 const DE_URL = 'https://drops.warframestat.us/data/all.json';
 const WF_URL = 'https://api.warframestat.us/mods/?only=uniqueName,name,drops';
 const CACHE  = dir => path.join(dir, 'drop-sources.json');
-const USER_AGENT = 'Cephalon-Argus/0.1 (persoenlicher Mastery-Planer)';
+const USER_AGENT = 'Argus/0.1 (persoenlicher Mastery-Planer)';
 
 /* Droptabellen aendern sich nur zu Updates und Prime-Access-Wechseln. */
 const TTL_MS = 7 * 24 * 60 * 60 * 1000;

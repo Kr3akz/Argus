@@ -30,7 +30,7 @@ import { dataDir as defaultDataDir } from './paths.js';
 const URL_ITEMS = 'https://api.warframestat.us/items/?only=uniqueName,name,category,wikiaThumbnail';
 const WIKI = 'https://wiki.warframe.com';
 const CACHE = dir => path.join(dir, 'card-images.json');
-const USER_AGENT = 'Cephalon-Argus/0.1 (persoenlicher Mastery-Planer)';
+const USER_AGENT = 'Argus/0.1 (persoenlicher Mastery-Planer)';
 
 /* Bilder wechseln nur, wenn DE eine Karte neu zeichnet. */
 const TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -117,9 +117,23 @@ function fileNameOf(url) {
  * sind es 100 - bei sechshundert Mods in einer Liste ist das der Unterschied
  * zwischen fluessig und zaeh.
  */
+const CARD_OVERRIDES = new Map([
+  ['/Lotus/Upgrades/CosmeticEnhancers/Antiques/HeatStatusProcOnUltimateKill', 'Zid-AnUskos.png'],
+  ['/Lotus/Upgrades/CosmeticEnhancers/Antiques/StatusChanceOnUltimateHit', 'Zid-AnAsheir.png'],
+  ['/Lotus/Upgrades/CosmeticEnhancers/Antiques/UltimateInvisibilty', 'Zid-AnSek-Eel.png'],
+  ['/Lotus/Upgrades/CosmeticEnhancers/Antiques/VoidSlingsOverguardStrip', 'Zid-AnOsbok.png'],
+  ['zid-an uskos', 'Zid-AnUskos.png'],
+  ['zid-an asheir', 'Zid-AnAsheir.png'],
+  ['zid-an sek-eel', 'Zid-AnSek-Eel.png'],
+  ['zid-an osbok', 'Zid-AnOsbok.png'],
+  ['zid-an haras', 'Zid-AnHaras.png']
+]);
+
 export function cardUrl(idx, { uniqueName, name } = {}, width = 160) {
   const file = idx?.files.get(uniqueName)
-    || (name ? idx?.byName.get(String(name).toLowerCase()) : null);
+    || (name ? idx?.byName.get(String(name).toLowerCase()) : null)
+    || (uniqueName ? CARD_OVERRIDES.get(uniqueName) : null)
+    || (name ? CARD_OVERRIDES.get(String(name).toLowerCase()) : null);
   if (!file) return null;
 
   const [base, version] = file.split('?');

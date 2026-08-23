@@ -6,6 +6,7 @@
 
 import { imageUrl } from './catalog.js';
 import { findMarketItem } from './market.js';
+import { classify } from './classify.js';
 
 export const DUCAT_VALUES = {
   COMMON: 15,
@@ -312,8 +313,15 @@ export function buildPrimeSets(market, priceCache = {}, ownedItems = [], { onlyO
       : 0;
     const isMastered = !!(mastered.has(set.gameRef) || mastered.has(set.name.toLowerCase()));
 
+    /* Gattung fuer den Filter im Inventar - dieselbe Einteilung wie ueberall
+       sonst, damit "Warframes" hier und im Katalog dasselbe meint. */
+    const catItem = catalog?.byUniqueName?.get(set.gameRef);
+    const category = catItem ? classify(catItem).category : null;
+
     out.push({
       ...set,
+      kind: 'prime',
+      category,
       totalParts,
       ownedParts,
       complete,

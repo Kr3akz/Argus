@@ -70,7 +70,7 @@ const TYPE_LABELS = {
   PARAZON: 'Parazon-Mod',    'HELMINTH CHARGER': 'Helminth-Charger-Mod'
 };
 
-const isArcane = u => String(u || '').includes('/CosmeticEnhancers/');
+const isArcane = u => String(u || '').includes('/CosmeticEnhancers/') && !String(u || '').includes('/Peculiars/');
 
 /** Set-Pfad -> Anzeigename. .../Sets/Vigilante/VigilanteSetMod ergibt "Vigilante". */
 function setName(modSet) {

@@ -25,7 +25,7 @@ import { dataDir, dataFile } from './paths.js';
 
 const URL = 'https://drops.warframestat.us/data/relics.json';
 const CACHE = () => dataFile('relic-drops.json');
-const USER_AGENT = 'Cephalon-Argus/0.1 (persoenlicher Mastery-Planer)';
+const USER_AGENT = 'Argus/0.1 (persoenlicher Mastery-Planer)';
 
 /* Die Tabellen aendern sich nur zu Updates und Prime-Access-Wechseln. */
 const TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -112,6 +112,76 @@ export async function loadRelicTables({ refresh = false } = {}) {
     index.stale = err.message;
   }
   return index;
+}
+
+/**
+ * Die UMGEKEHRTE Frage: in welchen Relikten steckt dieses Teil?
+ *
+ * Die Tabelle beantwortet von Haus aus nur "was ist in diesem Relikt". Wer ein
+ * fehlendes Set-Teil vor sich hat, fragt aber andersherum - und dafuer braucht
+ * es einen eigenen Index ueber den Belohnungsnamen.
+ *
+ * Gesucht wird ueber ALLE Zustaende, aber je Relikt nur EINMAL: die vier
+ * Politur-Stufen zeigen dieselben sechs Belohnungen, nur mit anderen Chancen.
+ * Mitgefuehrt wird die Chance im intakten Zustand - das ist der Wert, mit dem
+ * man das Relikt bekommt.
+ */
+export function indexByReward(idx) {
+  const byReward = new Map();
+
+  for (const relic of idx?.relics || []) {
+    const seen = new Set();
+    for (const [state, rewards] of Object.entries(relic.states || {})) {
+      for (const r of rewards) {
+        if (!r.itemName || seen.has(r.itemName)) continue;
+        seen.add(r.itemName);
+
+        const intact = (relic.states.Intact || []).find(x => x.itemName === r.itemName);
+        const hit = {
+          key: relic.key, tier: relic.tier, name: relic.name,
+          rarity: (intact || r).rarity,
+          chance: (intact || r).chance ?? null,
+          /* Ohne intakte Zeile stammt die Angabe aus einer anderen Stufe -
+             das muss man sehen koennen, statt sie fuer die Grundchance zu halten. */
+          fromState: intact ? 'Intact' : state
+        };
+
+        const list = byReward.get(r.itemName);
+        if (list) list.push(hit); else byReward.set(r.itemName, [hit]);
+      }
+    }
+  }
+
+  /* Haeufigste zuerst - wer ein Teil sucht, will das Relikt mit der besten
+     Chance zuoberst. */
+  for (const list of byReward.values()) {
+    list.sort((a, b) => (b.chance || 0) - (a.chance || 0)
+                     || RELIC_TIERS.indexOf(a.tier) - RELIC_TIERS.indexOf(b.tier)
+                     || a.name.localeCompare(b.name, 'en', { numeric: true }));
+  }
+  return byReward;
+}
+
+/**
+ * Relikte zu einem Teilenamen.
+ *
+ * DEs Belohnungsnamen haengen "Blueprint" an, wo das Teil selbst keinen traegt
+ * ("Wisp Prime Blueprint" gegen "Wisp Prime Neuroptics"). Deshalb wird beim
+ * Nichttreffer ein zweites Mal ohne diesen Zusatz gesucht - sonst faende man
+ * ausgerechnet die Hauptbauplaene nie.
+ */
+export function relicsForReward(byReward, itemName) {
+  const name = String(itemName || '').trim();
+  if (!name) return [];
+
+  const direct = byReward.get(name);
+  if (direct) return direct;
+
+  const withBp = byReward.get(`${name} Blueprint`);
+  if (withBp) return withBp;
+
+  const withoutBp = byReward.get(name.replace(/\s+Blueprint$/i, ''));
+  return withoutBp || [];
 }
 
 /**

@@ -11,6 +11,7 @@
  */
 import { imageUrl, cleanGameText } from './catalog.js';
 import { POLARITIES, modDrain, auraBonus, isAuraMod } from './mods.js';
+import { isInternalArcane } from './arcanes.js';
 
 export const SECTIONS = [
   { key: 'relics',     label: 'Relics' },
@@ -31,7 +32,7 @@ const RELIC_QUALITY = {
 };
 
 const isRelic  = u => u.includes('/Types/Game/Projections/');
-const isArcane = u => u.includes('/CosmeticEnhancers/');
+const isArcane = u => u.includes('/CosmeticEnhancers/') && !u.includes('/Peculiars/');
 
 /** Letztes Pfadsegment lesbar machen - Notnagel fuer Eintraege ohne Katalogtreffer. */
 function humanize(uniqueName) {
@@ -183,6 +184,35 @@ function decorateUpgrade(entry, catalog) {
 
 const byName = (a, b) => a.name.localeCompare(b.name, 'en');
 
+export function classifyMod(m) {
+  const t = String(m?.type || '').toUpperCase();
+  const cp = String(m?.compatName || '').toUpperCase();
+  const u = String(m?.uniqueName || '');
+
+  if (t === 'PARAZON' || cp === 'PARAZON' || u.includes('/Parazon/')) return 'parazon';
+  if (t === 'WARFRAME' || t === 'AURA' || cp === 'WARFRAME' || cp === 'AURA' || u.includes('/Warframe/') || u.includes('/Suits/')) return 'Suits';
+  if (t === 'PRIMARY' || ['RIFLE', 'SHOTGUN', 'BOW', 'SNIPER', 'ASSAULT RIFLE', 'PRIMARY'].includes(cp) || u.includes('/Rifle/') || u.includes('/Shotgun/') || u.includes('/Bow/')) return 'LongGuns';
+  if (t === 'SECONDARY' || cp === 'PISTOL' || cp === 'SECONDARY' || u.includes('/Pistol/')) return 'Pistols';
+  if (t === 'MELEE' || t === 'STANCE' || cp === 'MELEE' || cp === 'STANCE' || u.includes('/Melee/') || u.includes('/Stances/')) return 'Melee';
+  if (['SENTINEL', 'KUBROW', 'KAVAT', 'HELMINTH CHARGER'].includes(t) || ['SENTINEL', 'KUBROW', 'KAVAT', 'BEAST', 'ROBOTIC', 'COMPANION'].includes(cp) || u.includes('/Sentinels/') || u.includes('/Pets/')) return 'companion';
+  if (['ARCHWING', 'ARCH-GUN', 'ARCH-MELEE'].includes(t) || ['ARCHGUN', 'ARCHMELEE', 'ARCHWING'].includes(cp) || u.includes('/Space/')) return 'archwing';
+  if (cp === 'NECRAMECH' || u.includes('/Mech/')) return 'necramech';
+  if (u.includes('/Railjack/')) return 'railjack';
+  return 'other';
+}
+
+export function classifyArcane(a) {
+  const n = String(a?.name || '');
+  const p = n.split(' ')[0];
+  if (['Primary', 'Longbow', 'Shotgun', 'Fractalized'].includes(p)) return 'LongGuns';
+  if (['Secondary', 'Akimbo', 'Pax', 'Cascadia', 'Residual', 'Conjunction'].includes(p)) return 'Pistols';
+  if (['Melee', 'Exodia'].includes(p)) return 'Melee';
+  if (['Magus', 'Zid-An'].includes(p)) return 'operator';
+  if (['Virtuos', 'Eternal', 'Emergence'].includes(p)) return 'amp';
+  if (['Arcane', 'Molt', 'Theorem'].includes(p)) return 'Suits';
+  return 'other';
+}
+
 /**
  * Baut die Ansicht fuer den Inventar-Tab.
  *
@@ -214,13 +244,77 @@ export function buildInventory(inventory, catalog) {
   }
   const upgrades = [...merged.values()];
 
+  /* Alle Katalog-Mods und Arcanes erfassen, damit auch unbesessene Eintraege
+     angezeigt und gefiltert werden koennen. */
+  const allCatalogUpgrades = (catalog?.lookup || []).filter(item => item.uniqueName && item.name && !item.uniqueName.includes('/Focus/'));
+
+  const allModsMap = new Map();
+  const allArcanesMap = new Map();
+
+  for (const item of allCatalogUpgrades) {
+    if (isArcane(item.uniqueName)) {
+      if (isInternalArcane(item.uniqueName)) continue;
+      if (!allArcanesMap.has(item.uniqueName)) {
+        allArcanesMap.set(item.uniqueName, {
+          ...baseEntry(item.uniqueName, catalog),
+          category: classifyArcane(item),
+          ranks: [],
+          maxRank: null,
+          count: 0,
+          owned: false
+        });
+      }
+    } else if (item.uniqueName.includes('/Upgrades/')) {
+      if (item.name === 'Unfused Artifact' || item.uniqueName.includes('/Test/') || item.uniqueName.includes('/Debug/')) continue;
+      if (!allModsMap.has(item.uniqueName)) {
+        const entry = baseEntry(item.uniqueName, catalog);
+        entry.category = classifyMod(item);
+        entry.ranks = [];
+        entry.maxRank = null;
+        entry.count = 0;
+        entry.owned = false;
+        decorateUpgrade(entry, catalog);
+        allModsMap.set(item.uniqueName, entry);
+      }
+    }
+  }
+
+  // Besessene Exemplare einpflegen
+  for (const entry of upgrades) {
+    if (isArcane(entry.uniqueName)) {
+      const existing = allArcanesMap.get(entry.uniqueName);
+      if (existing) {
+        Object.assign(existing, entry, {
+          category: existing.category || classifyArcane(catalog?.byUniqueName?.get(entry.uniqueName)),
+          owned: entry.count > 0
+        });
+      } else {
+        const cat = classifyArcane(catalog?.byUniqueName?.get(entry.uniqueName));
+        allArcanesMap.set(entry.uniqueName, { ...entry, category: cat, owned: entry.count > 0 });
+      }
+    } else {
+      const existing = allModsMap.get(entry.uniqueName);
+      if (existing) {
+        Object.assign(existing, entry, {
+          category: existing.category || classifyMod(catalog?.byUniqueName?.get(entry.uniqueName)),
+          owned: entry.count > 0
+        });
+        decorateUpgrade(existing, catalog);
+      } else {
+        const decorated = decorateUpgrade(entry, catalog);
+        decorated.category = classifyMod(catalog?.byUniqueName?.get(entry.uniqueName));
+        decorated.owned = entry.count > 0;
+        allModsMap.set(entry.uniqueName, decorated);
+      }
+    }
+  }
+
   const sections = {
     relics:     misc.filter(e => isRelic(e.uniqueName)).map(decorateRelic).sort(byName),
     sets:       [],
     materials:  misc.filter(e => !isRelic(e.uniqueName)).sort(byName),
-    arcanes:    upgrades.filter(e => isArcane(e.uniqueName)).sort(byName),
-    mods:       upgrades.filter(e => !isArcane(e.uniqueName))
-                        .map(e => decorateUpgrade(e, catalog)).sort(byName),
+    arcanes:    [...allArcanesMap.values()].sort(byName),
+    mods:       [...allModsMap.values()].sort(byName),
     blueprints: collect(inv.Recipes, catalog).sort(byName)
   };
 
@@ -229,6 +323,7 @@ export function buildInventory(inventory, catalog) {
     const list = sections[key] || [];
     totals[key] = {
       arten: list.length,
+      ownedArten: list.filter(e => (e.count || 0) > 0).length,
       stueck: list.reduce((sum, e) => sum + (e.count || 0), 0)
     };
   }
@@ -242,7 +337,8 @@ export function buildInventory(inventory, catalog) {
       credits:  inv.RegularCredits ?? 0,
       platinum: inv.PremiumCredits ?? 0,
       endo:     inv.FusionPoints ?? 0,
-      ducats:   inv.PrimeTokens ?? 0
+      ducats:   inv.PrimeTokens ?? 0,
+      traces:   (inv.MiscItems || []).find(e => typeof e.ItemType === 'string' && e.ItemType.includes('VoidTearDrop'))?.ItemCount ?? 0
     },
     unresolved
   };
@@ -253,4 +349,31 @@ export function filterEntries(entries, query) {
   const q = String(query || '').toLowerCase().trim();
   if (!q) return entries;
   return entries.filter(e => e.name.toLowerCase().includes(q));
+}
+
+/**
+ * Welche Mods der Spieler besitzt - und bis zu welchem Rang.
+ *
+ * Fuer das Build-Brett: solange das Inventar vorliegt, muss dort nichts mehr von
+ * Hand angehakt werden. Beide Quellen zaehlen, denn derselbe Mod kann ungerankt
+ * im Vorrat (RawUpgrades, mit Anzahl) UND geranked als Einzelstueck (Upgrades)
+ * liegen.
+ *
+ * Ergebnis ist eine Map uniqueName -> hoechster besessener Rang. Eine Map und
+ * kein Set, weil `has` den Besitz beantwortet, `get` aber zusaetzlich sagt, ob
+ * das Exemplar schon den Rang hat, den der Build verlangt. Beides zusammen
+ * unterscheidet "fehlt" von "liegt da, muss noch aufgewertet werden".
+ */
+export function ownedUpgradeRanks(inventory) {
+  const owned = new Map();
+
+  const note = (uniqueName, rank) => {
+    if (!uniqueName) return;
+    owned.set(uniqueName, Math.max(owned.get(uniqueName) ?? 0, rank));
+  };
+
+  for (const row of inventory?.RawUpgrades || []) note(row.ItemType, 0);
+  for (const row of inventory?.Upgrades   || []) note(row.ItemType, rankOf(row));
+
+  return owned;
 }
