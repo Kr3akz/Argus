@@ -7529,55 +7529,88 @@ input[type=number]:focus, input[type=email]:focus, input[type=password]:focus {
 
 /* ---------- Wochenrotation ---------- */
 
-/* Die Reset-Zeit steht ueber allem, weil sie die Frage beantwortet, mit der
-   man den Reiter oeffnet: wie lange habe ich noch? */
+/* Tiefe durch Helligkeit und einen weichen Verlauf in der Ecke - dieselbe
+   Sprache wie bei den Dukaten-Karten (.ducat-card.rarity-*), nur ohne deren
+   Farbachse: dort bedeutet Gold/Silber/Bronze Seltenheit, das waere hier
+   eine falsche Zweitbedeutung. Eine Kante haette das schneller hinbekommen,
+   aber genau das schreibt der Kopf dieser Datei aus: Flaechen trennen sich
+   durch Helligkeit, nicht durch Linien. */
 .weekly-reset {
+  position: relative; overflow: hidden;
   display: flex; align-items: center; gap: 16px;
-  padding: 16px 20px; margin-bottom: 26px;
-  background: var(--surface); border-radius: var(--r-md);
-  border-left: 3px solid var(--accent);
+  padding: 20px 24px; margin-bottom: 22px;
+  background:
+    radial-gradient(140% 160% at 0% 0%, rgb(var(--t-accent) / .13), transparent 60%),
+    var(--surface);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
 }
-.weekly-reset-main { display: flex; align-items: baseline; gap: 10px; }
+.weekly-reset-ring {
+  position: absolute; top: 50%; right: -60px; translate: 0 -50%;
+  width: 200px; height: 200px; border-radius: 50%;
+  background: radial-gradient(circle, rgb(var(--t-accent) / .1), transparent 70%);
+  pointer-events: none;
+}
+.weekly-reset-main { position: relative; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .weekly-reset-label { font-size: 12px; color: var(--text-3); }
 .weekly-reset-main b {
-  font-size: 21px; font-weight: 650; color: var(--accent);
-  font-variant-numeric: tabular-nums;
+  font-size: 26px; font-weight: 650; color: var(--text);
+  letter-spacing: -.3px; font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 22px rgb(var(--t-accent) / .35);
 }
-.weekly-reset-when { font-size: 12px; color: var(--text-3); margin-left: auto; }
-.weekly-reset .btn-sm { flex-shrink: 0; }
+.weekly-reset-when { font-size: 12px; color: var(--text-3); }
+.weekly-reset .btn-sm { position: relative; flex-shrink: 0; margin-left: auto; }
+
+/* ---------- Content / Vendor Umschalter ---------- */
+.weekly-mode-row {
+  display: flex; align-items: center; gap: 14px;
+  margin-bottom: 18px;
+}
+.weekly-mode-row .meta { font-size: 12px; color: var(--text-3); }
+
+.weekly-pane { display: none; }
+.weekly-pane.active { display: block; animation: fade .2s var(--ease); }
 
 .weekly-group-title {
   font-size: 13px; font-weight: 600; color: var(--text-2);
   text-transform: uppercase; letter-spacing: .6px;
   margin: 4px 0 14px;
 }
-.weekly-group-title:not(:first-of-type) { margin-top: 30px; }
 
-/* auto-fill statt auto-fit: bei zwei Karten sollen sie ihre Breite behalten
-   und nicht ueber den halben Bildschirm laufen. */
-/* align-items: start, sonst zieht das Raster jede Karte auf die Hoehe der
-   groessten ihrer Zeile - neben einer Archimedea mit drei Missionen stuende
-   "Netracells" mit einer Zeile Text und einem Handbreit Leere darunter. */
 .weekly-grid {
   display: grid; gap: 14px; align-items: start;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
 }
-/* Haendlerkarten tragen eine Zeile statt einer Liste - schmaler reicht. */
 .weekly-grid-vendors { grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); }
 
 .wk-card {
-  background: var(--surface); border-radius: var(--r-md);
+  position: relative; overflow: hidden;
+  background:
+    radial-gradient(120% 140% at 100% 0%, rgb(var(--t-accent) / .05), transparent 55%),
+    var(--surface);
+  border-radius: var(--r-md);
   padding: 15px 17px;
-  transition: background .18s var(--ease);
+  transition: background .18s var(--ease), transform .18s var(--ease), box-shadow .18s var(--ease);
 }
-.wk-card:hover { background: var(--surface-2); }
+/* Sanftes Anheben statt einer Kante, die aufleuchtet - dieselbe Bewegung
+   wie bei den anderen Karten im Haus. */
+.wk-card:hover { background: var(--surface-2); transform: translateY(-1px); box-shadow: var(--shadow); }
+/* Ganz erledigt: die Flaeche kippt spuerbar, aber knapp ins Gruene - kein
+   Haken-Icon noetig, die Karte selbst meldet "fertig". Dieselbe Bedeutung
+   wie .settings-note.ok und .btn-sm.on an anderer Stelle im Haus. */
+.wk-card.is-complete {
+  background:
+    radial-gradient(120% 140% at 100% 0%, rgb(var(--t-green) / .09), transparent 55%),
+    var(--surface);
+}
 
-.wk-head { display: flex; align-items: flex-start; gap: 12px; }
+.wk-head { position: relative; display: flex; align-items: flex-start; gap: 12px; }
 .wk-icon {
   display: grid; place-items: center; flex-shrink: 0;
   width: 32px; height: 32px; border-radius: 9px;
   background: var(--accent-sf); color: var(--accent);
 }
+.wk-card.is-complete .wk-icon { background: rgba(var(--t-green) / .16); color: var(--green); }
 .wk-id { min-width: 0; flex: 1; }
 .wk-id b { display: block; font-size: 14px; font-weight: 600; }
 .wk-id span { display: block; font-size: 11.5px; color: var(--text-3); margin-top: 2px; }
@@ -7588,25 +7621,72 @@ input[type=number]:focus, input[type=email]:focus, input[type=password]:focus {
   font-variant-numeric: tabular-nums;
 }
 
-/* Gemessen oder gerechnet - siehe die Fussnote unter dem Reiter. */
+/* Woher eine Zeit oder ein Haken stammt - gemessen, gerechnet oder aus dem
+   eigenen Spielstand gelesen. Drei Antworten auf dieselbe Frage: "kann ich
+   dem trauen?". */
 .weekly-src {
   font-size: 9px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase;
   padding: 2px 6px; border-radius: 999px; cursor: default;
 }
-.weekly-src-api   { background: rgba(var(--t-green) / .16);  color: var(--green); }
-.weekly-src-reset { background: rgba(255, 255, 255, .07);    color: var(--text-3); }
+.weekly-src-live  { background: rgba(var(--t-green) / .16); color: var(--green); }
+.weekly-src-reset { background: rgba(255, 255, 255, .07);   color: var(--text-3); }
+.weekly-src-auto  { background: rgb(var(--t-accent) / .16); color: var(--accent); }
+
+/* ---------- Fortschritt: Punkte (Archon 3, Netracells 5) ---------- */
+.wk-pips { display: flex; align-items: center; gap: 5px; }
+.wk-pip {
+  width: 15px; height: 15px; border-radius: 5px;
+  background: rgba(255, 255, 255, .07);
+  transition: background .15s var(--ease);
+}
+.wk-pip.filled { background: var(--accent); }
+.wk-pips.is-complete .wk-pip.filled { background: var(--green); }
+.wk-pip-label { font-size: 11.5px; color: var(--text-3); margin-left: 4px; font-variant-numeric: tabular-nums; }
+
+/* ---------- Fortschritt: Balken (Circuit, zwei Kategorien) ---------- */
+.wk-progress { margin-top: 13px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.05); }
+.wk-progress + .wk-progress { margin-top: 10px; padding-top: 0; border-top: none; }
+.wk-bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.wk-bar-label { font-size: 11.5px; color: var(--text-2); font-weight: 550; flex-shrink: 0; width: 96px; }
+.wk-bar { flex: 1; height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.wk-bar-fill { height: 100%; background: var(--accent); border-radius: 999px; transition: width .3s var(--ease); }
+.wk-bar-fill.is-complete { background: var(--green); }
+.wk-bar-num { font-size: 11px; color: var(--text-3); flex-shrink: 0; font-variant-numeric: tabular-nums; width: 40px; text-align: right; }
+.wk-unclaimed {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10.5px; color: var(--gold); margin-top: 2px;
+}
+
+/* ---------- Manueller Haken (Archimedea, Kahl) ---------- */
+/* Dieselben zwei Klassen wie im Einstellungs-Tab - ein Kippschalter sieht
+   ueberall im Haus gleich aus. */
+.wk-manual {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-top: 13px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.05);
+}
+.wk-manual-label { font-size: 11.5px; color: var(--text-3); }
 
 .wk-body { margin-top: 13px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.05); }
 .wk-row { padding: 5px 0; }
 .wk-row b { display: block; font-size: 12.5px; font-weight: 550; color: var(--text); }
-/* Die Abweichungen und Risiken der Archimedea werden lang - lieber drei
-   Zeilen als ein abgeschnittener Satz, aus dem niemand schlau wird. */
 .wk-row span { display: block; font-size: 11px; color: var(--text-3); margin-top: 2px; line-height: 1.45; }
 
 .wk-vendor-what { font-size: 12.5px; color: var(--text-2); line-height: 1.5; }
 
-.weekly-foot {
-  margin-top: 26px; font-size: 11.5px; color: var(--text-3); line-height: 1.6;
-  max-width: 92ch;
+/* Echte Rotation als Chips - nur bei Teshin und Nightwave gefuellt, wo die
+   Antwort sie wirklich mitliefert. Die anderen vier Haendler zeigen keine:
+   kein Katalog dafuer, also keine erfundene Liste. */
+.wk-rotation {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  margin-top: 11px; padding-top: 11px; border-top: 1px solid rgba(255,255,255,.05);
 }
-.weekly-foot .weekly-src { margin: 0 2px; }
+.wk-chip {
+  font-size: 10.5px; color: var(--text-2); background: rgba(255,255,255,.05);
+  padding: 3px 9px; border-radius: 999px;
+}
+
+.weekly-foot {
+  margin-top: 26px; font-size: 11.5px; color: var(--text-3); line-height: 1.7;
+  max-width: 96ch;
+}
+.weekly-foot .weekly-src { margin: 0 3px; }

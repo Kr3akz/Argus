@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld('api', {
   /* Wochenrotation - stammt aus demselben Abruf wie der Weltzustand,
      siehe core/weekly.js. */
   getWeekly:       (force)     => ipcRenderer.invoke('weekly:get', force),
+  setWeeklyDone:   (key, resetAt, done) => ipcRenderer.invoke('weekly:setDone', key, resetAt, done),
   getFarmingGuide: (q)         => ipcRenderer.invoke('farming:get', q),
   getMiningGuide:  (q)         => ipcRenderer.invoke('mining:get', q),
   getDucatsData:   ()          => ipcRenderer.invoke('ducats:get'),

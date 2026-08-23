@@ -156,20 +156,29 @@ function teshin(sp) {
     was: belohnung
       ? `${belohnung.name} — ${belohnung.cost} Steel Essence`
       : 'Steel Path Honors',
+    /* Einzige Stelle mit einer echten Vorschau: die Rotation steht komplett
+       in der Antwort, nicht nur der aktuelle Eintrag. */
+    rotation: (sp?.rotation || []).map(r => `${r.name} (${r.cost})`),
     expiry: sp?.expiry || null,
-    quelle: sp?.expiry ? 'api' : 'reset'
+    quelle: sp?.expiry ? 'api' : 'reset',
+    angebotBekannt: true
   };
 }
 
 /* Diese vier tauchen in keiner Antwort auf. Sie stehen hier, weil die
    Frage "was kann ich diese Woche noch holen?" sonst unvollstaendig
-   beantwortet waere - aber ohne eigene Zeit, nur am gemeinsamen Reset. */
+   beantwortet waere - aber ohne eigene Zeit, nur am gemeinsamen Reset.
+   angebotBekannt: false, WEIL: weder warframestat.us noch das lokale
+   Inventar (RecentVendorPurchases traegt nur Kaufhistorie mit rohen
+   ItemIds, kein Warenangebot) einen Katalog dieser vier liefern. Erfunden
+   wird hier nichts - die Oberflaeche zeigt deshalb Ort und Zweck, aber
+   keine erfundene Artikelliste. */
 const FESTE_HAENDLER = [
   { key: 'bird3',     name: 'Bird 3',            ort: 'Sanctum Anatomica (Deimos)', was: 'One Archon Shard per week' },
   { key: 'yonta',     name: 'Archimedian Yonta', ort: 'Sanctum Anatomica (Deimos)', was: 'Weekly stock, paid in Entrati Lanthorn' },
   { key: 'acrithis',  name: 'Acrithis',          ort: 'Duviri',                     was: 'Weekly offerings for Pathos Clamps' },
   { key: 'palladino', name: 'Palladino',         ort: 'Iron Wake (Earth)',          was: 'Voidplume trade-in for standing' }
-];
+].map(h => ({ ...h, angebotBekannt: false }));
 
 function nightwave(nw) {
   if (!nw) return null;
@@ -182,10 +191,14 @@ function nightwave(nw) {
     was: aufgaben.length
       ? `${aufgaben.length} weekly acts open${elite ? `, ${elite} elite` : ''}`
       : 'No weekly acts right now',
+    /* Die Namen der Akte selbst sind echt, kommen direkt aus der Antwort -
+       kein erfundener Katalog wie bei den vier Haendlern oben. */
+    rotation: aufgaben.map(c => c.title || c.desc).filter(Boolean),
     /* Die Staffel laeuft Monate - als Wochenablauf taugt sie nicht.
        Gezeigt wird der Reset, an dem die Aufgaben wechseln. */
     expiry: null,
-    quelle: 'reset'
+    quelle: 'reset',
+    angebotBekannt: aufgaben.length > 0
   };
 }
 
@@ -231,5 +244,111 @@ export function buildWeekly(data, jetzt = Date.now()) {
     resetEta: etaBis(resetAt, jetzt),
     content: inhalte.map(mitZeit),
     vendors: haendler.map(mitZeit)
+  };
+}
+
+/* -------------------------- Echter Spielfortschritt -------------------------- */
+
+/**
+ * Welche Wochen-Inhalte sich automatisch erkennen lassen - und woraus.
+ *
+ * NICHT in dieser Liste: Kahl's Garrison und beide Archimedea. Fuer keinen
+ * von beiden liefert das Inventar ein Feld, das eindeutig "diese Woche
+ * erledigt" bedeutet - Missions[] zaehlt Lebenszeit-Abschluesse ohne
+ * Zeitstempel, DailyAffiliationKahl ist gesammelter Ruf, kein Haken. Wo
+ * sich das nicht nachweisen laesst, wird nichts geschaetzt: die
+ * Oberflaeche zeigt dort einen Schalter zum selbst Abhaken statt eines
+ * erfundenen Fortschritts.
+ *
+ * Die drei anderen sind belegt:
+ *   archon      PeriodicMissionCompletions traegt "EliteAlert", "EliteAlertB", ...
+ *               - im echten EE.log heisst die Archon-Jagd intern genauso
+ *               ("Background.lua: EliteAlertMission at ..."). Gezaehlt wird
+ *               nur, wie viele solcher Eintraege in diese Woche fallen -
+ *               NICHT welcher Buchstabe zu welchem der drei Knoten gehoert,
+ *               das waere schon wieder geraten.
+ *   netracells  EntratiVaultCountLastPeriod, gedeckelt bei 5 - Name und
+ *               Deckel passen zum bekannten Wochenlimit der Netracells.
+ *               EntratiVaultCountResetDate liegt am selben Wochenanfang wie
+ *               archonHunt.expiry - die beiden Felder beschreiben denselben
+ *               Zeitraum.
+ *   circuit     EndlessXP fuehrt Earn (gesammelte XP) gegen
+ *               PendingRewards[].RequiredTotalXp - derselbe Vergleich, den
+ *               das Spiel selbst fuer die Balkenanzeige im Circuit macht.
+ */
+export const AUTO_ERKENNBAR = new Set(['archon', 'netracells', 'circuit']);
+
+/** {"$date":{"$numberLong":"..."}} -> Millisekunden. Alles andere -> null. */
+function ejsonMillis(v) {
+  const n = v?.$date?.$numberLong;
+  return n != null ? Number(n) : null;
+}
+
+/** Faellt ein EJSON-Datum in [von, bis)? */
+function inFenster(v, von, bis) {
+  const t = ejsonMillis(v);
+  return t != null && t >= von && (bis == null || t < bis);
+}
+
+function archonFortschritt(inv, resetAt, jetzt) {
+  if (!resetAt) return null;
+  const von = new Date(resetAt).getTime();
+  const treffer = (inv.PeriodicMissionCompletions || [])
+    .filter(x => /^EliteAlert/.test(x.tag) && inFenster(x.date, von, jetzt));
+  /* Ohne Doppelzaehlung, falls ein Nachladen dieselbe Zeile zweimal liefert. */
+  const anzahl = new Set(treffer.map(x => x.tag)).size;
+  return { erledigt: anzahl, von: 3 };
+}
+
+function netracellFortschritt(inv, resetAt) {
+  const reset = ejsonMillis(inv.EntratiVaultCountResetDate);
+  const zahl = inv.EntratiVaultCountLastPeriod;
+  if (reset == null || typeof zahl !== 'number' || !resetAt) return null;
+  /* Der Feldname klingt nach "letzte" Periode, faellt aber auf denselben
+     Wochenanfang wie der Archon-Reset - siehe Kommentar oben an
+     AUTO_ERKENNBAR. Weicht er ab, ist das Feld aus einer anderen Woche und
+     wird nicht verwendet, statt eine falsche Zahl zu zeigen. */
+  const woche = new Date(resetAt).getTime() - 7 * 86400000;
+  if (Math.abs(reset - woche) > 2 * 86400000) return null;
+  return { erledigt: Math.min(zahl, 5), von: 5 };
+}
+
+/** Schwelle, bis zu der Earn reicht: "Rang 4 von 10", plus ob noch Belohnung offen ist. */
+function circuitRang(eintrag) {
+  if (!eintrag) return null;
+  const schwellen = (eintrag.PendingRewards || []).map(r => r.RequiredTotalXp);
+  const erreicht = schwellen.filter(s => (eintrag.Earn || 0) >= s).length;
+  return { erledigt: erreicht, von: schwellen.length, unclaimed: (eintrag.Earn || 0) > (eintrag.Claim || 0) };
+}
+
+/**
+ * Haengt echten Fortschritt an die Inhalte, wo er sich nachweisen laesst.
+ *
+ * rawInventory ist die Antwort von api.warframe.com/api/inventory.php, wie
+ * core/inventory.js sie zwischenspeichert - NICHT die aufbereitete Sicht
+ * aus inventory-items.js. Fehlt sie (kein Abruf, oder die Berechtigung
+ * steht aus), bleibt jeder Eintrag unangetastet: die Oberflaeche faellt
+ * dann von selbst auf den manuellen Schalter zurueck.
+ */
+export function annotateProgress(weekly, rawInventory, jetzt = Date.now()) {
+  if (!weekly || !rawInventory) return weekly;
+
+  const fortschritt = {
+    archon: archonFortschritt(rawInventory, weekly.resetAt, jetzt),
+    netracells: netracellFortschritt(rawInventory, weekly.resetAt),
+    circuit: (() => {
+      const xp = rawInventory.EndlessXP || [];
+      const normal = circuitRang(xp.find(c => c.Category === 'EXC_NORMAL'));
+      const hard   = circuitRang(xp.find(c => c.Category === 'EXC_HARD'));
+      return (normal || hard) ? { normal, hard } : null;
+    })()
+  };
+
+  return {
+    ...weekly,
+    content: weekly.content.map(e => {
+      const p = fortschritt[e.key];
+      return p ? { ...e, progress: p } : e;
+    })
   };
 }

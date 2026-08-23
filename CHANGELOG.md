@@ -33,6 +33,19 @@ follow [semantic versioning](https://semver.org/lang/en/).
   world state reports one, and are marked as following the common weekly reset
   where it does not.
 
+### Changed
+
+- **Weekly rotation** now separates *Content* and *Vendor resets* into a
+  switchable view instead of two long stacked lists, and tells apart what it
+  actually knows: Archon Hunt, Netracells and Circuit progress are read from
+  your own game data (opt-in, same as the Inventory tab) and shown as real
+  counters and bars — nothing estimated. Deep and Temporal Archimedea and
+  Kahl's Garrison have no such signal in the data, so they get a manual
+  checkbox instead of a guess. Teshin's and Nightwave's current offer show as
+  real chips, pulled from the same response as their countdown; the four
+  vendors without a public offer list (Bird 3, Yonta, Acrithis, Palladino)
+  show what they trade for honestly, without inventing a catalogue.
+
 ### Fixed
 
 - The app now identifies itself as **Argus** in the Windows taskbar. It showed

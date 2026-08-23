@@ -439,28 +439,44 @@
       </div>
 
       <div class="weekly-reset" id="weekly-reset">
+        <div class="weekly-reset-ring" id="weekly-reset-ring" aria-hidden="true"></div>
         <div class="weekly-reset-main">
           <span class="weekly-reset-label">Weekly reset in</span>
           <b id="weekly-reset-eta">—</b>
+          <span class="weekly-reset-when" id="weekly-reset-when"></span>
         </div>
-        <span class="weekly-reset-when" id="weekly-reset-when"></span>
         <button class="btn-sm" id="btn-weekly-refresh">Reload</button>
       </div>
 
       <div id="weekly-error" class="settings-note warn hidden"></div>
 
-      <h3 class="weekly-group-title">Content</h3>
-      <div class="weekly-grid" id="weekly-content"></div>
+      <div class="weekly-mode-row">
+        <div class="ducats-tabs">
+          <button class="ducats-tab-btn active" id="tab-weekly-mode-content" data-mode="content">
+            Content
+          </button>
+          <button class="ducats-tab-btn" id="tab-weekly-mode-vendors" data-mode="vendors">
+            Vendor resets
+          </button>
+        </div>
+        <span class="meta" id="weekly-mode-hint">Missions and modes that reset this week</span>
+      </div>
 
-      <h3 class="weekly-group-title">Vendor resets</h3>
-      <div class="weekly-grid weekly-grid-vendors" id="weekly-vendors"></div>
+      <div class="weekly-pane active" id="weekly-pane-content">
+        <div class="weekly-grid" id="weekly-content"></div>
+      </div>
+
+      <div class="weekly-pane" id="weekly-pane-vendors">
+        <div class="weekly-grid weekly-grid-vendors" id="weekly-vendors"></div>
+      </div>
 
       <p class="weekly-foot">
-        Times marked <span class="weekly-src weekly-src-reset">reset</span> are not
-        reported by the game's API — those entries follow the common weekly reset,
-        taken from the Archon Hunt. Times marked
-        <span class="weekly-src weekly-src-api">live</span> come with their own
-        expiry straight from the world state.
+        <span class="weekly-src weekly-src-live">live</span> comes with its own expiry
+        straight from the world state.
+        <span class="weekly-src weekly-src-reset">reset</span> has none in the API and
+        follows the common weekly reset, taken from the Archon Hunt.
+        <span class="weekly-src weekly-src-auto">tracked</span> is read from your own
+        game data — nothing is guessed; where that isn't possible, tick it off yourself.
       </p>
     </section>
 

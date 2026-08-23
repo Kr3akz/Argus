@@ -34,6 +34,7 @@ import { loadMods, POLARITIES, RARITY_LABELS, searchMods, isAuraMod, isExilusMod
 import { evaluateBuild, combineBuilds, orokinTypeFor } from '../core/builds.js';
 import { indexArcanes, searchArcanes, arcaneSlotCount, maxArcaneRank, isArcaneName } from '../core/arcanes.js';
 import { fetchWorldState } from '../core/worldstate.js';
+import { annotateProgress } from '../core/weekly.js';
 import { searchResourceGuides, RESOURCE_CATEGORIES } from '../core/farming.js';
 import { getMiningGuide } from '../core/mining.js';
 import { getDucatsReferenceList, buildPrimeSets, buildDucatsCatalog, buildInventoryDucats } from '../core/ducats.js';
@@ -1360,10 +1361,47 @@ ipcMain.handle('weekly:get', async (_e, force) => {
   try {
     const ws = await fetchWorldState({ force: !!force });
     if (!ws || !ws.weekly) return { ok: false, error: 'The world state is not reachable right now' };
-    return { ok: true, data: ws.weekly };
+
+    let weekly = ws.weekly;
+
+    /* Echter Fortschritt, nur wenn er schon lokal daliegt. loadInventory()
+       ohne refresh liest ausschliesslich die vorhandene Datei - es wird
+       NIE ein Abruf angestossen und NIE zum Einschalten der
+       Speicherberechtigung aufgefordert. Ohne Inventar bleibt die
+       Wochenansicht so vollstaendig, wie sie vorher war: jeder Inhalt faellt
+       dann auf den manuellen Schalter zurueck (siehe unten). */
+    try {
+      const { inventory } = await loadInventory({ refresh: false });
+      weekly = annotateProgress(weekly, inventory);
+    } catch { /* kein Abruf vorhanden - unveraendert weiter */ }
+
+    /* Manuelle Haken fuer alles ohne Nachweis (Archimedea, Kahl). Ueberlebt
+       die Fortschrittsauswertung, weil beide unterschiedliche Inhalte
+       betreffen - keine Ueberschneidung. */
+    const st = await store.load();
+    weekly = {
+      ...weekly,
+      content: weekly.content.map(c => ({
+        ...c,
+        manuellErledigt: !!st.weeklyDone[`${c.key}:${weekly.resetAt}`]
+      }))
+    };
+
+    return { ok: true, data: weekly };
   } catch (err) {
     return { ok: false, error: err.message };
   }
+});
+
+/* Haken fuer Inhalte, die sich nicht aus dem Inventar ablesen lassen -
+   siehe AUTO_ERKENNBAR in core/weekly.js. resetAt kommt vom Renderer mit,
+   der ihn aus derselben Antwort hat wie dieser Handler ihn baut - beide
+   muessen denselben Wochenanfang meinen, sonst faellt der Haken beim
+   naechsten Laden unter einen falschen Schluessel. */
+ipcMain.handle('weekly:setDone', async (_e, key, resetAt, done) => {
+  if (!key || !resetAt) return { ok: false, error: 'Missing key or reset time' };
+  await store.setWeeklyDone(key, resetAt, !!done);
+  return { ok: true };
 });
 
 /* Ressourcen und die Filterleiste kommen zusammen: die Kategorien stehen bei

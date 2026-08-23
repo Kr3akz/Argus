@@ -30,7 +30,8 @@ const empty = () => ({
   builds: [],
   ownedMods: [],
   trackedRelics: [],
-  notifications: DEFAULT_NOTIFICATIONS()
+  notifications: DEFAULT_NOTIFICATIONS(),
+  weeklyDone: {}
 });
 
 export async function load() {
@@ -46,6 +47,7 @@ export async function load() {
       builds: Array.isArray(parsed.builds) ? parsed.builds : [],
       ownedMods: Array.isArray(parsed.ownedMods) ? parsed.ownedMods : [],
       trackedRelics: Array.isArray(parsed.trackedRelics) ? parsed.trackedRelics : [],
+      weeklyDone: parsed.weeklyDone && typeof parsed.weeklyDone === 'object' ? parsed.weeklyDone : {},
       notifications: {
         ...defNotif,
         ...rawNotif,
@@ -84,6 +86,24 @@ export async function toggleGoal(uniqueName) {
   const s = await load();
   const g = s.goals.find(x => x.uniqueName === uniqueName);
   if (g) g.done = !g.done;
+  return save(s);
+}
+
+/* ---------------------------- Wochenrotation ---------------------------- */
+
+/**
+ * Haken fuer Inhalte ohne nachweisbaren Fortschritt (Archimedea, Kahl - siehe
+ * AUTO_ERKENNBAR in core/weekly.js). Der Schluessel traegt den Reset-
+ * Zeitpunkt mit ("kahl:1786924800000"): damit gilt ein Haken automatisch nur
+ * fuer die Woche, in der er gesetzt wurde - kein Aufraeumjob noetig, ein
+ * abgelaufener Eintrag wird beim naechsten Reset einfach nie wieder
+ * angefragt und bleibt als ein paar Bytes Karteileiche liegen.
+ */
+export async function setWeeklyDone(key, resetAt, done) {
+  const s = await load();
+  const feld = `${key}:${resetAt}`;
+  if (done) s.weeklyDone[feld] = true;
+  else delete s.weeklyDone[feld];
   return save(s);
 }
 

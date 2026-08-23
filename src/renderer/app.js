@@ -7979,8 +7979,10 @@ loadAboutBox();
 
 /* Der zuletzt geladene Stand. Gebraucht fuer die Zaehlerpille in der
    Seitenleiste, die auch dann stimmen soll, wenn der Reiter gar nicht offen
-   ist. */
+   ist - und fuer den Klick auf einen manuellen Haken, der nur die eine
+   betroffene Karte neu zeichnen soll, nicht die ganze Liste neu laden. */
 let weeklyState = null;
+let weeklyMode = 'content';   // 'content' | 'vendors'
 
 /* Sinnbild je Eintrag. Steht hier und nicht im Kern: welches Zeichen etwas
    traegt, ist eine Frage der Oberflaeche, nicht der Daten. */
@@ -7997,26 +7999,87 @@ const weeklyIcon = (key, size) => {
   return name && Icon[name] ? Icon[name](size) : Icon.calendar(size);
 };
 
-/* Abgeleitete Zeiten werden gekennzeichnet. Wer eine Restzeit sieht, soll
-   erkennen koennen, ob sie gemessen oder gerechnet ist - dieselbe Haltung
-   wie bei der Inventar-Quelle. */
 const weeklySrcTag = quelle => quelle === 'api'
-  ? '<span class="weekly-src weekly-src-api" title="Own expiry from the world state">live</span>'
+  ? '<span class="weekly-src weekly-src-live" title="Own expiry from the world state">live</span>'
   : '<span class="weekly-src weekly-src-reset" title="No expiry in the API — follows the common weekly reset">reset</span>';
 
-function renderWeeklyCard(e, istHaendler) {
-  const zeilen = istHaendler
-    ? `<div class="wk-vendor-what">${esc(e.was || '')}</div>`
-    : (e.eintraege || []).map(x => `
-        <div class="wk-row">
-          <b>${esc(x.titel)}</b>
-          ${x.unter ? `<span>${esc(x.unter)}</span>` : ''}
-        </div>`).join('');
+/* Punktreihe fuer Archon (3) und Netracells (5) - eine gefuellte Zelle je
+   erledigtem Lauf. Fuer 3 und 5 liest sich das auf einen Blick, fuer den
+   Circuit mit seinen zehn Stufen waere es nur noch eine Perlenkette;
+   dafuer gibt es weiter unten den Balken. */
+function renderPips(fortschritt) {
+  const { erledigt, von } = fortschritt;
+  const voll = erledigt >= von;
+  const zellen = Array.from({ length: von }, (_, i) =>
+    `<span class="wk-pip${i < erledigt ? ' filled' : ''}"></span>`).join('');
+  return `
+    <div class="wk-progress">
+      <div class="wk-pips${voll ? ' is-complete' : ''}">
+        ${zellen}
+        <span class="wk-pip-label">${erledigt} / ${von}</span>
+      </div>
+    </div>`;
+}
+
+/* Zwei Balken - normaler Circuit und Steel Path teilen sich dieselbe Woche,
+   aber getrennte Fortschrittsleisten, weil man beide unabhaengig spielt. */
+function renderCircuitProgress(fortschritt) {
+  const zeile = (label, rang) => {
+    if (!rang) return '';
+    const pct = rang.von ? Math.round(rang.erledigt / rang.von * 100) : 0;
+    const voll = rang.erledigt >= rang.von;
+    return `
+      <div class="wk-bar-row">
+        <span class="wk-bar-label">${esc(label)}</span>
+        <div class="wk-bar"><div class="wk-bar-fill${voll ? ' is-complete' : ''}" style="width:${pct}%"></div></div>
+        <span class="wk-bar-num">${rang.erledigt}/${rang.von}</span>
+      </div>
+      ${rang.unclaimed ? '<div class="wk-unclaimed">Unclaimed rewards waiting</div>' : ''}`;
+  };
+  return `
+    <div class="wk-progress">
+      ${zeile('Normal', fortschritt.normal)}
+      ${zeile('Steel Path', fortschritt.hard)}
+    </div>`;
+}
+
+/* Fuer alles ohne Nachweis (Archimedea, Kahl): ein echter Kippschalter statt
+   eines erfundenen Fortschrittsbalkens. Persistiert ueber den Reset-
+   Zeitpunkt als Schluessel - siehe store.setWeeklyDone. */
+function renderManualToggle(e) {
+  return `
+    <label class="wk-manual">
+      <span class="wk-manual-label">Mark this week's run as done</span>
+      <input type="checkbox" class="toggle-checkbox wk-manual-check" data-weekly-key="${esc(e.key)}"
+             ${e.manuellErledigt ? 'checked' : ''}>
+      <span class="toggle-switch"></span>
+    </label>`;
+}
+
+function renderWeeklyContentCard(e) {
+  const auto = AUTO_KEYS.has(e.key) && e.progress;
+  const manuell = !AUTO_KEYS.has(e.key);
+  const fertig = auto
+    ? (e.key === 'circuit'
+        ? [e.progress.normal, e.progress.hard].every(r => !r || r.erledigt >= r.von)
+        : e.progress.erledigt >= e.progress.von)
+    : e.manuellErledigt;
+
+  const zeilen = (e.eintraege || []).map(x => `
+    <div class="wk-row">
+      <b>${esc(x.titel)}</b>
+      ${x.unter ? `<span>${esc(x.unter)}</span>` : ''}
+    </div>`).join('');
 
   const unterschrift = [e.detail, e.ort].filter(Boolean).map(esc).join(' · ');
 
+  let fortschrittHtml = '';
+  if (e.key === 'circuit' && e.progress) fortschrittHtml = renderCircuitProgress(e.progress);
+  else if (auto) fortschrittHtml = renderPips(e.progress);
+  else if (manuell) fortschrittHtml = renderManualToggle(e);
+
   return `
-    <div class="wk-card">
+    <div class="wk-card${fertig ? ' is-complete' : ''}" data-weekly-card="${esc(e.key)}">
       <div class="wk-head">
         <span class="wk-icon">${weeklyIcon(e.key, 17)}</span>
         <div class="wk-id">
@@ -8025,12 +8088,44 @@ function renderWeeklyCard(e, istHaendler) {
         </div>
         <div class="wk-time">
           ${e.eta ? `<span class="wk-eta">${esc(e.eta)}</span>` : ''}
-          ${weeklySrcTag(e.quelle)}
+          ${auto ? '<span class="weekly-src weekly-src-auto" title="Read from your own game data">tracked</span>' : weeklySrcTag(e.quelle)}
         </div>
       </div>
+      ${fortschrittHtml}
       ${zeilen ? `<div class="wk-body">${zeilen}</div>` : ''}
     </div>`;
 }
+
+function renderWeeklyVendorCard(e) {
+  const rotation = (e.angebotBekannt && e.rotation && e.rotation.length)
+    ? `<div class="wk-rotation">${e.rotation.slice(0, 10).map(r => `<span class="wk-chip">${esc(r)}</span>`).join('')}</div>`
+    : '';
+
+  return `
+    <div class="wk-card">
+      <div class="wk-head">
+        <span class="wk-icon">${weeklyIcon(e.key, 17)}</span>
+        <div class="wk-id">
+          <b>${esc(e.name)}</b>
+          ${e.ort ? `<span>${esc(e.ort)}</span>` : ''}
+        </div>
+        <div class="wk-time">
+          ${e.eta ? `<span class="wk-eta">${esc(e.eta)}</span>` : ''}
+          ${weeklySrcTag(e.quelle)}
+        </div>
+      </div>
+      <div class="wk-body" style="margin-top:11px;padding-top:0;border-top:none;">
+        <div class="wk-vendor-what">${esc(e.was || '')}</div>
+      </div>
+      ${rotation}
+    </div>`;
+}
+
+/* Nur diese drei lassen sich aus dem eigenen Spielstand nachweisen - siehe
+   AUTO_ERKENNBAR in core/weekly.js, dessen Kommentar den Grund fuer jedes
+   einzelne Feld traegt. Dieselbe Liste hier, weil der Renderer wissen muss,
+   ob eine Karte eine Punktreihe oder einen Kippschalter bekommt. */
+const AUTO_KEYS = new Set(['archon', 'netracells', 'circuit']);
 
 function renderWeekly(w) {
   weeklyState = w;
@@ -8043,12 +8138,36 @@ function renderWeekly(w) {
     : '';
   $('weekly-reset-when').textContent = wann;
 
-  $('weekly-content').innerHTML = w.content.map(e => renderWeeklyCard(e, false)).join('');
-  $('weekly-vendors').innerHTML  = w.vendors.map(e => renderWeeklyCard(e, true)).join('');
+  $('weekly-content').innerHTML = w.content.map(renderWeeklyContentCard).join('');
+  $('weekly-vendors').innerHTML = w.vendors.map(renderWeeklyVendorCard).join('');
 
-  /* Die Pille zeigt, wie viele Dinge diese Woche noch offen sind - also
-     alles, was ueberhaupt eine Restzeit hat. */
-  const offen = [...w.content, ...w.vendors].filter(e => e.eta).length;
+  document.querySelectorAll('.wk-manual-check').forEach(cb => {
+    cb.addEventListener('change', async () => {
+      const key = cb.dataset.weeklyKey;
+      cb.disabled = true;
+      try {
+        await window.api.setWeeklyDone(key, weeklyState.resetAt, cb.checked);
+        const entry = weeklyState.content.find(c => c.key === key);
+        if (entry) entry.manuellErledigt = cb.checked;
+        /* $ ist im ganzen Haus ausschliesslich getElementById (siehe
+           Kopf der Datei) - fuer einen Attribut-Selektor braucht es
+           echtes querySelector, sonst findet das still und leise
+           nichts. */
+        document.querySelector(`[data-weekly-card="${key}"]`)?.classList.toggle('is-complete', cb.checked);
+      } catch { cb.checked = !cb.checked; }
+      finally { cb.disabled = false; }
+    });
+  });
+
+  /* Die Pille zeigt, wie viel diese Woche noch offen ist - Inhalte UND
+     Haendler, alles mit einer Restzeit oder einem noch nicht gesetzten
+     Haken zaehlt als offen. */
+  const nochOffen = e => AUTO_KEYS.has(e.key)
+    ? (e.key === 'circuit'
+        ? [e.progress?.normal, e.progress?.hard].some(r => r && r.erledigt < r.von)
+        : (e.progress ? e.progress.erledigt < e.progress.von : true))
+    : (e.eta != null || (e.eintraege !== undefined && !e.manuellErledigt));
+  const offen = w.content.filter(nochOffen).length + w.vendors.filter(v => v.eta).length;
   const pille = $('weekly-count');
   if (pille) {
     pille.textContent = offen;
@@ -8078,3 +8197,22 @@ async function loadWeekly(force = false) {
 }
 
 $('btn-weekly-refresh')?.addEventListener('click', () => loadWeekly(true));
+
+/* Content <-> Haendler, dasselbe Muster wie Manager/Katalog im Mastery-Tab. */
+const WEEKLY_MODE_HINTS = {
+  content: "Missions and modes that reset this week",
+  vendors: 'Vendors whose stock or offer changes weekly'
+};
+
+function applyWeeklyMode() {
+  $('tab-weekly-mode-content')?.classList.toggle('active', weeklyMode === 'content');
+  $('tab-weekly-mode-vendors')?.classList.toggle('active', weeklyMode === 'vendors');
+  $('weekly-pane-content')?.classList.toggle('active', weeklyMode === 'content');
+  $('weekly-pane-vendors')?.classList.toggle('active', weeklyMode === 'vendors');
+  $('weekly-mode-hint').textContent = WEEKLY_MODE_HINTS[weeklyMode];
+}
+
+document.querySelectorAll('#tab-weekly-mode-content, #tab-weekly-mode-vendors').forEach(btn => {
+  btn.onclick = () => { weeklyMode = btn.dataset.mode; applyWeeklyMode(); };
+});
+applyWeeklyMode();
