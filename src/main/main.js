@@ -46,7 +46,7 @@ import { loadCardImages, cardUrl } from '../core/cards.js';
 import { upgradeDetails } from '../core/upgrade-details.js';
 import { checkAllowed, formatWait } from '../core/ratelimit.js';
 import { matchesFissureFilter } from '../core/fissure-filter.js';
-import { captureForeground, restoreForeground } from '../core/foreground.js';
+import { captureForeground, restoreForeground, bringToForeground, moveCursorIntoWindow } from '../core/foreground.js';
 import { LogWatcher } from '../core/logwatch.js';
 import { loadMarketItems, findMarketItem, getPrice, getPrices, marketImage } from '../core/market.js';
 /* Handelsteil: Anmeldung, Orders, Auktionen und das lokale Handelsbuch.
@@ -315,7 +315,7 @@ function showMainWindow() {
   if (!win || win.isDestroyed()) return;
   if (win.isMinimized()) win.restore();
   win.show();
-  win.focus();
+  bringToForeground(win);
 }
 
 /* register() wirft bei ungueltigen Zeichenfolgen, statt false zu liefern -
@@ -389,7 +389,11 @@ async function loadOverlayPrefs() {
  */
 function applyMousePassthrough(ignore) {
   if (!overlayWin || overlayWin.isDestroyed()) return;
-  overlayWin.setIgnoreMouseEvents(!!ignore, { forward: true });
+  if (ignore) {
+    overlayWin.setIgnoreMouseEvents(true, { forward: true });
+  } else {
+    overlayWin.setIgnoreMouseEvents(false);
+  }
 }
 
 /* Das Overlay laedt ein eigenes, schlankes Dokument statt index.html: es
@@ -645,7 +649,8 @@ function setInteracting(on) {
        merken und den vorherigen Eintrag behalten. */
     if (!overlayWin.isFocused()) interactReturnTo = captureForeground() || interactReturnTo;
     applyMousePassthrough(false);
-    overlayWin.focus();
+    bringToForeground(overlayWin);
+    moveCursorIntoWindow(overlayWin);
   } else {
     const back = interactReturnTo;
     interactReturnTo = null;
