@@ -10,7 +10,7 @@ const FILE = () => dataFile('config.json');
    siehe loadConfig: ein flaches Spread wuerde ein gespeichertes
    { overlay: ... } ohne interact-Eintrag uebernehmen und das zweite Kuerzel
    damit verlieren. */
-export const DEFAULT_HOTKEYS = { overlay: 'Ctrl+R', interact: 'Ctrl+E' };
+export const DEFAULT_HOTKEYS = { overlay: 'Ctrl+R', interact: 'Ctrl+E', main: 'Ctrl+D' };
 
 /* overlay*: Lage, Deckkraft und Klick-Durchlass des Overlays. Stehen hier,
    weil sie dieselbe Lebensdauer haben wie die uebrige lokale Einstellung -

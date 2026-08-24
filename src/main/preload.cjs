@@ -139,6 +139,14 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('relic:select-closed', handler);
     return () => ipcRenderer.removeListener('relic:select-closed', handler);
   },
+  /* Der Bestand hat sich geaendert, ohne dass jemand danach gefragt hat -
+     zum Beispiel, weil gerade ein Relikt geoeffnet wurde. Traegt dieselbe
+     Ladung wie getRecommendedRelics(). */
+  onRelicsChanged: (cb)        => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on('relics:changed', handler);
+    return () => ipcRenderer.removeListener('relics:changed', handler);
+  },
   /* Merkliste des Relikt-Planers. Sie steht in derselben Datei wie Ziele
      und Notizen - hier laufen nur Kennungen hin und ausgerechnete Zeilen
      zurueck. Die Aenderung meldet der Hauptprozess an BEIDE Fenster, damit

@@ -22,7 +22,11 @@ function renderHotkeyHint(hk) {
   const el = $('hotkey-hint');
   if (!el || !hk || !hk.overlay) return;
   el.innerHTML = hk.overlay.split('+').map(k => `<kbd>${esc(k)}</kbd>`).join('');
-  el.title = `${hk.overlay}: show/hide the overlay\n${hk.interact}: bring the cursor into the overlay`;
+  el.title = [
+    `${hk.overlay}: show/hide the overlay`,
+    `${hk.interact}: bring the cursor into the overlay`,
+    hk.main ? `${hk.main}: bring up this window` : null
+  ].filter(Boolean).join('\n');
   el.classList.remove('hidden');
 }
 
@@ -2405,7 +2409,7 @@ function renderWorldState(d) {
           <div class="ws-cycle-sub">Earth · Eidolon hunting</div>
         </div>
         <span class="ws-cycle-badge ${c.isDay ? 'day' : 'night'}">
-          ${c.isDay ? Icon.sun(13) + ' Day' : Icon.moon(13) + ' Night (Eidolon)'}
+          ${c.isDay ? Icon.sun(15) + ' Day' : Icon.moon(15) + ' Night (Eidolon)'}
         </span>
       </div>
       <div class="ws-cycle-time">${cycleClock(c)} <small>remaining</small></div>
@@ -2418,7 +2422,7 @@ function renderWorldState(d) {
           <div class="ws-cycle-sub">Venus · thermia cycles</div>
         </div>
         <span class="ws-cycle-badge ${v.isWarm ? 'warm' : 'cold'}">
-          ${v.isWarm ? Icon.flame(13) + ' Warm' : Icon.snowflake(13) + ' Cold'}
+          ${v.isWarm ? Icon.flame(15) + ' Warm' : Icon.snowflake(15) + ' Cold'}
         </span>
       </div>
       <div class="ws-cycle-time">${cycleClock(v)} <small>remaining</small></div>
@@ -3517,7 +3521,7 @@ function renderPlanTierFilter(all) {
         <i class="chip-ic">${Icon.star(15)}</i>Gemerkt <span>${trackedCount}</span>
       </button>` : '') +
     `<span class="tier-chip chip-traces" title="Void Traces (Spuren des Nichts)">
-       <i class="chip-ic">${Icon.traces(15)}</i><span>${nf(traces)} Traces</span>
+       <img class="chip-ic chip-ic-img" src="assets/icons/currency/traces.png" alt=""><span>${nf(traces)} Traces</span>
      </span>` +
     `</div>`;
 
@@ -7444,7 +7448,8 @@ let capturingHotkey = null;
 
 const HOTKEY_LABELS = {
   overlay:  'Overlay ein-/ausblenden',
-  interact: 'Mauszeiger ins Overlay holen'
+  interact: 'Mauszeiger ins Overlay holen',
+  main:     'Hauptfenster nach vorn holen'
 };
 
 /* Sondertasten, deren e.key nicht der Schreibweise von Electron entspricht. */

@@ -53,9 +53,62 @@ const RE_CLOSED     = /ProjectionRewardChoice\.lua:\s*Relic reward screen shut d
 
 /* Relikt-Auswahl (ThemedProjectionManager oder Orbiter-Konsole UIConsoleTrigger3):
    Erkennt Veredelung im Schiff sofort beim Interagieren, Rissauswahl in
-   der Sternenkarte sowie Reliktwahl zwischen Runden in Endlos-Missionen. */
+   der Sternenkarte sowie Reliktwahl zwischen Runden in Endlos-Missionen.
+
+   OHNE DEN BACKGROUND-HERZSCHLAG: "Background.lua: Update the Profile
+   Variable" stand hier lange als Notnagel fuer Bildschirme, die sonst nichts
+   melden. Er ist keiner. Nachgemessen an einem Mitschnitt schlaegt er in
+   unregelmaessigen Abstaenden zu - mal Sekunden, mal Minuten - und traf damit
+   beides: einmal schloss er die Anzeige 4 s BEVOR der Spieler sein Relikt
+   waehlte, ein andermal erst 20 s NACHDEM er den Bildschirm verlassen hatte.
+   Was ihn ersetzt, steht direkt darunter (RE_INIT_MAPPING). Im Mitschnitt
+   schliessen damit alle zwoelf Sitzungen auf ihr echtes Ausstiegssignal. */
 const RE_SELECT_OPEN   = /ThemedProjectionManager\.lua:\s*PopulateInventoryGrid|Subscribing for \S*ThemedProjectionManager\.swf|UIConsoleTrigger::Open\(\)\s+\S*UIConsoleTrigger3/;
-const RE_SELECT_CLOSED = /InitMapping.*filter\s+\/(?:Lotus\/Types\/Player\/(?:TennoShipInputFilter|AvatarInputFilter|PlayerInputFilter)|EE\/Types\/Input\/MapReduxInputFilter|Lotus\/Types\/Input\/LoadoutReduxInputFilter)|Subscribing for \S*ChatRedux\.swf|Background\.lua:\s*(?:Update the Profile Variable|Trying to add calendar challenges)|UIConsoleTrigger::Open\(\)\s+\S*UIConsoleTrigger(?!3)|(?:ThemedMainMenu|RadialSolarMap|PauseMenu|TopMenu)\.lua|(?:TennoShipAvatar|TennoMotion|MotionController|WallSlideController).*Setting PM_|Created\s+\S*(?:Transmission|Dialog|MapRedux|ThemedMainMenu|RadialSolarMap)\.swf|MatchingService::LeaveSquad|Set squad mission/;
+const RE_SELECT_CLOSED = /Subscribing for \S*ChatRedux\.swf|UIConsoleTrigger::Open\(\)\s+\S*UIConsoleTrigger(?!3)|(?:ThemedMainMenu|RadialSolarMap|PauseMenu|TopMenu)\.lua|(?:TennoShipAvatar|TennoMotion|MotionController|WallSlideController).*Setting PM_|Created\s+\S*(?:Transmission|Dialog|MapRedux|ThemedMainMenu|RadialSolarMap)\.swf|MatchingService::LeaveSquad|Set squad mission/;
+
+/**
+ * Der schnelle Schluss: der Eingabefilter wechselt weg vom Menue.
+ *
+ * Solange die Reliktauswahl offen ist, laeuft die Eingabe ueber einen
+ * *MenuInputFilter - der Bildschirm meldet sich beim Aufgehen selbst so an.
+ * JEDER Wechsel auf einen anderen Filter heisst deshalb: der Bildschirm ist
+ * weg. Zurueck ins Schiff (TennoShipInputFilter), auf die Sternenkarte
+ * (MapReduxInputFilter), in die Ausruestung (LoadoutReduxInputFilter) - eine
+ * Regel statt einer Liste, die bei jedem neuen Bildschirm nachgezogen
+ * werden muesste.
+ *
+ * Ueber der Sternenkarte fiel das bisher nicht auf: dort folgt auf die Wahl
+ * sofort die Sicherheitsfrage ("Are you sure you want to equip ..."), und
+ * deren Dialog.swf steht schon in RE_SELECT_CLOSED. Im Schiff gibt es keine
+ * solche Frage - dort kam der Schluss erst mit dem Background-Herzschlag an,
+ * irgendwann. Genau die Verzoegerung schliesst diese Zeile.
+ *
+ * SCHARF ERST NACH DER ANMELDUNG (RE_SELECT_ARMED): beim Aufgehen faellt der
+ * Filter fuer einen Sekundenbruchteil auf den Schiffsfilter zurueck, BEVOR
+ * sich der Bildschirm anmeldet. Wer schon vorher hinsieht, schliesst die
+ * Anzeige 0.4 s nach dem Oeffnen wieder.
+ */
+const RE_INIT_MAPPING  = /InitMapping\b.*\bfilter\s+(\S+)/;
+const RE_SELECT_ARMED  = /Subscribing for \S*ThemedProjectionManager\.swf/;
+
+/**
+ * Welches Relikt fuer die Mission eingelegt wurde.
+ *
+ * Die Sicherheitsfrage nennt es beim Namen, mitsamt Politur:
+ *   Dialog::CreateOkCancel(description=Are you sure you want to equip
+ *   Meso F3 Relic [RADIANT] for this mission? It will be consumed if you
+ *   seal the Void Fissure and extract., ...)
+ *
+ * Ohne Klammer ist es unpoliert. Das VERBRAUCHT wird es erst mit dem
+ * Belohnungsbildschirm - deshalb wird hier nur gemerkt, nicht abgezogen
+ * (siehe main.js). Im Mitschnitt wechseln sich beide sauber ab: einlegen,
+ * Belohnung, einlegen, Belohnung - fuenf Paare hintereinander.
+ */
+const RE_EQUIP = /Dialog::CreateOkCancel\(description=.*?\bequip\s+(\S+)\s+(\S+)\s+Relic(?:\s+\[([A-Za-z]+)\])?\s+for this mission/;
+
+const STATE_BY_TAG = {
+  RADIANT: 'Radiant', FLAWLESS: 'Flawless', EXCEPTIONAL: 'Exceptional', INTACT: 'Intact'
+};
 
 export class LogWatcher extends EventEmitter {
   constructor(file = DEFAULT_LOG_PATH()) {
@@ -67,6 +120,7 @@ export class LogWatcher extends EventEmitter {
     this.pendingReward = null;   // { uniqueName, at }
     this.relicSelectActive = false;
     this.relicSelectOpenedAt = 0;
+    this.relicSelectArmedAt = 0;
     this.busy = false;
   }
 
@@ -134,6 +188,17 @@ export class LogWatcher extends EventEmitter {
   }
 
   handleLine(line) {
+    const equip = RE_EQUIP.exec(line);
+    if (equip) {
+      this.emit('relic-equipped', {
+        tier: equip[1],
+        name: equip[2],
+        state: STATE_BY_TAG[(equip[3] || '').toUpperCase()] || 'Intact',
+        at: Date.now()
+      });
+      return;
+    }
+
     const reward = RE_OWN_REWARD.exec(line);
     if (reward) {
       this.pendingReward = { uniqueName: reward[1], at: Date.now() };
@@ -174,14 +239,27 @@ export class LogWatcher extends EventEmitter {
     if (!this.relicSelectActive && RE_SELECT_OPEN.test(line)) {
       this.relicSelectActive = true;
       this.relicSelectOpenedAt = logSec;
+      this.relicSelectArmedAt = 0;
       this.emit('relic-select-open', { at: Date.now() });
       return;
     }
 
-    if (this.relicSelectActive && (logSec - this.relicSelectOpenedAt > 0.15 || logSec < this.relicSelectOpenedAt) && RE_SELECT_CLOSED.test(line)) {
+    if (!this.relicSelectActive) return;
+
+    if (RE_SELECT_ARMED.test(line)) { this.relicSelectArmedAt = logSec; return; }
+
+    /* Die 0.15 s halten die Zeilen ab, die zum Aufgehen selbst gehoeren -
+       der Bildschirm meldet beim Oeffnen seinen eigenen Eingabefilter an. */
+    if (logSec - this.relicSelectOpenedAt <= 0.15 && logSec >= this.relicSelectOpenedAt) return;
+
+    const mapping = this.relicSelectArmedAt && logSec > this.relicSelectArmedAt
+      ? RE_INIT_MAPPING.exec(line)
+      : null;
+    const leftMenu = mapping && !/MenuInputFilter$/.test(mapping[1]);
+
+    if (leftMenu || RE_SELECT_CLOSED.test(line)) {
       this.relicSelectActive = false;
       this.emit('relic-select-closed', { at: Date.now() });
-      return;
     }
   }
 }

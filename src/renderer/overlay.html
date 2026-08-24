@@ -24,15 +24,19 @@
     <div class="ov-id">
       <b>Argus</b>
       <span id="ov-mr" class="ov-mr">MR –</span>
-      <span id="ov-traces" class="ov-traces" title="Void Traces (Spuren des Nichts)">
-        <span class="ov-traces-ic" data-icon="traces"></span>
-        <b id="ov-traces-val">–</b>
-      </span>
     </div>
+    <!-- Das echte Spielbild statt eines nachgezeichneten Symbols: die Spuren
+         des Nichts sind ein Gegenstand mit eigenem Aussehen, und man sucht sie
+         hier an derselben Form wie im Spiel. -->
+    <span id="ov-traces" class="ov-traces" title="Void Traces (Spuren des Nichts)">
+      <img class="ov-traces-ic" src="assets/icons/currency/traces.png" alt="">
+      <b id="ov-traces-val">–</b>
+    </span>
     <div class="ov-bar-actions">
       <button id="ov-refresh" class="ov-btn" title="Reload world state"></button>
       <button id="ov-click" class="ov-btn" title="Klicks ans Spiel durchreichen"></button>
-      <button id="ov-exit" class="ov-btn" title="Overlay ausblenden (Alt+Shift+W)"></button>
+      <!-- Der Titel wird in renderHint() aus dem echten Kuerzel gesetzt. -->
+      <button id="ov-exit" class="ov-btn" title="Hide the overlay"></button>
     </div>
   </header>
 
@@ -52,10 +56,12 @@
     </section>
 
     <!-- Empfohlene Relikte aus dem Planer & fuer die Reliktauswahl.
-         Zeigt Erwartungswert, Profit, Veredelung und Top-Drop ohne die 6 Einzel-Items. -->
+         Zeigt Erwartungswert, Politur und Top-Drop; die sechs Einzelteile
+         klappen erst auf Klick auf - im Overlay ist jede Zeile Platz, der
+         dem Spiel fehlt. -->
     <section class="ov-sec" id="ov-rec-sec">
       <div class="ov-sec-head">
-        <span id="ov-rec-title">Recommended relics</span>
+        <span id="ov-rec-title">Tracked relics</span>
         <span id="ov-rec-note" class="ov-sec-note"></span>
       </div>
       <div class="ov-filter-chips" id="ov-rec-filters">
@@ -83,7 +89,10 @@
     </section>
 
     <section class="ov-sec" id="ov-goals-sec">
-      <div class="ov-sec-head"><span>Open goals</span></div>
+      <div class="ov-sec-head">
+        <span>Open goals</span>
+        <span id="ov-goals-note" class="ov-sec-note"></span>
+      </div>
       <div id="ov-goals" class="ov-list"></div>
     </section>
   </div>

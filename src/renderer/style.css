@@ -35,6 +35,21 @@
   --t-bronze: 210 153 34;
   --t-green:  74 222 128;
 
+  /* DIE SECHS AERAFARBEN - EINMAL HIER UND SONST NIRGENDS.
+     Vorher standen sie an sechs Stellen ausgeschrieben (Rissliste,
+     Aera-Schild, Filterkaestchen, Filterchip, Planerkarte, Reliktdatenblatt),
+     und genau das ist passiert, was dabei passiert: sie liefen auseinander.
+     Im Datenblatt war Neo gruen und Axi golden, ueberall sonst Neo golden und
+     Axi blau - dasselbe Relikt trug je nach Fenster eine andere Farbe.
+
+     Zugeordnet wie im Spiel: Lith bronzen, Meso silbern, Neo blau, Axi golden. */
+  --t-lith:    212 163 115;
+  --t-meso:    204 214 221;
+  --t-neo:      74 158 255;
+  --t-axi:     240 184  73;
+  --t-requiem: 255  92  92;
+  --t-omnia:   207 139 243;
+
   /* Das Rot aus der Wortmarke von warframe.market. Gegenueber dem Original
      (#a52f31) eine Spur aufgehellt: auf dem Grau ihrer Webseite traegt der
      Originalton, auf unserem fast schwarzen Grund saeuft er ab.
@@ -2687,12 +2702,12 @@ select option { background: #161b25; color: var(--text); }
   flex-shrink: 0;
   display: inline-block;
 }
-.ws-fissure-tier.Lith { background: rgba(180, 130, 80, 0.18); color: #d4a373; }
-.ws-fissure-tier.Meso { background: rgba(180, 180, 190, 0.18); color: #ccd6dd; }
-.ws-fissure-tier.Neo { background: rgba(240, 184, 73, 0.18); color: var(--gold); }
-.ws-fissure-tier.Axi { background: rgba(74, 158, 255, 0.18); color: var(--accent); }
-.ws-fissure-tier.Requiem { background: rgba(255, 92, 92, 0.18); color: var(--red); }
-.ws-fissure-tier.Omnia { background: rgba(190, 100, 255, 0.18); color: #cf8bf3; }
+.ws-fissure-tier.Lith    { background: rgb(var(--t-lith)    / .18); color: rgb(var(--t-lith)); }
+.ws-fissure-tier.Meso    { background: rgb(var(--t-meso)    / .18); color: rgb(var(--t-meso)); }
+.ws-fissure-tier.Neo     { background: rgb(var(--t-neo)     / .18); color: rgb(var(--t-neo)); }
+.ws-fissure-tier.Axi     { background: rgb(var(--t-axi)     / .18); color: rgb(var(--t-axi)); }
+.ws-fissure-tier.Requiem { background: rgb(var(--t-requiem) / .18); color: rgb(var(--t-requiem)); }
+.ws-fissure-tier.Omnia   { background: rgb(var(--t-omnia)   / .18); color: rgb(var(--t-omnia)); }
 .ws-fissure-info {
   flex: 1;
   min-width: 0;
@@ -4562,31 +4577,28 @@ select option { background: #161b25; color: var(--text); }
   letter-spacing: .4px;
   text-transform: uppercase;
 }
-.tier-badge.Lith { color: #d4a373; }
-.tier-badge.Meso { color: #ccd6dd; }
-.tier-badge.Neo { color: var(--gold); }
-.tier-badge.Axi { color: var(--accent); }
-.tier-badge.Requiem { color: var(--red); }
-.tier-badge.Omnia { color: #cf8bf3; }
+.tier-badge.Lith    { color: rgb(var(--t-lith)); }
+.tier-badge.Meso    { color: rgb(var(--t-meso)); }
+.tier-badge.Neo     { color: rgb(var(--t-neo)); }
+.tier-badge.Axi     { color: rgb(var(--t-axi)); }
+.tier-badge.Requiem { color: rgb(var(--t-requiem)); }
+.tier-badge.Omnia   { color: rgb(var(--t-omnia)); }
 
-/* Tier-specific custom styled checkboxes when active */
-.tier-checkbox-tile[data-tier="Lith"].checked { background: rgba(212, 163, 115, 0.1); }
-.tier-checkbox-tile[data-tier="Lith"] input:checked { background: #d4a373; border-color: #d4a373; box-shadow: 0 0 10px rgba(212, 163, 115, 0.4); }
+/* Tier-specific custom styled checkboxes when active.
+   Eine Regel je Aera statt zweier, ueber den gemeinsamen Kanal - siehe :root. */
+.tier-checkbox-tile[data-tier="Lith"]    { --era: var(--t-lith); }
+.tier-checkbox-tile[data-tier="Meso"]    { --era: var(--t-meso); }
+.tier-checkbox-tile[data-tier="Neo"]     { --era: var(--t-neo); }
+.tier-checkbox-tile[data-tier="Axi"]     { --era: var(--t-axi); }
+.tier-checkbox-tile[data-tier="Requiem"] { --era: var(--t-requiem); }
+.tier-checkbox-tile[data-tier="Omnia"]   { --era: var(--t-omnia); }
 
-.tier-checkbox-tile[data-tier="Meso"].checked { background: rgba(204, 214, 221, 0.1); }
-.tier-checkbox-tile[data-tier="Meso"] input:checked { background: #ccd6dd; border-color: #ccd6dd; box-shadow: 0 0 10px rgba(204, 214, 221, 0.4); }
-
-.tier-checkbox-tile[data-tier="Neo"].checked { background: rgba(240, 184, 73, 0.1); }
-.tier-checkbox-tile[data-tier="Neo"] input:checked { background: var(--gold); border-color: var(--gold); box-shadow: 0 0 10px rgba(240, 184, 73, 0.4); }
-
-.tier-checkbox-tile[data-tier="Axi"].checked { background: rgba(74, 158, 255, 0.1); }
-.tier-checkbox-tile[data-tier="Axi"] input:checked { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 10px rgba(74, 158, 255, 0.4); }
-
-.tier-checkbox-tile[data-tier="Requiem"].checked { background: rgba(255, 92, 92, 0.1); }
-.tier-checkbox-tile[data-tier="Requiem"] input:checked { background: var(--red); border-color: var(--red); box-shadow: 0 0 10px rgba(255, 92, 92, 0.4); }
-
-.tier-checkbox-tile[data-tier="Omnia"].checked { background: rgba(207, 139, 243, 0.1); }
-.tier-checkbox-tile[data-tier="Omnia"] input:checked { background: #cf8bf3; border-color: #cf8bf3; box-shadow: 0 0 10px rgba(207, 139, 243, 0.4); }
+.tier-checkbox-tile[data-tier].checked { background: rgb(var(--era) / .1); }
+.tier-checkbox-tile[data-tier] input:checked {
+  background: rgb(var(--era));
+  border-color: rgb(var(--era));
+  box-shadow: 0 0 10px rgb(var(--era) / .4);
+}
 
 /* Mode Options */
 .notif-mode-options {
@@ -4717,8 +4729,15 @@ select option { background: #161b25; color: var(--text); }
    Overlay-Modus
 
    Eigene Massstabsebene, nicht das geschrumpfte Dashboard: kleinere Schrift,
-   engere Zeilen, harte Kanten. Ueber einem laufenden Spiel liest man nur
-   Zahlen und Zustaende ab - dafuer ist jede Zierde verlorener Platz.
+   engere Zeilen. Ueber einem laufenden Spiel liest man Zahlen und Zustaende
+   ab - jede Zierde, die nicht mitliest, ist verlorener Platz.
+
+   WAS HIER TRAEGT, IST NICHT DIE FLAECHE, SONDERN DIE KANTE:
+     Eine 380 px breite Spalte vertraegt keine grossen Farbfelder - fuellt man
+     eine Zeile ganz, faellt sie nicht mehr auf, sie schreit nur. Zustand
+     steckt deshalb in einer 2 px schmalen Leiste am linken Rand und in einer
+     Zahl, nicht im Untergrund. So bleiben zehn Zeilen untereinander lesbar,
+     und die eine, auf die es ankommt, hebt sich trotzdem ab.
    ========================================================================= */
 
 /* Das Overlay ist ein eigenes Dokument in einem eigenen Fenster
@@ -4730,7 +4749,9 @@ body.overlay-window { background: #0b0f16; }
   inset: 0;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(180deg, #111621 0%, #0a0d12 100%);
+  background:
+    radial-gradient(120% 60% at 50% -10%, rgba(74, 158, 255, .10), transparent 60%),
+    linear-gradient(180deg, #121826 0%, #0a0d12 62%);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
   font-size: 12px;
 }
@@ -4744,8 +4765,8 @@ body.overlay-window { background: #0b0f16; }
   height: 34px;
   flex-shrink: 0;
   padding: 0 6px 0 10px;
-  background: rgba(255, 255, 255, 0.04);
-  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.06);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .06), rgba(255, 255, 255, .02));
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.07);
 }
 .ov-logo { color: var(--accent); display: inline-flex; align-items: center; }
 .ov-logo svg, .ov-logo .nav-icon-mask { width: 15px; height: 15px; }
@@ -4764,6 +4785,7 @@ body.overlay-window { background: #0b0f16; }
   letter-spacing: .4px;
 }
 .ov-traces {
+  -webkit-app-region: no-drag;
   display: inline-flex;
   align-items: center;
   gap: 3px;
@@ -4774,15 +4796,25 @@ body.overlay-window { background: #0b0f16; }
   padding: 2px 6px;
   border-radius: 999px;
   letter-spacing: .3px;
+  flex-shrink: 0;
 }
+/* Das Bild ist ein blasses Blau auf durchsichtigem Grund. Auf der ohnehin
+   blauen Pille verschwaende es sich - der Schein darunter setzt es ab. */
 .ov-traces-ic {
-  display: inline-flex;
-  align-items: center;
-  color: #5fe4ff;
+  width: 16px; height: 16px;
+  object-fit: contain;
+  display: block;
+  /* Etwas groesser als die Schrift daneben und mit negativem Rand wieder in
+     die Zeile gezogen: das Bild ist eine Kralle um eine Kugel und braucht
+     mehr Pixel als ein Strichsymbol, um noch etwas darzustellen. Die Pille
+     soll davon aber nicht wachsen. */
+  margin: -3px 0;
+  filter: drop-shadow(0 0 3px rgba(95, 228, 255, .55));
 }
-.ov-traces-ic svg { width: 10px; height: 10px; }
+/* Der Vorrat ist eine Zahl, nach der man greift, wenn man vor der Veredelung
+   steht - er darf nicht kleiner sein als die Beschriftung daneben. */
 .ov-traces b {
-  font-size: 10px;
+  font-size: 12.5px;
   font-weight: 700;
   letter-spacing: 0;
   text-shadow: none;
@@ -4803,52 +4835,85 @@ body.overlay-window { background: #0b0f16; }
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 9px 9px 4px;
+  padding: 9px 9px 6px;
   display: flex;
   flex-direction: column;
-  gap: 11px;
+  gap: 12px;
+  /* Ohne Balken. Ueber einem laufenden Spiel ist er ein senkrechter Streifen
+     Fremdkoerper am Rand und nimmt der schmalen Spalte ausserdem Platz weg.
+     Gescrollt wird mit dem Rad, und das funktioniert unveraendert weiter -
+     genau wie die Zeigerfahrt bei den Chips daneben, die aus demselben Grund
+     seit jeher keinen Balken zeigen. */
+  scrollbar-width: none;
 }
-.ov-body::-webkit-scrollbar { width: 8px; }
-.ov-body::-webkit-scrollbar-thumb { border-width: 2px; }
+.ov-body::-webkit-scrollbar { width: 0; height: 0; display: none; }
 
+/* Die Abschnitte duerfen NICHT schrumpfen.
+   Sonst passiert Folgendes: die Spalte ist ein Flex-Behaelter, seine Kinder
+   haben von Haus aus flex-shrink: 1, und ihre automatische Mindesthoehe faellt
+   auf 0, sobald sie selbst overflow: hidden tragen (.ov-relic tut das). Laeuft
+   der Inhalt ueber - und ueber einem Spiel laeuft er fast immer ueber -,
+   quetscht der Behaelter genau diese Abschnitte auf null zusammen, statt zu
+   scrollen. Die Belohnungsanzeige stand dann da, war messbar an ihrem Platz,
+   und hatte 0 Pixel Hoehe. */
+.ov-body > * { flex-shrink: 0; }
+
+/* Die Ueberschrift traegt links einen kurzen Strich. Zwischen zwei Listen,
+   die beide aus gleich hohen Zeilen bestehen, ist er die einzige Stelle, an
+   der das Auge den Schnitt findet. */
 .ov-sec-head {
-  display: flex; align-items: baseline; justify-content: space-between;
-  margin-bottom: 5px; padding: 0 2px;
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 6px; padding: 0 2px;
 }
 .ov-sec-head span:first-child {
-  font-size: 9.5px; font-weight: 700; letter-spacing: 1px;
-  text-transform: uppercase; color: var(--text-3);
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 9.5px; font-weight: 700; letter-spacing: 1.1px;
+  text-transform: uppercase; color: var(--text-2);
+}
+.ov-sec-head span:first-child::before {
+  content: ''; width: 3px; height: 10px; border-radius: 2px;
+  background: rgb(var(--t-accent) / .55);
 }
 .ov-sec-note {
   font: 600 9.5px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
   color: var(--text-3);
 }
 
-/* Reliktauswahl-Hervorhebung */
+/* Reliktauswahl-Hervorhebung: der Abschnitt tritt aus der Spalte heraus,
+   solange Warframe wirklich danach fragt. */
 #ov-rec-sec.selecting {
-  background: linear-gradient(180deg, rgba(74, 158, 255, 0.16), rgba(74, 158, 255, 0.05));
+  background:
+    radial-gradient(120% 100% at 0% 0%, rgb(var(--t-accent) / .16), transparent 60%),
+    rgba(74, 158, 255, 0.05);
   border-radius: var(--r-md);
-  padding: 6px 7px 8px;
-  box-shadow: 0 0 14px rgba(74, 158, 255, 0.22), inset 0 0 0 1px rgba(74, 158, 255, 0.32);
+  padding: 8px 8px 9px;
+  margin: -2px -2px 0;
+  box-shadow: 0 0 0 1px rgb(var(--t-accent) / .30), 0 10px 26px rgba(0, 0, 0, .45);
 }
-#ov-rec-sec.selecting #ov-rec-title {
+#ov-rec-sec.selecting #ov-rec-title { color: var(--accent); }
+#ov-rec-sec.selecting #ov-rec-title::before { background: var(--accent); }
+/* Ein leiser Puls, solange der Bildschirm im Spiel offen ist - er sagt
+   "jetzt", ohne eine Zeile dafuer zu verbrauchen. */
+#ov-rec-sec.selecting #ov-rec-note {
   color: var(--accent);
+  animation: ov-pulse 1.8s var(--ease) infinite;
 }
+@keyframes ov-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
 
 /* Filterchips fuer Relikt-Aeren */
 .ov-filter-chips {
   display: flex;
   gap: 3px;
-  margin-bottom: 5px;
+  margin-bottom: 6px;
   overflow-x: auto;
 }
 .ov-filter-chips::-webkit-scrollbar { display: none; }
 .ov-chip {
-  background: var(--surface);
+  background: rgba(255, 255, 255, .04);
   border: 1px solid rgba(255, 255, 255, 0.07);
   color: var(--text-3);
   font: 600 9px/1 var(--font-sans, system-ui, sans-serif);
-  padding: 3px 6px;
+  padding: 4px 7px;
   border-radius: 999px;
   cursor: pointer;
   white-space: nowrap;
@@ -4862,42 +4927,7 @@ body.overlay-window { background: #0b0f16; }
   color: #fff;
   background: var(--accent);
   border-color: var(--accent);
-}
-
-.ov-rec-values {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 1px;
-  flex-shrink: 0;
-  min-width: 38px;
-}
-.ov-rec-plat {
-  font: 700 11px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
-  color: var(--text);
-}
-.ov-rec-duc {
-  font: 600 9px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
-  color: var(--gold);
-}
-.ov-track-btn {
-  background: none;
-  border: none;
-  color: var(--text-3);
-  cursor: pointer;
-  padding: 2px;
-  border-radius: 4px;
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  transition: color .12s ease, background .12s ease;
-}
-.ov-track-btn:hover {
-  color: var(--gold);
-  background: var(--surface-2);
-}
-.ov-track-btn.active {
-  color: var(--gold);
+  box-shadow: 0 2px 10px rgb(var(--t-accent) / .35);
 }
 
 /* ---------- Zyklen ---------- */
@@ -4910,6 +4940,7 @@ body.overlay-window { background: #0b0f16; }
   padding: 6px 9px;
   border-radius: var(--r-sm);
   background: var(--surface);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04);
 }
 .ov-cycle-ic { display: inline-flex; color: var(--text-3); }
 .ov-cycle-name { font-weight: 600; }
@@ -4926,44 +4957,359 @@ body.overlay-window { background: #0b0f16; }
 .ov-cycle.warm  .ov-cycle-ic { color: #ff8a4a; }
 .ov-cycle.cold  .ov-cycle-ic { color: #57c6ff; }
 
-/* ---------- Zeilen (Risse, Ziele) ---------- */
+/* ---------- Zeilen (Risse) ---------- */
 .ov-list { display: flex; flex-direction: column; gap: 3px; }
 .ov-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 9px;
+  padding: 6px 9px 6px 11px;
   border-radius: var(--r-sm);
   background: var(--surface);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04);
+  overflow: hidden;
 }
+
+/* Aerafarben als reine Kanaele: dieselbe Zahl faerbt Leiste, Schild und
+   Schein, ohne dass ein Ton dreimal im Blatt steht. Die Toene selbst stehen
+   in :root - Hauptfenster und Overlay ziehen aus derselben Quelle, sonst
+   traegt dasselbe Relikt hier und dort eine andere Farbe. */
+.ov-fiss, .ov-rc { --era: var(--t-meso); }
+.ov-fiss[data-tier="Lith"],    .ov-rc[data-tier="Lith"]    { --era: var(--t-lith); }
+.ov-fiss[data-tier="Meso"],    .ov-rc[data-tier="Meso"]    { --era: var(--t-meso); }
+.ov-fiss[data-tier="Neo"],     .ov-rc[data-tier="Neo"]     { --era: var(--t-neo); }
+.ov-fiss[data-tier="Axi"],     .ov-rc[data-tier="Axi"]     { --era: var(--t-axi); }
+.ov-fiss[data-tier="Requiem"], .ov-rc[data-tier="Requiem"] { --era: var(--t-requiem); }
+.ov-fiss[data-tier="Omnia"],   .ov-rc[data-tier="Omnia"]   { --era: var(--t-omnia); }
+
+/* Die Leiste am linken Rand: 2 px Aerafarbe statt eines Farbfelds ueber die
+   ganze Zeile. */
+.ov-fiss::before, .ov-rc::before {
+  content: '';
+  position: absolute; left: 0; top: 0; bottom: 0; width: 2px;
+  background: rgb(var(--era) / .55);
+}
+
+.ov-tier {
+  font: 700 9px/1 var(--font-sans, system-ui, sans-serif);
+  text-transform: uppercase; letter-spacing: .4px;
+  padding: 3px 5px; border-radius: 5px;
+  color: rgb(var(--era));
+  background: rgb(var(--era) / .14);
+  flex-shrink: 0;
+  min-width: 34px; text-align: center;
+}
+
 /* Treffer der Benachrichtigungs-Auswahl: dasselbe Kriterium wie beim Toast,
    damit die Liste nicht etwas anderes hervorhebt als die Meldung ankuendigt. */
 .ov-row.hit {
   background:
-    linear-gradient(100deg, rgb(var(--t-accent) / .20), transparent 55%),
+    linear-gradient(100deg, rgb(var(--t-accent) / .16), transparent 55%),
     var(--accent-sf);
   box-shadow: inset 0 0 0 1px rgb(var(--t-accent) / .22);
 }
+.ov-row.hit::before { background: var(--accent); width: 3px; }
 
 .ov-row-body { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
 .ov-row-body b { font-size: 11.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ov-row-body span { font-size: 10px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.ov-tier { font-size: 9px; padding: 2px 5px; flex-shrink: 0; }
-.ov-goal-img { width: 20px; height: 20px; object-fit: contain; flex-shrink: 0; }
+/* Stahlpfad steht als Schild in der Zeile, nicht als " · SP" im Knotennamen:
+   dort verschwand es hinter der Auslassung, sobald der Name lang wurde. */
+.ov-sp {
+  font: 700 8px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-style: normal; letter-spacing: .4px;
+  color: var(--gold); background: rgb(var(--t-gold) / .14);
+  padding: 2px 4px; border-radius: 4px; margin-left: 5px;
+  vertical-align: 1px;
+}
+
+/* ---------- Relikte ---------- */
+
+.ov-rc {
+  position: relative;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04);
+  overflow: hidden;
+}
+/* Laeuft gerade ein Riss dieser Aera, ist das Relikt SOFORT benutzbar - das
+   ist die einzige Unterscheidung, die in der Auswahl zaehlt. */
+.ov-rc.live {
+  background: linear-gradient(100deg, rgb(var(--era) / .12), transparent 62%), var(--surface);
+  box-shadow: inset 0 0 0 1px rgb(var(--era) / .20);
+}
+.ov-rc.live::before { width: 3px; background: rgb(var(--era) / .9); }
+
+.ov-rc-head {
+  display: grid;
+  grid-template-columns: 26px 1fr auto 12px;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 26px 6px 11px;
+  cursor: pointer;
+}
+.ov-rc-head:hover { background: rgba(255, 255, 255, .03); }
+/* Das Reliktbild ist dunkel und klein - ohne den Schein darunter verschwindet
+   es im Untergrund der Karte, statt sie zu beschriften. */
+.ov-rc-img {
+  width: 26px; height: 26px; object-fit: contain;
+  filter: drop-shadow(0 0 6px rgb(var(--era) / .45));
+}
+
+.ov-rc-main { min-width: 0; }
+.ov-rc-title {
+  display: flex; align-items: center; gap: 5px;
+  white-space: nowrap; overflow: hidden;
+}
+.ov-rc-title b {
+  font-size: 12px; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.ov-rc-era {
+  font: 700 9px/1 var(--font-sans, system-ui, sans-serif);
+  text-transform: uppercase; letter-spacing: .4px;
+  color: rgb(var(--era));
+  flex-shrink: 0;
+}
+/* Die Politur entscheidet ueber die Chance auf das seltene Teil. Vier Stufen,
+   vier Toene - eine Zahl dafuer haette in dieser Zeile keinen Platz. */
+.ov-rc-ref {
+  font: 700 8px/1 var(--font-sans, system-ui, sans-serif);
+  text-transform: uppercase; letter-spacing: .5px;
+  padding: 2.5px 4px; border-radius: 4px; flex-shrink: 0;
+}
+.ov-rc-ref.st-intact { color: var(--text-3); background: rgba(255, 255, 255, .06); }
+.ov-rc-ref.st-exc    { color: #d4a373; background: rgb(var(--t-bronze) / .16); }
+.ov-rc-ref.st-flaw   { color: #ccd6dd; background: rgb(var(--t-silver) / .16); }
+.ov-rc-ref.st-rad    { color: var(--gold); background: rgb(var(--t-gold) / .18); }
+.ov-rc-count {
+  font: 600 9.5px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  color: var(--text-3); flex-shrink: 0;
+}
+
+.ov-rc-sub {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 3px; min-width: 0;
+  font-size: 9.5px; color: var(--text-3);
+}
+/* Der laufende Riss bekommt einen gruenen Punkt statt einer Farbflaeche:
+   er sagt "laeuft", ohne die Zeile einzufaerben. */
+.ov-rc-live {
+  display: inline-flex; align-items: center; gap: 4px;
+  color: var(--green); font-weight: 600; flex-shrink: 0;
+}
+.ov-rc-live::before {
+  content: ''; width: 5px; height: 5px; border-radius: 50%;
+  background: var(--green); box-shadow: 0 0 6px rgb(var(--t-green) / .8);
+}
+.ov-rc-best {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ov-rc-best b { color: var(--text-2); font-weight: 700; margin-left: 4px; }
+.ov-rc-best.is-none { font-style: italic; opacity: .7; }
+
+/* Der Erwartungswert ist die Zahl, nach der sortiert wird - also die
+   groesste in der Zeile. */
+.ov-rc-val { text-align: right; flex-shrink: 0; }
+.ov-rc-plat {
+  display: flex; align-items: center; justify-content: flex-end; gap: 3px;
+  font: 700 15px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  color: var(--text); font-variant-numeric: tabular-nums;
+}
+.ov-rc-duc {
+  display: flex; align-items: center; justify-content: flex-end; gap: 3px;
+  margin-top: 3px;
+  font: 600 11.5px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  color: var(--gold); font-variant-numeric: tabular-nums;
+}
+
+/* Waehrungszeichen. Klein genug, um die Zahl nicht zu ueberstimmen - sie ist
+   die Angabe, das Zeichen nur ihre Einheit. Der Schatten ist derselbe wie im
+   Hauptfenster (.currency-ic): beide Bilder sind metallisch und stehen sonst
+   ohne Kante auf dem dunklen Grund. */
+.ov-cur {
+  width: 14px; height: 14px;
+  object-fit: contain; flex-shrink: 0;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .6));
+}
+.ov-rc-duc .ov-cur { width: 12px; height: 12px; }
+
+.ov-rc-chev {
+  display: inline-flex; color: var(--text-3);
+  transform: rotate(90deg);
+  transition: transform .16s var(--ease);
+}
+.ov-rc.is-open .ov-rc-chev { transform: rotate(-90deg); }
+
+/* Der Stern sitzt in der Ecke, nicht in der Reihe: er gehoert zur Karte, aber
+   nicht zu dem, was man beim Waehlen liest. */
+.ov-rc-star {
+  position: absolute; top: 4px; right: 4px;
+  background: none; border: none; color: rgba(255, 255, 255, .18);
+  cursor: pointer; padding: 3px; border-radius: 5px;
+  display: grid; place-items: center;
+  transition: color .12s ease, background .12s ease;
+}
+.ov-rc-star:hover { color: var(--gold); background: var(--surface-2); }
+.ov-rc-star.active { color: var(--gold); }
+
+/* ---------- Die sechs Belohnungen, aufgeklappt ---------- */
+.ov-rc-drops {
+  padding: 2px 9px 7px 11px;
+  border-top: 1px solid rgba(255, 255, 255, .05);
+}
+.ov-drop {
+  display: grid;
+  grid-template-columns: 6px 1fr 34px 30px 22px;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  font-size: 10px;
+}
+/* Kopfzeile der Belohnungsspalten: nur die beiden Waehrungszeichen, rechts
+   ueber ihren Zahlen. */
+.ov-drop-head { padding: 1px 0 3px; }
+.ov-drop-head span { display: flex; justify-content: flex-end; }
+.ov-drop-head .ov-cur { width: 10px; height: 10px; opacity: .75; }
+
+.ov-drop-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); }
+.ov-drop.rar-common    .ov-drop-dot { background: #b08d57; }
+.ov-drop.rar-uncommon  .ov-drop-dot { background: #c8d2d8; }
+.ov-drop.rar-rare      .ov-drop-dot { background: var(--gold); box-shadow: 0 0 6px rgb(var(--t-gold) / .6); }
+.ov-drop.rar-legendary .ov-drop-dot { background: #cf8bf3; box-shadow: 0 0 6px rgba(207, 139, 243, .6); }
+.ov-drop-name {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--text-2);
+}
+.ov-drop.rar-rare .ov-drop-name { color: var(--text); }
+.ov-drop-chance, .ov-drop-plat, .ov-drop-duc {
+  font: 600 9.5px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  text-align: right; font-variant-numeric: tabular-nums;
+}
+.ov-drop-chance { color: var(--text-3); }
+.ov-drop-plat   { color: var(--text-2); }
+.ov-drop-duc    { color: rgb(var(--t-gold) / .75); }
+.ov-rc-drops-empty { padding: 4px 0 2px; font-size: 9.5px; color: var(--text-3); }
+
+.ov-more {
+  padding: 5px 2px 0; font-size: 9.5px; color: var(--text-3); text-align: center;
+}
+
+/* ---------- Ziele ---------- */
+.ov-goal {
+  position: relative;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04);
+  overflow: hidden;
+}
+.ov-goal::before {
+  content: '';
+  position: absolute; left: 0; top: 0; bottom: 0; width: 2px;
+  background: rgb(var(--t-green) / .5);
+}
+/* Was man schon besitzt, wird gelevelt - was fehlt, gefarmt. Zwei Wege, zwei
+   Toene, damit die Unterzeile nicht das Einzige ist, was sie unterscheidet. */
+.ov-goal.is-farm::before { background: rgb(var(--t-accent) / .5); }
+
+.ov-goal-head {
+  display: flex; align-items: center; gap: 9px;
+  padding: 7px 9px 7px 11px;
+  cursor: default;
+}
+.ov-goal-head[data-goal-toggle] { cursor: pointer; }
+.ov-goal-head[data-goal-toggle]:hover { background: rgba(255, 255, 255, .03); }
+.ov-goal-img { width: 26px; height: 26px; object-fit: contain; flex-shrink: 0; }
+.ov-goal-body { flex: 1; min-width: 0; }
+.ov-goal-body > b {
+  display: block; font-size: 11.5px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ov-goal-sub {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 2px; font-size: 9.5px; color: var(--text-3);
+}
+.ov-goal-sub span { display: inline-flex; align-items: center; gap: 3px; }
+.ov-goal-sub svg { opacity: .7; }
+.ov-goal-rank { font-weight: 600; color: var(--text-2); }
+/* Ein Rangbalken statt "12/30" allein: der Abstand zum Ende ist die Angabe,
+   die zaehlt, und den liest man schneller als Zahlen. */
+.ov-goal-bar {
+  height: 2px; margin-top: 5px; border-radius: 999px;
+  background: rgba(255, 255, 255, .07); overflow: hidden;
+}
+.ov-goal-bar i { display: block; height: 100%; background: var(--green); border-radius: 999px; }
 .ov-gain {
   font: 700 10px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
   color: var(--green); flex-shrink: 0;
 }
+.ov-goal-chev {
+  display: inline-flex; color: var(--text-3); flex-shrink: 0;
+  transform: rotate(90deg);
+  transition: transform .16s var(--ease);
+}
+.ov-goal.is-open .ov-goal-chev { transform: rotate(-90deg); }
 
-/* ---------- Gemerkte Relikte ---------- */
-.ov-relic-img { width: 22px; height: 22px; object-fit: contain; flex-shrink: 0; }
-/* Der Zustand haengt am Namen, statt eine eigene Zeile zu bekommen: darunter
-   steht schon die Belohnung, und das Overlay hat keine dritte Zeile uebrig. */
-.ov-relic-state { font-weight: 500; font-size: 9.5px; color: var(--text-3); }
-.ov-relic-exp {
-  font: 700 11px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
-  color: var(--gold); flex-shrink: 0; min-width: 34px; text-align: right;
+/* Bauteile und Rohstoffe. Steht nur da, wenn danach gefragt wurde. */
+.ov-goal-more {
+  padding: 2px 9px 8px 11px;
+  border-top: 1px solid rgba(255, 255, 255, .05);
+}
+.ov-goal-block + .ov-goal-block { margin-top: 8px; }
+.ov-goal-label {
+  display: flex; align-items: center; gap: 5px;
+  margin: 6px 0 4px;
+  font-size: 8.5px; font-weight: 700; letter-spacing: .9px;
+  text-transform: uppercase; color: var(--text-3);
+}
+.ov-goal-label svg { opacity: .8; }
+
+.ov-part {
+  display: flex; align-items: center; gap: 7px;
+  padding: 3px 0;
+  font-size: 10.5px;
+}
+.ov-part-img { width: 16px; height: 16px; object-fit: contain; flex-shrink: 0; }
+.ov-part-name {
+  flex: 1; min-width: 0; color: var(--text-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Ein Teil, das selbst geschmiedet werden muss, kostet einen zweiten Tag im
+   Ofen - das gehoert an die Zeile, nicht in eine Fussnote. */
+.ov-part-tag {
+  font: 700 7.5px/1 var(--font-sans, system-ui, sans-serif);
+  text-transform: uppercase; letter-spacing: .5px;
+  color: rgb(var(--t-accent) / .9); background: rgb(var(--t-accent) / .14);
+  padding: 2.5px 4px; border-radius: 4px; flex-shrink: 0;
+}
+.ov-part-count {
+  font: 700 10px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  color: var(--text); flex-shrink: 0; font-variant-numeric: tabular-nums;
+}
+
+/* Rohstoffe als Pillen, nicht als Zeilen: es sind bis zu zehn, und bei
+   "Nano Spores 12.5k" ist die Zahl die Angabe - der Name nur ihre
+   Beschriftung. Nebeneinander passen doppelt so viele in dieselbe Hoehe. */
+.ov-mats { display: flex; flex-wrap: wrap; gap: 4px; }
+.ov-mat {
+  display: inline-flex; align-items: center; gap: 4px;
+  max-width: 100%;
+  padding: 3px 6px 3px 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .045);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .05);
+  font-size: 9.5px;
+}
+.ov-mat img { width: 14px; height: 14px; object-fit: contain; flex-shrink: 0; }
+.ov-mat em {
+  font-style: normal; color: var(--text-3);
+  max-width: 92px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ov-mat b {
+  font: 700 9.5px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  color: var(--text-2); font-variant-numeric: tabular-nums;
 }
 
 /* ---------- Uhren ---------- */
@@ -5025,6 +5371,14 @@ body.overlay-window { background: #0b0f16; }
   background: rgba(255, 255, 255, 0.03);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
+/* Der Ruhezustand ist eine Merkzeile, keine Meldung: schmaler, blasser und
+   mittig, damit er neben den beiden Sonderzustaenden nicht mitschreit. */
+.ov-hint.is-idle {
+  justify-content: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.02);
+  opacity: .85;
+}
 .ov-hint b { color: var(--accent); font-weight: 600; }
 .ov-hint kbd {
   font: 600 9px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
@@ -5032,6 +5386,9 @@ body.overlay-window { background: #0b0f16; }
   border: 1px solid rgba(255, 255, 255, .07); border-bottom-width: 2px;
   padding: 2px 4px; border-radius: 4px;
 }
+/* Ctrl und R gehoeren zusammen - eng, waehrend der Abstand der Zeile die
+   Kombination von ihrer Beschriftung trennt. */
+.ov-keys { display: inline-flex; align-items: center; gap: 2px; }
 
 /* ============================================================================
    Einstellungen
@@ -5274,44 +5631,37 @@ label.setting-row { cursor: pointer; user-select: none; }
    aufgegangen ist, und hat 15 Sekunden Zeit, gelesen zu werden. */
 .ov-relic {
   border-radius: var(--r-md);
-  background: linear-gradient(180deg, rgba(74, 158, 255, 0.16), rgba(74, 158, 255, 0.05));
-  box-shadow: inset 0 0 0 1px rgba(74, 158, 255, 0.28);
+  background:
+    radial-gradient(120% 100% at 0% 0%, rgba(74, 158, 255, 0.20), transparent 62%),
+    rgba(74, 158, 255, 0.06);
+  box-shadow: 0 0 0 1px rgba(74, 158, 255, 0.30), 0 10px 26px rgba(0, 0, 0, .5);
   overflow: hidden;
 }
 
 .ov-relic-head {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 7px 10px 5px;
+  padding: 8px 10px 6px;
 }
 .ov-relic-head span:first-child {
-  font-size: 9.5px; font-weight: 700; letter-spacing: 1px;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 9.5px; font-weight: 700; letter-spacing: 1.1px;
   text-transform: uppercase; color: var(--accent);
 }
+.ov-relic-head span:first-child::before {
+  content: ''; width: 3px; height: 10px; border-radius: 2px; background: var(--accent);
+}
+/* Die Restzeit ist hier keine Nebenangabe, sondern die Frist: nach ihr faellt
+   die Wahl automatisch. Deshalb so gross wie die Ueberschrift daneben. */
 .ov-relic-timer {
-  font: 700 12px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font: 700 13px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
   color: var(--text-2); font-variant-numeric: tabular-nums;
 }
-.ov-relic-timer.urgent { color: var(--red); }
+.ov-relic-timer.urgent { color: var(--red); text-shadow: 0 0 12px rgb(255 92 92 / .5); }
 
 /* Untereinander, nicht nebeneinander: hier stehen bis zu vier Zeilen.
    Der Einzel-Item-Entwurf hatte hier flex stehen - damit quetschte die Liste
    alle Zeilen in eine Reihe. */
-.ov-relic-body { display: block; padding: 0 0 8px; }
-.ov-relic-img { width: 42px; height: 42px; object-fit: contain; flex-shrink: 0; }
-.ov-relic-info { min-width: 0; flex: 1; }
-.ov-relic-info b {
-  display: block; font-size: 13px; line-height: 1.25;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.ov-relic-values { display: flex; align-items: baseline; gap: 9px; margin-top: 3px; }
-.ov-relic-plat {
-  font: 700 12px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
-  color: var(--text);
-}
-.ov-relic-plat.good  { color: var(--green); }
-.ov-relic-plat.muted { color: var(--text-3); font-weight: 400; }
-.ov-relic-duc { font-size: 10.5px; color: var(--gold); }
-.ov-relic-empty { padding: 2px 0 8px; font-size: 10.5px; color: var(--text-3); }
+.ov-relic-body { display: block; padding: 0 4px 8px; }
 
 /* Hinweis auf eine haengende Datenquelle im Overlay. */
 .ov-stale {
@@ -5339,7 +5689,10 @@ label.setting-row { cursor: pointer; user-select: none; }
   font-size: 8.5px; font-weight: 700; letter-spacing: .8px;
   text-transform: uppercase; color: var(--text-3);
 }
-.ov-rw-head span:nth-child(4), .ov-rw-head span:nth-child(5) { text-align: right; }
+.ov-rw-head span:nth-child(4), .ov-rw-head span:nth-child(5) {
+  display: flex; justify-content: flex-end;
+}
+.ov-rw-head .ov-cur { width: 11px; height: 11px; }
 
 .ov-rw {
   padding: 5px 10px;
@@ -5354,11 +5707,15 @@ label.setting-row { cursor: pointer; user-select: none; }
   box-shadow: inset 0 0 0 1px rgb(var(--t-green) / .26);
 }
 
-/* Die Nummer ist die Bruecke zum Bildschirm: erste Karte von links ist 1. */
+/* Die Nummer ist die Bruecke zum Bildschirm: erste Karte von links ist 1.
+   Als Plakette, nicht als Ziffer - man sucht sie unter Zeitdruck. */
 .ov-rw-pos {
-  font: 700 10px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
-  color: var(--text-3); text-align: center;
+  font: 700 10px/16px ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  color: var(--text-2); text-align: center;
+  width: 16px; height: 16px; border-radius: 5px;
+  background: rgba(255, 255, 255, .07);
 }
+.ov-rw.best .ov-rw-pos { color: var(--green); background: rgb(var(--t-green) / .18); }
 .ov-rw-img { width: 24px; height: 24px; object-fit: contain; }
 .ov-rw-body { min-width: 0; line-height: 1.2; }
 .ov-rw-body b {
@@ -5993,6 +6350,16 @@ body.tags-window {
 .tier-chip .chip-ic svg,
 .tier-chip .chip-ic .nav-icon-mask { display: block; }
 .tier-chip:hover .chip-ic { opacity: 1; }
+/* Ein Bild statt eines Symbols: es bringt seine eigenen Farben mit und darf
+   sich nicht wie ein Strichsymbol am Textton ausrichten. display: block
+   statt des geerbten grid - ein <img> ist selbst der Inhalt, es hat nichts
+   zu zentrieren. */
+.tier-chip .chip-ic-img {
+  display: block;
+  object-fit: contain;
+  opacity: 1;
+  filter: drop-shadow(0 0 3px rgba(95, 228, 255, .5));
+}
 
 /* Die Trefferzahl - gedaempft und schmal, nicht als Plakette.
 
@@ -6030,12 +6397,12 @@ body.tags-window {
    wird sie ueber die Deckkraft, nicht ueber eine zweite Farbe. */
 .tier-chip.active > span { color: inherit; opacity: .58; }
 
-.tier-chip.tier-lith.active    { background: #d4a373; }
-.tier-chip.tier-meso.active    { background: #ccd6dd; }
-.tier-chip.tier-neo.active     { background: var(--gold); }
-.tier-chip.tier-axi.active     { background: var(--accent); }
-.tier-chip.tier-requiem.active { background: #be78ff; }
-.tier-chip.tier-omnia.active   { background: var(--green); }
+.tier-chip.tier-lith.active    { background: rgb(var(--t-lith)); }
+.tier-chip.tier-meso.active    { background: rgb(var(--t-meso)); }
+.tier-chip.tier-neo.active     { background: rgb(var(--t-neo)); }
+.tier-chip.tier-axi.active     { background: rgb(var(--t-axi)); }
+.tier-chip.tier-requiem.active { background: rgb(var(--t-requiem)); }
+.tier-chip.tier-omnia.active   { background: rgb(var(--t-omnia)); }
 
 /* Alles-Chip und Gattung beantworten dieselbe Frage - welcher Ausschnitt der
    Liste - und tragen deshalb dieselbe Farbe. Beide zugleich kann es nicht
@@ -6120,12 +6487,15 @@ body.tags-window {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
 }
 /* Die Aera faerbt die Karte zart ein - dieselben Toene wie im Inventarfilter. */
-.plan-card.tier-lith    { background: radial-gradient(120% 100% at 0% 0%, rgba(212, 163, 115, .09), transparent 58%), var(--surface); }
-.plan-card.tier-meso    { background: radial-gradient(120% 100% at 0% 0%, rgba(204, 214, 221, .09), transparent 58%), var(--surface); }
-.plan-card.tier-neo     { background: radial-gradient(120% 100% at 0% 0%, rgb(var(--t-gold) / .09), transparent 58%), var(--surface); }
-.plan-card.tier-axi     { background: radial-gradient(120% 100% at 0% 0%, rgb(var(--t-accent) / .09), transparent 58%), var(--surface); }
-.plan-card.tier-requiem { background: radial-gradient(120% 100% at 0% 0%, rgba(190, 120, 255, .09), transparent 58%), var(--surface); }
-.plan-card.tier-omnia   { background: radial-gradient(120% 100% at 0% 0%, rgb(var(--t-green) / .09), transparent 58%), var(--surface); }
+.plan-card.tier-lith    { --era: var(--t-lith); }
+.plan-card.tier-meso    { --era: var(--t-meso); }
+.plan-card.tier-neo     { --era: var(--t-neo); }
+.plan-card.tier-axi     { --era: var(--t-axi); }
+.plan-card.tier-requiem { --era: var(--t-requiem); }
+.plan-card.tier-omnia   { --era: var(--t-omnia); }
+.plan-card[class*="tier-"] {
+  background: radial-gradient(120% 100% at 0% 0%, rgb(var(--era) / .09), transparent 58%), var(--surface);
+}
 
 .plan-head {
   display: flex; align-items: center; gap: 10px;
@@ -6373,8 +6743,18 @@ body.tags-window {
   z-index: 1;
   transition: z-index 80ms step-end;
 }
-.mod-slot:hover {
-  z-index: 999;
+/* Die aufgeschlagene Karte muss ueber ihre Nachbarn im Raster steigen, aber
+   NICHT ueber das Datenblatt (.modal liegt auf 100): das Raster spannt keinen
+   eigenen Stapelkontext auf, ein z-index von 999 haette die Karte also mitten
+   ins geoeffnete Fenster gestellt. 40 reicht fuer die Nachbarschaft.
+
+   Der Rest der Bedingung ist derselbe Fall aus der anderen Richtung: waehrend
+   ein Datenblatt offen ist, bleiben alle Karten zugeklappt. Sonst haelt die
+   angeklickte Karte ihren :hover-Zustand, bis die Maus sich das naechste Mal
+   bewegt - der Zeiger steht nach dem Klick still, und Chromium rechnet den
+   Zustand erst bei der naechsten Bewegung neu aus. */
+body:not(:has(.modal:not(.hidden))) .mod-slot:hover {
+  z-index: 40;
   transition: z-index 80ms step-start;
 }
 
@@ -6396,11 +6776,11 @@ body.tags-window {
    Brett aus lauter vergroesserten Karten haette keine Ordnung mehr. */
 .mod-slot.is-open { height: 282px; }
 
-.mod-slot:hover .mod-card,
+body:not(:has(.modal:not(.hidden))) .mod-slot:hover .mod-card,
 .mod-slot.is-open .mod-card {
   height: 282px;
 }
-.mod-slot:hover .mod-card { transform: scale(1.1); }
+body:not(:has(.modal:not(.hidden))) .mod-slot:hover .mod-card { transform: scale(1.1); }
 .mod-slot.is-open:hover .mod-card { transform: scale(1.035); }
 
 /* Rahmen oben und unten. Werden proportional mit den exakten Originalverhältnissen (281/242 & 292/242) skaliert */
@@ -6442,7 +6822,7 @@ body.tags-window {
   position: relative;
   z-index: 5;
 }
-.mod-slot:hover .mod-inner,
+body:not(:has(.modal:not(.hidden))) .mod-slot:hover .mod-inner,
 .mod-slot.is-open .mod-inner {
   height: calc(100% - 16px);
   margin-top: 2px;
@@ -6475,12 +6855,12 @@ body.tags-window {
 .mod-edge::after {
   right: -2px;
 }
-.mod-slot:hover .mod-edge::before,
+body:not(:has(.modal:not(.hidden))) .mod-slot:hover .mod-edge::before,
 .mod-slot.is-open .mod-edge::before {
   opacity: 1;
   transform: scale(-1, 1);
 }
-.mod-slot:hover .mod-edge::after,
+body:not(:has(.modal:not(.hidden))) .mod-slot:hover .mod-edge::after,
 .mod-slot.is-open .mod-edge::after {
   opacity: 1;
   transform: scale(1, 1);
@@ -6555,16 +6935,16 @@ body.tags-window {
   filter: grayscale(.8) brightness(.32);
   transition: filter .12s var(--ease);
 }
-.mod-slot:hover .mod-art,
+body:not(:has(.modal:not(.hidden))) .mod-slot:hover .mod-art,
 .mod-slot.is-open .mod-art {
   position: relative;
   inset: unset;
   flex: 1 1 auto;
   min-height: 35px;
 }
-.mod-slot:hover .mod-art::after,
+body:not(:has(.modal:not(.hidden))) .mod-slot:hover .mod-art::after,
 .mod-slot.is-open .mod-art::after { opacity: .4; }
-.mod-slot:hover .mod-art img,
+body:not(:has(.modal:not(.hidden))) .mod-slot:hover .mod-art img,
 .mod-slot.is-open .mod-art img { filter: grayscale(0) brightness(1); }
 
 /* Textbereich */
@@ -6589,7 +6969,7 @@ body.tags-window {
   font-size: 10px;
   line-height: 1.2;
 }
-.mod-slot:hover .mod-text,
+body:not(:has(.modal:not(.hidden))) .mod-slot:hover .mod-text,
 .mod-slot.is-open .mod-text {
   position: relative;
   inset: unset;
@@ -6598,7 +6978,7 @@ body.tags-window {
   padding: 5px 8px 42px;
   justify-content: flex-end;
 }
-.mod-slot:hover .mod-stat,
+body:not(:has(.modal:not(.hidden))) .mod-slot:hover .mod-stat,
 .mod-slot.is-open .mod-stat {
   display: block;
 }
@@ -6615,7 +6995,7 @@ body.tags-window {
   line-height: 1.15;
   text-align: center;
 }
-.mod-slot:hover .mod-name,
+body:not(:has(.modal:not(.hidden))) .mod-slot:hover .mod-name,
 .mod-slot.is-open .mod-name {
   margin: 0 0 1px;
   font-size: 12px !important;
@@ -6649,7 +7029,7 @@ body.tags-window {
   font-weight: 700;
   letter-spacing: .6px;
 }
-.mod-slot:hover .mod-compat,
+body:not(:has(.modal:not(.hidden))) .mod-slot:hover .mod-compat,
 .mod-slot.is-open .mod-compat { opacity: 1; }
 
 /* Rangsterne */
@@ -6665,7 +7045,7 @@ body.tags-window {
   opacity: 0;
   transition: opacity .12s var(--ease);
 }
-.mod-slot:hover .mod-pips,
+body:not(:has(.modal:not(.hidden))) .mod-slot:hover .mod-pips,
 .mod-slot.is-open .mod-pips { opacity: 1; }
 .mod-pips i {
   font-size: 7.5px;
@@ -6702,7 +7082,7 @@ body.tags-window {
   font: 700 10.5px/1.6 ui-monospace, "Cascadia Mono", Consolas, monospace;
   transition: opacity .12s var(--ease);
 }
-.mod-slot:hover .mod-count { opacity: 0; }
+body:not(:has(.modal:not(.hidden))) .mod-slot:hover .mod-count { opacity: 0; }
 
 /* ---- Seltenheit: Rahmen, Untergrund und Farbe ---- */
 
@@ -6715,7 +7095,7 @@ body.tags-window {
 .mod-card.rar-common .mod-art::after {
   background: radial-gradient(transparent 0, rgba(139, 59, 42, .1) 64%, rgba(255, 40, 5, .09) 100%);
 }
-.mod-slot:hover .mod-card.rar-common .mod-art::after,
+body:not(:has(.modal:not(.hidden))) .mod-slot:hover .mod-card.rar-common .mod-art::after,
 .mod-slot.is-open .mod-card.rar-common .mod-art::after { box-shadow: inset 1px 1px 100px #c79989; }
 
 .mod-card.rar-uncommon::before { background-image: url(assets/mod/SilverFrameTop.png); }
@@ -6727,7 +7107,7 @@ body.tags-window {
 .mod-card.rar-uncommon .mod-art::after {
   background: radial-gradient(transparent 0, rgba(39, 88, 177, .22) 64%, rgba(5, 70, 255, .17) 100%);
 }
-.mod-slot:hover .mod-card.rar-uncommon .mod-art::after,
+body:not(:has(.modal:not(.hidden))) .mod-slot:hover .mod-card.rar-uncommon .mod-art::after,
 .mod-slot.is-open .mod-card.rar-uncommon .mod-art::after { box-shadow: inset 1px 1px 100px #466afd; }
 
 .mod-card.rar-rare::before { background-image: url(assets/mod/GoldFrameTop.png); }
@@ -6739,7 +7119,7 @@ body.tags-window {
 .mod-card.rar-rare .mod-art::after {
   background: radial-gradient(transparent 0, rgba(177, 141, 39, .18) 64%, rgba(255, 213, 5, .09) 100%);
 }
-.mod-slot:hover .mod-card.rar-rare .mod-art::after,
+body:not(:has(.modal:not(.hidden))) .mod-slot:hover .mod-card.rar-rare .mod-art::after,
 .mod-slot.is-open .mod-card.rar-rare .mod-art::after { box-shadow: inset 1px 1px 100px #ffca3e; }
 
 .mod-card.rar-legendary::before { background-image: url(assets/mod/LegendaryFrameTop.png); }
@@ -6755,7 +7135,7 @@ body.tags-window {
 .mod-card.rar-legendary .mod-art::after {
   background: radial-gradient(transparent 0, rgba(143, 193, 255, .32) 64%, rgba(95, 122, 199, .27) 100%);
 }
-.mod-slot:hover .mod-card.rar-legendary .mod-art::after,
+body:not(:has(.modal:not(.hidden))) .mod-slot:hover .mod-card.rar-legendary .mod-art::after,
 .mod-slot.is-open .mod-card.rar-legendary .mod-art::after { box-shadow: inset 1px 1px 100px #5bf4ff; }
 
 
@@ -6818,12 +7198,13 @@ body.tags-window {
 
 .rl-art-wrap { width: 76px; height: 76px; }
 
-.im-badge.tier-lith    { background: rgba(212, 163, 115, .18); color: #d4a373; }
-.im-badge.tier-meso    { background: rgba(168, 190, 210, .18); color: #a8bed2; }
-.im-badge.tier-neo     { background: rgba(180, 200, 160, .18); color: #b4c8a0; }
-.im-badge.tier-axi     { background: rgba(230, 190, 110, .18); color: #e6be6e; }
-.im-badge.tier-requiem { background: rgba(190, 150, 220, .18); color: #be96dc; }
-.im-badge.tier-omnia   { background: rgba(120, 200, 210, .18); color: #78c8d2; }
+.im-badge.tier-lith    { --era: var(--t-lith); }
+.im-badge.tier-meso    { --era: var(--t-meso); }
+.im-badge.tier-neo     { --era: var(--t-neo); }
+.im-badge.tier-axi     { --era: var(--t-axi); }
+.im-badge.tier-requiem { --era: var(--t-requiem); }
+.im-badge.tier-omnia   { --era: var(--t-omnia); }
+.im-badge[class*="tier-"] { background: rgb(var(--era) / .18); color: rgb(var(--era)); }
 
 .rl-states { display: flex; flex-wrap: wrap; gap: 6px; }
 .rl-state {

@@ -5,9 +5,16 @@
    dem zweiten Monitor stehen.
 
    Gezeigt wird nur, was sich in den naechsten Minuten entscheidet - Zyklen,
-   Risse, offene Ziele. Die Restzeiten laufen lokal aus dem expiry-Zeitstempel
-   weiter, ein Tick pro Sekunde. Der 30-Sekunden-Takt des Hauptfensters faellt
-   ueber einem Spiel auf, in dem man auf die letzte Minute schaut.
+   Risse, Relikte, offene Ziele. Die Restzeiten laufen lokal aus dem
+   expiry-Zeitstempel weiter, ein Tick pro Sekunde. Der 30-Sekunden-Takt des
+   Hauptfensters faellt ueber einem Spiel auf, in dem man auf die letzte
+   Minute schaut.
+
+   ALLES, WAS TIEFER GEHT, KLAPPT AUF STATT DAZUSTEHEN: die sechs Belohnungen
+   eines Relikts und die Bauteile eines Ziels sind zu wertvoll, um sie
+   wegzulassen, und zu lang, um sie dauerhaft zu zeigen. Der aufgeklappte
+   Zustand ueberlebt das naechste Zeichnen (siehe openRelics/openGoals) -
+   sonst faellt er beim Minutentakt von selbst wieder zu.
 
    Laeuft wie der uebrige Renderer ohne Node-Zugriff, alles ueber window.api.  */
 
@@ -17,6 +24,24 @@ const nf = n => (n ?? 0).toLocaleString('en-GB');
 /** Item- und Knotennamen kommen aus fremden Daten - vor dem Einsetzen entschaerfen. */
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+/** 12500 -> "12.5k". Materialmengen sprengen sonst die schmale Spalte. */
+function compact(n) {
+  const v = Number(n) || 0;
+  if (v < 1000) return String(v);
+  if (v < 1000000) {
+    const k = v / 1000;
+    return (k < 100 ? k.toFixed(1).replace(/\.0$/, '') : Math.round(k)) + 'k';
+  }
+  return (v / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+}
+
+/** 2 -> "2%", 25.33 -> "25%", 11 -> "11%". Nachkommastellen nur, wo sie zaehlen. */
+function fmtChance(c) {
+  const v = Number(c);
+  if (!Number.isFinite(v) || v <= 0) return '';
+  return (v < 10 ? Number(v.toFixed(1)) : Math.round(v)) + '%';
+}
 
 let dashboard = null;             // MR und Ziele
 let world     = null;             // Weltzustand
@@ -29,7 +54,22 @@ let notifSettings = null;         // dieselbe Auswahl wie fuer die Toasts
 let clickThrough = false;
 let interacting = false;
 let visible = true;
-let hotkeys = { overlay: 'Alt+Shift+W', interact: 'Alt+Shift+E' };
+/* Nur der Stand, bis der Hauptprozess den echten schickt (applyState). Muss
+   trotzdem stimmen: das Overlay zeigt die Tasten jetzt an, und beim ersten
+   Zeichnen stand hier eine Kombination, die es seit der Umstellung auf
+   Ctrl+R/Ctrl+E gar nicht mehr gibt. Dieselben Werte wie DEFAULT_HOTKEYS. */
+let hotkeys = { overlay: 'Ctrl+R', interact: 'Ctrl+E' };
+
+/* Aufgeklappte Zeilen. Als Mengen von Kennungen, nicht als Markierung am
+   Element: die Listen werden im Minutentakt neu gezeichnet, ein Zustand im
+   DOM ginge dabei jedes Mal verloren. */
+const openRelics = new Set();
+const openGoals  = new Set();
+
+/* Welches Relikt die laufende Auswahl von selbst aufgeklappt hat. Getrennt
+   von openRelics, damit ein Zuklappen von Hand haelt: waere die Bedingung
+   "nichts offen", klappte dieselbe Zeile beim naechsten Zeichnen wieder auf. */
+let autoExpandedFor = null;
 
 let tickTimer = null;
 let pollTimer = null;
@@ -42,16 +82,28 @@ const STALE_MS  = 15 * 60 * 1000;
 const POLL_MS   = 60000;
 const MAX_FISS  = 8;
 const MAX_GOALS = 4;
-const MAX_RELICS = 5;
+const MAX_RELICS = 8;
 
-/* Die vier Politur-Stufen. Im Overlay muessen daneben noch Aera, Anzahl und
-   Erwartungswert in dieselbe schmale Zeile - deshalb bleibt hier Platz fuer
-   eine Kuerzung, sollte eine der Bezeichnungen einmal laenger werden. */
+/* Die vier Politur-Stufen. Kurzform fuer die Pille auf der Kartenzeile -
+   ausgeschrieben passt "Exceptional" nicht neben Aera, Name und Anzahl. */
 const RELIC_STATE_LABEL = {
   Intact: 'Intact',
-  Exceptional: 'Exceptional',
-  Flawless: 'Flawless',
-  Radiant: 'Radiant'
+  Exceptional: 'Exc',
+  Flawless: 'Flaw',
+  Radiant: 'Rad'
+};
+
+/* Die beiden Waehrungszeichen. Dieselben Bilder wie im Hauptfenster - ein
+   nachgestelltes "p" und "d" muss man lesen, das Zeichen erkennt man. */
+const PLAT_IC = '<img class="ov-cur" src="assets/icons/currency/platinum.png" alt="platinum">';
+const DUC_IC  = '<img class="ov-cur" src="assets/icons/currency/ducats.png" alt="ducats">';
+
+/* Kuerzel fuer die Klasse - die vier Stufen haben je eine eigene Farbe. */
+const RELIC_STATE_CLASS = {
+  Intact: 'st-intact',
+  Exceptional: 'st-exc',
+  Flawless: 'st-flaw',
+  Radiant: 'st-rad'
 };
 
 /* ---------------- Icons ---------------- */
@@ -223,7 +275,7 @@ function renderCycles() {
 
   box.innerHTML = rows.map(r => `
     <div class="ov-cycle ${r.cls}">
-      <span class="ov-cycle-ic">${Icon[r.icon](12)}</span>
+      <span class="ov-cycle-ic">${Icon[r.icon](13)}</span>
       <span class="ov-cycle-name">${esc(r.name)}</span>
       <span class="ov-cycle-state">${esc(r.state)}</span>
       <span class="ov-clock" data-until="${esc(r.expiry || '')}">—</span>
@@ -256,29 +308,63 @@ function renderFissures() {
   }
 
   const hits = all.filter(isHit);
-  note.textContent = hits.length ? `${hits.length} passend` : `${all.length} aktiv`;
+  note.textContent = hits.length ? `${hits.length} matching` : `${all.length} active`;
 
   const sorted = [...all].sort((a, b) =>
     (isHit(b) ? 1 : 0) - (isHit(a) ? 1 : 0) ||
     (a.tierNum || 0) - (b.tierNum || 0));
 
   box.innerHTML = sorted.slice(0, MAX_FISS).map(f => `
-    <div class="ov-row ${isHit(f) ? 'hit' : ''}">
-      <span class="ws-fissure-tier ov-tier ${esc(f.tier)}">${esc(f.tier)}</span>
+    <div class="ov-row ov-fiss ${isHit(f) ? 'hit' : ''}" data-tier="${esc(f.tier)}">
+      <span class="ov-tier">${esc(f.tier)}</span>
       <div class="ov-row-body">
-        <b>${esc(f.missionType)}</b>
-        <span>${esc(f.node)}${f.isHard ? ' · SP' : ''}</span>
+        <b>${esc(f.missionType)}${f.isHard ? '<i class="ov-sp">SP</i>' : ''}</b>
+        <span>${esc(f.node)}</span>
       </div>
       <span class="ov-clock" data-until="${esc(f.expiry || '')}">—</span>
     </div>`).join('');
 }
 
+/* ---------------- Relikte ---------------- */
+
+/**
+ * Die sechs Belohnungen eines Relikts.
+ *
+ * Nur aufgeklappt und nur fuer EINE Zeile: sechs Namen mal acht Relikte waeren
+ * 48 Zeilen ueber dem Spiel. Sortiert nach Seltenheit, weil danach gesucht
+ * wird - der seltene Fund oben, der Forma-Bauplan unten.
+ */
+function dropList(r) {
+  const rows = [...(r.rewards || [])].sort((a, b) => (a.chance || 0) - (b.chance || 0));
+  if (!rows.length) return '<div class="ov-rc-drops-empty">No drop table for this relic.</div>';
+
+  /* Kopfzeile nur aus den beiden Waehrungszeichen: sechsmal ein Zeichen hinter
+     die Zahl zu setzen macht die Spalte unruhig, einmal darueber genuegt. */
+  const head = `<div class="ov-drop ov-drop-head">
+      <span></span><span></span><span></span>
+      <span>${PLAT_IC}</span><span>${DUC_IC}</span>
+    </div>`;
+
+  return head + rows.map(d => {
+    const rar = String(d.rarity || '').toLowerCase() || 'common';
+    return `
+      <div class="ov-drop rar-${esc(rar)}">
+        <span class="ov-drop-dot" title="${esc(d.rarity || '')}"></span>
+        <span class="ov-drop-name">${esc(d.name)}</span>
+        <span class="ov-drop-chance">${fmtChance(d.chance)}</span>
+        <span class="ov-drop-plat">${d.plat != null ? d.plat : '–'}</span>
+        <span class="ov-drop-duc">${d.ducats != null ? d.ducats : '–'}</span>
+      </div>`;
+  }).join('');
+}
+
 /**
  * Empfohlene Relikte aus dem Relic Planner und fuer die Reliktauswahl.
  *
- * Zeigt kompakte Zeilen mit Aera, Name, Politur-Stufe, Erwartungswert (Platin & Dukaten)
- * und Top-Drop. Die einzelnen 6 Belohnungen werden im schmalen Overlay nicht gezeichnet,
- * um Platz fuer das Spiel zu sparen.
+ * Eine Karte je Relikt: Aera farbig am linken Rand, Politur als Pille, der
+ * Platin-Erwartungswert als groesste Zahl der Zeile. Darunter, in einer Zeile,
+ * die einzige Angabe die man beim Waehlen wirklich braucht - laeuft dafuer
+ * gerade ein Riss, und was ist das Beste, was drin sein kann.
  */
 function renderRecommendedRelics() {
   const sec = $('ov-rec-sec');
@@ -339,50 +425,97 @@ function renderRecommendedRelics() {
     return;
   }
 
-  box.innerHTML = sorted.slice(0, MAX_RELICS + 3).map(r => {
+  /* In der Auswahl klappt das beste Relikt von selbst auf. Waehrend der
+     Bildschirm im Spiel offen ist, kostet jeder Klick ins Overlay Warframe den
+     Fokus - was man dort lesen will, muss ohne Klick dastehen. */
+  if (isSelectingRelic && autoExpandedFor === null && sorted.length) {
+    autoExpandedFor = sorted[0].id;
+    openRelics.add(autoExpandedFor);
+  }
+
+  const shown = sorted.slice(0, MAX_RELICS);
+
+  box.innerHTML = shown.map(r => {
     const open = openTiers.get(r.tier) || 0;
     const best = r.bestPlat;
-    const parts = [];
-    if (best && best.plat != null) parts.push(`${best.name} ${best.plat}p`);
-    if (open) parts.push(`${open} ${open === 1 ? 'fissure' : 'fissures'} open`);
+    const expanded = openRelics.has(r.id);
 
     return `
-      <div class="ov-row ${open ? 'hit' : ''}">
-        <img class="ov-relic-img" src="${esc(r.image || '')}" alt="" onerror="this.style.visibility='hidden'">
-        <div class="ov-row-body">
-          <b>${esc(r.tier)} ${esc(r.name)}
-            <span class="ov-relic-state">${esc(RELIC_STATE_LABEL[r.state] || r.state || '')}${r.count > 1 ? ' · ×' + r.count : ''}</span>
-          </b>
-          <span>${esc(parts.join(' · ') || 'prices unknown')}</span>
+      <div class="ov-rc ${open ? 'live' : ''} ${expanded ? 'is-open' : ''}"
+           data-tier="${esc(r.tier)}" data-relic="${esc(r.id)}">
+        <div class="ov-rc-head" data-toggle="${esc(r.id)}" title="Show the six drops">
+          <img class="ov-rc-img" src="${esc(r.image || '')}" alt=""
+               onerror="this.style.visibility='hidden'">
+          <div class="ov-rc-main">
+            <div class="ov-rc-title">
+              <span class="ov-rc-era">${esc(r.tier)}</span>
+              <b>${esc(r.name)}</b>
+              <span class="ov-rc-ref ${RELIC_STATE_CLASS[r.state] || 'st-intact'}">${esc(RELIC_STATE_LABEL[r.state] || r.state || '')}</span>
+              ${r.count > 1 ? `<span class="ov-rc-count">×${r.count}</span>` : ''}
+            </div>
+            <div class="ov-rc-sub">
+              ${open ? `<span class="ov-rc-live">${open} ${open === 1 ? 'fissure' : 'fissures'}</span>` : ''}
+              ${best && best.plat != null
+                  ? `<span class="ov-rc-best">${esc(best.name)}<b>${best.plat}p</b></span>`
+                  : '<span class="ov-rc-best is-none">prices unknown</span>'}
+            </div>
+          </div>
+          <div class="ov-rc-val">
+            <span class="ov-rc-plat" title="Expected platinum return">${r.expPlat ?? 0}${PLAT_IC}</span>
+            <span class="ov-rc-duc" title="Expected ducats">${r.expDucats ?? 0}${DUC_IC}</span>
+          </div>
+          <span class="ov-rc-chev">${Icon.chevron(11)}</span>
         </div>
-        <div class="ov-rec-values">
-          <span class="ov-rec-plat" title="Expected platinum return">~${r.expPlat ?? 0}p</span>
-          ${r.expDucats ? `<span class="ov-rec-duc" title="Expected ducats">${r.expDucats}d</span>` : ''}
-        </div>
-        <button class="ov-track-btn ${r.tracked ? 'active' : ''}" data-track="${esc(r.id)}" title="${r.tracked ? 'Entmerken' : 'Merken'}">
-          ${Icon.star(12)}
-        </button>
+        <button class="ov-rc-star ${r.tracked ? 'active' : ''}" data-track="${esc(r.id)}"
+                title="${r.tracked ? 'Entmerken' : 'Merken'}">${Icon.star(11)}</button>
+        ${expanded ? `<div class="ov-rc-drops">${dropList(r)}</div>` : ''}
       </div>`;
-  }).join('') + (sorted.length > (MAX_RELICS + 3)
-    ? `<div class="ov-empty">… und ${sorted.length - (MAX_RELICS + 3)} weitere im Planer</div>`
+  }).join('') + (sorted.length > MAX_RELICS
+    ? `<div class="ov-more">… and ${sorted.length - MAX_RELICS} more in the planner</div>`
     : '');
+}
 
-  /* Schnell-Stern Klickbehandlung */
-  box.querySelectorAll('.ov-track-btn').forEach(btn => {
-    btn.onclick = async (e) => {
-      e.stopPropagation();
-      const id = btn.dataset.track;
-      const [key, state] = id.split('|');
-      const rel = recommendedRelics.find(r => r.id === id);
-      try {
-        await window.api.toggleTrackedRelic({
-          key, state, tier: rel?.tier || '', name: rel?.name || ''
-        });
-        await loadRecommendedRelics();
-        renderRecommendedRelics();
-      } catch {}
-    };
-  });
+/* ---------------- Ziele ---------------- */
+
+/**
+ * Bauteile und Rohstoffe eines Ziels.
+ *
+ * Beides steht schon im Dashboard (buildDashboard loest jedes offene Ziel ueber
+ * resolveGoal auf) - hier wird es nur enger gesetzt. Die Teile bekommen eine
+ * Zeile je Stueck, die Rohstoffe Pillen: bei "Nano Spores 12.5k" ist die Zahl
+ * die Angabe, der Name nur ihre Beschriftung.
+ */
+function goalDetails(g) {
+  const parts = (g.components || []).slice(0, 6);
+  const mats  = (g.materials  || []).slice(0, 10);
+  if (!parts.length && !mats.length) return '';
+
+  return `
+    <div class="ov-goal-more">
+      ${parts.length ? `
+        <div class="ov-goal-block">
+          <div class="ov-goal-label">${Icon.cube(10)} Parts</div>
+          ${parts.map(c => `
+            <div class="ov-part ${c.isSubRecipe ? 'is-craft' : ''}">
+              <img class="ov-part-img" src="${esc(c.image || '')}" alt=""
+                   onerror="this.style.visibility='hidden'">
+              <span class="ov-part-name">${esc(c.name)}</span>
+              ${c.isSubRecipe ? '<span class="ov-part-tag">forge</span>' : ''}
+              <span class="ov-part-count">×${nf(c.count)}</span>
+            </div>`).join('')}
+        </div>` : ''}
+      ${mats.length ? `
+        <div class="ov-goal-block">
+          <div class="ov-goal-label">${Icon.crate(10)} Resources</div>
+          <div class="ov-mats">
+            ${mats.map(m => `
+              <span class="ov-mat" title="${esc(m.name)} ×${nf(m.count)}">
+                <img src="${esc(m.image || '')}" alt="" onerror="this.style.display='none'">
+                <em>${esc(m.name)}</em><b>${compact(m.count)}</b>
+              </span>`).join('')}
+          </div>
+        </div>` : ''}
+    </div>`;
 }
 
 function renderGoals() {
@@ -394,15 +527,44 @@ function renderGoals() {
   sec.classList.toggle('hidden', !open.length);
   if (!open.length) return;
 
-  $('ov-goals').innerHTML = open.slice(0, MAX_GOALS).map(g => `
-    <div class="ov-row">
-      <img class="ov-goal-img" src="${esc(g.image)}" alt="" onerror="this.style.visibility='hidden'">
-      <div class="ov-row-body">
-        <b>${esc(g.name)}</b>
-        <span>${g.owned ? `Rank ${g.rank}/${g.maxLvl}` : 'Farm it'}</span>
-      </div>
-      <span class="ov-gain">+${nf(g.gain)}</span>
-    </div>`).join('');
+  const note = $('ov-goals-note');
+  if (note) note.textContent = open.length > MAX_GOALS ? `${MAX_GOALS} of ${open.length}` : `${open.length} open`;
+
+  $('ov-goals').innerHTML = open.slice(0, MAX_GOALS).map(g => {
+    const isLevel = g.owned || g.kind === 'level';
+    const hasMore = !isLevel && ((g.components || []).length || (g.materials || []).length);
+    const expanded = hasMore && openGoals.has(g.uniqueName);
+
+    /* Drei Arten von Ziel, drei Unterzeilen: was man BESITZT, braucht den
+       Rangbalken; was man BAUT, die Kosten; eine Mod oder ein Arcane hat
+       weder Schmiede noch Rezept - dort sagt die Zeile, WO sie faellt. */
+    const sub = isLevel
+      ? `<span class="ov-goal-rank">Rank ${g.rank}/${g.maxLvl}</span>`
+      : g.isUpgrade
+        ? `<span>${esc([g.compat, g.rarityLabel].filter(Boolean).join(' · ')
+                      || (g.upgradeKind === 'arcane' ? 'Arcane' : 'Mod'))}</span>`
+        : `<span>${Icon.coin(10)}${compact(g.credits || 0)}</span>
+           ${g.buildTime ? `<span>${Icon.clock(10)}${esc(g.buildTime)}</span>` : ''}
+           ${(g.components || []).length ? `<span>${(g.components || []).length} parts</span>` : ''}`;
+
+    const pct = isLevel && g.maxLvl ? Math.min(100, (g.rank / g.maxLvl) * 100) : 0;
+
+    return `
+      <div class="ov-goal ${isLevel ? 'is-level' : 'is-farm'} ${expanded ? 'is-open' : ''}"
+           data-goal="${esc(g.uniqueName)}">
+        <div class="ov-goal-head" ${hasMore ? `data-goal-toggle="${esc(g.uniqueName)}" title="Show parts and resources"` : ''}>
+          <img class="ov-goal-img" src="${esc(g.image)}" alt="" onerror="this.style.visibility='hidden'">
+          <div class="ov-goal-body">
+            <b>${esc(g.name)}</b>
+            <div class="ov-goal-sub">${sub}</div>
+            ${isLevel ? `<div class="ov-goal-bar"><i style="width:${pct.toFixed(1)}%"></i></div>` : ''}
+          </div>
+          ${g.gain > 0 ? `<span class="ov-gain">+${nf(g.gain)}</span>` : ''}
+          ${hasMore ? `<span class="ov-goal-chev">${Icon.chevron(11)}</span>` : ''}
+        </div>
+        ${expanded ? goalDetails(g) : ''}
+      </div>`;
+  }).join('');
 }
 
 function renderFoot() {
@@ -474,6 +636,47 @@ function initRecFilters() {
   });
 }
 
+/**
+ * Klicks an EINER Stelle abgefangen, nicht an jeder Zeile.
+ *
+ * Die Listen werden im Minutentakt neu gebaut. Wer die Behandler an die
+ * Zeilen haengt, haengt sie jede Minute neu - und verliert sie genau in dem
+ * Moment, in dem gerade jemand klickt.
+ */
+function initDelegates() {
+  $('ov-recommended-list')?.addEventListener('click', async e => {
+    const star = e.target.closest('[data-track]');
+    if (star) {
+      e.stopPropagation();
+      const id = star.dataset.track;
+      const [key, state] = id.split('|');
+      const rel = recommendedRelics.find(r => r.id === id);
+      try {
+        await window.api.toggleTrackedRelic({
+          key, state, tier: rel?.tier || '', name: rel?.name || ''
+        });
+        await loadRecommendedRelics();
+        renderRecommendedRelics();
+      } catch {}
+      return;
+    }
+
+    const head = e.target.closest('[data-toggle]');
+    if (!head) return;
+    const id = head.dataset.toggle;
+    if (openRelics.has(id)) openRelics.delete(id); else openRelics.add(id);
+    renderRecommendedRelics();
+  });
+
+  $('ov-goals')?.addEventListener('click', e => {
+    const head = e.target.closest('[data-goal-toggle]');
+    if (!head) return;
+    const u = head.dataset.goalToggle;
+    if (openGoals.has(u)) openGoals.delete(u); else openGoals.add(u);
+    renderGoals();
+  });
+}
+
 $('ov-exit').onclick = () => window.api.toggleOverlay();
 
 $('ov-refresh').onclick = async () => {
@@ -496,19 +699,41 @@ $('ov-opacity').oninput = e => window.api.setOverlayOpacity(Number(e.target.valu
  * Bedienung kommt; im Zeigermodus nicht, wie man zurueck ins Spiel kommt.
  * Sind beide aus, ist alles offensichtlich und die Zeile verschwindet.
  */
+/**
+ * "Ctrl+R" -> die beiden Tasten als EIN Element.
+ *
+ * Die Umhuellung ist noetig, nicht huebsch: die Zeile ist ein Flex-Kasten mit
+ * Abstand, und ohne sie stuenden Ctrl und R genauso weit auseinander wie das
+ * Kuerzel von seiner Beschriftung. Zusammen gehoert aber, was zusammen
+ * gedrueckt wird.
+ */
+const keys = combo => `<span class="ov-keys">` + String(combo || '').split('+')
+  .map(k => `<kbd>${esc(k.trim())}</kbd>`).join('') + `</span>`;
+
 function renderHint() {
   const el = $('ov-hint');
+
   if (interacting) {
     el.innerHTML = `<b>Cursor mode</b> · <kbd>Esc</kbd> back to the game`;
-    el.classList.remove('hidden');
   } else if (clickThrough) {
-    el.innerHTML = `Klicks gehen ans Spiel · ` +
-      hotkeys.interact.split('+').map(k => `<kbd>${esc(k)}</kbd>`).join('') +
-      ` holt den Zeiger`;
-    el.classList.remove('hidden');
+    el.innerHTML = `Clicks go to the game · ${keys(hotkeys.interact)} takes the cursor`;
   } else {
-    el.classList.add('hidden');
+    /* Die beiden Tastenwege stehen jetzt dauerhaft da, statt nur in den zwei
+       Sonderzustaenden. Sie sind global: wer im Spiel steht, sieht das Overlay,
+       aber keinen Weg, es wieder loszuwerden - und geraten hat sie noch
+       niemand. Aus den ECHTEN Kuerzeln gebaut, nicht aus festem Text: sie
+       lassen sich in den Einstellungen aendern. */
+    el.innerHTML = `${keys(hotkeys.overlay)} hide · ${keys(hotkeys.interact)} cursor`;
   }
+
+  /* Immer sichtbar. Vorher verschwand die Zeile im Normalfall, und mit ihr
+     sprang der Inhalt darueber jedes Mal um ihre Hoehe. */
+  el.classList.remove('hidden');
+  el.classList.toggle('is-idle', !interacting && !clickThrough);
+
+  /* Der Knopf trug seine Tastenkombination als festen Text im Titel - und
+     zwar die alte. Aus derselben Quelle wie die Zeile darunter. */
+  $('ov-exit').title = `Hide the overlay (${hotkeys.overlay})`;
 }
 
 function updateClickButton() {
@@ -554,6 +779,16 @@ window.api.onTrackedRelicsChanged(async list => {
   renderRecommendedRelics();
 });
 
+/* Ein Relikt wurde geoeffnet und ist damit weg. Der Hauptprozess schickt die
+   fertige Liste - nachfragen wuerde nur denselben Stand zurueckholen. */
+window.api.onRelicsChanged?.(data => {
+  if (!data) return;
+  voidTraces = data.traces ?? voidTraces;
+  if (Array.isArray(data.relics)) recommendedRelics = data.relics;
+  renderHead();
+  renderRecommendedRelics();
+});
+
 /* Relikt-Auswahl in Warframe (ThemedProjectionManager) */
 window.api.onRelicSelectOpen(data => {
   if (data) {
@@ -561,6 +796,7 @@ window.api.onRelicSelectOpen(data => {
     if (Array.isArray(data.relics)) recommendedRelics = data.relics;
   }
   isSelectingRelic = true;
+  autoExpandedFor = null;
   renderHead();
   renderRecommendedRelics();
   $('ov-rec-sec')?.scrollIntoView({ behavior: 'smooth' });
@@ -568,6 +804,10 @@ window.api.onRelicSelectOpen(data => {
 
 window.api.onRelicSelectClosed(() => {
   isSelectingRelic = false;
+  /* Aufgeklappte Belohnungslisten gehoeren zur Auswahl - danach nimmt die
+     Merkliste wieder ihren kurzen Platz ein. */
+  openRelics.clear();
+  autoExpandedFor = null;
   renderRecommendedRelics();
 });
 
@@ -575,6 +815,10 @@ window.api.onRelicSelectClosed(() => {
 
 (async function boot() {
   initRecFilters();
+  initDelegates();
+  /* Sofort, nicht erst mit dem Zustand aus dem Hauptprozess: schlaegt der
+     Abruf unten fehl, stuende die Zeile sonst nie da. */
+  renderHint();
   await Promise.all([loadDashboard(), loadWorld(false), loadNotifSettings(), loadTrackedRelics(), loadRecommendedRelics()]);
   render();
 
@@ -614,14 +858,17 @@ function priceText(price) {
   return price.min + 'p';
 }
 
-function rewardRow(r, bestPlat) {
+function rewardRow(r, bestPlat, complete) {
   const plat = priceText(r.price);
   const good = r.price && r.price.min >= RELIC_GOOD_PLAT;
   const best = r.price && bestPlat && r.price.min === bestPlat;
 
   return `
     <div class="ov-rw ${r.isOwn ? 'mine' : ''} ${best ? 'best' : ''}">
-      <span class="ov-rw-pos">${r.position}</span>
+      <!-- Die Nummer ist die Bruecke zum Bildschirm - aber nur, wenn alle vier
+           gelesen wurden. Sonst zeigt sie auf die falsche Karte, und ein Punkt
+           ist ehrlicher als eine Zahl, die man abzaehlt. -->
+      <span class="ov-rw-pos">${complete ? r.position : '•'}</span>
       <img class="ov-rw-img" src="${esc(r.image || '')}" alt=""
            onerror="this.style.visibility='hidden'">
       <div class="ov-rw-body">
@@ -648,12 +895,18 @@ function renderRelic() {
     /* Der hoechste Platinpreis wird hervorgehoben - aber erst, wenn alle
        Preise da sind. Vorher waere die Auszeichnung eine Behauptung. */
     const prices = list.map(r => r.price?.min).filter(n => Number.isFinite(n));
-    const complete = prices.length === list.length;
-    const bestPlat = complete ? Math.max(...prices) : null;
+    const allPriced = prices.length === list.length;
+    const bestPlat = allPriced ? Math.max(...prices) : null;
+
+    /* Wurden nicht alle vier gelesen, taugen die Nummern nicht - siehe
+       rewardRow. relicState.complete fehlt beim Fund aus dem Log allein. */
+    const allRead = relicState.complete !== false && list.length >= 4;
 
     body.innerHTML = `<div class="ov-rw-head">
-        <span></span><span></span><span>Reward</span><span>Plat</span><span>Duc.</span>
-      </div>` + list.map(r => rewardRow(r, bestPlat)).join('');
+        <span></span><span></span><span>Reward</span><span>${PLAT_IC}</span><span>${DUC_IC}</span>
+      </div>`
+      + list.map(r => rewardRow(r, bestPlat, allRead)).join('')
+      + (allRead ? '' : `<div class="ov-relic-note">Only ${list.length} of 4 could be read — the numbers are left out.</div>`);
     return;
   }
 

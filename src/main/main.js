@@ -40,7 +40,7 @@ import { getMiningGuide } from '../core/mining.js';
 import { getDucatsReferenceList, buildPrimeSets, buildDucatsCatalog, buildInventoryDucats } from '../core/ducats.js';
 import { loadInventory } from '../core/inventory.js';
 import { scanCredentials } from '../core/gamecreds.js';
-import { buildInventory, SECTIONS, ownedUpgradeRanks } from '../core/inventory-items.js';
+import { buildInventory, SECTIONS, ownedUpgradeRanks, miscItemCount } from '../core/inventory-items.js';
 import { loadDropTables, sourcesFor } from '../core/droptables.js';
 import { loadCardImages, cardUrl } from '../core/cards.js';
 import { upgradeDetails } from '../core/upgrade-details.js';
@@ -288,8 +288,32 @@ const HOTKEY_ACTIONS = {
   overlay:  () => toggleOverlay(),
   /* Holt den Mauszeiger ins Overlay und wieder zurueck ins Spiel. Eine Taste
      und keine Maustaste: globalShortcut kennt nur Tastatur. */
-  interact: () => setInteracting(!interacting)
+  interact: () => setInteracting(!interacting),
+  /* Holt das Hauptfenster nach vorn - und nur das. Kein Umschalter: wer aus
+     dem Spiel heraus nach dem Planer greift, will ihn sehen, nicht raten, ob
+     der zweite Druck ihn gerade wieder wegnimmt. Zurueck ins Spiel fuehrt
+     derselbe Weg wie immer, ueber Alt+Tab oder einen Klick. */
+  main: () => showMainWindow()
 };
+
+/**
+ * Hauptfenster nach vorn.
+ *
+ * Drei Schritte, weil "versteckt" drei verschiedene Dinge heissen kann:
+ * minimiert in der Leiste, hinter dem Spiel, oder gar nicht angezeigt. show()
+ * allein holt ein minimiertes Fenster nicht zurueck, und focus() allein bringt
+ * eines nach vorn, das nie gezeigt wurde.
+ *
+ * Windows gibt den Vordergrund nicht jedem Prozess auf Zuruf. Der Druck auf
+ * ein registriertes globalShortcut zaehlt aber als Eingabe an uns - genau
+ * daraus zieht auch der Zeigermodus des Overlays seine Berechtigung.
+ */
+function showMainWindow() {
+  if (!win || win.isDestroyed()) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
 
 /* register() wirft bei ungueltigen Zeichenfolgen, statt false zu liefern -
    und eine Zeichenfolge kommt hier aus der Oberflaeche. */
@@ -1106,7 +1130,8 @@ async function firstFetch({ withInventory }) {
   let inventoryNote = null;
   if (withInventory) {
     try {
-      await loadInventory({ refresh: true, force });
+      const res = await loadInventory({ refresh: true, force });
+      if (!res.fromCache) relicsUsed.clear();   // siehe inventoryPayload
     } catch (err) {
       inventoryNote = INVENTORY_ERRORS[err.code] || err.message;
     }
@@ -1471,6 +1496,35 @@ function relicImage(base, state) {
  * Bestand je Relikt UND Zustand aus dem Inventar.
  * Strahlend und intakt sind dasselbe Relikt, aber nicht dieselbe Entscheidung.
  */
+/**
+ * Was seit dem letzten Inventarabruf geoeffnet wurde.
+ *
+ * WARUM DIESES BUCH UEBERHAUPT:
+ *   Das Inventar liegt als Datei da und wird NUR auf Knopfdruck neu geholt -
+ *   automatisch abzufragen ist hier verboten, und zwar aus gutem Grund: DE
+ *   drosselt pro IP, und die Drosselung schlaegt auf den Spiel-Login durch
+ *   (siehe core/ratelimit.js). Wer eine Rissmission nach der anderen laeuft,
+ *   sieht im Overlay also weiter Relikte stehen, die er gerade verbraucht hat.
+ *
+ *   Also wird mitgezaehlt statt nachgefragt: das Log nennt beim Einlegen den
+ *   Namen, der Belohnungsbildschirm bestaetigt den Verbrauch. Kostet nichts
+ *   und wirkt sofort.
+ *
+ * NUR NACH UNTEN, UND LIEBER ZU WENIG:
+ *   Gefundene Relikte bemerkt dieses Buch nicht - dafuer gibt es keine
+ *   verlaessliche Zeile. In Endlosmissionen zaehlt es ausserdem nur die erste
+ *   Runde: dort wird einmal eingelegt und danach zwischen den Runden neu
+ *   gewaehlt, ohne dass die Sicherheitsfrage wieder erscheint.
+ *   Beides geht in dieselbe, richtige Richtung. Etwas anzuzeigen, das man
+ *   nicht mehr hat, fuehrt in eine Mission mit leeren Haenden; eines zu
+ *   verschweigen, das man hat, kostet einen Blick in den Planer.
+ *
+ * Lebt nur im Speicher: ein Neustart faellt mit dem naechsten Abruf ohnehin
+ * auf den echten Stand zurueck.
+ */
+const relicsUsed = new Map();   // 'Meso F3|Radiant' -> wie oft geoeffnet
+let equippedRelic = null;       // was fuer die laufende Mission eingelegt ist
+
 function ownedRelics(inventory, market) {
   const owned = new Map();
 
@@ -1490,6 +1544,16 @@ function ownedRelics(inventory, market) {
       image: relicImage(res.base, res.state)
     });
   }
+
+  /* Das Buch gegenrechnen. Wer bei null landet, faellt raus - er steht sonst
+     als "x0" in einer Liste, die nach Bestand fragt. */
+  for (const [k, used] of relicsUsed) {
+    const have = owned.get(k);
+    if (!have) continue;
+    have.count -= used;
+    if (have.count <= 0) owned.delete(k);
+  }
+
   return owned;
 }
 
@@ -1631,12 +1695,10 @@ function broadcastTrackedRelics(list) {
 
 /**
  * Liest den Bestand an Spuren des Nichts (Void Traces) aus dem Inventar.
+ * Dieselbe Quelle wie die Waehrungsleiste im Inventar-Tab, damit nicht zwei
+ * Stellen dieselbe Zahl aus zwei Regeln ziehen.
  */
-function ownedVoidTraces(inventory) {
-  const item = (inventory?.MiscItems || []).find(e =>
-    typeof e.ItemType === 'string' && (e.ItemType === '/Lotus/Types/Items/MiscItems/VoidTearDrop' || e.ItemType.includes('VoidTearDrop')));
-  return item?.ItemCount ?? 0;
-}
+const ownedVoidTraces = inventory => miscItemCount(inventory, 'VoidTearDrop');
 
 /**
  * Empfohlene Relikte fuer das Overlay und die Reliktauswahl.
@@ -1669,6 +1731,13 @@ async function describeRecommendedRelics() {
     expDucats: r.expDucats,
     bestPlat: r.bestPlat,
     bestDucats: r.bestDucats,
+    /* Die sechs Belohnungen wandern mit ins Overlay. Sie kosten hier nichts -
+       relicExpectation hat sie ohnehin schon ausgerechnet - und beantworten
+       vor Ort die einzige Frage, die der Erwartungswert offen laesst: WAS
+       kann drin sein. Aufgeklappt wird nur die Zeile, die man angeklickt hat. */
+    rewards: (r.rewards || []).map(d => ({
+      name: d.name, rarity: d.rarity, chance: d.chance, plat: d.plat, ducats: d.ducats
+    })),
     tracked: trackedSet.has(r.key + '|' + (r.state || 'Intact'))
   }));
 
@@ -2112,6 +2181,13 @@ async function inventoryPayload({ refresh }) {
   if (!cache.catalog) await ensureData({ refresh: false });
 
   const res = await loadInventory({ refresh });
+
+  /* Frisch vom Server: ab hier ist die Datei wieder die Wahrheit, und was wir
+     selbst mitgezaehlt haben, steckt schon darin. fromCache faellt nur weg,
+     wenn wirklich abgerufen wurde - eine an der Drosselung abgeprallte
+     Anfrage liefert den alten Stand zurueck und darf das Buch nicht leeren. */
+  if (!res.fromCache) relicsUsed.clear();
+
   const view = buildInventory(res.inventory, cache.catalog);
   await attachCards(view);
   const gate = await checkAllowed({});
@@ -3031,14 +3107,93 @@ function pushRelic() {
   sendToOverlay('relic:reward', currentRelic);
 }
 
+const wait = ms => new Promise(res => setTimeout(res, ms));
+
+/* Der Bildschirm braucht einen Moment, bis die vier Namen stehen. "Got rewards"
+   im Log kommt frueher: in derselben Millisekunde meldet das Spiel viermal
+   "Missing icon data!" - die Karten werden zu dem Zeitpunkt erst aufgebaut. */
+const SCAN_FIRST_DELAY_MS = 400;
+const SCAN_RETRY_MS       = 450;
+/* Von 15 Sekunden Bedenkzeit. Der Rest gehoert den Preisen - und dem Menschen,
+   der die Liste noch lesen soll. */
+const SCAN_BUDGET_MS      = 7000;
+
+/**
+ * Den Belohnungsbildschirm lesen, bis alle vier dastehen.
+ *
+ * WARUM WIEDERHOLT:
+ *   Die Erkennung selbst ist schnell und genau - nachgemessen 0,7 s fuer eine
+ *   Aufnahme in 2560x1440, alle vier Namen mit Bestwertung. Sie war nur zu
+ *   frueh dran. Gelesen wurde genau einmal, sofort nach der Logzeile, und was
+ *   dabei herauskam, galt: ein halb aufgebauter Bildschirm lieferte zwei Namen
+ *   oder gar keinen, und der Versuch war verbraucht. Das ist das "dauert lange
+ *   oder klappt gar nicht".
+ *
+ *   Ein leeres Ergebnis war dabei kein Fehler, sondern ein gueltiges "nichts
+ *   gefunden" - es fiel deshalb nicht einmal auf.
+ *
+ * Behalten wird der beste Versuch, nicht der letzte: schiebt sich waehrend
+ * eines Durchlaufs eine Meldung ueber den Bildschirm, ist der naechste
+ * schlechter, und das darf einen vollstaendigen Fund nicht wieder wegnehmen.
+ */
+async function scanRewardsRepeatedly(stillCurrent) {
+  const index = await ensureRewardIndex();
+  const deadline = Date.now() + SCAN_BUDGET_MS;
+  let best = null;
+  let attempts = 0;
+
+  await wait(SCAN_FIRST_DELAY_MS);
+
+  while (stillCurrent()) {
+    attempts++;
+    const scan = await scanRewardScreen(index);
+    if (!stillCurrent()) return null;
+
+    if (scan.ok) {
+      if (!best?.ok || scan.rewards.length > best.rewards.length) best = scan;
+      if (best.rewards.length >= 4) break;
+    } else if (!best) {
+      best = scan;                 // Fehler merken, falls gar nichts mehr kommt
+    }
+
+    if (Date.now() + SCAN_RETRY_MS >= deadline) break;
+    await wait(SCAN_RETRY_MS);
+  }
+
+  console.log('[Relikt] Erkennung:', best?.ok ? `${best.rewards.length} Treffer` : `Fehler ${best?.error}`,
+              `| ${attempts} Versuch${attempts === 1 ? '' : 'e'}`);
+  return best;
+}
+
+/**
+ * Die Reliktliste im Overlay nachziehen.
+ *
+ * Ohne das merkt das Fenster erst beim naechsten Anlass, dass sich der Bestand
+ * geaendert hat - und genau dazwischen liegt die Runde, in der man das
+ * naechste Relikt waehlt.
+ */
+function pushRecommendedRelics() {
+  /* Steht kein Fenster da, gibt es auch nichts nachzuziehen - und der Aufbau
+     liest das Inventar von der Platte. Das Buch bleibt trotzdem gefuehrt: wer
+     das Overlay spaeter aufmacht, bekommt den abgezogenen Stand. */
+  if (!overlayWin || overlayWin.isDestroyed()) return;
+
+  describeRecommendedRelics()
+    .then(data => sendToOverlay('relics:changed', data))
+    .catch(err => console.error('[Relikt] Liste nicht aktualisierbar:', err.message));
+}
+
 function startLogWatcher() {
   logWatcher = new LogWatcher();
 
   logWatcher.on('relic-select-open', async () => {
     try {
-      if (relicAutoShow) {
+      /* Nur merken, was das Overlay auch WIRKLICH aufgemacht hat. Stand es
+         schon offen, gehoert es dem Nutzer - dann darf das Ende der
+         Reliktauswahl es ihm nicht unter den Haenden wegziehen. */
+      if (relicAutoShow && !overlayVisible()) {
         overlayShownForRelicSelect = true;
-        if (!overlayVisible()) showOverlay();
+        showOverlay();
       }
       const data = await describeRecommendedRelics();
       sendToOverlay('relic:select-open', data);
@@ -3057,9 +3212,28 @@ function startLogWatcher() {
     }
   });
 
-  logWatcher.on('relic-reward', ev => { handleRelicReward(ev).catch(err => {
-    console.error('[Relikt] Ablauf abgebrochen:', err.message);
-  }); });
+  /* Eingelegt ist noch nicht verbraucht - die Sicherheitsfrage sagt es selbst
+     ("It will be consumed if you seal the Void Fissure and extract"). Deshalb
+     hier nur merken. Bricht der Spieler ab und legt ein anderes ein,
+     ueberschreibt die naechste Zeile diese hier. */
+  logWatcher.on('relic-equipped', ev => {
+    equippedRelic = { key: `${ev.tier} ${ev.name}`, state: ev.state || 'Intact' };
+    console.log('[Relikt] Eingelegt:', equippedRelic.key, equippedRelic.state);
+  });
+
+  logWatcher.on('relic-reward', ev => {
+    /* Der Belohnungsbildschirm ist der Beleg: ein Relikt wurde geoeffnet. */
+    if (equippedRelic) {
+      const id = equippedRelic.key + '|' + equippedRelic.state;
+      relicsUsed.set(id, (relicsUsed.get(id) || 0) + 1);
+      equippedRelic = null;
+      pushRecommendedRelics();
+    }
+
+    handleRelicReward(ev).catch(err => {
+      console.error('[Relikt] Ablauf abgebrochen:', err.message);
+    });
+  });
 
   logWatcher.on('relic-timer', ev => sendToOverlay('relic:timer', ev));
 
@@ -3120,17 +3294,16 @@ async function handleRelicReward(ev) {
     if (!relicScan) return;
 
     /* Und jetzt der Bildschirm: die drei Funde der Mitspieler stehen nirgends
-       sonst. Rund 1,3 s fuer Aufnahme und Erkennung. */
+       sonst. Siehe scanRewardsRepeatedly - einmal hinsehen reicht nicht. */
     const started = currentRelic;
-    const scan = await scanRewardScreen(await ensureRewardIndex());
-    if (currentRelic !== started) return;   // inzwischen kam eine neue Runde
+    const scan = await scanRewardsRepeatedly(() => currentRelic === started);
+    if (!scan || currentRelic !== started) return;   // inzwischen kam eine neue Runde
 
-    console.log('[Relikt] Erkennung:',
-                scan.ok ? scan.rewards.length + ' Treffer' : 'Fehler ' + scan.error);
-
-    if (!scan.ok) {
+    if (!scan.ok || !scan.rewards.length) {
       currentRelic.scanning = false;
-      currentRelic.scanError = scan.error;
+      currentRelic.scanError = scan.ok
+        ? 'Die vier Namen waren auf dem Bildschirm nicht zu finden.'
+        : scan.error;
       pushRelic();
       return;
     }
@@ -3148,6 +3321,7 @@ async function handleRelicReward(ev) {
     })));
     currentRelic.scanning = false;
     currentRelic.region = scan.region || null;
+    currentRelic.complete = !!scan.complete;
     pushRelic();
     showTags(currentRelic.rewards, currentRelic.region);
 

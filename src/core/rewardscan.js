@@ -146,7 +146,12 @@ export function extractRewards(ocr, index) {
       box: { x: h.x, y: h.y, w: h.w, h: h.h }
     }));
 
-  return { rewards, language: ocr.language, lines: (ocr.lines || []).length, region: ocr.region || null };
+  /* Die Nummer stimmt nur, wenn alle vier gelesen wurden.
+     Sie entsteht aus der Reihenfolge der TREFFER von links nach rechts - fehlt
+     die erste Karte, wird aus der zweiten eine Eins, und die Nummer zeigt auf
+     die falsche Karte. Wer sie anzeigt, muss das wissen. */
+  return { rewards, complete: best.length >= 4,
+           language: ocr.language, lines: (ocr.lines || []).length, region: ocr.region || null };
 }
 
 /**

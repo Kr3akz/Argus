@@ -52,8 +52,24 @@ const Icon = {
   warning:  s => svg('<path d="M12 3 2 20h20L12 3Z"/><path d="M12 9v5M12 17.5v.5"/>', s),
   globe:    s => svg('<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20M2 12h20"/>', s),
   compass:  s => svg('<circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>', s),
-  sun:      s => svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>', s),
-  moon:     s => svg('<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>', s),
+  /* Sonne und Mond sind die einzigen Symbole, die im Alltag bei 13 px stehen
+     (das Zyklus-Schild "Day" / "Night"). Deshalb gefuellt statt gestrichelt:
+     die alte Strich-Sonne hatte acht Strahlen von zwei Einheiten Laenge bei
+     zwei Einheiten Strichstaerke - genauso lang wie dick. Herunterskaliert
+     verschmolzen sie mit dem Ring zu einem Fleck, und vor "DAY" stand ein
+     Zeichen, das nichts mehr darstellte.
+
+     Jetzt traegt eine gefuellte Scheibe die Form, die Strahlen sind doppelt so
+     lang wie dick und sitzen mit Abstand davor. Beim Mond dasselbe: eine
+     gefuellte Sichel statt einer Haarlinie. */
+  sun:      s => `<svg viewBox="0 0 24 24" width="${s}" height="${s}" aria-hidden="true">
+      <circle cx="12" cy="12" r="4.6" fill="currentColor"/>
+      <g stroke="currentColor" stroke-width="1.9" stroke-linecap="round" fill="none">
+        <path d="M12 1.2v4M12 18.8v4M1.2 12h4M18.8 12h4"/>
+        <path d="M4.4 4.4 7.2 7.2M16.8 16.8l2.8 2.8M19.6 4.4 16.8 7.2M7.2 16.8 4.4 19.6"/>
+      </g>
+    </svg>`,
+  moon:     s => svgFilled('<path d="M20.9 14.6A8.7 8.7 0 0 1 9.4 3.1a8.7 8.7 0 1 0 11.5 11.5Z"/>', s),
   snowflake:s => svg('<path d="M2 12h20M12 2v20M20 16l-4-4 4-4M4 8l4 4-4 4M16 4l-4 4-4-4M8 20l4-4 4 4"/>', s),
   flame:    s => svg('<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5Z"/>', s),
 
@@ -110,8 +126,15 @@ const Icon = {
   solaris: s => `<span class="nav-icon-mask icon-solaris" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
   entrati: s => `<span class="nav-icon-mask icon-entrati" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
   zariman: s => `<span class="nav-icon-mask icon-zariman" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
-  sun: s => `<span class="nav-icon-mask icon-sun" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
-  moon: s => `<span class="nav-icon-mask icon-moon" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
+  /* KEIN sun/moon hier.
+     Beide standen frueher an dieser Stelle als Maskenbild - und weil sie im
+     selben Objektliteral WEITER UNTEN standen, ueberschrieben sie still die
+     gezeichneten Fassungen weiter oben. Die Bilder (worldstate/sun.png,
+     moon.png) sind 256 px grosse, grob genarbte Ringe, die den ganzen Rahmen
+     fuellen. Als Maske mit background-color: currentColor wird die Narbung zur
+     Farbe: auf 13 px bleibt ein gesprenkeltes Quadrat, und vor "DAY" stand ein
+     Zeichen, das nichts mehr darstellte.
+     Die gezeichneten Fassungen (siehe oben) tragen jede Groesse. */
 
   /* Offizielle Kategorie-Icons für Mastery Manager */
   catWarframe: s => `<span class="nav-icon-mask icon-cat-warframe" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
