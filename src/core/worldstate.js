@@ -4,6 +4,7 @@
  * automatischem tenno.tools Live-Fallback bei Ausfällen oder veraltetem Server-Stand.
  */
 import { buildWeekly } from './weekly.js';
+import { computeCycles } from './cycles.js';
 
 let cachedWorldstate = null;
 let lastFetchedAt = 0;
@@ -38,17 +39,29 @@ export async function fetchWorldState({ force = false } = {}) {
     primaryError = err.message;
   }
 
+  /* Die drei Freiland-Zyklen kommen NICHT aus der Antwort, sondern aus der
+     Uhr - siehe core/cycles.js. Sie laufen nach einem festen Takt, und die
+     Quelle hing hier regelmaessig Stunden hinterher, ohne dass es auffiel:
+     ein abgelaufener Ablaufzeitpunkt sieht aus wie ein gueltiger. */
+  const cycles = computeCycles();
+
   /* Risse aus der Primaerquelle formatieren und pruefen */
   let fissures = data?.fissures ? formatFissures(data.fissures) : [];
   let sourceName = 'warframestat';
 
   /* Wenn warframestat.us 0 aktive Risse liefert (haeufiger Parser-Lag / Stale Cache)
      oder die Anfrage scheiterte: Live-Risse von tenno.tools nachladen. */
+  let fissureStamp = data?.timestamp || null;
   if (!fissures.length) {
-    const fallbackFissures = await fetchTennoToolsFissures();
-    if (fallbackFissures && fallbackFissures.length > 0) {
-      fissures = fallbackFissures;
+    const fb = await fetchTennoToolsFissures();
+    if (fb?.fissures?.length) {
+      fissures = fb.fissures;
       sourceName = data ? 'warframestat+tennotools' : 'tennotools';
+      /* Der Zeitstempel MUSS mitwandern. Sonst meldet die Anzeige weiter den
+         Rueckstand der Primaerquelle - "Quelle haengt, abgelaufene Eintraege
+         fehlen" - waehrend die Liste darunter aus einer frischen Quelle kommt
+         und vollstaendig ist. Der Hinweis waere dann selbst der Fehler. */
+      fissureStamp = fb.timestamp || fissureStamp;
     }
   }
 
@@ -57,11 +70,11 @@ export async function fetchWorldState({ force = false } = {}) {
       const formatted = {
         fetchedAt: new Date().toISOString(),
         source: sourceName,
-        /* Der Zeitstempel der QUELLE, nicht unserer. */
-        sourceTimestamp: data.timestamp || null,
-        cetus: formatCetus(data.cetusCycle),
-        vallis: formatVallis(data.vallisCycle),
-        cambion: formatCambion(data.cambionCycle),
+        /* Der Zeitstempel der QUELLE, nicht unserer - und zwar der Quelle, aus
+           der die Risse stammen. Nur sie kann unvollstaendig sein; die Zyklen
+           kommen aus der Uhr und die Wochenansicht schaut selbst nach. */
+        sourceTimestamp: fissureStamp,
+        ...cycles,
         voidTrader: formatVoidTrader(data.voidTrader),
         fissures,
         sortie: formatSortie(data.sortie),
@@ -112,7 +125,7 @@ export async function fetchWorldState({ force = false } = {}) {
     fetchedAt: new Date().toISOString(),
     source: 'none',
     sourceTimestamp: null,
-    cetus: null, vallis: null, cambion: null,
+    ...computeCycles(),
     voidTrader: null, fissures: [], sortie: null, archonHunt: null,
     events: [], nightwave: [], alerts: [], invasions: [], syndicates: [], steelPath: null,
     counts: { events: 0, nightwave: 0, alerts: 0, steelPath: 0, invasions: 0,
@@ -182,7 +195,10 @@ export async function fetchTennoToolsFissures() {
       });
     }
 
-    return fissures.sort((a, b) => a.tierNum - b.tierNum || a.node.localeCompare(b.node));
+    return {
+      fissures: fissures.sort((a, b) => a.tierNum - b.tierNum || a.node.localeCompare(b.node)),
+      timestamp: d.time ? new Date(d.time * 1000).toISOString() : null
+    };
   } catch (err) {
     console.warn('[WorldState] tenno.tools Riss-Abruf fehlgeschlagen:', err.message);
     return null;
@@ -298,9 +314,7 @@ async function fetchTennoToolsFullWorldState() {
       fetchedAt: new Date().toISOString(),
       source: 'tennotools',
       sourceTimestamp: d.time ? new Date(d.time * 1000).toISOString() : null,
-      cetus: null,
-      vallis: null,
-      cambion: null,
+      ...computeCycles(),
       voidTrader,
       fissures: fissures.sort((a, b) => a.tierNum - b.tierNum || a.node.localeCompare(b.node)),
       sortie: sorties,
@@ -321,58 +335,6 @@ async function fetchTennoToolsFullWorldState() {
   }
 }
 
-/**
- * Restzeit eines Zyklus, Minuten und Sekunden.
- *
- * warframestat.us fuehrt `timeLeft` NICHT bei allen dreien: Cetus und Cambion
- * haben es, der Orb Vallis nicht - dort standen deshalb nur Striche. `expiry`
- * liefern alle drei, also wird die Zahl hier gerechnet und das Feld der Quelle
- * nur noch als Rueckfall benutzt.
- */
-function cycleLeft(expiry, fallback = '') {
-  if (!expiry) return fallback;
-  const ms = new Date(expiry).getTime() - Date.now();
-  if (!Number.isFinite(ms)) return fallback;
-  if (ms <= 0) return 'now';
-
-  const total = Math.floor(ms / 1000);
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  return h ? `${h}h ${m}m` : `${m}m ${s}s`;
-}
-
-function formatCetus(c) {
-  if (!c) return null;
-  return {
-    state: c.state || (c.isDay ? 'day' : 'night'),
-    isDay: !!c.isDay,
-    timeLeft: cycleLeft(c.expiry, c.timeLeft || ''),
-    expiry: c.expiry || null,
-    shortString: c.shortString || `${c.timeLeft || ''} to ${c.isDay ? 'Night' : 'Day'}`
-  };
-}
-
-function formatVallis(v) {
-  if (!v) return null;
-  return {
-    state: v.state || (v.isWarm ? 'warm' : 'cold'),
-    isWarm: !!v.isWarm,
-    timeLeft: cycleLeft(v.expiry, v.timeLeft || ''),
-    expiry: v.expiry || null,
-    shortString: v.shortString || `${v.timeLeft || ''} to ${v.isWarm ? 'Cold' : 'Warm'}`
-  };
-}
-
-function formatCambion(c) {
-  if (!c) return null;
-  return {
-    state: c.state || 'fass', // 'fass' oder 'vome'
-    isFass: c.state === 'fass',
-    timeLeft: cycleLeft(c.expiry, c.timeLeft || ''),
-    expiry: c.expiry || null
-  };
-}
 
 function formatVoidTrader(vt) {
   if (!vt) return null;
