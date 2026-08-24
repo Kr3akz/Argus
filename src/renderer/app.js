@@ -3097,13 +3097,19 @@ function renderMiningGuide(data) {
     grid.innerHTML = resources.length
       ? resources.map(r => `
         <div class="fg-card fg-mine-card" style="--vein: ${esc(r.veinColor.hex)};">
+          <!-- Das Erz zuerst, die Ader danach. Andersherum stand der Felsen
+               vorne und gross, das Erz klein und abgeblendet am Rand - und was
+               eine Karte anfuehrt, liest man als ihr Thema. Die Karte heisst
+               aber nach dem Erz. Die Ader ist der Hinweis darauf, nicht die
+               Sache selbst; was sie bedeutet, steht ohnehin in der Zeile
+               direkt darunter ausgeschrieben. -->
           <div class="fg-head">
-            ${veinSwatch(r.veinColor)}
+            <img class="mat-icon" src="${esc(r.image)}" alt="">
             <div class="fg-title-info">
               <h3>${esc(r.name)}</h3>
               <span class="fg-cat-badge">${esc(r.rarity)} ${esc(r.kind)} · ${esc(r.world)}</span>
             </div>
-            <img class="mat-icon" src="${esc(r.image)}" alt="">
+            ${veinSwatch(r.veinColor, 40)}
           </div>
 
           <div class="fg-vein-line">

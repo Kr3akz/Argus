@@ -74,6 +74,11 @@ follow [semantic versioning](https://semver.org/lang/en/).
 - **Relic era colours now match the game**: Neo is blue and Axi gold, the way
   round they are in your Void Relic screen. They were swapped.
 
+- **Ore and gem cards in the Farming Guide lead with the ore.** The rock with
+  the glowing vein came first and largest, the ore itself sat small and dimmed
+  at the far edge — so the vein read as the subject of a card that is named
+  after the ore. They have swapped sides and the ore is half again as large.
+
 - **A hotkey for the main window** — <kbd>Ctrl</kbd>+<kbd>D</kbd> by default,
   rebindable next to the other two in Settings. It pulls the window to the
   front from anywhere, including out of a mission, and restores it if it was
