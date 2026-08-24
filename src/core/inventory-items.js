@@ -34,6 +34,23 @@ const RELIC_QUALITY = {
 const isRelic  = u => u.includes('/Types/Game/Projections/');
 const isArcane = u => u.includes('/CosmeticEnhancers/') && !u.includes('/Peculiars/');
 
+/**
+ * Bestand eines MiscItems ueber sein letztes Pfadsegment.
+ *
+ * Gedacht fuer die beiden Waehrungen, die keinen eigenen Platz im Inventar
+ * haben und wie ein Rohstoff zwischen Ferrit und Rubedo liegen: Dukaten
+ * (PrimeBucks) und Spuren des Nichts (VoidTearDrop).
+ *
+ * Auf das Segment geprueft, nicht mit includes auf den ganzen Pfad: die Suche
+ * nach "PrimeBucks" traefe sonst auch jeden kuenftigen Pfad, der das Wort
+ * irgendwo enthaelt, und stillschweigend den falschen Posten zaehlen.
+ */
+export function miscItemCount(inventory, segment) {
+  const row = (inventory?.MiscItems || []).find(e =>
+    typeof e.ItemType === 'string' && e.ItemType.split('/').pop() === segment);
+  return row?.ItemCount ?? 0;
+}
+
 /** Letztes Pfadsegment lesbar machen - Notnagel fuer Eintraege ohne Katalogtreffer. */
 function humanize(uniqueName) {
   const last = uniqueName.split('/').filter(Boolean).pop() || uniqueName;
@@ -333,12 +350,22 @@ export function buildInventory(inventory, catalog) {
   return {
     sections,
     totals,
+    /* Zwei der vier Waehrungen stehen NICHT als eigenes Feld im Inventar,
+       sondern als Posten unter MiscItems - wie Ferrit oder Rubedo:
+
+         Dukaten      /Lotus/Types/Items/MiscItems/PrimeBucks
+         Spuren       /Lotus/Types/Items/MiscItems/VoidTearDrop
+
+       Fuer die Dukaten stand hier lange inv.PrimeTokens. Das Feld gibt es,
+       es ist eine kleine ganze Zahl, und es hat mit Baro nichts zu tun -
+       es sah nur wie ein Treffer aus. Auf dem Testkonto meldete es 1, waehrend
+       im Spiel 30 Dukaten standen; PrimeBucks meldete 30. */
     currencies: {
       credits:  inv.RegularCredits ?? 0,
       platinum: inv.PremiumCredits ?? 0,
       endo:     inv.FusionPoints ?? 0,
-      ducats:   inv.PrimeTokens ?? 0,
-      traces:   (inv.MiscItems || []).find(e => typeof e.ItemType === 'string' && e.ItemType.includes('VoidTearDrop'))?.ItemCount ?? 0
+      ducats:   miscItemCount(inv, 'PrimeBucks'),
+      traces:   miscItemCount(inv, 'VoidTearDrop')
     },
     unresolved
   };
