@@ -79,11 +79,19 @@ follow [semantic versioning](https://semver.org/lang/en/).
   at the far edge — so the vein read as the subject of a card that is named
   after the ore. They have swapped sides and the ore is half again as large.
 
-- **A hotkey for the main window** — <kbd>Ctrl</kbd>+<kbd>D</kbd> by default,
-  rebindable next to the other two in Settings. It pulls the window to the
-  front from anywhere, including out of a mission, and restores it if it was
-  minimised. It does not hide it again; Alt+Tab or a click puts you back in
+- **A hotkey for the main window** — <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>R</kbd>
+  by default, rebindable next to the other two in Settings. It pulls the window
+  to the front from anywhere, including out of a mission, and restores it if it
+  was minimised. It does not hide it again; Alt+Tab or a click puts you back in
   the game.
+
+- **Overlays can be switched off**, in their own Settings group rather than
+  scattered among the notifications. The overlay window has a master switch:
+  off means off, so neither the hotkey nor a relic reward brings it up, and it
+  disappears at once if it is showing. The in-game price tags keep their own
+  switch — they are a second window and independent of the panel. With the
+  master off, the overlay button in the title bar says so instead of doing
+  nothing when clicked.
 
 - **The overlay says how to get rid of it.** Its two shortcuts —
   <kbd>Ctrl</kbd>+<kbd>R</kbd> to hide, <kbd>Ctrl</kbd>+<kbd>E</kbd> for the

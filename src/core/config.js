@@ -10,7 +10,7 @@ const FILE = () => dataFile('config.json');
    siehe loadConfig: ein flaches Spread wuerde ein gespeichertes
    { overlay: ... } ohne interact-Eintrag uebernehmen und das zweite Kuerzel
    damit verlieren. */
-export const DEFAULT_HOTKEYS = { overlay: 'Ctrl+R', interact: 'Ctrl+E', main: 'Ctrl+D' };
+export const DEFAULT_HOTKEYS = { overlay: 'Ctrl+R', interact: 'Ctrl+E', main: 'Ctrl+Alt+R' };
 
 /* overlay*: Lage, Deckkraft und Klick-Durchlass des Overlays. Stehen hier,
    weil sie dieselbe Lebensdauer haben wie die uebrige lokale Einstellung -
@@ -21,9 +21,14 @@ export const DEFAULT_HOTKEYS = { overlay: 'Ctrl+R', interact: 'Ctrl+E', main: 'C
    eines fremden Prozesses liest, nicht in einer halbjahrealten Fassung
    weiterlaufen sollte - abschaltbar bleibt es trotzdem, es ist die einzige
    Verbindung, die Argus ohne Knopfdruck von selbst aufbaut. */
+/* overlayEnabled: der Hauptschalter fuer das Overlay-Fenster. Aus heisst wirklich
+   aus - weder das Tastenkuerzel noch eine Reliktbelohnung holen es dann hervor.
+   Wer auf einem Bildschirm spielt, will unter Umstaenden gar nichts ueber dem
+   Spiel liegen haben, und "einfach nicht druecken" ist keine Einstellung. */
 const DEFAULTS = {
   accountId: '', platform: 'pc', notes: {},
   overlayBounds: null, overlayOpacity: 0.94, overlayClickThrough: false,
+  overlayEnabled: true,
   updateCheck: true,
   hotkeys: { ...DEFAULT_HOTKEYS }
 };

@@ -74,6 +74,20 @@ function syncOverlayBadge(st) {
   const on = !!(st && st.overlay);
   $('overlay-badge').classList.toggle('hidden', !on);
   $('btn-overlay').classList.toggle('on', on);
+
+  /* Ist das Overlay abgeschaltet, ist der Knopf nicht "aus", sondern ohne
+     Wirkung - und ein Knopf, auf den nichts folgt, ist ein Fehler und keine
+     Einstellung. Er sagt stattdessen, wo man ihn wieder scharf macht. */
+  const enabled = !st || st.enabled !== false;
+  const btn = $('btn-overlay');
+  btn.disabled = !enabled;
+  btn.title = enabled
+    ? `Overlay mode (${(st && st.hotkeys && st.hotkeys.overlay) || 'Ctrl+R'})`
+    : 'Overlay switched off — see Settings, Overlays';
+
+  /* Der Schalter in den Einstellungen kann von hier aus umgelegt worden sein
+     (oder gar nicht) - er zieht mit derselben Meldung nach. */
+  if ($('set-overlay-enabled')) $('set-overlay-enabled').checked = enabled;
 }
 
 /* Auch der Hotkey aendert den Zustand - ohne dieses Ereignis zeigte die
@@ -7589,6 +7603,26 @@ function renderRelicToggle(on, scan, tags) {
   if ($('set-relic-tags'))     $('set-relic-tags').checked     = tags !== false;
 }
 
+/* Die drei Zeilen darunter haengen am Overlay-Fenster: ohne Fenster gibt es
+   nichts einzublenden. Sie bleiben sichtbar statt zu verschwinden - wer den
+   Hauptschalter sucht, soll sehen, was daran haengt. */
+function syncOverlayDependants(enabled) {
+  for (const id of ['set-relic-autoshow', 'set-relic-tags', 'set-relic-scan']) {
+    const row = $(id)?.closest('.setting-row');
+    if (row) row.classList.toggle('is-disabled', !enabled);
+    if ($(id)) $(id).disabled = !enabled;
+  }
+}
+
+/* Den Zustand danach NICHT selbst nachziehen: der Hauptprozess schickt ihn
+   ohnehin an beide Fenster (broadcastOverlayState), und eine zweite Quelle
+   fuer dieselbe Aussage geht irgendwann auseinander. */
+$('set-overlay-enabled')?.addEventListener('change', e => {
+  const on = e.target.checked;
+  syncOverlayDependants(on);
+  window.api.setOverlayEnabled(on).catch(() => {});
+});
+
 $('set-relic-autoshow')?.addEventListener('change', e => {
   window.api.setRelicAutoShow(e.target.checked).catch(() => {});
 });
@@ -7658,6 +7692,10 @@ async function loadSettingsTab() {
       hotkeyState = res.hotkeys;
       if (res.notifications) notificationSettings = res.notifications;
       renderRelicToggle(res.relicAutoShow, res.relicScan, res.relicTags);
+
+      const overlayOn = res.overlayEnabled !== false;
+      if ($('set-overlay-enabled')) $('set-overlay-enabled').checked = overlayOn;
+      syncOverlayDependants(overlayOn);
     }
   } catch (err) {
     setHotkeyStatus('warn', 'Could not read the settings: ' + err.message);

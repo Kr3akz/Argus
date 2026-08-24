@@ -94,6 +94,7 @@ contextBridge.exposeInMainWorld('api', {
      zurueck, welche Kombination das System nicht hergegeben hat. */
   getSettings:     ()          => ipcRenderer.invoke('settings:get'),
   setHotkeys:      (patch)     => ipcRenderer.invoke('settings:hotkeys', patch),
+  setOverlayEnabled:(on)       => ipcRenderer.invoke('settings:overlayEnabled', on),
   setRelicAutoShow:(on)        => ipcRenderer.invoke('settings:relicAutoShow', on),
   setRelicScan:    (on)        => ipcRenderer.invoke('settings:relicScan', on),
   setRelicTags:    (on)        => ipcRenderer.invoke('settings:relicTags', on),

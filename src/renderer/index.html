@@ -33,7 +33,8 @@
       <span id="update-badge-text">Update</span>
     </button>
     <span id="hotkey-hint" class="hotkey-hint hidden"></span>
-    <button id="btn-overlay" title="Overlay mode (Alt+Shift+W)"></button>
+    <!-- Titel wird in syncOverlayBadge aus dem echten Kuerzel gesetzt. -->
+    <button id="btn-overlay" title="Overlay mode"></button>
     <button id="btn-min" title="Minimise"></button>
     <button id="btn-close" class="danger" title="Close"></button>
   </div>
@@ -1137,6 +1138,63 @@
       </div>
       <div class="settings-col">
 
+      <!-- Eigene Gruppe, weil hier zusammensteht, was ueber dem Spiel liegt.
+           Verstreut zwischen den Benachrichtigungen war "wie werde ich das
+           wieder los" keine Frage mit einer Antwort, sondern eine Suche. -->
+      <div class="settings-group">
+        <div class="settings-group-head">
+          <h3>Overlays</h3>
+          <p>Everything Argus draws on top of the running game</p>
+        </div>
+
+        <label class="setting-row">
+          <div class="setting-info">
+            <b>Overlay window</b>
+            <span>The panel with relics, cycles, fissures and goals. Off means off:
+                  neither the hotkey nor a relic reward brings it up, and it
+                  disappears right away if it is currently showing.</span>
+          </div>
+          <input type="checkbox" id="set-overlay-enabled" class="toggle-checkbox">
+          <span class="toggle-switch"></span>
+        </label>
+
+        <label class="setting-row">
+          <div class="setting-info">
+            <b>Show the overlay on a relic reward</b>
+            <span>Brings the overlay up by itself as the reward screen opens and hides it
+                  again afterwards — with the name, platinum price and ducat value of
+                  what you got</span>
+          </div>
+          <input type="checkbox" id="set-relic-autoshow" class="toggle-checkbox">
+          <span class="toggle-switch"></span>
+        </label>
+
+        <label class="setting-row">
+          <div class="setting-info">
+            <b>Show prices inside the game</b>
+            <span>Puts a small price tag under each of the four cards. That window is
+                  click-through — it never swallows a click meant for the card
+                  beneath it. With this off, the prices appear as a list in the
+                  overlay instead. It has its own switch because it is a second
+                  window, independent of the panel above.</span>
+          </div>
+          <input type="checkbox" id="set-relic-tags" class="toggle-checkbox">
+          <span class="toggle-switch"></span>
+        </label>
+
+        <label class="setting-row">
+          <div class="setting-info">
+            <b>Read the rewards off the screen</b>
+            <span>Recognises all four parts on offer via text recognition. This takes a
+                  screenshot, which is deleted the moment it has been read and never
+                  leaves your machine. With this off, Argus only shows your own drop,
+                  taken from the game log.</span>
+          </div>
+          <input type="checkbox" id="set-relic-scan" class="toggle-checkbox">
+          <span class="toggle-switch"></span>
+        </label>
+      </div>
+
       <div class="settings-group">
         <div class="settings-group-head">
           <h3>Notifications</h3>
@@ -1167,41 +1225,6 @@
             <span>A system notification outside the app — the channel that reaches you mid-mission</span>
           </div>
           <input type="checkbox" id="set-notif-toast" class="toggle-checkbox">
-          <span class="toggle-switch"></span>
-        </label>
-
-        <label class="setting-row">
-          <div class="setting-info">
-            <b>Show the overlay on a relic reward</b>
-            <span>Brings the overlay up by itself as the reward screen opens and hides it
-                  again afterwards — with the name, platinum price and ducat value of
-                  what you got</span>
-          </div>
-          <input type="checkbox" id="set-relic-autoshow" class="toggle-checkbox">
-          <span class="toggle-switch"></span>
-        </label>
-
-        <label class="setting-row">
-          <div class="setting-info">
-            <b>Show prices inside the game</b>
-            <span>Puts a small price tag under each of the four cards. That window is
-                  click-through — it never swallows a click meant for the card
-                  beneath it. With this off, the prices appear as a list in the
-                  overlay instead.</span>
-          </div>
-          <input type="checkbox" id="set-relic-tags" class="toggle-checkbox">
-          <span class="toggle-switch"></span>
-        </label>
-
-        <label class="setting-row">
-          <div class="setting-info">
-            <b>Read the rewards off the screen</b>
-            <span>Recognises all four parts on offer via text recognition. This takes a
-                  screenshot, which is deleted the moment it has been read and never
-                  leaves your machine. With this off, Argus only shows your own drop,
-                  taken from the game log.</span>
-          </div>
-          <input type="checkbox" id="set-relic-scan" class="toggle-checkbox">
           <span class="toggle-switch"></span>
         </label>
 

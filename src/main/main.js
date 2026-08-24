@@ -87,6 +87,9 @@ let overlayOpacity = 0.94;
 let overlayBounds = null;
 let layoutSaveTimer = null;
 
+/* Hauptschalter fuer das Overlay-Fenster. Siehe DEFAULTS in core/config.js. */
+let overlayEnabled = true;
+
 /* Relikt-Beobachtung: liest Warframes EE.log mit. Siehe core/logwatch.js. */
 let logWatcher = null;
 let relicAutoShow = true;
@@ -357,6 +360,7 @@ async function loadOverlayPrefs() {
   try {
     const cfg = await loadConfig();
     if (cfg.hotkeys) hotkeys = { ...DEFAULT_HOTKEYS, ...cfg.hotkeys };
+    if (typeof cfg.overlayEnabled === 'boolean') overlayEnabled = cfg.overlayEnabled;
     if (typeof cfg.relicAutoShow === 'boolean') relicAutoShow = cfg.relicAutoShow;
     if (typeof cfg.relicScan === 'boolean') relicScan = cfg.relicScan;
     if (typeof cfg.relicTags === 'boolean') relicTags = cfg.relicTags;
@@ -604,6 +608,7 @@ function overlayState() {
     clickThrough,
     interacting,
     opacity: overlayOpacity,
+    enabled: overlayEnabled,
     hotkeys: { ...hotkeys }
   };
 }
@@ -672,6 +677,12 @@ function broadcastOverlayState() {
  * man muesste erst wieder ins Spielfenster klicken.
  */
 function showOverlay() {
+  /* Der Hauptschalter greift HIER und nicht an den Aufrufern: das Overlay wird
+     von vier Stellen hervorgeholt (Kuerzel, Titelleiste, Reliktbelohnung,
+     Reliktauswahl), und jede einzeln zu fragen heisst, die naechste zu
+     vergessen. */
+  if (!overlayEnabled) return;
+
   if (!overlayWin || overlayWin.isDestroyed()) {
     createOverlayWindow();
     /* Beim ersten Mal erst zeigen, wenn Inhalt da ist - sonst blitzt ein
@@ -685,6 +696,11 @@ function showOverlay() {
 
 function revealOverlay() {
   if (!overlayWin || overlayWin.isDestroyed()) return;
+  /* Zweite Pruefung, nicht doppelt gemoppelt: beim ersten Aufruf haengt das
+     Zeigen an 'ready-to-show'. Wer den Schalter in genau dieser Zeitspanne
+     umlegt, saehe das Fenster sonst noch einmal aufgehen, nachdem er es
+     abgeschaltet hat. Hier laeuft jeder Weg zusammen. */
+  if (!overlayEnabled) return;
   overlayWin.showInactive();
   overlayWin.setAlwaysOnTop(true, 'screen-saver');
   applyMousePassthrough(clickThrough);
@@ -3341,7 +3357,28 @@ async function handleRelicReward(ev) {
 
 ipcMain.handle('settings:get', async () => {
   const st = await store.load();
-  return { ok: true, hotkeys: { ...hotkeys }, notifications: st.notifications, relicAutoShow, relicScan, relicTags };
+  return { ok: true, hotkeys: { ...hotkeys }, notifications: st.notifications,
+           overlayEnabled, relicAutoShow, relicScan, relicTags };
+});
+
+ipcMain.handle('settings:overlayEnabled', async (_e, on) => {
+  overlayEnabled = !!on;
+
+  /* Ausschalten heisst auch: was gerade dasteht, verschwindet. Ein Schalter,
+     der erst beim naechsten Mal wirkt, wirkt wie ein kaputter Schalter. */
+  if (!overlayEnabled) {
+    overlayShownForRelic = false;
+    overlayShownForRelicSelect = false;
+    hideOverlay();
+  }
+
+  try {
+    const cfg = await loadConfig();
+    await saveConfig({ ...cfg, overlayEnabled });
+  } catch { /* aktiv, aber nicht gespeichert - beim naechsten Start wieder an */ }
+
+  broadcastOverlayState();
+  return { ok: true, overlayEnabled };
 });
 
 ipcMain.handle('settings:relicTags', async (_e, on) => {
