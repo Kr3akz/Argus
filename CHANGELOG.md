@@ -21,8 +21,7 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
-<!-- Was seit dem letzten Release dazugekommen ist. Beim Anheben der Version
-     in package.json wird daraus der neue Abschnitt. -->
+## [1.1.0] - 2026-08-24
 
 ### Added
 
@@ -32,6 +31,9 @@ follow [semantic versioning](https://semver.org/lang/en/).
   Acrithis, Palladino and Nightwave. Entries carry their own expiry where the
   world state reports one, and are marked as following the common weekly reset
   where it does not.
+- **Dynamic Mastery Rank Emblems** — the hero header dynamically displays the
+  official mastery rank crests for Mastery Rank 0 through 30 and Legendary ranks
+  1 through 4 reflecting your account's current rank.
 
 ### Changed
 
@@ -164,6 +166,11 @@ follow [semantic versioning](https://semver.org/lang/en/).
 - Running from the source folder no longer leaves the taskbar entry without a
   name or icon.
 - The logo on the permission screen is centred instead of left-aligned.
+- **Overlay cursor mode focus** — entering cursor mode now cleanly claims OS
+  foreground focus and moves the pointer safely.
+- **Settings hotkey capture** — fixed input conflicts when binding custom hotkeys.
+- **Hero Warframe artwork** — fixed rendering resolution and scaling for the
+  featured Warframe image in the header.
 
 ## [1.0.0] - 2026-08-23
 
