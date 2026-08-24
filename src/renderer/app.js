@@ -97,6 +97,7 @@ window.api.overlayState().then(syncOverlayBadge).catch(() => {});
 
 /* ---------------- Sidebar Navigation ---------------- */
 function showTab(name) {
+  if (typeof cancelHotkeyCapture === 'function') cancelHotkeyCapture();
   /* Mastery Manager und Farm-Ziele sind ein Reiter mit zwei Modi. Aeltere
      Namen zeigen weiter dorthin, damit Aufrufe von aussen nicht ins Leere
      laufen - 'checklist' und 'goals' schalten dabei auf den Katalog. */
@@ -437,12 +438,31 @@ function render(data) {
 /* ---------------- Profilkopf ---------------- */
 function renderLoadout(p) {
   const col = $('hero-character-col');
+  const img = $('hero-warframe-img');
   if (!p.loadout || !p.loadout.image) {
     if (col) col.hidden = true;
     return;
   }
+  if (img) {
+    img.alt = p.loadout.name || 'Warframe';
+    img.title = p.loadout.name || '';
+    img.onerror = () => {
+      // Fallback auf 128px Thumbnail falls 512px fehlschlaegt
+      if (p.loadout.uniqueName && !img.dataset.failed) {
+        img.dataset.failed = '1';
+        const slug = p.loadout.uniqueName.replace(/^\//, '').replaceAll('/', '.');
+        img.src = `https://cdn.jsdelivr.net/gh/Aericio/warframe-exports-data/image/128x128/${slug}.png`;
+      } else if (col) {
+        col.hidden = true;
+      }
+    };
+    img.onload = () => {
+      if (col) col.hidden = false;
+    };
+    img.dataset.failed = '';
+    img.src = p.loadout.image;
+  }
   if (col) col.hidden = false;
-  $('hero-warframe-img').src = p.loadout.image;
 }
 
 function renderHeroTags(p) {
@@ -7488,23 +7508,42 @@ const HOTKEY_LABELS = {
   main:     'Hauptfenster nach vorn holen'
 };
 
-/* Sondertasten, deren e.key nicht der Schreibweise von Electron entspricht. */
+/* Sondertasten fuer Electron-Accelerators */
+const CODE_TO_ACCEL = {
+  F1: 'F1', F2: 'F2', F3: 'F3', F4: 'F4', F5: 'F5', F6: 'F6',
+  F7: 'F7', F8: 'F8', F9: 'F9', F10: 'F10', F11: 'F11', F12: 'F12',
+  F13: 'F13', F14: 'F14', F15: 'F15', F16: 'F16', F17: 'F17', F18: 'F18',
+  F19: 'F19', F20: 'F20', F21: 'F21', F22: 'F22', F23: 'F23', F24: 'F24',
+  Space: 'Space', Tab: 'Tab', Enter: 'Return', NumpadEnter: 'Return',
+  Backspace: 'Backspace', Delete: 'Delete', Insert: 'Insert',
+  Home: 'Home', End: 'End', PageUp: 'PageUp', PageDown: 'PageDown',
+  ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right',
+  Pause: 'Pause', PrintScreen: 'PrintScreen', ScrollLock: 'ScrollLock',
+  Numpad0: 'num0', Numpad1: 'num1', Numpad2: 'num2', Numpad3: 'num3', Numpad4: 'num4',
+  Numpad5: 'num5', Numpad6: 'num6', Numpad7: 'num7', Numpad8: 'num8', Numpad9: 'num9',
+  NumpadAdd: 'numadd', NumpadSubtract: 'numsub', NumpadMultiply: 'nummult',
+  NumpadDivide: 'numdiv', NumpadDecimal: 'numdec',
+  Minus: 'Minus', Equal: 'Plus', BracketLeft: '[', BracketRight: ']',
+  Backslash: '\\', Semicolon: ';', Quote: '\'', Comma: ',',
+  Period: '.', Slash: '/', Backquote: '`'
+};
+
 const ACCEL_NAMED = {
   ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right',
   ' ': 'Space', Enter: 'Return', Backspace: 'Backspace', Delete: 'Delete',
   Insert: 'Insert', Home: 'Home', End: 'End', PageUp: 'PageUp',
-  PageDown: 'PageDown', Tab: 'Tab'
+  PageDown: 'PageDown', Tab: 'Tab', Escape: 'Escape'
 };
 
 function accelKeyName(e) {
-  if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return null;
-  if (ACCEL_NAMED[e.key]) return ACCEL_NAMED[e.key];
+  if (['Control', 'Alt', 'Shift', 'Meta', 'AltGraph'].includes(e.key)) return null;
   if (/^F\d{1,2}$/.test(e.key)) return e.key;
+  if (CODE_TO_ACCEL[e.code]) return CODE_TO_ACCEL[e.code];
+  if (ACCEL_NAMED[e.key]) return ACCEL_NAMED[e.key];
   if (/^[a-z0-9]$/i.test(e.key)) return e.key.toUpperCase();
-  /* Bei allem anderen haengt e.key vom Tastaturlayout ab - e.code benennt die
-     physische Taste, und die registriert Windows. */
   const m = /^(?:Digit|Key)([A-Z0-9])$/.exec(e.code || '');
-  return m ? m[1] : null;
+  if (m) return m[1];
+  return null;
 }
 
 /** Electron-Schreibweise ("Ctrl+Shift+R"), oder null wenn unbrauchbar. */
@@ -7518,9 +7557,12 @@ function accelFromEvent(e) {
   if (e.shiftKey) mods.push('Shift');
   if (e.metaKey)  mods.push('Super');
 
-  /* Ohne Modifikator waere die Taste systemweit weg - auch im Chat, auch im
-     Spiel. Das ist kein Kuerzel mehr, das ist ein Ausfall. */
-  if (!mods.length) return null;
+  const isStandaloneAllowed = /^F\d{1,2}$/.test(key)
+    || ['Insert', 'Delete', 'Home', 'End', 'PageUp', 'PageDown', 'Pause', 'PrintScreen', 'ScrollLock'].includes(key)
+    || key.startsWith('num');
+
+  /* Ohne Modifikator waere eine normale Buchstabentaste systemweit weg - auch im Chat, auch im Spiel. */
+  if (!mods.length && !isStandaloneAllowed) return null;
 
   return [...mods, key].join('+');
 }
@@ -7537,10 +7579,14 @@ function renderHotkeys() {
     }
 
     btn.classList.remove('capturing');
-    const accel = (hotkeyState && hotkeyState[name]) || '—';
-    btn.innerHTML = accel.split('+')
-      .map(k => `<kbd>${esc(k)}</kbd>`)
-      .join('<span class="hk-plus">+</span>');
+    const accel = (hotkeyState && hotkeyState[name]) || '';
+    if (!accel || accel === '—') {
+      btn.innerHTML = `<span class="hk-empty">None</span>`;
+    } else {
+      btn.innerHTML = accel.split('+')
+        .map(k => `<kbd>${esc(k)}</kbd>`)
+        .join('<span class="hk-plus">+</span>');
+    }
   }
   renderHotkeyHint(hotkeyState);
 }
@@ -7556,10 +7602,11 @@ function setHotkeyStatus(kind, text) {
 function startHotkeyCapture(name) {
   capturingHotkey = name;
   renderHotkeys();
-  setHotkeyStatus('', 'Press a combination — it must include at least Ctrl, Alt or Shift. Esc cancels.');
+  setHotkeyStatus('', 'Press a key combination (e.g. Ctrl+R or F6). Esc or click outside cancels.');
 }
 
 function cancelHotkeyCapture() {
+  if (!capturingHotkey) return;
   capturingHotkey = null;
   renderHotkeys();
   setHotkeyStatus('', '');
@@ -7576,14 +7623,34 @@ async function saveHotkey(name, accelerator) {
     setHotkeyStatus('warn',
       `${accelerator} could not be registered — that combination is already taken `
       + `system-wide (often Discord, GeForce Experience or another overlay). `
-      + `Es gilt weiter ${hotkeyState[name]}.`);
+      + `Active: ${hotkeyState[name] || 'None'}.`);
   } else {
-    setHotkeyStatus('ok', `${HOTKEY_LABELS[name]}: ${accelerator}`);
+    setHotkeyStatus('ok', `Hotkey updated: ${accelerator}`);
   }
 }
 
 document.querySelectorAll('.hotkey-btn').forEach(btn => {
-  btn.onclick = () => startHotkeyCapture(btn.dataset.hotkey);
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    const name = btn.dataset.hotkey;
+    if (capturingHotkey === name) {
+      cancelHotkeyCapture();
+    } else {
+      startHotkeyCapture(name);
+    }
+  };
+});
+
+/* Klick ausserhalb des Hotkey-Knopfs bricht die Erfassung ab */
+document.addEventListener('pointerdown', e => {
+  if (capturingHotkey && !e.target.closest('.hotkey-btn')) {
+    cancelHotkeyCapture();
+  }
+});
+
+/* Fokusverlust des Fensters bricht die Erfassung ab */
+window.addEventListener('blur', () => {
+  if (capturingHotkey) cancelHotkeyCapture();
 });
 
 /* Erfassungsphase: sonst schluckt der gerade angeklickte Knopf die Leertaste
@@ -7595,9 +7662,37 @@ window.addEventListener('keydown', e => {
 
   if (e.key === 'Escape') { cancelHotkeyCapture(); return; }
 
+  const mods = [];
+  if (e.ctrlKey)  mods.push('Ctrl');
+  if (e.altKey)   mods.push('Alt');
+  if (e.shiftKey) mods.push('Shift');
+  if (e.metaKey)  mods.push('Super');
+
   const accel = accelFromEvent(e);
-  if (!accel) return;              // nur Modifikatoren - weiter warten
+  if (!accel) {
+    // Live-Vorschau fuer gedrueckte Modifikatoren
+    const btn = document.querySelector(`.hotkey-btn[data-hotkey="${capturingHotkey}"]`);
+    if (btn) {
+      btn.textContent = mods.length ? mods.join(' + ') + ' + …' : 'Press a key …';
+    }
+    return;
+  }
+
   saveHotkey(capturingHotkey, accel);
+}, true);
+
+window.addEventListener('keyup', e => {
+  if (!capturingHotkey) return;
+  const mods = [];
+  if (e.ctrlKey)  mods.push('Ctrl');
+  if (e.altKey)   mods.push('Alt');
+  if (e.shiftKey) mods.push('Shift');
+  if (e.metaKey)  mods.push('Super');
+
+  const btn = document.querySelector(`.hotkey-btn[data-hotkey="${capturingHotkey}"]`);
+  if (btn) {
+    btn.textContent = mods.length ? mods.join(' + ') + ' + …' : 'Press a key …';
+  }
 }, true);
 
 /* ---------------- Benachrichtigungs-Schalter ---------------- */

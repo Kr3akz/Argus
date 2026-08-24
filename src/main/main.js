@@ -341,16 +341,33 @@ function applyHotkeys(next = {}) {
   const wanted = { ...hotkeys, ...next };
   const failed = [];
 
+  // Falls dieselbe Tastenkombination fuer mehrere Aktionen gesetzt wird,
+  // Konflikt aufloesen, damit nicht die spaetere Registrierung scheitert
+  for (const [key, val] of Object.entries(next)) {
+    if (!val) continue;
+    for (const other of Object.keys(HOTKEY_ACTIONS)) {
+      if (other !== key && wanted[other] === val) {
+        wanted[other] = '';
+      }
+    }
+  }
+
   globalShortcut.unregisterAll();
 
   for (const name of Object.keys(HOTKEY_ACTIONS)) {
     const accelerator = String(wanted[name] || '').trim();
+    if (!accelerator) {
+      hotkeys[name] = '';
+      continue;
+    }
     if (tryRegister(accelerator, HOTKEY_ACTIONS[name])) {
       hotkeys[name] = accelerator;
       continue;
     }
     failed.push({ name, accelerator });
-    tryRegister(hotkeys[name], HOTKEY_ACTIONS[name]);
+    if (hotkeys[name] && hotkeys[name] !== accelerator) {
+      tryRegister(hotkeys[name], HOTKEY_ACTIONS[name]);
+    }
   }
 
   return { hotkeys: { ...hotkeys }, failed };
@@ -767,33 +784,94 @@ const FOCUS_NAMES = {
 
 /** Zusatzinfos fuer den Profilkopf - alles bereits im Profil vorhanden. */
 function profileExtras(profile) {
-  const preset = profile.LoadOutPreset || {};
+  const preset = profile?.LoadOutPreset || {};
+  const suits = profile?.LoadOutInventory?.Suits || [];
 
-  // Der Preset nennt nur den Warframe-Namen; das Bild kommt ueber den Katalog.
-  let loadout = null;
-  if (preset.n) {
-    const frame = cache.catalog.items.find(
-      i => i.name === preset.n && i.productCategory === 'Suits'
+  const toIdStr = (val) => {
+    if (!val) return null;
+    if (typeof val === 'string') return val;
+    if (typeof val === 'object' && val.$oid) return String(val.$oid);
+    return String(val);
+  };
+
+  const suitItemId = toIdStr(preset.s?.ItemId || preset.s?.id || preset.s);
+  let suitUniqueName = null;
+
+  // 1. Suche nach ItemId in LoadOutInventory.Suits
+  if (suitItemId) {
+    const suitObj = suits.find(s => toIdStr(s.ItemId || s.id) === suitItemId);
+    if (suitObj?.ItemType) {
+      suitUniqueName = suitObj.ItemType;
+    }
+  }
+
+  // 2. Direktes ItemType auf preset.s falls vorhanden
+  if (!suitUniqueName && preset.s?.ItemType) {
+    suitUniqueName = preset.s.ItemType;
+  }
+
+  // 3. Fallback: Erster Anzug im Inventar
+  if (!suitUniqueName && suits.length > 0 && suits[0]?.ItemType) {
+    suitUniqueName = suits[0].ItemType;
+  }
+
+  // 4. Im Katalog nachschlagen
+  let frame = suitUniqueName ? cache.catalog?.byUniqueName?.get(suitUniqueName) : null;
+
+  // 5. Fallback nach Name aus preset.n (exakter Match)
+  if (!frame && preset.n && cache.catalog?.items) {
+    const cleanName = preset.n.trim().toLowerCase();
+    frame = cache.catalog.items.find(
+      i => i.productCategory === 'Suits' && i.name && i.name.trim().toLowerCase() === cleanName
     );
+  }
+
+  // 6. Fallback nach Name aus preset.n (Teil-Match, z. B. "Excalibur Umbra Build")
+  if (!frame && preset.n && cache.catalog?.items) {
+    const cleanName = preset.n.trim().toLowerCase();
+    const suitCandidates = cache.catalog.items
+      .filter(i => i.productCategory === 'Suits' && i.name)
+      .sort((a, b) => b.name.length - a.name.length);
+    frame = suitCandidates.find(i => cleanName.includes(i.name.toLowerCase()));
+  }
+
+  // 7. Fallback: Meistgespielter Warframe aus XPInfo
+  if (!frame && profile?.LoadOutInventory?.XPInfo?.length && cache.catalog?.byUniqueName) {
+    const suitXp = (profile.LoadOutInventory.XPInfo || [])
+      .filter(xp => xp.ItemType && (xp.ItemType.includes('/Powersuits/') || xp.ItemType.includes('/Suits/')))
+      .sort((a, b) => (b.XP || 0) - (a.XP || 0));
+    if (suitXp.length > 0) {
+      frame = cache.catalog.byUniqueName.get(suitXp[0].ItemType);
+      if (!frame) suitUniqueName = suitXp[0].ItemType;
+    }
+  }
+
+  const finalName = frame?.name || (suitUniqueName ? (cache.catalog?.byUniqueName?.get(suitUniqueName)?.name || suitUniqueName.split('/').pop()) : preset.n) || null;
+  const finalUniqueName = frame?.uniqueName || suitUniqueName || null;
+
+  let loadout = null;
+  if (finalName || finalUniqueName) {
     loadout = {
-      name: preset.n,
-      image: frame ? imageUrl(frame.uniqueName, 512) : null,
+      name: finalName,
+      presetName: preset.n || null,
+      uniqueName: finalUniqueName,
+      image: finalUniqueName ? imageUrl(finalUniqueName, 512) : null,
       focus: FOCUS_NAMES[preset.FocusSchool] || null
     };
   }
 
-  const createdMs = Number(profile.Created?.$date?.$numberLong) || null;
-  const chart = starChart(profile);
+  const createdMs = Number(profile?.Created?.$date?.$numberLong) || null;
+  const chart = starChart(profile || {});
 
   return {
     loadout,
-    clan: profile.GuildName || null,
+    clan: profile?.GuildName || null,
     createdMs,
     yearsPlayed: createdMs ? ((Date.now() - createdMs) / 3.156e10).toFixed(1) : null,
     nodes: chart.nodes,
     junctions: chart.junctions,
-    challenges: (profile.ChallengeProgress || []).length,
-    syndicates: (profile.Affiliations || []).length
+    challenges: (profile?.ChallengeProgress || []).length,
+    syndicates: (profile?.Affiliations || []).length
   };
 }
 
