@@ -833,13 +833,65 @@ body:has(#app:not(.hidden)) .titlebar-brand::after {
 }
 .htag svg, .htag .nav-icon-mask { color: var(--text-3); }
 
-.mr-block { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
-.mr-big { display: flex; align-items: center; gap: 8px; }
-.mr-icon { width: 34px; height: 34px; object-fit: contain; flex-shrink: 0; filter: drop-shadow(0 2px 8px rgba(0,0,0,.45)); }
-.mr-big span { font-size: 52px; font-weight: 300; color: var(--text); line-height: .95; letter-spacing: -2px; }
-.mr-big small { color: var(--text-3); font-size: 12px; font-weight: 600; letter-spacing: 1px; }
-.mr-max { font-size: 11.5px; color: var(--text-3); }
-.mr-max b { color: var(--text-2); font-weight: 600; }
+.mr-block {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+}
+.mr-emblem-wrap {
+  position: relative;
+  width: 58px;
+  height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.mr-icon {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.45));
+}
+.mr-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.mr-big {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  line-height: 1;
+}
+.mr-big span {
+  font-size: 48px;
+  font-weight: 300;
+  color: var(--text);
+  line-height: 0.92;
+  letter-spacing: -2px;
+  font-variant-numeric: tabular-nums;
+}
+.mr-big small {
+  color: var(--text-3);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.mr-max {
+  font-size: 11.5px;
+  color: var(--text-3);
+  margin-top: 1px;
+  line-height: 1.2;
+}
+.mr-max b {
+  color: var(--text-2);
+  font-weight: 600;
+}
 
 /* Aufschluesselung: woher die MR-XP kommt */
 .hero-split { display: flex; gap: 36px; flex-wrap: wrap; align-items: flex-start; }
@@ -3756,8 +3808,15 @@ select option { background: #161b25; color: var(--text); }
   .hero-id h1 {
     font-size: 26px;
   }
+  .mr-block {
+    gap: 10px;
+  }
+  .mr-emblem-wrap, .mr-icon {
+    width: 48px;
+    height: 48px;
+  }
   .mr-big span {
-    font-size: 46px;
+    font-size: 38px;
   }
 }
 @media (max-width: 900px) {
@@ -3773,6 +3832,9 @@ select option { background: #161b25; color: var(--text); }
   }
   #hero-warframe-img {
     max-height: 260px;
+  }
+  .mr-block {
+    align-self: flex-start;
   }
 }
 

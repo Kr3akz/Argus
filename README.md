@@ -27,21 +27,6 @@ Windows APIs.
 
 ![Open goals with the materials they still need](docs/img/01-mastery.png)
 
----
-
-## What it does
-
-| | |
-|---|---|
-| **Mastery planning** | Every item you have not mastered, ranked by what it actually costs you. Set goals and Argus resolves them down to the raw materials — including how long the components take to build. |
-| **Live world state** | Open-world cycles, void fissures, sorties, Nightwave, invasions, Steel Path and Baro Ki'Teer, with desktop notifications for the fissures you care about. → [overlay & notifications](docs/controls.md) |
-| **Weekly rotation** | Everything that resets once a week in one place — Archon Hunt, The Circuit, Deep and Temporal Archimedea, Netracells, Kahl's Garrison, and the vendor resets for Teshin, Bird 3, Yonta, Acrithis, Palladino and Nightwave. |
-| **Relic rewards** | The reward screen opens, Argus reads all four parts off the screen and puts the platinum price and ducat value under each card — inside the game. → [details](docs/relics.md) |
-| **Inventory** | Your mods, arcanes and relics as the cards they are in game, with data sheets, drop locations and rank-by-rank values. → [details](docs/inventory.md) |
-| **Trading** | Orders and contracts on warframe.market straight from your inventory, plus a local trade ledger. → [details](docs/trading.md) |
-| **Builds** | Build loadouts against what you actually own, or import from Overframe. → [details](docs/builds.md) |
-| **Farming & mining** | Best nodes per material and the ores and gems of all three landscapes, sorted by vein colour. → [details](docs/farming.md) |
-
 <details>
 <summary><b>More screenshots</b></summary>
 
@@ -76,6 +61,21 @@ Windows APIs.
 ![Settings](docs/img/08-settings.png)
 
 </details>
+
+---
+
+## What it does
+
+| | |
+|---|---|
+| **Mastery planning** | Every item you have not mastered, ranked by what it actually costs you. Set goals and Argus resolves them down to the raw materials — including how long the components take to build. |
+| **Live world state** | Open-world cycles, void fissures, sorties, Nightwave, invasions, Steel Path and Baro Ki'Teer, with desktop notifications for the fissures you care about. → [overlay & notifications](docs/controls.md) |
+| **Weekly rotation** | Everything that resets once a week in one place — Archon Hunt, The Circuit, Deep and Temporal Archimedea, Netracells, Kahl's Garrison, and the vendor resets for Teshin, Bird 3, Yonta, Acrithis, Palladino and Nightwave. |
+| **Relic rewards** | The reward screen opens, Argus reads all four parts off the screen and puts the platinum price and ducat value under each card — inside the game. → [details](docs/relics.md) |
+| **Inventory** | Your mods, arcanes and relics as the cards they are in game, with data sheets, drop locations and rank-by-rank values. → [details](docs/inventory.md) |
+| **Trading** | Orders and contracts on warframe.market straight from your inventory, plus a local trade ledger. → [details](docs/trading.md) |
+| **Builds** | Build loadouts against what you actually own, or import from Overframe. → [details](docs/builds.md) |
+| **Farming & mining** | Best nodes per material and the ores and gems of all three landscapes, sorted by vein colour. → [details](docs/farming.md) |
 
 ---
 

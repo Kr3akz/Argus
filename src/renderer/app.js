@@ -370,6 +370,22 @@ function render(data) {
   $('mr-name').textContent     = p.mrName;
   $('mr-value').textContent    = p.mr;
 
+  const mrIcon = $('mr-icon');
+  if (mrIcon) {
+    const mrVal = Number.isInteger(p.mr) && p.mr >= 0 ? p.mr : 0;
+    mrIcon.src = `assets/icons/mastery/IconRank${mrVal}.png`;
+    mrIcon.alt = `Mastery Rank ${p.mr}`;
+    mrIcon.onerror = function() {
+      if (!this.dataset.fallbackTried) {
+        this.dataset.fallbackTried = '1';
+        this.src = `https://wiki.warframe.com/images/IconRank${mrVal}.png`;
+      } else if (this.dataset.fallbackTried === '1') {
+        this.dataset.fallbackTried = '2';
+        this.src = 'assets/icons/mastery-rank.png';
+      }
+    };
+  }
+
   $('progress-fill').style.width = Math.min(100, p.progress.percent).toFixed(1) + '%';
   /* Bei einer bekannten Luecke ist die Summe eine Untergrenze - das "mind."
      sagt genau das, statt eine Genauigkeit vorzutaeuschen. */
