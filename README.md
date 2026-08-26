@@ -79,6 +79,22 @@ Windows APIs.
 
 ---
 
+## Is it safe? Can I get banned?
+
+The short answer is **yes, it is safe, and you will not get banned.**
+
+The quick breakdown:
+
+- **Argus changes nothing about the game.** No DLL injection, no hooks, no memory writes, and no input automation or macros.
+- **No network interception.** It never sniffs or intercepts the game's encrypted network traffic (which would violate Warframe's EULA).
+- **Read-only and opt-in.** Memory reading is strictly read-only (`PROCESS_VM_READ`) to retrieve temporary session credentials for your inventory, happens only when you click refresh, and remains completely disabled unless you turn it on.
+- **Built-in rate limiting.** Queries have mandatory cooldowns to protect you from DE's IP login throttles.
+
+Every single mechanism, permission, and endpoint is explained in detail:  
+**→ [Read the full security & safety breakdown](docs/security.md)**
+
+---
+
 ## Install
 
 1. Download the latest **`Argus-<version>-Setup.exe`** from the
@@ -169,21 +185,6 @@ Either way, the first start downloads about 12 MB of public game data (DE's item
 catalogue and the mod list). Everything is stored under `%APPDATA%\Argus\data` —
 which means your goals, builds and notes survive an update, and an uninstall leaves them
 alone.
-
----
-
-## Is it safe?
-
-Short version: **the app changes nothing about the game.** No injection, no DLL hook, no
-write access, no network interception, no automation.
-
-It does read the memory of the running game — read-only, at the press of a button, and
-only if you switch it on — because that is the only way to get at an inventory since
-Update 38.0.8. It also reads Warframe's own log file for relic rewards, and takes a
-screenshot of the reward screen that is deleted the moment it has been read.
-
-All of that is spelled out, mechanism by mechanism, including every endpoint it talks
-to: **→ [Is this safe?](docs/security.md)**
 
 ---
 
