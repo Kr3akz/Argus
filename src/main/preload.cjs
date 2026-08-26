@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('api', {
   detectSetup:     ()          => ipcRenderer.invoke('setup:detect'),
   saveSetup:       (data)      => ipcRenderer.invoke('setup:save', data),
   setInventoryScan:(on)        => ipcRenderer.invoke('setup:setScan', on),
+  setAutoSync:     (on)        => ipcRenderer.invoke('setup:setAutoSync', on),
   openExternal:    (url)       => ipcRenderer.invoke('shell:open', url),
   getDashboard:    ()          => ipcRenderer.invoke('dashboard:get'),
   refreshProfile:  ()          => ipcRenderer.invoke('profile:refresh'),
@@ -42,6 +43,19 @@ contextBridge.exposeInMainWorld('api', {
      accountId oder nonce an. */
   getInventory:    ()          => ipcRenderer.invoke('inventory:get'),
   refreshInventory:()          => ipcRenderer.invoke('inventory:refresh'),
+  /* Auto-Sync: der Hauptprozess meldet, wenn im Hintergrund frische Daten
+     eingetroffen sind (updated) oder ein Abruf am Rate-Limit gescheitert
+     ist und nur ein Hinweis bleibt (stale). */
+  onInventoryUpdated:(cb)      => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on('inventory:updated', handler);
+    return () => ipcRenderer.removeListener('inventory:updated', handler);
+  },
+  onInventoryStale:(cb)        => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on('inventory:stale', handler);
+    return () => ipcRenderer.removeListener('inventory:stale', handler);
+  },
   /* Datenblatt einer Mod oder eines Arcanes. Der Inventar-Eintrag wandert
      mit, damit der Hauptprozess die Inventardatei nicht je Klick neu liest. */
   getUpgradeDetails:(u, owned) => ipcRenderer.invoke('upgrade:details', u, owned),

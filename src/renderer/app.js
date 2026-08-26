@@ -5563,6 +5563,33 @@ if ($('btn-inv-refresh')) $('btn-inv-refresh').onclick = async () => {
   else showInventoryState(res.code, res.error);
 };
 
+/* Auto-Sync Listener: Hauptprozess hat im Hintergrund frische Daten geliefert */
+if (window.api.onInventoryUpdated) {
+  window.api.onInventoryUpdated(data => {
+    inventoryData = data;
+    const invTab = $('tab-inventory');
+    if (invTab && invTab.classList.contains('active')) {
+      renderInventory();
+    }
+  });
+}
+
+if (window.api.onInventoryStale) {
+  window.api.onInventoryStale(info => {
+    if (inventoryData && info.gate) {
+      inventoryData.gate = info.gate;
+      const refreshBtn = $('btn-inv-refresh');
+      if (refreshBtn) {
+        refreshBtn.classList.toggle('is-gated', !info.gate.allowed);
+        if (info.gate.waitText) {
+          refreshBtn.title = `Next fetch in ${info.gate.waitText}`;
+        }
+      }
+    }
+  });
+}
+
+
 /* ---------------- Material Klick Verlinkung zum Farm-Guide ---------------- */
 document.addEventListener('click', e => {
   const matEl = e.target.closest('.mat, .chip, .im-mat');
@@ -7779,6 +7806,8 @@ $('set-open-fissure-notif')?.addEventListener('click', () => {
 $('set-inventory-scan')?.addEventListener('change', async e => {
   const on = e.target.checked;
   const note = $('inv-scan-status');
+  const autoRow = $('row-inventory-autosync');
+  if (autoRow) autoRow.style.opacity = on ? '1' : '0.4';
   try {
     await window.api.setInventoryScan(on);
     if (note) {
@@ -7793,6 +7822,15 @@ $('set-inventory-scan')?.addEventListener('change', async e => {
       note.textContent = 'Could not save that: ' + err.message;
       note.classList.remove('hidden');
     }
+  }
+});
+
+$('set-inventory-autosync')?.addEventListener('change', async e => {
+  const on = e.target.checked;
+  try {
+    await window.api.setAutoSync(on);
+  } catch (err) {
+    e.target.checked = !on;
   }
 });
 
@@ -7816,7 +7854,11 @@ async function loadSettingsTab() {
      Unterschiedliches ueber denselben Schalter behaupten. */
   try {
     const setup = await window.api.getSetupState();
-    if ($('set-inventory-scan')) $('set-inventory-scan').checked = setup.inventoryScan === true;
+    const scanOn = setup.inventoryScan === true;
+    if ($('set-inventory-scan')) $('set-inventory-scan').checked = scanOn;
+    if ($('set-inventory-autosync')) $('set-inventory-autosync').checked = setup.inventoryAutoSync !== false;
+    const autoRow = $('row-inventory-autosync');
+    if (autoRow) autoRow.style.opacity = scanOn ? '1' : '0.4';
   } catch { /* Schalter bleibt, wie er steht */ }
 
   renderHotkeys();

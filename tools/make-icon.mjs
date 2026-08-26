@@ -28,8 +28,10 @@ const MASKEN = [
   { quelle: 'narmer.png', ziel: 'narmer.png', groesse: 256 }
 ];
 const OUT_BUILD = path.join(ROOT, 'build', 'icon.png');
+const OUT_BUILD_ICO = path.join(ROOT, 'build', 'icon.ico');
 const OUT_ICONS_DIR = path.join(ROOT, 'src', 'renderer', 'assets', 'icons');
 const OUT_RENDERER_ASSETS = path.join(ROOT, 'src', 'renderer', 'assets');
+const OUT_APP_ICON = path.join(OUT_RENDERER_ASSETS, 'app-icon.png');
 
 function decodePNG(file) {
   const buf = readFileSync(file);
@@ -138,6 +140,36 @@ function encodePNG(w, h, rgba) {
     chunk('IDAT', deflateSync(raw, { level: 9 })),
     chunk('IEND', Buffer.alloc(0))
   ]);
+}
+
+function encodeICO(pngImages) {
+  const count = pngImages.length;
+  const header = Buffer.alloc(6);
+  header.writeUInt16LE(0, 0); // Reserved
+  header.writeUInt16LE(1, 2); // ICO format
+  header.writeUInt16LE(count, 4); // Image count
+
+  let offset = 6 + count * 16;
+  const dirEntries = [];
+  const imageBuffers = [];
+
+  for (const img of pngImages) {
+    const entry = Buffer.alloc(16);
+    entry.writeUInt8(img.size >= 256 ? 0 : img.size, 0); // Width (0 = 256)
+    entry.writeUInt8(img.size >= 256 ? 0 : img.size, 1); // Height (0 = 256)
+    entry.writeUInt8(0, 2); // Palette colors
+    entry.writeUInt8(0, 3); // Reserved
+    entry.writeUInt16LE(1, 4); // Color planes
+    entry.writeUInt16LE(32, 6); // Bits per pixel
+    entry.writeUInt32LE(img.buffer.length, 8); // Size of image data
+    entry.writeUInt32LE(offset, 12); // Offset to image data
+
+    dirEntries.push(entry);
+    imageBuffers.push(img.buffer);
+    offset += img.buffer.length;
+  }
+
+  return Buffer.concat([header, ...dirEntries, ...imageBuffers]);
 }
 
 function resizeRGBA(src, targetSize, paddingRatio = 0) {
@@ -390,10 +422,21 @@ mkdirSync(path.dirname(OUT_BUILD), { recursive: true });
 mkdirSync(OUT_ICONS_DIR, { recursive: true });
 mkdirSync(OUT_RENDERER_ASSETS, { recursive: true });
 
-// 1. build/icon.png (App Icon)
+// 1. build/icon.png (App Icon) & build/icon.ico (Windows Icon mit allen Aufloesungen)
 const appPng = encodePNG(512, 512, programmSymbol(512, whiteSrc));
 writeFileSync(OUT_BUILD, appPng);
+writeFileSync(OUT_APP_ICON, appPng);
 console.log(`${OUT_BUILD} (512x512, ${(appPng.length / 1024).toFixed(1)} KB)`);
+console.log(`${OUT_APP_ICON} (512x512, ${(appPng.length / 1024).toFixed(1)} KB)`);
+
+const icoSizes = [16, 24, 32, 48, 64, 128, 256];
+const icoImages = icoSizes.map(size => ({
+  size,
+  buffer: encodePNG(size, size, programmSymbol(size, whiteSrc))
+}));
+const icoBuf = encodeICO(icoImages);
+writeFileSync(OUT_BUILD_ICO, icoBuf);
+console.log(`${OUT_BUILD_ICO} (Multi-Resolution [${icoSizes.join(', ')} px], ${(icoBuf.length / 1024).toFixed(1)} KB)`);
 
 // 2. Renderer masks & images
 const logoMaskRGBA = resizeRGBA(whiteSrc, 512, 0);

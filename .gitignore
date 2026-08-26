@@ -74,3 +74,4 @@ build-info.json
 !build/
 build/*
 !build/icon.png
+!build/icon.ico

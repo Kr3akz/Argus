@@ -21,6 +21,26 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-08-26
+
+### Added
+
+- **Automatic inventory synchronization** — when game scanning is enabled, Argus
+  now detects mission completions, returning to the Orbiter, and completed trades
+  to automatically refresh your inventory in the background (respecting the 10-minute
+  rate limit). Includes a dedicated switch in Settings.
+
+### Fixed
+
+- **Crisp Windows application icons** — installed builds and desktop/taskbar
+  shortcuts now use a dedicated multi-resolution `.ico` containing pre-rendered
+  mipmaps (16, 24, 32, 48, 64, 128, 256 px) with clean anti-aliasing. The window
+  runtime icon is also bundled directly with the application, resolving pixelated
+  and blurry icons on Windows.
+- **Relic tracking in endless missions** — the equipped relic counter in the
+  overlay now stays active between rounds in endless fissures where the initial
+  confirmation dialog is not shown again.
+
 ## [1.1.0] - 2026-08-24
 
 ### Added

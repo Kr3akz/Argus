@@ -46,6 +46,16 @@ const POLL_MS = 150;
    Fund gehoert zu einer frueheren Mission und wird nicht mehr angezeigt. */
 const REWARD_MAX_AGE_MS = 30000;
 
+/* Entprellung fuer game-activity: Zonenwechsel erzeugen oft mehrere Zeilen
+   innerhalb weniger Millisekunden. Nur das erste Ereignis in diesem Fenster
+   wird emittiert. */
+const ACTIVITY_DEBOUNCE_MS = 5000;
+
+/* ----- Spielereignisse, die auf ein veraendertes Inventar hindeuten ----- */
+const RE_MISSION_END = /MatchingService::LeaveSquad/;
+const RE_ORBITER     = /(?:TennoShipAvatar|TennoMotion).*Setting PM_|Created\s+\S*ThemedMainMenu\.swf/;
+const RE_TRADE       = /TradeService::\w*(?:Accept|Confirm|Complete)/i;
+
 const RE_OWN_REWARD = /VoidProjections:\s+[0-9a-f]{24}\s+gets reward\s+(\S+)/;
 const RE_READY      = /ProjectionRewardChoice\.lua:\s*Got rewards/;
 const RE_TIMER      = /ProjectionsCountdown\.lua:\s*Initialize timer\s+\S+\s+(\d+)/;
@@ -122,6 +132,7 @@ export class LogWatcher extends EventEmitter {
     this.relicSelectOpenedAt = 0;
     this.relicSelectArmedAt = 0;
     this.busy = false;
+    this.lastActivity = 0;          // Zeitstempel des letzten game-activity
   }
 
   /**
@@ -242,6 +253,20 @@ export class LogWatcher extends EventEmitter {
       this.relicSelectArmedAt = 0;
       this.emit('relic-select-open', { at: Date.now() });
       return;
+    }
+
+    /* ----- Spielaktivitaet: Missionsende, Orbiter, Handel --------------- */
+    const trigger =
+      RE_MISSION_END.test(line) ? 'mission_end' :
+      RE_ORBITER.test(line)     ? 'orbiter'     :
+      RE_TRADE.test(line)       ? 'trade'       : null;
+
+    if (trigger) {
+      const now = Date.now();
+      if (now - this.lastActivity >= ACTIVITY_DEBOUNCE_MS) {
+        this.lastActivity = now;
+        this.emit('game-activity', { trigger, at: now });
+      }
     }
 
     if (!this.relicSelectActive) return;

@@ -197,7 +197,7 @@ function createWindow() {
     width: WINDOW_SIZE.width, height: WINDOW_SIZE.height,
     minWidth: WINDOW_MIN.width, minHeight: WINDOW_MIN.height,
     backgroundColor: '#0d1117',
-    icon: path.join(__dirname, '../../build/icon.png'),
+    icon: path.join(__dirname, '../renderer/assets/app-icon.png'),
     frame: false,
     show: false,
     webPreferences: {
@@ -1182,7 +1182,8 @@ ipcMain.handle('setup:state', async () => {
        niemand ausdruecklich einschaltet. Ein Programm, das ungefragt fremde
        Prozesse liest, hat die Zustimmung nicht, die es dafuer braucht - und
        ein frisch heruntergeladenes Programm hat sie erst recht nicht. */
-    inventoryScan: cfg.inventoryScan === true
+    inventoryScan: cfg.inventoryScan === true,
+    inventoryAutoSync: cfg.inventoryAutoSync !== false
   };
 });
 
@@ -1313,6 +1314,12 @@ ipcMain.handle('setup:setScan', async (_e, on) => {
   const cfg = await loadConfig();
   await saveConfig({ ...cfg, inventoryScan: on === true });
   return { ok: true, inventoryScan: on === true };
+});
+
+ipcMain.handle('setup:setAutoSync', async (_e, on) => {
+  const cfg = await loadConfig();
+  await saveConfig({ ...cfg, inventoryAutoSync: on === true });
+  return { ok: true, inventoryAutoSync: on === true };
 });
 
 /**
@@ -1611,15 +1618,14 @@ function relicImage(base, state) {
  *
  * NUR NACH UNTEN, UND LIEBER ZU WENIG:
  *   Gefundene Relikte bemerkt dieses Buch nicht - dafuer gibt es keine
- *   verlaessliche Zeile. In Endlosmissionen zaehlt es ausserdem nur die erste
- *   Runde: dort wird einmal eingelegt und danach zwischen den Runden neu
- *   gewaehlt, ohne dass die Sicherheitsfrage wieder erscheint.
- *   Beides geht in dieselbe, richtige Richtung. Etwas anzuzeigen, das man
- *   nicht mehr hat, fuehrt in eine Mission mit leeren Haenden; eines zu
- *   verschweigen, das man hat, kostet einen Blick in den Planer.
- *
- * Lebt nur im Speicher: ein Neustart faellt mit dem naechsten Abruf ohnehin
- * auf den echten Stand zurueck.
+ *   verlaessliche Zeile. Seit dem Endlos-Fix bleibt equippedRelic nach dem
+ *   Belohnungsbildschirm stehen: in Endlosmissionen kommt die Sicherheits-
+ *   frage ab Runde 2 nicht mehr, deshalb ist das letzte bekannte Relikt die
+ *   beste Annahme. Wechselt der Spieler ueber die Sternkarte, ueberschreibt
+ *   das naechste relic-equipped es korrekt.
+ *   Das geht in die richtige Richtung: etwas anzuzeigen, das man nicht mehr
+ *   hat, fuehrt in eine Mission mit leeren Haenden; eines zu verschweigen,
+ *   das man hat, kostet einen Blick in den Planer.
  */
 const relicsUsed = new Map();   // 'Meso F3|Radiant' -> wie oft geoeffnet
 let equippedRelic = null;       // was fuer die laufende Mission eingelegt ist
@@ -3036,6 +3042,10 @@ function sendToOverlay(channel, payload) {
   if (overlayWin && !overlayWin.isDestroyed()) overlayWin.webContents.send(channel, payload);
 }
 
+function sendToMain(channel, payload) {
+  if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
+}
+
 /** Kandidatenfeld fuer die Bildschirmerkennung, einmal gebaut. */
 async function ensureRewardIndex() {
   if (rewardIndex) return rewardIndex;
@@ -3325,7 +3335,11 @@ function startLogWatcher() {
     if (equippedRelic) {
       const id = equippedRelic.key + '|' + equippedRelic.state;
       relicsUsed.set(id, (relicsUsed.get(id) || 0) + 1);
-      equippedRelic = null;
+      /* equippedRelic NICHT nullen: in Endlosmissionen kommt ab Runde 2 keine
+         Sicherheitsfrage mehr (Dialog::CreateOkCancel), also auch kein neues
+         relic-equipped-Ereignis. Das letzte bekannte Relikt bleibt die beste
+         Annahme fuer die naechste Runde. Ein neues relic-equipped von der
+         Sternkarte ueberschreibt es korrekt. */
       pushRecommendedRelics();
     }
 
@@ -3343,6 +3357,35 @@ function startLogWatcher() {
     if (overlayShownForRelic) {
       overlayShownForRelic = false;
       hideOverlay();
+    }
+  });
+
+  /* ----- Auto-Sync: Inventar nach Spielereignissen aktualisieren ------- */
+  logWatcher.on('game-activity', async (ev) => {
+    try {
+      const cfg = await loadConfig();
+      /* Beide Schalter muessen an sein: inventoryScan erlaubt den Speicher-
+         zugriff ueberhaupt, inventoryAutoSync den automatischen Abruf.
+         inventoryAutoSync fehlt in alten Konfigurationen - dann gilt AN. */
+      if (cfg.inventoryScan !== true) return;
+      if (cfg.inventoryAutoSync === false) return;
+
+      const gate = await checkAllowed({});
+      if (!gate.allowed) {
+        console.log('[AutoSync] Übersprungen:', gate.reason,
+                    `(nächster Abruf in ${formatWait(gate.waitMs)})`);
+        sendToMain('inventory:stale', {
+          trigger: ev.trigger,
+          gate: { allowed: false, waitText: formatWait(gate.waitMs) }
+        });
+        return;
+      }
+
+      console.log('[AutoSync] Inventar-Abruf ausgelöst durch:', ev.trigger);
+      const payload = await inventoryPayload({ refresh: true });
+      sendToMain('inventory:updated', payload.data);
+    } catch (err) {
+      console.error('[AutoSync] Fehlgeschlagen:', err.message);
     }
   });
 
