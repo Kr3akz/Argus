@@ -5836,231 +5836,247 @@ label.setting-row.is-disabled { cursor: not-allowed; }
    der wuerde das Spiel zudecken.
    ========================================================================= */
 
+/* ============================================================================
+   Preisschilder im Spiel (tags.html)
+
+   Eigenes, durchsichtiges Fenster ueber dem ganzen Bildschirm. Der Hintergrund
+   MUSS durchsichtig bleiben - style.css setzt am body sonst einen Verlauf, und
+   der wuerde das Spiel zudecken.
+   ========================================================================= */
+
 body.tags-window {
   background: transparent !important;
   overflow: hidden;
   height: 100vh;
   margin: 0;
   pointer-events: none;
+  --surface: rgba(22, 27, 37, 0.95);
 }
 
 .currency-ic {
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
   object-fit: contain;
-  vertical-align: middle;
+  vertical-align: -2px;
   flex-shrink: 0;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
 }
 
 .currency-ic.ducat-ic {
-  width: 17px;
-  height: 17px;
+  width: 13px;
+  height: 13px;
 }
 
-.tag {
+/* DAS DOCK (Aeusseres Chassis unter den Karten)
+   Hintergrund aus edlem, dunklem Glas mit dezenter 1px-Haarlinie,
+   an dem unten nahtlos die geschwungene Trapez-Lasche mit dem Argus-Signet haengt. */
+.tag-panel {
   position: absolute;
-  transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 7px;
-  padding: 10px 14px 10px;
-  min-width: 180px;
-  max-width: 240px;
-  border-radius: 14px;
-  background: linear-gradient(180deg, rgba(22, 28, 42, 0.94) 0%, rgba(11, 15, 23, 0.96) 100%);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  display: grid;
+  align-items: stretch;
+  gap: 8px;
+  padding: 8px 8px 10px 8px;
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, rgba(16, 21, 31, 0.94) 0%, rgba(9, 12, 18, 0.97) 100%);
+  backdrop-filter: blur(20px) saturate(180%);
+  box-shadow: 
+    0 20px 48px rgba(0, 0, 0, 0.75),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04);
   pointer-events: none;
-  white-space: nowrap;
   animation: tagIn .22s cubic-bezier(0.16, 1, 0.3, 1);
   box-sizing: border-box;
 }
 
-@keyframes tagIn {
-  from { opacity: 0; transform: translateX(-50%) translateY(-6px) scale(0.96); }
-  to   { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+/* Nachlieferung, kein Neuauftritt: das Feld steht schon, es kommt nur eine
+   Karte oder ein Preis dazu. Ohne diese Regel liefe die Einblendung bei jedem
+   Nachreichen erneut - das Feld war dann kurz weg und kam wieder. */
+.tag-panel.schon-da {
+  animation: none;
 }
 
-/* Das teuerste Teil der Runde */
-.tag.best {
-  border-color: rgba(74, 222, 128, 0.65);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.8), 0 0 20px rgba(74, 222, 128, 0.3), inset 0 0 0 1px rgba(74, 222, 128, 0.4);
+/* DIE INNEREN CARDS (Jedes Teil auf seiner eigenen Card) */
+.tag-card {
+  position: relative;
+  background: rgba(255, 255, 255, 0.035);
+  border-radius: var(--r-sm);
+  box-shadow: 
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+  padding: 10px 12px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+  white-space: nowrap;
+  min-width: 0;
+  transition: background .16s ease, box-shadow .16s ease;
+}
+
+/* Teuerstes Teil der Runde */
+.tag-card.best {
+  background: 
+    radial-gradient(120% 90% at 50% 0%, rgb(var(--t-green) / .15), transparent 70%),
+    rgba(255, 255, 255, 0.04);
+  box-shadow: 
+    inset 0 1px 0 rgba(var(--t-green) / .4),
+    inset 0 0 0 1px rgb(var(--t-green) / .3),
+    0 0 16px rgba(74, 222, 128, 0.1);
 }
 
 /* Das eigene Teil */
-.tag.mine {
-  border-color: rgba(255, 255, 255, 0.35);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.7), inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+.tag-card.mine {
+  background: 
+    radial-gradient(120% 90% at 50% 0%, rgb(var(--t-accent) / .12), transparent 70%),
+    rgba(255, 255, 255, 0.04);
+  box-shadow: 
+    inset 0 1px 0 rgba(74, 158, 255, 0.35),
+    inset 0 0 0 1px rgba(74, 158, 255, 0.25);
 }
 
-.tag-header {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 100%;
+/* 'YOURS' Badge: Liegt mittig auf der unteren Kante der Karte auf (50/50 Überlappung) */
+.tag-mine-badge {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translate(-50%, 50%);
+  font: 800 8px/1.1 var(--font-sans, system-ui, sans-serif);
+  letter-spacing: .7px;
+  color: #93c5fd;
+  background: linear-gradient(180deg, rgba(26, 44, 74, 0.98) 0%, rgba(14, 23, 40, 0.98) 100%);
+  border: 1px solid rgba(96, 165, 250, 0.5);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6), 0 0 10px rgba(74, 158, 255, 0.25);
+  padding: 2px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  pointer-events: none;
+  z-index: 5;
+  white-space: nowrap;
 }
 
 .tag-title {
-  font-size: 13.5px;
-  font-weight: 700;
-  color: #ffffff;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--text);
   text-align: center;
-  line-height: 1.2;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  line-height: 1.25;
+  margin-bottom: 5px;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 0 2px;
   white-space: normal;
   word-break: break-word;
 }
 
-.tag-mine-badge {
-  font-size: 8.5px;
-  font-weight: 700;
-  letter-spacing: .5px;
-  color: #93c5fd;
-  background: rgba(59, 130, 246, 0.25);
-  border: 1px solid rgba(96, 165, 250, 0.4);
-  padding: 1px 5px;
-  border-radius: 4px;
-  text-transform: uppercase;
-}
-
-/* Status-Badge */
+/* Status-Badge im Pill-Design */
 .tag-status-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  padding: 3px 12px;
-  border-radius: 20px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.2px;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  margin-bottom: 7px;
+  white-space: nowrap;
 }
 
 .tag-status-badge.crafted {
-  background: rgba(34, 197, 94, 0.22);
-  border: 1.2px solid rgba(74, 222, 128, 0.6);
+  background: rgba(var(--t-green) / .14);
   color: #86efac;
-  box-shadow: 0 0 10px rgba(34, 197, 94, 0.25);
+  border: 1px solid rgba(var(--t-green) / .28);
 }
-
-.tag-status-badge.crafted .badge-check {
-  font-size: 11px;
-  font-weight: 900;
-}
+.tag-status-badge.crafted .badge-check { font-size: 10px; font-weight: 900; }
 
 .tag-status-badge.owned {
-  background: rgba(59, 130, 246, 0.2);
-  border: 1.2px solid rgba(96, 165, 250, 0.5);
-  color: #bfdbfe;
+  background: rgb(var(--t-accent) / .14);
+  color: #93c5fd;
+  border: 1px solid rgb(var(--t-accent) / .25);
 }
 
 .tag-status-badge.missing {
-  background: rgba(148, 163, 184, 0.12);
-  border: 1.2px solid rgba(148, 163, 184, 0.3);
-  color: #cbd5e1;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-3);
+  border: 1px solid rgba(255, 255, 255, 0.07);
 }
 
 .tag-status-badge.partial {
-  background: rgba(234, 179, 8, 0.2);
-  border: 1.2px solid rgba(250, 204, 21, 0.5);
+  background: rgba(var(--t-gold) / .14);
   color: #fef08a;
+  border: 1px solid rgba(var(--t-gold) / .25);
 }
 
 /* Set-Komponenten-Reihe */
 .tag-parts-row {
   display: flex;
-  gap: 5px;
+  gap: 4px;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.4);
-  padding: 4px 6px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 7px;
+  height: 26px;
 }
 
 .tag-part-box {
   position: relative;
-  width: 36px;
-  height: 36px;
-  border-radius: 6px;
+  width: 26px;
+  height: 26px;
+  border-radius: 5px;
   background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
 }
 
 .tag-part-box.current {
-  border: 1.5px solid #facc15;
-  background: rgba(234, 179, 8, 0.18);
-  box-shadow: 0 0 10px rgba(250, 204, 21, 0.4);
+  background: rgba(240, 184, 73, 0.12);
+  border-color: rgba(240, 184, 73, 0.55);
+  box-shadow: 0 0 6px rgba(240, 184, 73, 0.25);
 }
 
-.tag-part-box.partial {
-  border: 1px solid rgba(250, 204, 21, 0.5);
-}
-
-.tag-part-box.partial .tag-part-qty {
-  color: #fef08a;
-}
-
-.tag-part-box.zero {
-  opacity: 0.45;
-  filter: grayscale(70%);
-}
+.tag-part-box.partial { border-color: rgba(250, 204, 21, 0.4); }
+.tag-part-box.partial .tag-part-qty { color: #fef08a; }
+.tag-part-box.zero { opacity: 0.35; filter: grayscale(80%); }
 
 .tag-part-img {
-  width: 30px;
-  height: 30px;
+  width: 18px;
+  height: 18px;
   object-fit: contain;
 }
 
 .tag-part-qty {
   position: absolute;
-  right: 2px;
-  bottom: 1px;
-  font-size: 9.5px;
-  font-weight: 800;
+  right: 1px;
+  bottom: 0px;
+  font-size: 8px;
+  font-weight: 700;
   font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
   color: #ffffff;
   background: rgba(0, 0, 0, 0.85);
-  padding: 0 3px;
-  border-radius: 3px;
-  line-height: 1.2;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-}
-
-/* Owned Text */
-.tag-owned-info {
-  font-size: 11px;
-  font-weight: 700;
-  color: #e2e8f0;
-  background: rgba(0, 0, 0, 0.55);
-  padding: 2px 10px;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0 2px;
+  border-radius: 2px;
+  line-height: 1.1;
 }
 
 /* Preise-Reihe */
 .tag-prices-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  margin-top: auto;
   width: 100%;
-  padding: 6px 6px 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 6px 3px 2px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
 }
 
 .tag-price-col {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 3.5px;
   font-weight: 700;
 }
 
@@ -6069,21 +6085,73 @@ body.tags-window {
 }
 
 .tag-price-col.tag-plat.good {
-  color: #4ade80;
-  text-shadow: 0 0 8px rgba(74, 222, 128, 0.4);
+  color: var(--green);
+  text-shadow: 0 0 10px rgba(74, 222, 128, 0.35);
 }
 
 .tag-price-val {
-  font: 700 15px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
-  letter-spacing: -0.3px;
+  font: 700 13.5px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-variant-numeric: tabular-nums;
 }
 
 .tag-price-col.tag-duc {
-  color: #facc15;
+  color: var(--gold);
 }
 
 .tag-duc-val {
-  font: 700 14px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font: 600 11px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------------------
+   Trapez-Lasche unter dem Dock
+   ---------------------------------------------------------------------------
+   Schliesst nahtlos mit der Unterkante des Docks ab und traegt das leuchtende
+   Argus-Signet als geschwungenes Tenno-Emblem. */
+.tag-panel-fuss {
+  position: absolute;
+  left: 50%;
+  bottom: -22px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.tag-notch-svg {
+  width: 106px;
+  height: 24px;
+  display: block;
+  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.6));
+}
+
+.tag-logo {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  display: inline-block;
+  background-color: var(--accent);
+  opacity: .85;
+  filter: drop-shadow(0 0 6px rgba(74, 158, 255, 0.65));
+  -webkit-mask-image: url('assets/icons/logo.png');
+  mask-image: url('assets/icons/logo.png');
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+}
+
+@keyframes tagIn {
+  from { opacity: 0; transform: translateY(-6px) scale(0.99); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 /* ============================================================================

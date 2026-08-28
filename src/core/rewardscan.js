@@ -315,6 +315,69 @@ export async function scanRewardScreen(index, { top, bottom, sourceImage, keepIm
 /* Der Streifen ganz oben, in dem "VOID FISSURE/REWARDS" steht. Sehr schmal
    gehalten, weil er oft gelesen wird: 2560x101 kostet 31 ms, der ganze
    Bildschirm 248 ms. */
+/* Eine Karte belegt rund 12,6 % der Bildschirmbreite - nachgemessen bei
+   2560x1440 sind es 323 px. Als Anteil ausgedrueckt gilt der Wert auch auf
+   anderen Aufloesungen. */
+const KARTE_ANTEIL = 0.126;
+
+/* Mehr Karten als Mitspieler gibt es nicht, und mehr als vier Mitspieler auch
+   nicht. Diese Schranke ist die letzte Rettung, falls die Breitenschaetzung
+   trotz allem danebenliegt: lieber vier Spalten mit einer falschen Zuordnung
+   als achtzig Spalten, in denen die Anzeige unlesbar zerfaellt. */
+const MAX_KARTEN = 4;
+
+/**
+ * Wie breit ist eine Karte, und in welcher Spalte steht jede Belohnung?
+ *
+ * WARUM DAS NICHT TRIVIAL IST: Die Erkennung liefert keine Kartenbreite - ihre
+ * Rahmen umschliessen den TEXT, und "Forma Blueprint" ist schmaler als
+ * "Dual Zoren Prime Handle". Die Karten stehen aber in gleichem Abstand und
+ * stossen aneinander, also IST der Abstand ihrer Mittelpunkte die Breite.
+ *
+ * DIE FALLE, die diese Funktion zum eigenen Modul gemacht hat: Es stand einmal
+ * schlicht Math.min ueber allen Abstaenden. Wird dieselbe Karte zweimal
+ * gelesen - bei langen, ueber drei Zeilen umbrechenden Namen kommt das vor -,
+ * liegen zwei Treffer wenige Pixel auseinander. Dieser Mini-Abstand galt dann
+ * als Kartenbreite, und aus vier Karten wurden achtzig Spalten: die Anzeige
+ * zerfiel in schmale Streifen ueber die ganze Bildschirmbreite.
+ *
+ * Deshalb zaehlen nur Abstaende, die ueberhaupt eine Kartenbreite sein KOENNEN.
+ * Was darunter liegt, sind zwei Lesungen desselben Namens.
+ */
+export function panelGeometrie(rewards, screenWidth, maxKarten = MAX_KARTEN) {
+  const erwartet = screenWidth * KARTE_ANTEIL;
+  const mitten = rewards.map(r => r.box.x + r.box.w / 2);
+  const sortiert = [...mitten].sort((a, b) => a - b);
+
+  const abstaende = sortiert.slice(1).map((m, i) => m - sortiert[i])
+                            .filter(d => d >= erwartet * 0.55);
+  const breite = abstaende.length ? Math.min(...abstaende) : erwartet;
+
+  const links = sortiert[0];
+  const deckel = Math.max(1, Math.min(MAX_KARTEN, maxKarten)) - 1;
+  const spalten = mitten.map(m =>
+    Math.min(deckel, Math.max(0, Math.round((m - links) / breite))));
+
+  /* Zwei Karten koennen nicht in derselben Spalte stehen. Passiert es doch,
+     war es dieselbe Karte zweimal gelesen - dann gewinnt die bessere Lesung,
+     und die andere faellt weg, statt die Nachbarspalte zu verdecken. */
+  const proSpalte = new Map();
+  spalten.forEach((sp, i) => {
+    const bisher = proSpalte.get(sp);
+    if (bisher === undefined || (rewards[i].score ?? 0) > (rewards[bisher].score ?? 0)) {
+      proSpalte.set(sp, i);
+    }
+  });
+
+  const behalten = [...proSpalte.values()].sort((a, b) => spalten[a] - spalten[b]);
+  return {
+    breite,
+    links: links - breite / 2,          // linke Kante der linkesten Karte
+    anzahlSpalten: Math.max(...behalten.map(i => spalten[i])) + 1,
+    eintraege: behalten.map(i => ({ index: i, spalte: spalten[i] }))
+  };
+}
+
 const TITLE_BAND = { top: 0.02, bottom: 0.10 };
 
 /**

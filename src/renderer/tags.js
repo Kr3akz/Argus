@@ -26,11 +26,11 @@ function fmtQty(n) {
   return String(n);
 }
 
-function render(tags) {
+function render(tags, panel) {
   const box = $('tags');
   if (!box) return;
 
-  if (!tags || !tags.length) { box.innerHTML = ''; return; }
+  if (!tags || !tags.length || !panel) { box.innerHTML = ''; return; }
 
   /* Das teuerste Teil hervorheben, aber erst wenn alle Preise da sind -
      vorher waere die Auszeichnung eine Behauptung. */
@@ -38,7 +38,7 @@ function render(tags) {
   const complete = prices.length === tags.length;
   const best = complete ? Math.max(...prices) : null;
 
-  box.innerHTML = tags.map(t => {
+  const spalten = tags.map(t => {
     const platVal = t.price ? t.price.min : null;
     const good = platVal !== null && platVal >= GOOD_PLAT;
     const isBest = platVal !== null && best !== null && platVal === best;
@@ -76,19 +76,16 @@ function render(tags) {
     }
 
     return `
-      <div class="tag ${isBest ? 'best' : ''} ${t.isOwn ? 'mine' : ''}"
-           style="left:${Math.round(t.cx)}px; top:${Math.round(t.top)}px">
-        
-        <div class="tag-header">
-          <span class="tag-title">${esc(t.name)}</span>
-          ${t.isOwn ? '<span class="tag-mine-badge">DEINS</span>' : ''}
-        </div>
+      <div class="tag-card ${isBest ? 'best' : ''} ${t.isOwn ? 'mine' : ''}"
+           style="grid-column: ${(t.spalte ?? 0) + 1}">
+
+        ${t.isOwn ? '<span class="tag-mine-badge">YOURS</span>' : ''}
+
+        <div class="tag-title">${esc(t.name)}</div>
 
         ${badgeHtml}
 
         ${partsHtml}
-
-        <div class="tag-owned-info">${t.currentOwned ?? 0} / ${t.currentRequired || 1} owned</div>
 
         <div class="tag-prices-row">
           <div class="tag-price-col tag-plat ${good ? 'good' : ''}">
@@ -103,7 +100,30 @@ function render(tags) {
 
       </div>`;
   }).join('');
+
+  /* EIN Dock-Chassis, in dem die einzelnen Cards sitzen, und darunter
+     die nahtlose geschwungene Trapez-Lasche mit dem Argus-Signet. */
+  /* Steht das Feld schon, darf es NICHT noch einmal einfliegen.
+     Die gelesenen Karten werden einzeln nachgereicht, und jede Nachlieferung
+     baut das Feld neu auf - mit der Einblendung faengt es dabei jedes Mal bei
+     Deckkraft 0 an. Sichtbar war das als kurzes Aufblinken: die Schilder
+     standen, waren einen Wimpernschlag weg und dann wieder da. */
+  const schonDa = !!box.querySelector('.tag-panel');
+
+  box.innerHTML =
+    `<div class="tag-panel${schonDa ? ' schon-da' : ''}" style="left:${Math.round(panel.left)}px;` +
+    ` top:${Math.round(panel.top)}px; width:${Math.round(panel.width)}px;` +
+    ` grid-template-columns: repeat(${panel.anzahlSpalten}, 1fr)">` +
+    spalten +
+    `<div class="tag-panel-fuss">` +
+      `<svg class="tag-notch-svg" viewBox="0 0 106 24" aria-hidden="true">` +
+        `<path d="M 0 -1 L 106 -1 L 106 0 C 94 0 90 22 78 22 L 28 22 C 16 22 12 0 0 0 Z" fill="rgba(10, 13, 20, 0.97)" />` +
+        `<path d="M 0 0 C 12 0 16 22 28 22 L 78 22 C 90 22 94 0 106 0" fill="none" stroke="rgba(255, 255, 255, 0.08)" stroke-width="1" />` +
+      `</svg>` +
+      `<span class="tag-logo" aria-hidden="true"></span>` +
+    `</div>` +
+    `</div>`;
 }
 
-window.api.onTags(data => render(data && data.tags));
+window.api.onTags(data => render(data && data.tags, data && data.panel));
 window.api.onTagsHide(() => render([]));

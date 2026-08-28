@@ -62,7 +62,8 @@ import {
 } from '../core/relics.js';
 import { buildBaseSets } from '../core/basesets.js';
 import {
-  scanRewardScreen, buildRewardIndex, mergeRewards, warmUpOcr, stopOcrWorker, rewardScreenVisible
+  scanRewardScreen, buildRewardIndex, mergeRewards, warmUpOcr, stopOcrWorker, rewardScreenVisible,
+  panelGeometrie
 } from '../core/rewardscan.js';
 import {
   parseBuildId, fetchBuild, toBuild, loadModMap, saveModMap,
@@ -104,6 +105,14 @@ let relicTags = true;
    data/config.json einschaltbar, weil es ein Werkzeug zur Fehlersuche ist und
    keine Einstellung, die jemand im Betrieb braucht. */
 let relicScanDebug = false;
+
+/* Der Waechter (siehe unten) greift regelmaessig auf den Bildschirminhalt zu.
+   Das kostet fast keine Rechenzeit, kann bei einem Spiel im Vollbild aber die
+   Bildausgabe stoeren - gemeldet wurde spuerbarer Eingabeverzug. Wer lieber
+   ein glattes Spielgefuehl will und dafuer in Kauf nimmt, dass eine Runde im
+   Hintergrund verlorengeht, setzt "relicWatch": false in data/config.json.
+   Die Erkennung selbst bleibt davon unberuehrt. */
+let relicWatch = true;
 let rewardIndex = null;
 let tagWin = null;
 let tagTimer = null;
@@ -446,6 +455,7 @@ async function loadOverlayPrefs() {
     if (typeof cfg.relicScan === 'boolean') relicScan = cfg.relicScan;
     if (typeof cfg.relicTags === 'boolean') relicTags = cfg.relicTags;
     if (typeof cfg.relicScanDebug === 'boolean') relicScanDebug = cfg.relicScanDebug;
+    if (typeof cfg.relicWatch === 'boolean') relicWatch = cfg.relicWatch;
     if (Number.isFinite(cfg.relicTagOffset)) {
       /* Zwischen 0 und einem Drittel der Hoehe - alles andere schoebe die
          Schilder aus dem Bild. */
@@ -609,7 +619,7 @@ function createTagWindow() {
  * ein Fund aus mehreren Aufnahmen mit verschiedenen Ausschnitten stammen kann -
  * ein einzelner Versatz fuer alle waere dann fuer die Haelfte der falsche.
  */
-function showTags(rewards) {
+function showTags(rewards, erwartet = 0) {
   if (!relicTags || !rewards?.length) {
     console.log('[Relikt] Schilder uebersprungen - Schalter:', relicTags,
                 'Treffer:', rewards?.length ?? 0);
@@ -647,7 +657,33 @@ function showTags(rewards) {
   const baseline = Math.max(...placeable.map(r => r.box.y + r.box.h));
   const top = baseline / scale - display.bounds.y + dropPx;
 
-  const tags = placeable.map(r => ({
+  /* Breite und Spaltenzuordnung stehen in rewardscan.js - dort sind sie ohne
+     Electron pruefbar, und genau das brauchte diese Rechnung: sie hat die
+     Anzeige schon einmal in achtzig schmale Streifen zerlegt. */
+  const geo = panelGeometrie(placeable, display.bounds.width, erwartet || undefined);
+  const spalte = Math.round(geo.breite / scale);
+
+  /* Das Feld folgt den GELESENEN Karten und wird nicht auf die Spielerzahl
+     aufgeblasen. Verlockend waere es - vier Spieler, vier Spalten -, aber die
+     linke Kante ist die der linkesten GELESENEN Karte. Fehlt ausgerechnet die
+     erste, saesse ein breiteres Feld um eine ganze Spalte zu weit rechts und
+     jede Karte unter der falschen. Lieber ein schmaleres Feld an der richtigen
+     Stelle. Die Spielerzahl deckelt dafuer oben (siehe panelGeometrie): mehr
+     Spalten als Mitspieler kann es nie geben. */
+  const panel = {
+    left:  geo.links / scale - display.bounds.x,
+    top,
+    width: spalte * geo.anzahlSpalten,
+    spalte,
+    anzahlSpalten: geo.anzahlSpalten
+  };
+
+  /* Nur die behaltenen Eintraege: doppelt gelesene Karten hat die Geometrie
+     bereits auf die bessere Lesung eingedampft. */
+  const tags = geo.eintraege.map(({ index, spalte: sp }) => {
+    const r = placeable[index];
+    return {
+    spalte: sp,
     name: r.name,
     ducats: r.ducats,
     price: r.price,
@@ -656,15 +692,12 @@ function showTags(rewards) {
     isCrafted: r.isCrafted ?? false,
     currentOwned: r.currentOwned ?? 0,
     currentRequired: r.currentRequired ?? 1,
-    setParts: r.setParts || [],
-    /* Waagerecht mittig unter dem eigenen Namen, senkrecht auf der
-       gemeinsamen Grundlinie. */
-    cx: (r.box.x + r.box.w / 2) / scale - display.bounds.x,
-    top
-  }));
+    setParts: r.setParts || []
+    };
+  });
 
   const send = () => {
-    if (tagWin && !tagWin.isDestroyed()) tagWin.webContents.send('tags:show', { tags });
+    if (tagWin && !tagWin.isDestroyed()) tagWin.webContents.send('tags:show', { tags, panel });
   };
 
   if (tagWin.webContents.isLoading()) tagWin.webContents.once('did-finish-load', send);
@@ -3107,7 +3140,15 @@ async function describeReward(uniqueName) {
   if (!cache.catalog) cache.catalog = await loadCatalog();
 
   const item = cache.catalog.byUniqueName.get(clean);
-  const name = item?.name || clean.split('/').pop();
+  /* Kennt der Katalog das Teil nicht - bei Warframe-Bauplaenen der Normalfall,
+     etwa /WarframeRecipes/MesaPrimeChassisBlueprint -, bleibt nur der letzte
+     Pfadabschnitt. Der steht in CamelCase da und wird hier auseinandergezogen.
+     WARUM DAS ZAEHLT: Dieser Name wird gegen die vom Bildschirm gelesenen
+     verglichen, um die eigene Karte zu markieren. "MesaPrimeChassisBlueprint"
+     trifft "Mesa Prime Chassis Blueprint" nie - und dann fehlt die
+     YOURS-Markierung, obwohl beide dasselbe meinen. */
+  const name = item?.name
+    || clean.split('/').pop().replace(/([a-z0-9])([A-Z])/g, '$1 $2').trim();
 
   let ducats = null, slug = null;
   try {
@@ -3344,10 +3385,27 @@ const SCAN_SCALE = 2.5;
    Kopf von scanRewardsRepeatedly - kurz: die ersten beiden reichen fast
    immer, und wo sie es nicht tun, ist es keine Frage der Geschwindigkeit
    mehr. */
+/* Die Reihenfolge folgt den KOSTEN, nicht der Systematik. Nachgemessen an
+   einem zaehen Durchgang (17 Blicke, 9,6 s):
+
+     Streifen           ~100 ms
+     Vollbild           ~170 ms
+     Streifen 2,5x      ~430 ms
+     Vollbild 2,5x     ~1010 ms
+
+   Der teuerste Blick fand dabei nicht mehr als der billigste - gefunden hat es
+   am Ende ein gewoehnlicher Streifenblick. Nicht die Art des Blickes entschied,
+   sondern dass der Bildschirm irgendwann stillstand. Also moeglichst viele
+   Blicke pro Sekunde: der Vollbild-Blick mit Vergroesserung kommt nur noch
+   einmal je Sechserrunde statt jedes vierte Mal. Das druckt den Schnitt von
+   540 auf 455 ms je Blick, ohne ihn ganz aufzugeben - bei kleinen Aufloesungen
+   war er der einzige, der die verschmolzenen Zeilen noch trennte. */
 const SCAN_LOOKS = [
   SCAN_BAND,
   {},
   { ...SCAN_BAND, scale: SCAN_SCALE },
+  SCAN_BAND,
+  {},
   { scale: SCAN_SCALE }
 ];
 
@@ -3493,13 +3551,26 @@ async function scanRewardsRepeatedly(stillCurrent, expected = 4, lauf = 0, onFor
  *   deshalb genau dann ein, wenn der Log unzuverlaessig wird, und schweigt
  *   sonst. Das spart die Dauerlast im Normalfall.
  *
- * WAS ER KOSTET:
- *   Ein Blick auf den Ueberschriften-Streifen, 2560x101 Pixel, 31 ms - gegen
- *   248 ms fuer den ganzen Bildschirm. Bei einem Blick alle zwei Sekunden sind
- *   das rund anderthalb Prozent eines Kerns, und auch die nur, solange eine
- *   Riss-Mission laeuft und das Spiel nicht vorn steht.
+ * WAS ER KOSTET - UND WARUM DAS MEHR IST ALS RECHENZEIT:
+ *   Ein Blick auf den Ueberschriften-Streifen dauert 31 ms und liest 2560x101
+ *   Pixel. Die Rechenzeit ist also winzig. Der teure Teil steht woanders:
+ *   CopyFromScreen greift auf den Bildschirminhalt zu, und bei einem Spiel im
+ *   Vollbild kann jeder solche Zugriff die Bildausgabe kurz stoeren. Gemeldet
+ *   wurde genau das - spuerbarer Eingabeverzug, "schwammiges" Spielgefuehl.
+ *
+ *   Deshalb steht hier nicht die kleinstmoegliche Zahl, sondern die groesste,
+ *   die noch reicht: Der Belohnungsbildschirm steht 15 Sekunden. Bei vier
+ *   Sekunden Abstand faellt er in drei bis vier Blicke - genug, um ihn sicher
+ *   zu erwischen - und der Bildschirm wird halb so oft angefasst wie bei zwei.
+ *   Wer hier weiter heruntergeht, kauft Erkennungssicherheit mit Spielgefuehl.
  */
-const WATCH_INTERVAL_MS = 2000;
+const WATCH_INTERVAL_MS = 4000;
+
+/* Mindestabstand, solange Warframe VORN steht - dort spielt jemand, und genau
+   dort faellt ein Ruckler auf. Zwoelf Sekunden lassen den 15-Sekunden-
+   Bildschirm noch in einen Blick fallen und kosten ein Drittel des normalen
+   Taktes. Im Hintergrund gilt WATCH_INTERVAL_MS: da schaut niemand hin. */
+const WATCH_FOREGROUND_MS = 12000;
 
 /* Nach so langer Stille gibt der Waechter auf. Eine Endlosmission kann lange
    dauern, aber irgendwann ist die Reliktrunde vorbei und niemand hat es
@@ -3511,20 +3582,17 @@ const WATCH_MAX_MS = 90 * 60 * 1000;
    (gemessen: 931 ms danach). Es darf den Waechter nicht abraeumen. */
 const WATCH_ECHO_MS = 60 * 1000;
 
-/* Nach dem Reintabben noch so lange hinsehen, obwohl das Spiel vorn steht.
-   WARUM: Der Puffer holt nicht auf, nur weil der Fokus wechselt - er wird
-   geschrieben, wenn genug anfaellt. Wer gerade zurueckkommt, sieht den
-   Bildschirm also womoeglich vor Argus. Ein Countdown dauert 15 s; 25 s decken
-   ihn ganz ab, auch wenn der Wechsel erst spaet passiert. */
-const WATCH_AFTER_FOCUS_MS = 25000;
-
 let watchTimer = null;
 let watchDeadline = 0;
 let watchStartedAt = 0;
 let watchBusy = false;
+let watchBlicke = 0;
+/* Warframe war seit dem Missionsstart mindestens einmal im Hintergrund - dann
+   ist sein Schreibpuffer verdaechtig, und der Waechter bleibt wach. */
+let watchPufferVerdacht = false;
+let watchLetzterBlick = 0;
 let watchRunsAtStart = 0;
 let gameWasForeground = null;
-let watchFocusUntil = 0;
 let gamePidCache = { at: 0, pids: [] };
 
 /** Laeuft Warframe gerade im Vordergrund? null, wenn nicht feststellbar. */
@@ -3544,11 +3612,14 @@ function stopRewardWatch(grund) {
   if (!watchTimer) return;
   clearInterval(watchTimer);
   watchTimer = null;
-  console.log(`[Waechter] aus (${grund})`);
+  /* Die Zahl der Blicke gehoert dazu. Ohne sie ist "der Waechter lief" nicht
+     von "der Waechter hat nie hingesehen" zu unterscheiden - und genau das
+     war bei einem verpassten Bildschirm die offene Frage. */
+  console.log(`[Waechter] aus (${grund}) - ${watchBlicke} Blick${watchBlicke === 1 ? '' : 'e'} auf den Bildschirm`);
 }
 
 function startRewardWatch() {
-  if (!relicScan) return;
+  if (!relicScan || !relicWatch) return;
   /* Merken, wie viele Runden es beim Start schon gab - siehe game-activity:
      erst NACH einer erkannten Runde darf ein Missionsende den Waechter
      abschalten. Ein neues Relikt setzt die Zaehlung zurueck, auch wenn der
@@ -3559,7 +3630,9 @@ function startRewardWatch() {
   if (watchTimer) return;
 
   gameWasForeground = null;
-  watchFocusUntil = 0;
+  watchBlicke = 0;
+  watchPufferVerdacht = false;
+  watchLetzterBlick = 0;
   watchTimer = setInterval(() => { tickRewardWatch().catch(() => {}); }, WATCH_INTERVAL_MS);
   /* unref: der Waechter darf Electron nicht am Beenden hindern. */
   watchTimer.unref?.();
@@ -3581,16 +3654,32 @@ async function tickRewardWatch() {
      es am meisten darauf ankam. Deshalb laeuft er nach dem Wechsel noch eine
      Weile weiter. */
   if (vorn === true && gameWasForeground === false) {
-    watchFocusUntil = Date.now() + WATCH_AFTER_FOCUS_MS;
-    console.log('[Waechter] zurueck im Spiel - sieht noch'
-              + ` ${Math.round(WATCH_AFTER_FOCUS_MS / 1000)}s nach, ob ein Belohnungsbildschirm steht`);
+    console.log('[Waechter] zurueck im Spiel - sieht weiter nach, der Puffer steht noch aus');
   }
+  /* WER EINMAL DRAUSSEN WAR, hat einen halbvollen Schreibpuffer hinterlassen -
+     und der leert sich beim Zuruecktabben NICHT. Nachgemessen: nach einem
+     Austabben zu Missionsbeginn kam das Ereignis am Ende 15 s zu spaet, obwohl
+     das Spiel laengst wieder vorn stand. Die fruehere Annahme "vorn heisst
+     puenktlich" gilt also nur, solange ueberhaupt nie ausgetabbt wurde.
+     Ab dem ersten Wechsel in den Hintergrund bleibt der Waechter deshalb bis
+     zum Missionsende wach. */
+  if (vorn === false) watchPufferVerdacht = true;
   if (vorn !== null) gameWasForeground = vorn;
 
   /* null heisst "nicht feststellbar" - dann lieber hinsehen als verpassen. */
-  if (vorn === true && Date.now() > watchFocusUntil) return;
+  if (vorn === true && !watchPufferVerdacht) return;
+
+  /* Im Vordergrund seltener hinsehen: dort spielt jemand, und jeder Zugriff auf
+     den Bildschirm kann die Bildausgabe stoeren. Alle 12 s faellt der
+     15-Sekunden-Bildschirm immer noch in mindestens einen Blick, kostet aber
+     ein Drittel. Im Hintergrund gilt der normale Takt - da stoert es niemanden. */
+  if (vorn === true) {
+    if (Date.now() - watchLetzterBlick < WATCH_FOREGROUND_MS) return;
+  }
 
   watchBusy = true;
+  watchLetzterBlick = Date.now();
+  watchBlicke++;
   try {
     if (!await rewardScreenVisible()) return;
     if (currentRelic) return;        // das Log war in der Zwischenzeit doch schneller
@@ -3821,7 +3910,7 @@ async function zeigeGelesene(scan, started, { fertig = false } = {}) {
   started.scanning = !fertig;
   started.complete = started.rewards.length >= (started.expected || 4);
   pushRelic();
-  showTags(started.rewards);
+  showTags(started.rewards, started.expected);
 }
 
 /**
@@ -3862,7 +3951,7 @@ async function handleRelicReward(ev) {
              eigene ist - vorher fehlte dafuer der Name. */
           for (const r of laufend.rewards) r.isOwn = r.name === own.name;
           pushRelic();
-          if (relicTags && laufend.rewards.length) showTags(laufend.rewards);
+          if (relicTags && laufend.rewards.length) showTags(laufend.rewards, laufend.expected);
           if (own.slug) {
             return getPrice(own.slug).then(price => {
               if (currentRelic !== laufend) return;
@@ -3996,7 +4085,7 @@ async function handleRelicReward(ev) {
       if (currentRelic !== started) return;
       reward.price = price;
       pushRelic();
-      showTags(currentRelic.rewards);
+      showTags(currentRelic.rewards, currentRelic.expected);
     }
     console.log(`[Relikt #${lauf}] Preise vollstaendig`, seit());
 }

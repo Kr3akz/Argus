@@ -21,6 +21,54 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.1.6] - 2026-08-29
+
+### Changed
+
+- **The price tags are one dock instead of four separate labels** — four boxes
+  under four cards meant four borders, four shadows and three gaps for the eye
+  to fall into, so the row fell apart visually even though it says one thing.
+  It is now a single panel divided into columns, one per card, with the Argus
+  mark centred underneath. Its width follows the number of players: three
+  players, three columns. Columns in a grid row are the same height by
+  construction, so a reward without set siblings no longer ends higher than its
+  neighbours.
+
+### Fixed
+
+- **The tag layout no longer collapses into narrow strips** — the card width was
+  derived from the smallest gap between recognised names. When the same card was
+  read twice — which happens with long names that wrap over three lines — those
+  two readings sat a few pixels apart, and that tiny gap became the assumed card
+  width. Four cards turned into dozens of columns spread across the screen. Gaps
+  that cannot plausibly be a card width are now ignored, the column count is
+  capped at the number of players, and two readings of the same card collapse
+  into the better one.
+- **"YOURS" is marked again on Warframe blueprints** — the catalogue does not
+  list recipes such as `MesaPrimeChassisBlueprint`, so the raw path name was
+  used, which never matches the "Mesa Prime Chassis Blueprint" read off the
+  screen. The name is now split at its capitals.
+- **A reward screen is no longer missed after tabbing out mid-mission** — the
+  watcher assumed that Warframe in the foreground meant a punctual log. It does
+  not: a buffer filled while the game sat in the background is not flushed by
+  tabbing back in, and the event still arrived fifteen seconds late. Once the
+  game has been in the background at all, the watcher now stays awake until the
+  mission ends.
+- **Input no longer feels sluggish while the watcher runs** — reading the screen
+  costs almost no CPU, but each read touches the display, and with a game in
+  fullscreen that can disturb its output. Checks now run every four seconds
+  instead of two, and only every twelve seconds while Warframe is in the
+  foreground, where someone is actually playing. A fifteen-second reward screen
+  still falls into at least one check. Set `"relicWatch": false` in
+  `data/config.json` to switch the watcher off entirely.
+- **The tags no longer blink when a card or price arrives** — every partial
+  result rebuilt the panel, and the entrance animation restarted each time from
+  fully transparent. The panel now animates only on its first appearance.
+- **Recognition gets more attempts in the same time** — measured on a stubborn
+  run of seventeen attempts, the expensive full-screen pass at 2.5× cost a
+  second each and found no more than the hundred-millisecond strip passes. It
+  now runs once per six attempts rather than every fourth.
+
 ## [1.1.5] - 2026-08-28
 
 ### Fixed
