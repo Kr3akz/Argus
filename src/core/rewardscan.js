@@ -296,16 +296,51 @@ export function mergeRewards(a, b) {
  *
  * top/bottom schneiden einen waagerechten Streifen aus, als Anteil der
  * Bildschirmhoehe - ohne Angabe wird der ganze Hauptbildschirm gelesen.
+ *
+ * scale vergroessert die Aufnahme vor der Erkennung, ohne an den
+ * zurueckgegebenen Koordinaten etwas zu aendern. Warum das ueberhaupt etwas
+ * bringt, steht im Kopf von ocr-host.ps1.
  */
-export async function scanRewardScreen(index, { top, bottom, sourceImage, keepImage } = {}) {
+export async function scanRewardScreen(index, { top, bottom, sourceImage, keepImage, scale } = {}) {
   /* ARGUS_SCAN_IMAGE wertet ein vorhandenes Bild aus, statt den Bildschirm
      aufzunehmen - fuer Tests ohne laufendes Spiel. */
   const source = sourceImage || process.env.ARGUS_SCAN_IMAGE || null;
 
-  const res = await recognise({ top, bottom, source, png: keepImage || undefined });
+  const res = await recognise({ top, bottom, source, scale, png: keepImage || undefined });
   if (!res.ok) return { ok: false, error: res.error || 'OCR fehlgeschlagen' };
 
   return { ok: true, ...extractRewards(res, index) };
+}
+
+/* Der Streifen ganz oben, in dem "VOID FISSURE/REWARDS" steht. Sehr schmal
+   gehalten, weil er oft gelesen wird: 2560x101 kostet 31 ms, der ganze
+   Bildschirm 248 ms. */
+const TITLE_BAND = { top: 0.02, bottom: 0.10 };
+
+/**
+ * Steht der Belohnungsbildschirm gerade auf dem Schirm?
+ *
+ * WOZU: Warframe schreibt EE.log gepuffert. Laeuft das Spiel im Hintergrund,
+ * fuellt sich der Puffer kaum - nachgemessen kamen "Got rewards" und
+ * "Relic reward screen shut down" 15 Sekunden Spielzeit auseinander, aber
+ * 1 Millisekunde auseinander in der Datei. Wer nur auf das Log hoert, erfaehrt
+ * vom Bildschirm dann erst, wenn er schon zu ist. Der Bildschirm selbst luegt
+ * nicht.
+ *
+ * Gesucht wird "FISSUREREW" am Stueck und nicht nur "FISSURE": letzteres steht
+ * waehrend der Mission auch im Missionskopf, ersteres nur in dieser einen
+ * Ueberschrift. Ein Fehlalarm waere allerdings harmlos - der Blick auf die
+ * Karten faende dann einfach keine Namen.
+ */
+export async function rewardScreenVisible({ sourceImage } = {}) {
+  /* Wie scanRewardScreen: ein vorhandenes Bild statt des Bildschirms, damit
+     sich der Ausloeser ohne laufendes Spiel pruefen laesst. */
+  const source = sourceImage || process.env.ARGUS_SCAN_IMAGE || null;
+  const res = await recognise(source ? { source } : TITLE_BAND);
+  if (!res.ok) return false;
+  const text = (res.lines || []).map(l => l.text).join(' ')
+                 .toUpperCase().replace(/[^A-Z]/g, '');
+  return /FISSUREREW/.test(text);
 }
 
 /** Die Erkennung vorziehen, bevor jemand auf sie wartet. */

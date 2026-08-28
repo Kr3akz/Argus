@@ -39,14 +39,14 @@ import { searchResourceGuides, RESOURCE_CATEGORIES } from '../core/farming.js';
 import { getMiningGuide } from '../core/mining.js';
 import { getDucatsReferenceList, buildPrimeSets, buildDucatsCatalog, buildInventoryDucats } from '../core/ducats.js';
 import { loadInventory } from '../core/inventory.js';
-import { scanCredentials } from '../core/gamecreds.js';
+import { scanCredentials, findGameProcessIds } from '../core/gamecreds.js';
 import { buildInventory, SECTIONS, ownedUpgradeRanks, miscItemCount } from '../core/inventory-items.js';
 import { loadDropTables, sourcesFor } from '../core/droptables.js';
 import { loadCardImages, cardUrl } from '../core/cards.js';
 import { upgradeDetails } from '../core/upgrade-details.js';
 import { checkAllowed, formatWait } from '../core/ratelimit.js';
 import { matchesFissureFilter } from '../core/fissure-filter.js';
-import { captureForeground, restoreForeground, bringToForeground, moveCursorIntoWindow } from '../core/foreground.js';
+import { captureForeground, restoreForeground, bringToForeground, moveCursorIntoWindow, foregroundPid } from '../core/foreground.js';
 import { LogWatcher } from '../core/logwatch.js';
 import { loadMarketItems, findMarketItem, getPrice, getPrices, marketImage } from '../core/market.js';
 /* Handelsteil: Anmeldung, Orders, Auktionen und das lokale Handelsbuch.
@@ -62,7 +62,7 @@ import {
 } from '../core/relics.js';
 import { buildBaseSets } from '../core/basesets.js';
 import {
-  scanRewardScreen, buildRewardIndex, mergeRewards, warmUpOcr, stopOcrWorker
+  scanRewardScreen, buildRewardIndex, mergeRewards, warmUpOcr, stopOcrWorker, rewardScreenVisible
 } from '../core/rewardscan.js';
 import {
   parseBuildId, fetchBuild, toBuild, loadModMap, saveModMap,
@@ -123,6 +123,26 @@ let overlayShownForRelicSelect = false;
    dieser Fund kam - eine Nachricht an ein Fenster, dessen Renderer noch laedt,
    verpufft. Deshalb wird der Stand hier gehalten und beim Start abgefragt. */
 let currentRelic = null;
+/* Zaehlt die Belohnungsbildschirme dieser Sitzung durch - siehe
+   handleRelicReward, wo die Nummer in jede Protokollzeile geht. */
+let relicRunNr = 0;
+
+/**
+ * Die EINZIGE Stelle, an der currentRelic den Besitzer wechselt - und sie
+ * schreibt jeden Wechsel mit.
+ *
+ * WARUM DIESER UMSTAND: An currentRelic haengt die Frage "laeuft meine Runde
+ * noch?", die jeder Blick auf den Bildschirm vor sich her prueft. Wechselt der
+ * Wert, bricht alles Laufende ab - lautlos. Genau so verschwand ein ganzer
+ * Durchgang: im Protokoll stand "0 Versuche", und wer ihm die Runde
+ * weggezogen hatte, war daraus nicht zu erkennen. Ein Zuweisen von aussen ist
+ * jetzt nicht mehr moeglich, ohne dass es dasteht.
+ */
+function setCurrentRelic(wert, grund) {
+  const nr = x => (x ? `#${x.lauf ?? '?'}` : 'nichts');
+  if (currentRelic !== wert) console.log(`[Relikt] Runde: ${nr(currentRelic)} -> ${nr(wert)} (${grund})`);
+  currentRelic = wert;
+}
 
 /* 1560 UND NICHT 1480: die Filterleiste im Inventar steht in zwei festen
    Zeilen, und die zweite traegt bei den Mods zehn Gattungs-Chips - 1238 px.
@@ -3296,9 +3316,16 @@ const wait = ms => new Promise(res => setTimeout(res, ms));
    sondern nur ein frueher - und was er schon liest, wird mitgenommen. */
 const SCAN_FIRST_DELAY_MS = 200;
 const SCAN_RETRY_MS       = 150;
-/* Von 15 Sekunden Bedenkzeit. Der Rest gehoert den Preisen - und dem Menschen,
-   der die Liste noch lesen soll. */
-const SCAN_BUDGET_MS      = 7000;
+/* Fast die ganzen 15 Sekunden Bedenkzeit, nicht die Haelfte.
+   WARUM SO LANGE: Solange Warframe im Hintergrund laeuft, liefert die
+   Bildschirmaufnahme manchmal nur einen Teil der Karten - nachgemessen fanden
+   elf Blicke hintereinander nur zwei bis drei, und erst der zwoelfte, im
+   Augenblick des Zurueckwechselns, alle vier. Der lag bei 7,17 s und damit um
+   Haaresbreite noch im alten Budget von 7,0 s: eine Sekunde spaeter
+   zurueckgetabbt, und die Runde waere leer geblieben.
+   Teuer wird das nicht - die Schleife bricht ab, sobald alle Karten dastehen,
+   und im Normalfall reicht dafuer der erste Blick nach 71 ms. */
+const SCAN_BUDGET_MS      = 13000;
 
 /* Der Streifen, in dem die vier Namen stehen - Anteil der Bildschirmhoehe.
    Nachgemessen bei 2560x1440 stehen sie bei 0.404; der Streifen laesst nach
@@ -3306,6 +3333,23 @@ const SCAN_BUDGET_MS      = 7000;
    Ein Blick auf den Streifen kostet 70-90 ms statt 180-250 ms fuer den ganzen
    Bildschirm - und liest nebenbei die Bildrate-Anzeige und den Chat nicht mit. */
 const SCAN_BAND = { top: 0.25, bottom: 0.68 };
+
+/* 2,5x, weil es der Faktor ist, mit dem die verschmolzenen Zeilen im Versuch
+   wieder auseinanderfielen. Mehr kostet nur Zeit: die Erkennung waechst mit
+   der Flaeche, und bei 4x liest sie laenger, als die Bedenkzeit hergibt. */
+const SCAN_SCALE = 2.5;
+
+/* Die Blickweisen in der Reihenfolge, in der sie versucht werden: erst die
+   beiden schnellen, dann dieselben vergroessert. Die Begruendung steht am
+   Kopf von scanRewardsRepeatedly - kurz: die ersten beiden reichen fast
+   immer, und wo sie es nicht tun, ist es keine Frage der Geschwindigkeit
+   mehr. */
+const SCAN_LOOKS = [
+  SCAN_BAND,
+  {},
+  { ...SCAN_BAND, scale: SCAN_SCALE },
+  { scale: SCAN_SCALE }
+];
 
 /**
  * Den Belohnungsbildschirm lesen, bis alle vier dastehen.
@@ -3330,47 +3374,90 @@ const SCAN_BAND = { top: 0.25, bottom: 0.68 };
  *   wechseln die Bloecke sich deshalb ab - damit spaetestens der zweite Blick
  *   den ganzen Bildschirm sieht, egal woran der erste gescheitert ist. Was
  *   beide finden, wird ohnehin zusammengelegt.
+ *
+ * WARUM SPAETER VERGROESSERT WIRD:
+ *   Die dritte und vierte Runde lesen dasselbe noch einmal, nur vergroessert.
+ *   Der Grund ist nicht die Schrift, sondern die Zeilenaufteilung: bei
+ *   grenzwertiger Textgroesse wirft die Erkennung zwei NEBENEINANDER stehende
+ *   Karten in eine Zeile, und dann fehlen zwei Namen auf einen Schlag.
+ *   Nachgemessen an data/ocr/ half Vergroessern dagegen einmal (2/4 -> 4/4)
+ *   und schadete einmal (4/4 -> 2/4) - ein fester Faktor verschiebt den
+ *   Bruchpunkt also nur. Beide Lesungen zusammengelegt ergaben in BEIDEN
+ *   Faellen 4/4, und genau darum stehen sie hier hintereinander statt
+ *   gegeneinander.
+ *
+ *   Kosten entstehen dabei fast nie: die Schleife bricht ab, sobald alle
+ *   erwarteten Karten dastehen. Wo eine einzelne Lesung reicht - und das ist
+ *   ab 720p der Normalfall - werden die vergroesserten Runden nie erreicht.
  */
-async function scanRewardsRepeatedly(stillCurrent, expected = 4) {
+async function scanRewardsRepeatedly(stillCurrent, expected = 4, lauf = 0, onFortschritt = null) {
+  /* Der Anlauf VOR der Schleife: beides kann dauern, und wenn die Runde
+     dabei weiterzieht, faengt der Blick gar nicht erst an. Bisher stand dann
+     nur "0 Versuche" da - ohne zu sagen, an welcher der beiden Stellen. */
   const index = await ensureRewardIndex();
+  if (!stillCurrent()) {
+    console.log(`[Relikt #${lauf}] Abbruch: Runde weitergezogen, waehrend der Suchindex geladen wurde`);
+    return null;
+  }
   const deadline = Date.now() + SCAN_BUDGET_MS;
   let merged = null;
   let lastError = null;
   let attempts = 0;
-  let useBand = true;
 
   await wait(SCAN_FIRST_DELAY_MS);
+  if (!stillCurrent()) {
+    console.log(`[Relikt #${lauf}] Abbruch: Runde weitergezogen waehrend der Anlaufpause`
+              + ` (${SCAN_FIRST_DELAY_MS}ms)`);
+    return null;
+  }
 
   while (stillCurrent()) {
+    /* Der Reihe nach durch die Blickweisen, danach wieder von vorn: was beim
+       ersten Durchgang am halb aufgebauten Bildschirm scheiterte, kann beim
+       zweiten schon dastehen. */
+    const look = SCAN_LOOKS[attempts % SCAN_LOOKS.length];
     attempts++;
-    const scan = await scanRewardScreen(index, useBand ? SCAN_BAND : {});
+    const blickAb = Date.now();
+    const scan = await scanRewardScreen(index, look);
+    /* Je Blick mitschreiben, was er gekostet und gebracht hat. Ohne das steht
+       am Ende nur eine Gesamtzahl, und ob die Zeit im Anlauf, in einem
+       vergroesserten Blick oder im Warten dazwischen lag, bleibt offen. */
+    console.log(`[Relikt #${lauf}]   Blick ${attempts} (${look.top ? 'Streifen' : 'Vollbild'}`
+              + `${look.scale ? ` ${look.scale}x` : ''}): `
+              + `${scan.ok ? `${scan.rewards.length} Treffer` : `Fehler ${scan.error}`}`
+              + ` nach ${Date.now() - blickAb}ms`);
     if (!stillCurrent()) {
       /* Die Runde ist weitergezogen, waehrend dieser Blick lief. Das ist kein
          Fehler - aber es MUSS hier stehen: ohne diese Zeile verliess der
          Ablauf die Schleife stumm, und im Protokoll stand nur der Fund aus
          dem Log, gefolgt von nichts. Genau so sah der Fall aus, in dem gar
          keine Anzeige kam, und genau das machte ihn unlesbar. */
-      console.log('[Relikt] Erkennung abgebrochen - Runde vorbei nach',
-                  attempts, `Versuch${attempts === 1 ? '' : 'en'}`);
+      console.log(`[Relikt #${lauf}] Abbruch: Runde vorbei nach ${attempts}`
+                + ` Versuch${attempts === 1 ? '' : 'en'}`);
       return null;
     }
 
     if (scan.ok) {
+      const vorher = merged ? merged.rewards.length : 0;
       merged = merged ? mergeRewards(merged, scan) : scan;
       if (merged.rewards.length >= expected) break;
+      /* Kam eine Karte dazu, geht sie SOFORT auf den Bildschirm - wer auf die
+         restlichen wartet, soll nicht auch auf die schon gelesenen warten. */
+      if (onFortschritt && merged.rewards.length > vorher) {
+        await onFortschritt(merged);
+        if (!stillCurrent()) return null;
+      }
     } else {
       lastError = scan.error;
     }
-    /* Fehlt noch etwas, sieht der naechste Blick anders hin. */
-    useBand = !useBand;
 
     if (Date.now() + SCAN_RETRY_MS >= deadline) break;
     await wait(SCAN_RETRY_MS);
   }
 
   const found = merged ? merged.rewards.length : 0;
-  console.log('[Relikt] Erkennung:', merged ? `${found} Treffer (erwartet ${expected})` : `Fehler ${lastError}`,
-              `| ${attempts} Versuch${attempts === 1 ? '' : 'e'}`);
+  console.log(`[Relikt #${lauf}] Erkennung: ` + (merged ? `${found} Treffer (erwartet ${expected})` : `nichts gefunden${lastError ? ` - ${lastError}` : ''}`)
+            + ` | ${attempts} Versuch${attempts === 1 ? '' : 'e'}`);
 
   /* Nichts gelesen UND der Beweisschalter ist an: eine letzte Aufnahme, diesmal
      als Bild auf die Platte. Ohne sie bleibt "es kam nichts" eine Behauptung -
@@ -3385,6 +3472,137 @@ async function scanRewardsRepeatedly(stillCurrent, expected = 4) {
   }
 
   return merged || { ok: false, error: lastError || 'Keine Aufnahme moeglich' };
+}
+
+/* ---------------- Der Bildschirm als zweiter Melder ------------------ */
+
+/**
+ * WARUM ES DIESEN WAECHTER GIBT:
+ *   Warframe schreibt EE.log gepuffert, und der Puffer fuellt sich danach, wie
+ *   viel das Spiel zu schreiben hat - nicht nach der Uhr. Auf dem
+ *   Belohnungsbildschirm passiert fast nichts, und laeuft das Spiel dabei im
+ *   Hintergrund, bleibt der Puffer stehen. Nachgemessen: "Got rewards" und
+ *   "Relic reward screen shut down" lagen im Spiel 15,0 s auseinander und
+ *   trafen 1 ms auseinander in der Datei ein. Argus erfuhr vom Bildschirm
+ *   also erst nach dessen Ende - da ist nichts mehr zu lesen.
+ *
+ * WARUM NUR IM HINTERGRUND:
+ *   Steht Warframe vorn, kommt das Log puenktlich (gemessen: 3 ms vom Ereignis
+ *   bis zur Verarbeitung), und dann ist der Log der bessere Melder - er nennt
+ *   auch den eigenen Fund, den kein Bildschirm verraet. Der Waechter springt
+ *   deshalb genau dann ein, wenn der Log unzuverlaessig wird, und schweigt
+ *   sonst. Das spart die Dauerlast im Normalfall.
+ *
+ * WAS ER KOSTET:
+ *   Ein Blick auf den Ueberschriften-Streifen, 2560x101 Pixel, 31 ms - gegen
+ *   248 ms fuer den ganzen Bildschirm. Bei einem Blick alle zwei Sekunden sind
+ *   das rund anderthalb Prozent eines Kerns, und auch die nur, solange eine
+ *   Riss-Mission laeuft und das Spiel nicht vorn steht.
+ */
+const WATCH_INTERVAL_MS = 2000;
+
+/* Nach so langer Stille gibt der Waechter auf. Eine Endlosmission kann lange
+   dauern, aber irgendwann ist die Reliktrunde vorbei und niemand hat es
+   gemeldet - dann soll er nicht bis zum Beenden weiterblicken. */
+const WATCH_MAX_MS = 90 * 60 * 1000;
+
+/* So kurz nach dem Einlegen kann kein Missionsende echt sein - es ist das
+   Echo der VORIGEN Runde, das dem Einlegen regelmaessig hinterherkommt
+   (gemessen: 931 ms danach). Es darf den Waechter nicht abraeumen. */
+const WATCH_ECHO_MS = 60 * 1000;
+
+/* Nach dem Reintabben noch so lange hinsehen, obwohl das Spiel vorn steht.
+   WARUM: Der Puffer holt nicht auf, nur weil der Fokus wechselt - er wird
+   geschrieben, wenn genug anfaellt. Wer gerade zurueckkommt, sieht den
+   Bildschirm also womoeglich vor Argus. Ein Countdown dauert 15 s; 25 s decken
+   ihn ganz ab, auch wenn der Wechsel erst spaet passiert. */
+const WATCH_AFTER_FOCUS_MS = 25000;
+
+let watchTimer = null;
+let watchDeadline = 0;
+let watchStartedAt = 0;
+let watchBusy = false;
+let watchRunsAtStart = 0;
+let gameWasForeground = null;
+let watchFocusUntil = 0;
+let gamePidCache = { at: 0, pids: [] };
+
+/** Laeuft Warframe gerade im Vordergrund? null, wenn nicht feststellbar. */
+async function gameIsForeground() {
+  const pid = foregroundPid();
+  if (!pid) return null;
+  /* Die Prozessliste kostet einen tasklist-Aufruf - einmal pro Minute reicht,
+     die PID des Spiels aendert sich waehrend einer Mission nicht. */
+  if (Date.now() - gamePidCache.at > 60000) {
+    gamePidCache = { at: Date.now(), pids: await findGameProcessIds().catch(() => []) };
+  }
+  if (!gamePidCache.pids.length) return null;
+  return gamePidCache.pids.some(p => Number(p) === Number(pid));
+}
+
+function stopRewardWatch(grund) {
+  if (!watchTimer) return;
+  clearInterval(watchTimer);
+  watchTimer = null;
+  console.log(`[Waechter] aus (${grund})`);
+}
+
+function startRewardWatch() {
+  if (!relicScan) return;
+  /* Merken, wie viele Runden es beim Start schon gab - siehe game-activity:
+     erst NACH einer erkannten Runde darf ein Missionsende den Waechter
+     abschalten. Ein neues Relikt setzt die Zaehlung zurueck, auch wenn der
+     Waechter noch von der vorigen Mission laeuft. */
+  watchRunsAtStart = relicRunNr;
+  watchStartedAt = Date.now();
+  watchDeadline = watchStartedAt + WATCH_MAX_MS;
+  if (watchTimer) return;
+
+  gameWasForeground = null;
+  watchFocusUntil = 0;
+  watchTimer = setInterval(() => { tickRewardWatch().catch(() => {}); }, WATCH_INTERVAL_MS);
+  /* unref: der Waechter darf Electron nicht am Beenden hindern. */
+  watchTimer.unref?.();
+  console.log('[Waechter] an - Riss-Mission laeuft, Bildschirm wird beobachtet solange Warframe nicht vorn ist');
+}
+
+async function tickRewardWatch() {
+  if (watchBusy) return;                                   // voriger Blick laeuft noch
+  if (Date.now() > watchDeadline) return stopRewardWatch('Zeit abgelaufen');
+  if (currentRelic) return;                                // Bildschirm schon gemeldet
+  if (!relicScan) return stopRewardWatch('Erkennung ausgeschaltet');
+
+  const vorn = await gameIsForeground();
+
+  /* DER WICHTIGSTE AUGENBLICK IST DAS REINTABBEN. Wer zurueckkommt, sieht den
+     Belohnungsbildschirm sofort - Argus nicht, denn der Fokuswechsel leert
+     Warframes Schreibpuffer nicht. Genau hier hoerte der Waechter bisher auf
+     hinzusehen, weil das Spiel ja wieder vorn stand: die eine Sekunde, in der
+     es am meisten darauf ankam. Deshalb laeuft er nach dem Wechsel noch eine
+     Weile weiter. */
+  if (vorn === true && gameWasForeground === false) {
+    watchFocusUntil = Date.now() + WATCH_AFTER_FOCUS_MS;
+    console.log('[Waechter] zurueck im Spiel - sieht noch'
+              + ` ${Math.round(WATCH_AFTER_FOCUS_MS / 1000)}s nach, ob ein Belohnungsbildschirm steht`);
+  }
+  if (vorn !== null) gameWasForeground = vorn;
+
+  /* null heisst "nicht feststellbar" - dann lieber hinsehen als verpassen. */
+  if (vorn === true && Date.now() > watchFocusUntil) return;
+
+  watchBusy = true;
+  try {
+    if (!await rewardScreenVisible()) return;
+    if (currentRelic) return;        // das Log war in der Zwischenzeit doch schneller
+    console.log('[Waechter] Belohnungsbildschirm erkannt - das Log hat noch nichts gemeldet');
+    /* Ohne Log gibt es keinen eigenen Fund und keine Mitspielerzahl. Vier ist
+       die richtige Annahme: mehr Karten als Mitspieler stehen nie da, und die
+       Erkennung nimmt ohnehin, was sie findet. Der eigene Fund traegt sich
+       nach, sobald das Log endlich schreibt. */
+    await handleRelicReward({ uniqueName: null, players: 4, seconds: 15, vomWaechter: true });
+  } finally {
+    watchBusy = false;
+  }
 }
 
 /**
@@ -3423,6 +3641,13 @@ function startLogWatcher() {
          statt in die 15 Sekunden Bedenkzeit auf dem Belohnungsbildschirm. */
       if (relicScan) warmUpOcr().catch(() => {});
 
+      /* Aus demselben Grund die Marktliste: sie ist 1,6 MB gross und haengt an
+         derselben gedrosselten Warteschlange wie jeder Preisabruf. Wird sie
+         erst auf dem Belohnungsbildschirm gebraucht - beim ersten Relikt nach
+         dem Start ist das der Normalfall -, laeuft sie mitten in die Bedenkzeit
+         hinein. Hier kostet sie niemanden etwas. */
+      loadMarketItems().catch(() => {});
+
       const data = await describeRecommendedRelics();
       sendToOverlay('relic:select-open', data);
     } catch (err) {
@@ -3447,6 +3672,9 @@ function startLogWatcher() {
   logWatcher.on('relic-equipped', ev => {
     equippedRelic = { key: `${ev.tier} ${ev.name}`, state: ev.state || 'Intact' };
     console.log('[Relikt] Eingelegt:', equippedRelic.key, equippedRelic.state);
+    /* Ab hier steht fest, dass ein Belohnungsbildschirm kommt - der Waechter
+       darf mitsehen, falls das Log ihn verschlaeft. */
+    startRewardWatch();
   });
 
   logWatcher.on('relic-reward', ev => {
@@ -3470,7 +3698,30 @@ function startLogWatcher() {
   logWatcher.on('relic-timer', ev => sendToOverlay('relic:timer', ev));
 
   logWatcher.on('relic-closed', () => {
-    currentRelic = null;
+    /* Kommt das Ende UNMITTELBAR nach dem Anfang, war der Bildschirm schon zu,
+       bevor Argus ueberhaupt von ihm erfuhr.
+       WARUM DAS VORKOMMT: Warframe schreibt EE.log gepuffert. Laeuft das Spiel
+       im Hintergrund - zweiter Monitor, anderes Fenster im Vordergrund -, wird
+       der Puffer seltener geleert, und dann stehen "Got rewards" und "Relic
+       reward screen shut down" zusammen in EINEM Schwung in der Datei, obwohl
+       im Spiel 15 Sekunden dazwischen lagen. Nachgemessen: 15,0 s Spielzeit,
+       1 ms Abstand beim Lesen.
+       Fuer die Erkennung ist da nichts mehr zu holen - die Pixel sind weg.
+       Aber es MUSS dastehen, warum: sonst sieht dieser Fall aus wie ein
+       Fehler der Erkennung, und man sucht ihn an der falschen Stelle. */
+    const frisch = currentRelic && Date.now() - currentRelic.at < 2000;
+    if (frisch) {
+      console.log(`[Relikt #${currentRelic.lauf}] VERPASST: Die Logzeilen kamen erst,`
+                + ` als der Bildschirm schon zu war (${Date.now() - currentRelic.at}ms nach dem Anfang,`
+                + ` im Spiel lagen 15 s dazwischen).`
+                + ` Warframe puffert sein Log, wenn es nicht im Vordergrund laeuft.`);
+    }
+    setCurrentRelic(null, frisch ? 'Bildschirm war schon zu (Log verspaetet)' : 'Belohnungsbildschirm zu');
+    /* Der Waechter bleibt BEWUSST an: in Endlosmissionen folgt gleich die
+       naechste Runde, und ein zweites relic-equipped kommt dafuer nicht - ab
+       Runde 2 stellt das Spiel die Sicherheitsfrage nicht mehr. Wer hier
+       abschaltet, sieht ab der zweiten Runde wieder nichts. Beendet wird er
+       am Missionsende und spaetestens durch seinen eigenen Zeitdeckel. */
     hideTags();
     sendToOverlay('relic:closed', {});
     if (overlayShownForRelic) {
@@ -3481,6 +3732,27 @@ function startLogWatcher() {
 
   /* ----- Auto-Sync: Inventar nach Spielereignissen aktualisieren ------- */
   logWatcher.on('game-activity', async (ev) => {
+    /* Zurueck im Orbiter heisst: keine Riss-Runde mehr in Sicht - ABER erst,
+       wenn ueberhaupt eine stattgefunden hat.
+       WARUM DIE BEDINGUNG: Ein Relikt wird eingelegt, waehrend man noch im
+       Orbiter steht, und keine Sekunde spaeter kommt regelmaessig ein
+       mission_end der VORIGEN Runde hinterher. Ohne die Bedingung schaltete
+       genau das den Waechter 931 ms nach dem Einschalten wieder ab - er war
+       nie da, wenn er gebraucht wurde. */
+    if (ev.trigger === 'mission_end' || ev.trigger === 'orbiter') {
+      if (relicRunNr > watchRunsAtStart) {
+        stopRewardWatch(`Missionsende (${ev.trigger}), ${relicRunNr - watchRunsAtStart} Runde(n) gelesen`);
+      } else if (watchTimer && Date.now() - watchStartedAt > WATCH_ECHO_MS) {
+        /* Missionsende ohne gelesene Runde, und das Relikt liegt schon eine
+           Weile drin: die Runde faellt wohl aus (Abbruch, Rueckkehr ohne
+           Riss). Kurze Nachfrist, dann ist Ruhe.
+           Die Zeitschranke trennt das vom ECHO der vorigen Mission, das
+           regelmaessig eine Sekunde nach dem Einlegen hereinkommt - in einer
+           Sekunde hat niemand eine Mission beendet. */
+        watchDeadline = Math.min(watchDeadline, Date.now() + 5 * 60 * 1000);
+      }
+    }
+
     try {
       const cfg = await loadConfig();
       /* Beide Schalter muessen an sein: inventoryScan erlaubt den Speicher-
@@ -3512,6 +3784,47 @@ function startLogWatcher() {
 }
 
 /**
+ * Was JETZT gelesen ist, anzeigen - nicht erst, wenn alles gelesen ist.
+ *
+ * WARUM: Der Bildschirm gibt seine vier Karten nicht immer auf einmal her.
+ * Nachgemessen fanden elf Blicke hintereinander nur zwei bis drei davon, und
+ * erst der zwoelfte alle vier - sieben Sekunden lang. Sieben Sekunden, in
+ * denen zwei Namen laengst feststanden und trotzdem nichts dastand, weil die
+ * Anzeige auf das vollstaendige Ergebnis wartete. Von fuenfzehn Sekunden
+ * Bedenkzeit ist das die Haelfte.
+ *
+ * Schon Gezeigtes wird dabei WIEDERVERWENDET und nicht neu beschafft: sonst
+ * fiele bei jedem Fortschritt der bereits geholte Preis wieder heraus, und die
+ * Schilder fingen von vorn an zu laden.
+ */
+async function zeigeGelesene(scan, started, { fertig = false } = {}) {
+  if (currentRelic !== started) return;
+
+  const bekannt = new Map(started.rewards.map(r => [r.name, r]));
+  const ownName = started.own?.name || null;
+
+  started.rewards = await Promise.all(scan.rewards.map(async r => {
+    const alt = bekannt.get(r.name);
+    return {
+      ...(alt || await describeScanned(r.name)),
+      position: r.position,
+      score: r.score,
+      /* box muss mit: daran haengt die Position der Preisschilder im Spiel.
+         Ohne diese Zeile bekommt showTags Eintraege ohne Rahmen. */
+      box: r.box,
+      isOwn: !!ownName && r.name === ownName,
+      price: alt?.price ?? null
+    };
+  }));
+
+  if (currentRelic !== started) return;
+  started.scanning = !fertig;
+  started.complete = started.rewards.length >= (started.expected || 4);
+  pushRelic();
+  showTags(started.rewards);
+}
+
+/**
  * Der Ablauf einer Relikt-Belohnung, von der Logzeile bis zu den Preisen.
  *
  * Eigene Funktion und nicht der Ereignisbehandler selbst: ein async-Handler
@@ -3520,51 +3833,124 @@ function startLogWatcher() {
  * Hauptprozesses.
  */
 async function handleRelicReward(ev) {
-    const own = ev.uniqueName ? await describeReward(ev.uniqueName) : null;
+    /* Ab hier laeuft die Uhr: das Spiel raeumt den Bildschirm 15 s nach genau
+       diesem Ereignis wieder ab. Jede Protokollzeile sagt deshalb mit, wie
+       viel davon schon verbraucht ist - ohne diese Zahlen laesst sich "es hat
+       zu lange gedauert" nicht von "es kam gar nichts" unterscheiden. */
+    const t0 = Date.now();
+    const seit = () => `+${Date.now() - t0}ms`;
 
-    /* Sofort zeigen, was ohne Netz und ohne Bildschirm feststeht: der eigene
-       Fund aus dem Log. Alles andere kommt in den naechsten Sekunden dazu. */
-    currentRelic = {
-      seconds: ev.seconds, at: Date.now(),
-      own, rewards: [], scanning: relicScan, scanError: null,
-      expected: Math.min(4, Math.max(1, ev.players || 4))
-    };
-    /* Knappe Protokollzeilen: ohne sie ist bei einem Fehlschlag nicht
-       unterscheidbar, ob das Log nichts hergab, die Erkennung nichts fand
-       oder die Anzeige klemmt. */
-    console.log('[Relikt] Fund aus Log:', own ? own.name : '-',
-                '| Erkennung:', relicScan ? 'an' : 'aus',
-                '| Schilder:', relicTags ? 'an' : 'aus');
-    pushRelic();
-
-    /* Sind die Schilder an, sitzt die Information schon im Spiel - dann muss
-       nicht zusaetzlich das grosse Fenster aufspringen. */
-    if (relicAutoShow && !relicTags && !overlayVisible()) {
-      overlayShownForRelic = true;
-      showOverlay();
-    }
-
-    /* Der eigene Fund zuerst - er ist schon bekannt, der Preis fehlt nur noch. */
-    if (own?.slug) {
-      const price = await getPrice(own.slug).catch(() => null);
-      if (currentRelic?.own?.uniqueName === own.uniqueName) {
-        currentRelic.own.price = price;
-        pushRelic();
+    /* Laufende Nummer je Durchgang. Sie steht in JEDER Zeile dieses Ablaufs -
+       nur so ist zu sehen, ob zwei Durchgaenge einander ins Gehege kommen.
+       Genau daran scheiterte ein Lauf lautlos: "0 Versuche" ohne einen Hinweis
+       darauf, WER die Runde unter dem Blick weggezogen hat. */
+    /* DAS LOG HOLT AUF: Der Waechter hat den Bildschirm schon selbst erkannt
+       und laeuft mit dieser Runde. Dann bringt das Logereignis nur noch eines,
+       das der Bildschirm nicht hergibt - den eigenen Fund. Alles neu zu
+       starten wuerde die bereits stehenden Schilder wegwerfen und die Uhr von
+       vorn stellen. Zwanzig Sekunden Fenster, weil der Countdown fuenfzehn
+       dauert: was danach kommt, ist eine neue Runde. */
+    if (!ev.vomWaechter && currentRelic && Date.now() - currentRelic.at < 20000) {
+      const laufend = currentRelic;
+      console.log(`[Relikt #${laufend.lauf}] Log holt auf - eigener Fund wird nachgetragen`
+                + ` (${Date.now() - laufend.at}ms nach dem Waechter)`);
+      if (ev.uniqueName) {
+        describeReward(ev.uniqueName).then(own => {
+          if (currentRelic !== laufend || !own) return;
+          laufend.own = own;
+          /* Jetzt erst laesst sich sagen, WELCHE der gelesenen Karten die
+             eigene ist - vorher fehlte dafuer der Name. */
+          for (const r of laufend.rewards) r.isOwn = r.name === own.name;
+          pushRelic();
+          if (relicTags && laufend.rewards.length) showTags(laufend.rewards);
+          if (own.slug) {
+            return getPrice(own.slug).then(price => {
+              if (currentRelic !== laufend) return;
+              laufend.own.price = price;
+              pushRelic();
+            });
+          }
+        }).catch(() => {});
       }
+      return;
     }
 
-    if (!relicScan) return;
+    const lauf = ++relicRunNr;
+    console.log(`[Relikt #${lauf}] Ereignis: ${ev.uniqueName || 'ohne eigenen Fund'}`
+              + ` | Mitspieler: ${ev.players || '?'}`
+              + (ev.vomWaechter ? ' | Melder: Bildschirm' : ' | Melder: Log'));
 
-    /* Und jetzt der Bildschirm: die Funde der Mitspieler stehen nirgends sonst.
-       Siehe scanRewardsRepeatedly - einmal hinsehen reicht nicht.
+    const expected = Math.min(4, Math.max(1, ev.players || 4));
 
-       expected kommt aus dem Log und ist NICHT immer vier: es steht eine Karte
+    /* DER BILDSCHIRM ZUERST, und zwar OHNE davor auf das Netz zu warten.
+       Er ist das Einzige hier, das an eine Uhr gebunden ist: die Namen der
+       Mitspieler stehen nur, solange der Belohnungsbildschirm offen ist. Name,
+       Dukaten und Preis des eigenen Fundes stehen auch in zehn Sekunden noch
+       fest und duerfen deshalb NICHT davor liegen.
+
+       Genau das taten sie aber: describeReward holt bei kaltem Zwischen-
+       speicher die Marktliste (1,6 MB), getPrice danach noch einen Preis - und
+       beide haengen an derselben gedrosselten Warteschlange wie jeder andere
+       Marktabruf. Der Blick auf den Bildschirm begann also erst, wenn zwei
+       Netzabrufe durch waren. Warm sind das 200 ms, kalt Sekunden - und weil
+       es warm meistens gutgeht, sah es nach einem sporadischen Fehler aus. */
+    const started = {
+      lauf,
+      seconds: ev.seconds, at: t0,
+      own: null, rewards: [], scanning: relicScan, scanError: null,
+      expected
+    };
+    setCurrentRelic(started, `Belohnungsbildschirm #${lauf} auf`);
+
+    /* expected kommt aus dem Log und ist NICHT immer vier: es steht eine Karte
        pro Mitspieler da. Zu dritt wurde bisher auf eine vierte gewartet, die
        nie kam - sieben Sekunden lang, von fuenfzehn. */
-    const started = currentRelic;
-    const expected = Math.min(4, Math.max(1, ev.players || 4));
-    const scan = await scanRewardsRepeatedly(() => currentRelic === started, expected);
+    const scanLaeuft = relicScan
+      ? scanRewardsRepeatedly(() => currentRelic === started, expected, lauf,
+          async teil => {
+            await zeigeGelesene(teil, started);
+            console.log(`[Relikt #${lauf}] ${started.rewards.length} von ${expected}`
+                      + ` Schildern stehen ${seit()} - der Rest wird noch gesucht`);
+          })
+      : Promise.resolve(null);
+
+    /* Der eigene Fund laeuft DANEBEN und wird nirgends abgewartet, wo etwas
+       davon abhaengt. Er traegt sich selbst nach, sobald er da ist - erst der
+       Name, dann der Preis. */
+    const ownLaeuft = ev.uniqueName ? describeReward(ev.uniqueName) : Promise.resolve(null);
+
+    ownLaeuft.then(own => {
+      if (currentRelic !== started) return;
+      currentRelic.own = own;
+      /* Knappe Protokollzeilen: ohne sie ist bei einem Fehlschlag nicht
+         unterscheidbar, ob das Log nichts hergab, die Erkennung nichts fand
+         oder die Anzeige klemmt. */
+      console.log(`[Relikt #${lauf}] Fund aus Log:`, own ? own.name : '-',
+                  '| Erkennung:', relicScan ? 'an' : 'aus',
+                  '| Schilder:', relicTags ? 'an' : 'aus', '|', seit());
+      pushRelic();
+
+      /* Sind die Schilder an, sitzt die Information schon im Spiel - dann muss
+         nicht zusaetzlich das grosse Fenster aufspringen. */
+      if (relicAutoShow && !relicTags && !overlayVisible()) {
+        overlayShownForRelic = true;
+        showOverlay();
+      }
+
+      if (own?.slug) {
+        return getPrice(own.slug).then(price => {
+          if (currentRelic !== started) return;
+          currentRelic.own.price = price;
+          pushRelic();
+        });
+      }
+    }).catch(() => { /* Ohne eigenen Fund bleibt der Bildschirm - der zaehlt. */ });
+
+    /* Und jetzt der Bildschirm: die Funde der Mitspieler stehen nirgends sonst.
+       Siehe scanRewardsRepeatedly - einmal hinsehen reicht nicht. */
+    const scan = await scanLaeuft;
     if (!scan || currentRelic !== started) return;   // inzwischen kam eine neue Runde
+    console.log(`[Relikt #${lauf}] Erkennung fertig`, seit());
 
     if (!scan.ok || !scan.rewards.length) {
       currentRelic.scanning = false;
@@ -3583,32 +3969,27 @@ async function handleRelicReward(ev) {
       if (relicAutoShow && !overlayVisible()) {
         overlayShownForRelic = true;
         showOverlay();
-        console.log('[Relikt] Fenster als Ersatz geoeffnet:', currentRelic.scanError);
+        console.log(`[Relikt #${lauf}] Fenster als Ersatz geoeffnet:`, currentRelic.scanError);
       }
       return;
     }
 
-    const ownName = own?.name || null;
-    currentRelic.rewards = await Promise.all(scan.rewards.map(async r => ({
-      ...(await describeScanned(r.name)),
-      position: r.position,
-      score: r.score,
-      /* box muss mit: daran haengt die Position der Preisschilder im Spiel.
-         Ohne diese Zeile bekommt showTags Eintraege ohne Rahmen. */
-      box: r.box,
-      isOwn: !!ownName && r.name === ownName,
-      price: null
-    })));
-    currentRelic.scanning = false;
+    /* Der eigene Fund wird nur noch zum Markieren gebraucht. Bis der Bildschirm
+       gelesen ist, war er laengst da; steht er wider Erwarten noch aus, kostet
+       das nur die Markierung, nicht die Anzeige. */
+    await ownLaeuft.catch(() => null);
+    if (currentRelic !== started) return;
+
     currentRelic.region = scan.region || null;
     /* Vollstaendig heisst "so viele wie Mitspieler", nicht "vier". */
     currentRelic.expected = expected;
-    currentRelic.complete = scan.rewards.length >= expected;
-    pushRelic();
-    showTags(currentRelic.rewards);
+    await zeigeGelesene(scan, started, { fertig: true });
+    console.log(`[Relikt #${lauf}] Schilder stehen`, seit(), '- Preise fehlen noch');
 
-    /* Preise einzeln nachreichen, damit weder Liste noch Schilder auf den
-       letzten Abruf warten. */
+    /* Preise nachreichen, jeder fuer sich: sie haengen alle an derselben
+       gedrosselten Warteschlange, kommen also ohnehin nacheinander an. Wichtig
+       ist nur, dass jeder EINZELNE sofort auf die Schilder geht statt am Ende
+       gesammelt - sonst steht die Reihe still, bis auch der letzte da ist. */
     for (const reward of currentRelic.rewards) {
       if (!reward.slug) continue;
       const price = await getPrice(reward.slug).catch(() => null);
@@ -3617,6 +3998,7 @@ async function handleRelicReward(ev) {
       pushRelic();
       showTags(currentRelic.rewards);
     }
+    console.log(`[Relikt #${lauf}] Preise vollstaendig`, seit());
 }
 
 /* -------------------------- Einstellungen -------------------------- */

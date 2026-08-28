@@ -19,11 +19,28 @@
 #   ohne -Png ueberhaupt kein Bildschirmfoto entsteht, das jemand spaeter
 #   finden koennte.
 #
+# WARUM DIE AUFNAHME MANCHMAL VERGROESSERT WIRD (scale):
+#   Nicht das Sprachmodell ist die Schwachstelle, sondern die Zeilenaufteilung.
+#   Nachgemessen an data/ocr/: bei grenzwertiger Textgroesse wirft die Erkennung
+#   zwei NEBENEINANDER stehende Karten in eine Zeile ("Vadarya Prime Receiver
+#   Dual Zoren Prime Handle") - und dann fehlen zwei Namen. Vergroessern hilft
+#   dagegen, aber nicht immer: bei 576p rettete 2,5x die Lesung von 2/4 auf 4/4,
+#   bei 475p kippte dieselbe Vergroesserung sie von 4/4 auf 2/4. Ein fester
+#   Faktor verschiebt den Bruchpunkt also nur.
+#   Deshalb entscheidet dieses Skript nicht, sondern kann beides - und der
+#   Aufrufer legt zwei Lesungen zusammen (siehe scanRewardsRepeatedly).
+#
+#   Die Rahmen kommen trotzdem immer in ECHTEN Bildschirmpixeln zurueck: sie
+#   werden vor der Antwort wieder heruntergerechnet. Sonst saessen die
+#   Preisschilder bei jeder vergroesserten Lesung um den Faktor daneben, und
+#   zwei Lesungen liessen sich nicht ueber die Position zusammenlegen.
+#
 # PROTOKOLL (eine Zeile JSON rein, eine Zeile JSON raus):
 #   ->  {"id":1,"top":0.28,"bottom":0.62}      Ausschnitt als Anteil der Hoehe
 #   ->  {"id":2}                               ganzer Hauptbildschirm
 #   ->  {"id":3,"source":"C:\\bild.png"}       vorhandenes Bild auswerten
 #   ->  {"id":4,"png":"C:\\ablage.png"}        Aufnahme zusaetzlich sichern
+#   ->  {"id":5,"scale":2.5}                   vor der Erkennung vergroessern
 #   <-  {"id":1,"ok":true,"language":"en-US","region":{...},"lines":[...]}
 #   <-  {"ok":true,"ready":true,"language":"en-US"}   einmal beim Start
 #
@@ -60,11 +77,19 @@ $null = [Windows.Media.Ocr.OcrEngine,                Windows.Foundation, Content
 $null = [Windows.Globalization.Language,             Windows.Foundation, ContentType = WindowsRuntime]
 $null = [Windows.Graphics.Imaging.SoftwareBitmap,    Windows.Foundation, ContentType = WindowsRuntime]
 $null = [Windows.Graphics.Imaging.BitmapPixelFormat, Windows.Foundation, ContentType = WindowsRuntime]
-$null = [Windows.Graphics.Imaging.BitmapDecoder,     Windows.Foundation, ContentType = WindowsRuntime]
-$null = [Windows.Storage.StorageFile,                Windows.Foundation, ContentType = WindowsRuntime]
+# BitmapDecoder und StorageFile standen hier, solange gespeicherte Bilder ueber
+# den WinRT-Decoder kamen. Sie gehen jetzt denselben Weg wie die Aufnahme, ueber
+# System.Drawing - siehe Open-ImageFile.
 
-# Bevorzugt Englisch: Warframes Itemnamen sind englisch, und ein deutsches
-# Sprachmodell zieht sie in Richtung deutscher Woerter ("Paris" -> "kris").
+# Bevorzugt Englisch, weil Warframes Itemnamen englisch sind. Es kostet nichts,
+# und der Fallback steht direkt darunter.
+#
+# Erwarte davon aber nicht zu viel: nachgemessen an data/ocr/ fand das deutsche
+# Modell ueber JEDE gepruefte Aufloesung genauso viele Namen wie das englische.
+# Der einzige reproduzierbare Unterschied war "Zoren" gelesen als "Zoten" - ein
+# Zeichen von dreiundzwanzig, das der Abgleich gegen die Droptabellen mit
+# Reserve wegbuegelt. Wer hier eine fehlende Erkennung sucht, sucht an der
+# falschen Stelle; die Zeilenaufteilung im Kopf dieser Datei ist die Ursache.
 $engine = $null
 try {
   $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage(
@@ -129,20 +154,58 @@ function ConvertTo-SoftwareBitmap($bmp) {
            $buf, [Windows.Graphics.Imaging.BitmapPixelFormat]::Bgra8, $bmpW, $bmpH)
 }
 
-function Read-ImageFile([string]$Path) {
-  $file    = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync((Resolve-Path $Path).Path)) ([Windows.Storage.StorageFile])
-  $stream  = Await ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
-  $decoder = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
-  return Await ($decoder.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
+# Vergroessern vor der Erkennung - siehe die Begruendung im Kopf.
+# Bikubisch und nicht der Standard: aus weichen Buchstabenkanten wuerden sonst
+# Treppen, und die liest die Erkennung schlechter als das kleine Original.
+# Faktor 1 gibt das Original ZURUECK, statt es zu kopieren; wer aufraeumt, muss
+# deshalb vergleichen, ob er ueberhaupt etwas Neues bekommen hat.
+function Resize-Bitmap($src, [double]$factor) {
+  if ($factor -le 1.0) { return $src }
+  $w = [int]($src.Width * $factor); $h = [int]($src.Height * $factor)
+  $dst = New-Object System.Drawing.Bitmap $w, $h, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+  $g = [System.Drawing.Graphics]::FromImage($dst)
+  try {
+    $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+    $g.PixelOffsetMode   = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+    $g.DrawImage($src, 0, 0, $w, $h)
+  } finally { $g.Dispose() }
+  return $dst
+}
+
+# Ein vorhandenes Bild auswerten - fuer Tests ohne laufendes Spiel.
+#
+# Ueber System.Drawing und nicht mehr ueber den WinRT-Decoder: so nehmen Bild
+# und Bildschirmaufnahme denselben Weg, und die Vergroesserung oben gilt fuer
+# beide. Sonst liesse sich ausgerechnet an einer gespeicherten Aufnahme nicht
+# pruefen, was sie im Spiel bewirkt.
+#
+# Umgezeichnet statt durchgereicht: FromFile liefert das Format der Datei
+# (oft 24bpp) und haelt die Datei offen, bis das Bitmap freigegeben wird.
+# Beides will man hier nicht.
+function Open-ImageFile([string]$Path) {
+  $raw = [System.Drawing.Bitmap]::FromFile((Resolve-Path $Path).Path)
+  try {
+    $bmp = New-Object System.Drawing.Bitmap $raw.Width, $raw.Height, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    try { $g.DrawImage($raw, 0, 0, $raw.Width, $raw.Height) } finally { $g.Dispose() }
+  } finally { $raw.Dispose() }
+  return $bmp
 }
 
 # Von Hand statt ConvertTo-Json: das Ergebnis ist tief verschachtelt, und
 # ConvertTo-Json braucht dafuer in Windows PowerShell sowohl -Depth als auch
 # spuerbar Zeit. Hier zaehlt jede Zehntelsekunde.
-function Build-Result([int]$replyId, $ocr, [int]$X, [int]$Y, [int]$W, [int]$H) {
+#
+# $Scale rechnet die Wortrahmen wieder auf die ECHTE Groesse herunter: gelesen
+# wurde eventuell in einem vergroesserten Bild, aber nach draussen geht nur,
+# wo die Woerter auf dem BILDSCHIRM stehen. region bleibt davon unberuehrt -
+# darin steht schon der echte Ausschnitt.
+function Build-Result([int]$replyId, $ocr, [int]$X, [int]$Y, [int]$W, [int]$H, [double]$Scale = 1.0) {
+  if ($Scale -le 0) { $Scale = 1.0 }
   $sb = New-Object System.Text.StringBuilder
   [void]$sb.Append('{"id":').Append($replyId).Append(',"ok":true,"language":')
   [void]$sb.Append((ConvertTo-JsonString $engine.RecognizerLanguage.LanguageTag))
+  [void]$sb.Append(',"scale":').Append($Scale.ToString([System.Globalization.CultureInfo]::InvariantCulture))
   [void]$sb.Append(',"region":{"x":').Append($X).Append(',"y":').Append($Y)
   [void]$sb.Append(',"w":').Append($W).Append(',"h":').Append($H).Append('},"lines":[')
 
@@ -159,8 +222,8 @@ function Build-Result([int]$replyId, $ocr, [int]$X, [int]$Y, [int]$W, [int]$H) {
       $firstWord = $false
       $r = $word.BoundingRect
       [void]$sb.Append('{"text":').Append((ConvertTo-JsonString $word.Text))
-      [void]$sb.Append(',"x":').Append([int]$r.X).Append(',"y":').Append([int]$r.Y)
-      [void]$sb.Append(',"w":').Append([int]$r.Width).Append(',"h":').Append([int]$r.Height).Append('}')
+      [void]$sb.Append(',"x":').Append([int]($r.X / $Scale)).Append(',"y":').Append([int]($r.Y / $Scale))
+      [void]$sb.Append(',"w":').Append([int]($r.Width / $Scale)).Append(',"h":').Append([int]($r.Height / $Scale)).Append('}')
     }
     [void]$sb.Append(']}')
   }
@@ -201,6 +264,14 @@ while ($true) {
     # Ein zu schmaler Streifen taugt nicht zum Lesen - dann lieber alles.
     if ($H -lt 16) { $Y = $screen.Y; $H = $screen.Height }
 
+    # Nur vergroessern, nie verkleinern - und nicht ins Uferlose: bei 4x waere
+    # ein 1440p-Bildschirm 5760 Zeilen hoch, und die Erkennung braucht dafuer
+    # laenger als die Bedenkzeit auf dem Belohnungsbildschirm hergibt.
+    $scale = 1.0
+    if ($null -ne $req.scale) { $scale = [double]$req.scale }
+    if ($scale -lt 1) { $scale = 1.0 }
+    if ($scale -gt 4) { $scale = 4.0 }
+
     $png = ''
     if ($req.png) {
       $png = [string]$req.png
@@ -208,19 +279,29 @@ while ($true) {
       if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
     }
 
+    # Beide Quellen liefern jetzt ein GDI-Bitmap, damit die Vergroesserung
+    # danach fuer beide gilt. Gesichert wird immer das ORIGINAL - ein Beweisbild
+    # soll zeigen, was auf dem Bildschirm stand, nicht was daraus gemacht wurde.
     $bitmap = $null
     if ($req.source) {
-      $bitmap = Read-ImageFile ([string]$req.source)
-      $X = 0; $Y = 0; $W = $bitmap.PixelWidth; $H = $bitmap.PixelHeight
+      $gdi = Open-ImageFile ([string]$req.source)
+      $X = 0; $Y = 0; $W = $gdi.Width; $H = $gdi.Height
+      if ($png) { $gdi.Save($png, [System.Drawing.Imaging.ImageFormat]::Png) }
     } else {
       $gdi = Get-ScreenBitmap $X $Y $W $H $png
-      try     { $bitmap = ConvertTo-SoftwareBitmap $gdi }
-      finally { $gdi.Dispose() }
     }
+    try {
+      $scaled = Resize-Bitmap $gdi $scale
+      try     { $bitmap = ConvertTo-SoftwareBitmap $scaled }
+      # Bei Faktor 1 ist $scaled dasselbe Bitmap wie $gdi - dann gibt es hier
+      # nichts freizugeben, sonst faellt der finally-Block darunter ueber eine
+      # bereits geschlossene Bitmap.
+      finally { if (-not [object]::ReferenceEquals($scaled, $gdi)) { $scaled.Dispose() } }
+    } finally { $gdi.Dispose() }
 
     try {
       $result = Await ($engine.RecognizeAsync($bitmap)) ([Windows.Media.Ocr.OcrResult])
-      Write-Reply (Build-Result $id $result $X $Y $W $H)
+      Write-Reply (Build-Result $id $result $X $Y $W $H $scale)
     } finally { $bitmap.Dispose() }
   } catch {
     # Ein misslungener Blick ist kein Grund, den Dauerlaeufer zu beenden - der

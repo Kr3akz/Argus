@@ -191,8 +191,12 @@ function start() {
  *
  * top/bottom schneiden einen waagerechten Streifen aus, als Anteil der
  * Bildschirmhoehe. Ohne Angabe: der ganze Hauptbildschirm.
+ *
+ * scale vergroessert die Aufnahme vor der Erkennung. Die Rahmen kommen
+ * trotzdem in echten Bildschirmpixeln zurueck - der Dauerlaeufer rechnet sie
+ * vor der Antwort herunter. Wozu das gut ist, steht im Kopf von ocr-host.ps1.
  */
-export async function recognise({ top, bottom, source, png } = {}) {
+export async function recognise({ top, bottom, source, png, scale } = {}) {
   const started = await start();
   if (!started.ok) return started;
   if (!proc) return { ok: false, error: 'Texterkennung nicht erreichbar' };
@@ -203,6 +207,9 @@ export async function recognise({ top, bottom, source, png } = {}) {
   const req = { id };
   if (Number.isFinite(top))    req.top = top;
   if (Number.isFinite(bottom)) req.bottom = bottom;
+  /* Nur mitschicken, wenn wirklich vergroessert werden soll: eine 1 im
+     Protokoll waere Rauschen, und aeltere Dauerlaeufer wuerden sie ignorieren. */
+  if (Number.isFinite(scale) && scale > 1) req.scale = scale;
   if (source) req.source = source;
   if (png)    req.png = png;
 

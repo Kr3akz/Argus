@@ -41,12 +41,38 @@ function user32() {
       GetForegroundWindow: lib.func('uint64 __stdcall GetForegroundWindow()'),
       SetForegroundWindow: lib.func('bool __stdcall SetForegroundWindow(uint64 hWnd)'),
       SetCursorPos:        lib.func('bool __stdcall SetCursorPos(int X, int Y)'),
-      GetCursorPos:        lib.func('bool __stdcall GetCursorPos(_Out_ POINT *lpPoint)')
+      GetCursorPos:        lib.func('bool __stdcall GetCursorPos(_Out_ POINT *lpPoint)'),
+      GetWindowThreadProcessId: lib.func(
+        'uint32 __stdcall GetWindowThreadProcessId(uint64 hWnd, _Out_ uint32 *lpdwProcessId)')
     };
   } catch {
     unavailable = true;
   }
   return api;
+}
+
+/**
+ * Prozesskennung hinter dem aktuellen Vordergrundfenster, oder null.
+ *
+ * Absichtlich die PID und nicht der Fenstertitel: Titel sind uebersetzt,
+ * werden vom Spiel geaendert und sagen nichts darueber, WER sie geschrieben
+ * hat. Die PID ist eindeutig, und wer sie mit der des Spiels vergleicht,
+ * braucht keinen Zugriff auf den fremden Prozess - GetWindowThreadProcessId
+ * arbeitet auf Fensterebene, genau wie alles andere in dieser Datei.
+ */
+export function foregroundPid() {
+  if (process.platform !== 'win32') return null;
+  const lib = user32();
+  if (!lib) return null;
+  try {
+    const handle = lib.GetForegroundWindow();
+    if (!handle) return null;
+    const out = [0];
+    lib.GetWindowThreadProcessId(handle, out);
+    return out[0] || null;
+  } catch {
+    return null;
+  }
 }
 
 /** Kennung des aktuellen Vordergrundfensters, oder null. */

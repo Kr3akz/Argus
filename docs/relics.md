@@ -105,6 +105,25 @@ ProjectionRewardChoice.lua: Got rewards
 
 The account IDs in those lines are discarded and never passed on.
 
+**But the log is not always punctual.** Warframe buffers `EE.log`, and the buffer is
+flushed by how much the game has to write — not by the clock. On the reward screen
+almost nothing happens, so while the game runs in the *background* the buffer can sit
+still: measured, `Got rewards` and `Relic reward screen shut down` were 15.0 seconds
+apart in game time and arrived **1 millisecond apart** in the file. Argus would then
+learn about the screen only after it had closed.
+
+That is why the screen itself is a second announcer. While a fissure run is on, Argus
+glances at the top strip of the screen every two seconds and looks for the
+`VOID FISSURE/REWARDS` heading — but only while Warframe is *not* in the foreground,
+because with focus the log arrives on time (measured: 3 ms) and it alone names your own
+drop. **Tabbing back in keeps it looking for another 25 seconds**: switching focus does
+not flush Warframe's buffer, so the moment you return is exactly when you can see the
+screen and Argus still cannot — and it is the moment it matters most. That
+glance reads 2560×101 pixels and costs 31 ms, against 248 ms for the whole screen: about
+1.5 % of one core, and only during a run. Whichever announcer is first starts the
+reading; when the log catches up later, it no longer restarts anything — it only adds
+the one thing the screen cannot show, your own drop.
+
 **The other three** are not in there — DE only logs your own. They are read off the
 screen by **text recognition**: a capture of the screen, then Windows' own OCR
 (`Windows.Media.Ocr`, no extra package, runs offline). The pixels go straight from the
@@ -116,7 +135,7 @@ the hit within the set of **roughly 600 possible relic rewards** from DE's drop 
 A misread "kris Prime Grip" becomes *Paris Prime Grip* again. Only enough has to be
 recognised to be unambiguous in that field.
 
-Three things make it both fast and complete:
+Four things make it both fast and complete:
 
 - **The recognition process stays warm.** Starting it costs about a second — assemblies,
   WinRT types, the engine itself — against 116 ms for the recognition proper. It is
@@ -131,15 +150,35 @@ Three things make it both fast and complete:
   is read. One look catches cards 1, 2 and 4, the next catches 2, 3 and 4 — neither is
   complete, together they are. Cards are matched up by their position on screen; where
   the same card was read twice, the better reading wins.
+- **What is read is shown at once, not at the end.** The screen does not always hand over
+  all four cards together: measured, eleven looks in a row found only two or three, and
+  only the twelfth had all four — seven seconds during which two names had long been
+  settled and still nothing was on screen. Every card now appears as soon as it is read,
+  and already-shown cards keep the price they were given rather than reloading. The loop
+  itself may run for 13 of the 15 seconds, but it stops the moment every card is
+  there — normally after the first look, at 71 ms.
+- **Later looks enlarge the capture.** Not for the sake of the lettering, but for the
+  line splitting: at borderline text sizes the engine throws two cards standing *side by
+  side* into one line ("Vadarya Prime Receiver Dual Zoren Prime Handle"), and two names
+  are lost at once. Enlarging fixes that — but not always: measured against the capture
+  in `data/ocr/`, 2.5× took one case from 2/4 to 4/4 and pushed another from 4/4 down to
+  2/4. A fixed factor only moves the breaking point, so both readings are taken and
+  merged. This costs nothing in practice: the loop stops as soon as every expected card
+  is there, and from 720p upwards the first look already delivers all four.
 
 Measured at 2560×1440 with an English client: all four names, in one look, 0.6 s after
-the log line — out of 15 seconds of thinking time.
+the log line — out of 15 seconds of thinking time. Scaled-down copies of that same
+capture still give all four at 1080p, 900p and 720p; below that the enlarged looks take
+over, and they carry it down to roughly 576p.
 
 Argus asks for the **English** recognition model explicitly, because Warframe's item
-names are English and a German model pulls them towards German words. If the English
-language pack is not installed (Windows Settings → Language → optional features), it
-falls back to your Windows language; the matching against the drop tables absorbs most
-of the difference either way.
+names are English. If the English language pack is not installed (Windows Settings →
+Language → optional features), it falls back to your Windows language — and measured
+against the stored capture, that barely matters: across every resolution tested, the
+German model found exactly as many names as the English one. The only reproducible
+difference was `Zoren` read as `Zoten`, one character in twenty-three, which the match
+against the drop tables absorbs with room to spare. What breaks the recognition is the
+line splitting described above, and that is the same in both languages.
 
 Reading from the screen can be switched off under **Settings**. Your own drop from the
 log remains — with no capture at all, and the recognition process is shut down with the
