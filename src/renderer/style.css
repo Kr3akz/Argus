@@ -219,33 +219,54 @@ body:has(#app:not(.hidden)) .titlebar-brand::after {
    daneben absetzen, sonst greift man beim Schliessen daneben.
    Der Selektor nennt .winbtns mit, weil `.winbtns button` sonst gewinnt -
    dessen feste 38x32 und der eckige Radius sind genau das, was hier NICHT
-   gelten soll. */
+   gelten soll.
+
+   MASSE UND SCHRIFT KOMMEN VON .filter-chip, damit die Pille dieselbe Sprache
+   spricht wie die Filter im Inventar - dort ist die Pille das Grundmuster der
+   Oberflaeche, und eine zweite Pillenform daneben liest sich wie ein Fremd-
+   koerper. Uebernommen sind Polsterung, Schriftgrad, Schriftgewicht und die
+   Flaeche der AKTIVEN Chips auf .2 Deckkraft.
+
+   KEIN RAHMEN, obwohl bei .filter-chip einer steht: dessen Farbe ist
+   var(--border), und dieses Token ist nirgends definiert. Damit ist die ganze
+   border-Deklaration ungueltig, faellt auf border-style:none zurueck und die
+   Chips rendern randlos - nachgemessen im Browser, 0 px. Ein Rahmen hier
+   waere also kein gemeinsames Design, sondern zwei Pixel mehr Hoehe als bei
+   jedem Chip daneben.
+
+   WAS BEWUSST ANDERS BLEIBT: die Farbe ist die Akzentfarbe der App und nicht
+   das Neutralgrau der ruhenden Chips, und der pulsierende Punkt bleibt. Ein
+   Filter zeigt einen Zustand an, den man selbst gesetzt hat - dieser Knopf
+   meldet etwas Neues und will angeklickt werden. Genau das sollen die beiden
+   Zutaten sagen, die er sich nicht bei den Chips borgt. */
 .winbtns button.update-badge {
   display: flex; align-items: center; gap: 7px;
-  width: auto; height: 28px;
-  margin-right: 10px; padding: 0 12px 0 10px;
-  background: var(--accent-sf);
-  border: 1px solid rgba(var(--t-accent) / .35);
+  /* align-self, weil .winbtns die Kinder sonst auf volle Hoehe streckt: die
+     Fensterknoepfe daneben haben ihre 32 px fest, diese Pille nicht mehr. */
+  align-self: center;
+  width: auto; height: auto;
+  margin-right: 10px; padding: 5px 11px;
+  background: rgba(var(--t-accent) / .2);
+  border: none;
   border-radius: 999px;
   color: #9cc8ff;
-  font-size: 11px; font-weight: 650; letter-spacing: .3px;
+  font-size: 11.5px; font-weight: 600;
   cursor: pointer;
   animation: fade .3s var(--ease);
-  transition: background .18s var(--ease), color .18s var(--ease), border-color .18s var(--ease);
+  transition: all .15s ease;
 }
 .winbtns button.update-badge:hover {
-  background: rgba(var(--t-accent) / .28);
-  border-color: rgba(var(--t-accent) / .55);
+  background: rgba(var(--t-accent) / .32);
   color: #cfe4ff;
 }
 /* Geladen und geprueft - ab hier geht es nicht mehr ums Bemerken, sondern
-   ums Ausfuehren. Gruen sagt das ohne ein weiteres Wort. */
+   ums Ausfuehren. Gruen sagt das ohne ein weiteres Wort, und zwar im selben
+   Alpha-Schema wie der gruene Chip im Inventar. */
 .winbtns button.update-badge.is-ready {
-  background: rgba(var(--t-green) / .16);
-  border-color: rgba(var(--t-green) / .4);
+  background: rgba(var(--t-green) / .2);
   color: var(--green);
 }
-.winbtns button.update-badge.is-ready:hover { background: rgba(var(--t-green) / .26); }
+.winbtns button.update-badge.is-ready:hover { background: rgba(var(--t-green) / .32); }
 
 .update-dot {
   width: 6px; height: 6px; border-radius: 50%;
