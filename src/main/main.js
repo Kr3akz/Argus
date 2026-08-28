@@ -613,6 +613,20 @@ function showTags(rewards) {
      zugeordnet. */
   const dropPx = Math.round(display.bounds.height * relicTagOffset);
 
+  /* EINE Hoehe fuer alle Schilder statt fuer jedes die eigene Unterkante.
+     Die Rahmen sind naemlich unterschiedlich hoch: sie umschliessen den
+     ERKANNTEN TEXT, und ein langer Name bricht unter der Karte auf zwei oder
+     drei Zeilen um ("Caliban Prime Neuroptics Blueprint"), ein kurzer nicht.
+     Haengt jedes Schild an seinem eigenen Rahmen, steht die Reihe deshalb
+     treppenfoermig - obwohl die vier Karten im Spiel auf gleicher Hoehe
+     stehen und es keinen Grund fuer den Versatz gibt.
+
+     Genommen wird die UNTERSTE Kante, nicht der Mittelwert: nur sie liegt
+     garantiert unter jedem Namen. Ein Median liesse das Schild der Karte mit
+     dem laengsten Namen ausgerechnet dort sitzen, wo noch Text steht. */
+  const baseline = Math.max(...placeable.map(r => r.box.y + r.box.h));
+  const top = baseline / scale - display.bounds.y + dropPx;
+
   const tags = placeable.map(r => ({
     name: r.name,
     ducats: r.ducats,
@@ -623,9 +637,10 @@ function showTags(rewards) {
     currentOwned: r.currentOwned ?? 0,
     currentRequired: r.currentRequired ?? 1,
     setParts: r.setParts || [],
-    /* Mitte des Namens, direkt darunter. */
-    cx:  (r.box.x + r.box.w / 2) / scale - display.bounds.x,
-    top: (r.box.y + r.box.h) / scale - display.bounds.y + dropPx
+    /* Waagerecht mittig unter dem eigenen Namen, senkrecht auf der
+       gemeinsamen Grundlinie. */
+    cx: (r.box.x + r.box.w / 2) / scale - display.bounds.x,
+    top
   }));
 
   const send = () => {
