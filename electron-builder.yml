@@ -72,12 +72,15 @@ files:
 asar: false
 
 # tools/ landet NEBEN der App unter resources/, nicht darin - core/paths.js
-# sucht das Skript ueber process.resourcesPath.
-# Nur das OCR-Skript: memscan.ps1 und make-icon.mjs sind Entwicklerwerkzeuge.
+# sucht die Skripte ueber process.resourcesPath.
+# Nur die OCR-Skripte: memscan.ps1 und make-icon.mjs sind Entwicklerwerkzeuge.
+# ocr-host.ps1 ist der Dauerlaeufer, den die App im Betrieb benutzt;
+# ocr-capture.ps1 bleibt als Einzelaufnahme fuer die CLI-Werkzeuge dabei.
 extraResources:
   - from: tools
     to: tools
     filter:
+      - ocr-host.ps1
       - ocr-capture.ps1
 
 win:

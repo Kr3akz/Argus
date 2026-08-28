@@ -18,9 +18,10 @@
   never.
 - **Read access to `EE.log`**, Warframe's own log file, for relic rewards. From the last
   byte read onwards, without locking the file.
-- **A screenshot** during the reward screen, to read the four parts via text recognition.
-  It is deleted immediately after evaluation, never leaves the machine, and can be
-  switched off entirely under Settings.
+- **A capture of the screen** during the reward screen, to read the four parts via text
+  recognition. The pixels go straight into the recognition — no image file is written,
+  nothing leaves the machine — and it can be switched off entirely under Settings, which
+  also shuts down the recognition process.
 - **A focus change** via `SetForegroundWindow` for cursor mode — a window operation, not
   access to the game.
 - **A login to warframe.market**, and only if you use the trading tab. Your password goes

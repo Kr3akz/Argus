@@ -21,6 +21,52 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-08-28
+
+### Fixed
+
+- **The relic recommendation no longer opens on its own** — it appears where it
+  should and nowhere else: opening the relic segment in your Orbiter, picking a
+  relic before a Void Fissure, and picking the next one between rounds in endless
+  fissures. It used to also react to an Orbiter console identified by its number,
+  on the assumption that the number named the relic segment. It does not — the
+  number counts consoles within one scene layer, so which console carries it
+  depends on how your ship is fitted, and unrelated consoles pulled up the relic
+  list over screens that had nothing to do with relics.
+- **The reward overlay arrives while you can still use it** — all four parts,
+  typically on the first look, about 0.6 seconds after the reward screen opens
+  instead of several seconds. Previously each look started its own PowerShell
+  process; of the 1.2 seconds that cost, only 116 milliseconds were the actual
+  recognition. The process now starts once, in the background, the moment you
+  pick a relic — and is shut down again five minutes after the last look, or
+  immediately when you switch screen reading off.
+- **Parts whose names wrap onto two lines are found again** — "Caliban Prime
+  Neuroptics Blueprint" and every other Warframe part blueprint break over two
+  lines under the card. Compared line by line they could never match, so those
+  cards silently stayed blank. Lines sitting directly beneath one another under
+  the same card are now read as one name.
+- **Missing cards are filled in across looks instead of discarded** — the reward
+  screen is still building itself while it is read. One look might catch cards 1,
+  2 and 4, the next 2, 3 and 4; the better single look used to win, so one card
+  was thrown away. The looks are now combined by position on screen.
+- **Text recognition asks for English again** — it had been silently falling back
+  to your Windows display language, which pulls English item names towards words
+  in that language. If the English language pack is not installed, the fallback
+  still applies, as before.
+- **A stuck recommendation clears itself** — if the game never reports the relic
+  screen closing, it closes after five minutes rather than staying over the game.
+- **The price tags no longer wait on the item catalogue** — it was being re-read
+  from disk and re-indexed once per reward, four times, while the fifteen-second
+  countdown was running.
+
+### Changed
+
+- **No screenshot is written to disk during a reward screen.** The pixels go
+  straight from the capture into the recognition. Reading the screen can still be
+  switched off entirely under Settings, and your own drop from the log remains.
+- The vertical offset of the in-game price tags is documented correctly again:
+  `relicTagOffset` defaults to `0.23`, not `0.083`.
+
 ## [1.1.1] - 2026-08-26
 
 ### Added

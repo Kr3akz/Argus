@@ -61,7 +61,9 @@ import {
   rewardsFor, relicExpectation, indexByReward, relicsForReward, RELIC_STATES
 } from '../core/relics.js';
 import { buildBaseSets } from '../core/basesets.js';
-import { scanRewardScreen, buildRewardIndex } from '../core/rewardscan.js';
+import {
+  scanRewardScreen, buildRewardIndex, mergeRewards, warmUpOcr, stopOcrWorker
+} from '../core/rewardscan.js';
 import {
   parseBuildId, fetchBuild, toBuild, loadModMap, saveModMap,
   unknownModIds, mergeNames, USER_AGENT as OF_USER_AGENT
@@ -538,8 +540,13 @@ function createTagWindow() {
  * Die Texterkennung liefert ECHTE Bildschirmpixel, Fenster rechnen in
  * geraetunabhaengigen Punkten. Bei einer Bildschirmskalierung von 125 % laegen
  * die Schilder sonst ein Viertel zu weit rechts und unten.
+ *
+ * Der Ausschnitt der Aufnahme steht hier nicht mehr: die Rahmen kommen aus
+ * rewardscan.js bereits in Bildschirmkoordinaten. Er musste dort hinein, weil
+ * ein Fund aus mehreren Aufnahmen mit verschiedenen Ausschnitten stammen kann -
+ * ein einzelner Versatz fuer alle waere dann fuer die Haelfte der falsche.
  */
-function showTags(rewards, region) {
+function showTags(rewards) {
   if (!relicTags || !rewards?.length) {
     console.log('[Relikt] Schilder uebersprungen - Schalter:', relicTags,
                 'Treffer:', rewards?.length ?? 0);
@@ -549,8 +556,6 @@ function showTags(rewards, region) {
 
   const display = screen.getPrimaryDisplay();
   const scale = display.scaleFactor || 1;
-  const originX = region?.x ?? 0;
-  const originY = region?.y ?? 0;
 
   /* Ohne Rahmen laesst sich kein Schild setzen - solche Eintraege werden
      uebergangen, statt die ganze Anzeige mitzureissen. */
@@ -576,8 +581,8 @@ function showTags(rewards, region) {
     currentRequired: r.currentRequired ?? 1,
     setParts: r.setParts || [],
     /* Mitte des Namens, direkt darunter. */
-    cx:  (originX + r.box.x + r.box.w / 2) / scale - display.bounds.x,
-    top: (originY + r.box.y + r.box.h) / scale - display.bounds.y + dropPx
+    cx:  (r.box.x + r.box.w / 2) / scale - display.bounds.x,
+    top: (r.box.y + r.box.h) / scale - display.bounds.y + dropPx
   }));
 
   const send = () => {
@@ -3065,7 +3070,13 @@ async function resolveSetDetails(name, uniqueName) {
   let setParts = [];
 
   try {
-    const catalog = await loadCatalog().catch(() => null);
+    /* Aus dem Zwischenspeicher und nicht frisch: loadCatalog() liest bei JEDEM
+       Aufruf catalog.json von der Platte und baut die Indizes neu - nachgemessen
+       45 ms, und zwar im Hauptprozess, der in derselben Zeit die Anzeige
+       zeichnen soll. Aufgerufen wird das hier einmal pro Belohnung, also
+       viermal, waehrend auf dem Belohnungsbildschirm eine Uhr laeuft. */
+    if (!cache.catalog) cache.catalog = await loadCatalog().catch(() => null);
+    const catalog = cache.catalog;
     let inv = null;
     try {
       const invRes = await loadInventory({ refresh: false }).catch(() => null);
@@ -3220,58 +3231,79 @@ const wait = ms => new Promise(res => setTimeout(res, ms));
 
 /* Der Bildschirm braucht einen Moment, bis die vier Namen stehen. "Got rewards"
    im Log kommt frueher: in derselben Millisekunde meldet das Spiel viermal
-   "Missing icon data!" - die Karten werden zu dem Zeitpunkt erst aufgebaut. */
-const SCAN_FIRST_DELAY_MS = 400;
-const SCAN_RETRY_MS       = 450;
+   "Missing icon data!" - die Karten werden zu dem Zeitpunkt erst aufgebaut.
+
+   200 statt 400 ms: mit dem warmen Erkennungsprozess kostet ein Blick 70-250 ms
+   statt 1,2 s. Ein zu frueher Blick ist deshalb kein verbrauchter Versuch mehr,
+   sondern nur ein frueher - und was er schon liest, wird mitgenommen. */
+const SCAN_FIRST_DELAY_MS = 200;
+const SCAN_RETRY_MS       = 150;
 /* Von 15 Sekunden Bedenkzeit. Der Rest gehoert den Preisen - und dem Menschen,
    der die Liste noch lesen soll. */
 const SCAN_BUDGET_MS      = 7000;
+
+/* Der Streifen, in dem die vier Namen stehen - Anteil der Bildschirmhoehe.
+   Nachgemessen bei 2560x1440 stehen sie bei 0.404; der Streifen laesst nach
+   oben und unten reichlich Luft fuer andere Aufloesungen und Seitenverhaeltnisse.
+   Ein Blick auf den Streifen kostet 70-90 ms statt 180-250 ms fuer den ganzen
+   Bildschirm - und liest nebenbei die Bildrate-Anzeige und den Chat nicht mit. */
+const SCAN_BAND = { top: 0.25, bottom: 0.68 };
 
 /**
  * Den Belohnungsbildschirm lesen, bis alle vier dastehen.
  *
  * WARUM WIEDERHOLT:
- *   Die Erkennung selbst ist schnell und genau - nachgemessen 0,7 s fuer eine
- *   Aufnahme in 2560x1440, alle vier Namen mit Bestwertung. Sie war nur zu
- *   frueh dran. Gelesen wurde genau einmal, sofort nach der Logzeile, und was
- *   dabei herauskam, galt: ein halb aufgebauter Bildschirm lieferte zwei Namen
- *   oder gar keinen, und der Versuch war verbraucht. Das ist das "dauert lange
- *   oder klappt gar nicht".
+ *   Die Erkennung war nie ungenau, sie war zu frueh dran. Gelesen wurde genau
+ *   einmal, sofort nach der Logzeile, und was dabei herauskam, galt: ein halb
+ *   aufgebauter Bildschirm lieferte zwei Namen oder gar keinen, und der Versuch
+ *   war verbraucht. Ein leeres Ergebnis war dabei kein Fehler, sondern ein
+ *   gueltiges "nichts gefunden" - es fiel deshalb nicht einmal auf.
  *
- *   Ein leeres Ergebnis war dabei kein Fehler, sondern ein gueltiges "nichts
- *   gefunden" - es fiel deshalb nicht einmal auf.
+ * WARUM ZUSAMMENGELEGT UND NICHT DER BESTE:
+ *   Behalten wurde bisher der beste EINZELNE Versuch. Liest der eine Blick die
+ *   Karten 1, 2 und 4 und der naechste 2, 3 und 4, hat keiner alle vier - obwohl
+ *   zusammen alle vier dastehen. mergeRewards legt sie ueber die Position
+ *   zusammen; bei zwei Lesungen derselben Karte gewinnt die bessere.
  *
- * Behalten wird der beste Versuch, nicht der letzte: schiebt sich waehrend
- * eines Durchlaufs eine Meldung ueber den Bildschirm, ist der naechste
- * schlechter, und das darf einen vollstaendigen Fund nicht wieder wegnehmen.
+ * WARUM STREIFEN UND GANZER BILDSCHIRM ABWECHSELND:
+ *   Der Streifen ist schneller und ruhiger, sitzt aber nur dann richtig, wenn
+ *   das Spiel den Bildschirm fuellt. Laeuft es im Fenster oder auf einem sehr
+ *   breiten Bildschirm, steht die Reihe woanders. Solange noch etwas fehlt,
+ *   wechseln die Bloecke sich deshalb ab - damit spaetestens der zweite Blick
+ *   den ganzen Bildschirm sieht, egal woran der erste gescheitert ist. Was
+ *   beide finden, wird ohnehin zusammengelegt.
  */
 async function scanRewardsRepeatedly(stillCurrent) {
   const index = await ensureRewardIndex();
   const deadline = Date.now() + SCAN_BUDGET_MS;
-  let best = null;
+  let merged = null;
+  let lastError = null;
   let attempts = 0;
+  let useBand = true;
 
   await wait(SCAN_FIRST_DELAY_MS);
 
   while (stillCurrent()) {
     attempts++;
-    const scan = await scanRewardScreen(index);
+    const scan = await scanRewardScreen(index, useBand ? SCAN_BAND : {});
     if (!stillCurrent()) return null;
 
     if (scan.ok) {
-      if (!best?.ok || scan.rewards.length > best.rewards.length) best = scan;
-      if (best.rewards.length >= 4) break;
-    } else if (!best) {
-      best = scan;                 // Fehler merken, falls gar nichts mehr kommt
+      merged = merged ? mergeRewards(merged, scan) : scan;
+      if (merged.rewards.length >= 4) break;
+    } else {
+      lastError = scan.error;
     }
+    /* Fehlt noch etwas, sieht der naechste Blick anders hin. */
+    useBand = !useBand;
 
     if (Date.now() + SCAN_RETRY_MS >= deadline) break;
     await wait(SCAN_RETRY_MS);
   }
 
-  console.log('[Relikt] Erkennung:', best?.ok ? `${best.rewards.length} Treffer` : `Fehler ${best?.error}`,
+  console.log('[Relikt] Erkennung:', merged ? `${merged.rewards.length} Treffer` : `Fehler ${lastError}`,
               `| ${attempts} Versuch${attempts === 1 ? '' : 'e'}`);
-  return best;
+  return merged || { ok: false, error: lastError || 'Keine Aufnahme moeglich' };
 }
 
 /**
@@ -3304,6 +3336,12 @@ function startLogWatcher() {
         overlayShownForRelicSelect = true;
         showOverlay();
       }
+
+      /* Wer ein Relikt waehlt, oeffnet es gleich darauf. Der Anlauf der
+         Texterkennung faellt damit in eine Zeit, in der niemand darauf wartet -
+         statt in die 15 Sekunden Bedenkzeit auf dem Belohnungsbildschirm. */
+      if (relicScan) warmUpOcr().catch(() => {});
+
       const data = await describeRecommendedRelics();
       sendToOverlay('relic:select-open', data);
     } catch (err) {
@@ -3465,7 +3503,7 @@ async function handleRelicReward(ev) {
     currentRelic.region = scan.region || null;
     currentRelic.complete = !!scan.complete;
     pushRelic();
-    showTags(currentRelic.rewards, currentRelic.region);
+    showTags(currentRelic.rewards);
 
     /* Preise einzeln nachreichen, damit weder Liste noch Schilder auf den
        letzten Abruf warten. */
@@ -3475,7 +3513,7 @@ async function handleRelicReward(ev) {
       if (currentRelic !== started) return;
       reward.price = price;
       pushRelic();
-      showTags(currentRelic.rewards, currentRelic.region);
+      showTags(currentRelic.rewards);
     }
 }
 
@@ -3519,6 +3557,10 @@ ipcMain.handle('settings:relicTags', async (_e, on) => {
 
 ipcMain.handle('settings:relicScan', async (_e, on) => {
   relicScan = !!on;
+  /* Ausgeschaltet heisst ausgeschaltet: der Erkennungsprozess geht mit. Ein
+     Schalter, nach dem noch etwas laeuft, das den Bildschirm lesen koennte,
+     waere kein Schalter. */
+  if (!relicScan) stopOcrWorker();
   try {
     const cfg = await loadConfig();
     await saveConfig({ ...cfg, relicScan });
@@ -4037,6 +4079,9 @@ app.on('will-quit', () => {
   if (logWatcher) logWatcher.stop();
   if (notificationPollerTimer) clearInterval(notificationPollerTimer);
   if (updateTimer) clearInterval(updateTimer);
+  /* Der Erkennungsprozess haengt an dieser App und an nichts sonst. Bliebe er
+     stehen, waere er ein PowerShell-Fenster ohne Fenster im Taskmanager. */
+  stopOcrWorker();
   globalShortcut.unregisterAll();
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

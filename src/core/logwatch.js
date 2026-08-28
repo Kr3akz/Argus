@@ -46,6 +46,11 @@ const POLL_MS = 150;
    Fund gehoert zu einer frueheren Mission und wird nicht mehr angezeigt. */
 const REWARD_MAX_AGE_MS = 30000;
 
+/* Notbremse fuer die Reliktauswahl: bleibt das Schlusssignal aus, schliesst
+   sie die Uhr. Fuenf Minuten sind laenger, als irgendjemand vor der Auswahl
+   steht, und kurz genug, dass eine haengende Anzeige nicht den Abend ueberlebt. */
+const SELECT_MAX_MS = 5 * 60 * 1000;
+
 /* Entprellung fuer game-activity: Zonenwechsel erzeugen oft mehrere Zeilen
    innerhalb weniger Millisekunden. Nur das erste Ereignis in diesem Fenster
    wird emittiert. */
@@ -61,20 +66,43 @@ const RE_READY      = /ProjectionRewardChoice\.lua:\s*Got rewards/;
 const RE_TIMER      = /ProjectionsCountdown\.lua:\s*Initialize timer\s+\S+\s+(\d+)/;
 const RE_CLOSED     = /ProjectionRewardChoice\.lua:\s*Relic reward screen shut down/;
 
-/* Relikt-Auswahl (ThemedProjectionManager oder Orbiter-Konsole UIConsoleTrigger3):
-   Erkennt Veredelung im Schiff sofort beim Interagieren, Rissauswahl in
-   der Sternenkarte sowie Reliktwahl zwischen Runden in Endlos-Missionen.
+/**
+ * Die Reliktauswahl geht auf.
+ *
+ * EIN Bildschirm, drei Wege dorthin - und alle drei melden dasselbe:
+ *   - Veredelung im Schiff, ueber die Konsole im Relikt-Segment
+ *   - Reliktwahl auf der Sternenkarte, bevor eine Rissmission startet
+ *   - Reliktwahl zwischen den Runden in Endlos-Missionen
+ * In allen dreien baut ThemedProjectionManager das Gitter der eigenen
+ * Relikte auf. Etwas anderes darf hier nicht stehen.
+ *
+ * OHNE UIConsoleTrigger3: hier stand zusaetzlich die Orbiter-Konsole mit
+ * genau diesem Index. Der Index ist aber nicht der des Relikt-Segments,
+ * sondern eine LAUFENDE NUMMER INNERHALB EINER SZENENEBENE - im Mitschnitt
+ * meldet sich das Relikt-Segment als /Layer255/Layer1/Layer31/UIConsoleTrigger3
+ * und die Navigation als /Layer255/Layer1/Layer30/UIConsoleTrigger1. Welche
+ * Konsole die Nummer 3 traegt, haengt an Ebene und Ausbau des Schiffs. Jede
+ * andere Konsole mit derselben Nummer riss damit die Empfehlung auf, ohne
+ * dass ein Relikt im Spiel war - das "geht ganz random auf".
+ *
+ * Gekostet hat der Ausbau nichts: im Mitschnitt folgt dem Konsolen-Ereignis
+ * 29 ms spaeter PopulateInventoryGrid. Fuer 29 ms Vorsprung war das der
+ * falsche Preis.
+ *
+ * OHNE DEN BACKGROUND-HERZSCHLAG: "Background.lua: Update the Profile
+ * Variable" stand hier lange als Notnagel fuer Bildschirme, die sonst nichts
+ * melden. Er ist keiner. Nachgemessen an einem Mitschnitt schlaegt er in
+ * unregelmaessigen Abstaenden zu - mal Sekunden, mal Minuten - und traf damit
+ * beides: einmal schloss er die Anzeige 4 s BEVOR der Spieler sein Relikt
+ * waehlte, ein andermal erst 20 s NACHDEM er den Bildschirm verlassen hatte.
+ * Was ihn ersetzt, steht weiter unten (RE_INIT_MAPPING).
+ */
+const RE_SELECT_OPEN   = /ThemedProjectionManager\.lua:\s*PopulateInventoryGrid|(?:Created|Subscribing for)\s+\S*ThemedProjectionManager\.swf/;
 
-   OHNE DEN BACKGROUND-HERZSCHLAG: "Background.lua: Update the Profile
-   Variable" stand hier lange als Notnagel fuer Bildschirme, die sonst nichts
-   melden. Er ist keiner. Nachgemessen an einem Mitschnitt schlaegt er in
-   unregelmaessigen Abstaenden zu - mal Sekunden, mal Minuten - und traf damit
-   beides: einmal schloss er die Anzeige 4 s BEVOR der Spieler sein Relikt
-   waehlte, ein andermal erst 20 s NACHDEM er den Bildschirm verlassen hatte.
-   Was ihn ersetzt, steht direkt darunter (RE_INIT_MAPPING). Im Mitschnitt
-   schliessen damit alle zwoelf Sitzungen auf ihr echtes Ausstiegssignal. */
-const RE_SELECT_OPEN   = /ThemedProjectionManager\.lua:\s*PopulateInventoryGrid|Subscribing for \S*ThemedProjectionManager\.swf|UIConsoleTrigger::Open\(\)\s+\S*UIConsoleTrigger3/;
-const RE_SELECT_CLOSED = /Subscribing for \S*ChatRedux\.swf|UIConsoleTrigger::Open\(\)\s+\S*UIConsoleTrigger(?!3)|(?:ThemedMainMenu|RadialSolarMap|PauseMenu|TopMenu)\.lua|(?:TennoShipAvatar|TennoMotion|MotionController|WallSlideController).*Setting PM_|Created\s+\S*(?:Transmission|Dialog|MapRedux|ThemedMainMenu|RadialSolarMap)\.swf|MatchingService::LeaveSquad|Set squad mission/;
+/* Der Gegenzug. UIConsoleTrigger steht jetzt OHNE Nummer hier: aufgehen laesst
+   die Auswahl keine Konsole mehr, also heisst jede aufgehende Konsole, dass
+   der Spieler woanders ist. */
+const RE_SELECT_CLOSED = /Subscribing for \S*ChatRedux\.swf|UIConsoleTrigger::Open\(\)|(?:ThemedMainMenu|RadialSolarMap|PauseMenu|TopMenu)\.lua|(?:TennoShipAvatar|TennoMotion|MotionController|WallSlideController).*Setting PM_|Created\s+\S*(?:Transmission|Dialog|MapRedux|ThemedMainMenu|RadialSolarMap)\.swf|MatchingService::LeaveSquad|Set squad mission/;
 
 /**
  * Der schnelle Schluss: der Eingabefilter wechselt weg vom Menue.
@@ -131,6 +159,7 @@ export class LogWatcher extends EventEmitter {
     this.relicSelectActive = false;
     this.relicSelectOpenedAt = 0;
     this.relicSelectArmedAt = 0;
+    this.selectGuard = null;      // Notbremse, siehe armSelectGuard()
     this.busy = false;
     this.lastActivity = 0;          // Zeitstempel des letzten game-activity
   }
@@ -154,6 +183,8 @@ export class LogWatcher extends EventEmitter {
   stop() {
     clearInterval(this.timer);
     this.timer = null;
+    clearTimeout(this.selectGuard);
+    this.selectGuard = null;
   }
 
   async tick() {
@@ -250,7 +281,12 @@ export class LogWatcher extends EventEmitter {
     if (!this.relicSelectActive && RE_SELECT_OPEN.test(line)) {
       this.relicSelectActive = true;
       this.relicSelectOpenedAt = logSec;
-      this.relicSelectArmedAt = 0;
+      /* Faengt der Mitschnitt erst bei der Anmeldezeile an - etwa weil die App
+         mitten in der Reliktauswahl gestartet wurde -, ist der Bildschirm mit
+         genau dieser Zeile schon scharf. Sonst wartet der Schluss auf eine
+         Anmeldung, die nicht mehr kommt. */
+      this.relicSelectArmedAt = RE_SELECT_ARMED.test(line) ? logSec : 0;
+      this.armSelectGuard();
       this.emit('relic-select-open', { at: Date.now() });
       return;
     }
@@ -282,9 +318,32 @@ export class LogWatcher extends EventEmitter {
       : null;
     const leftMenu = mapping && !/MenuInputFilter$/.test(mapping[1]);
 
-    if (leftMenu || RE_SELECT_CLOSED.test(line)) {
-      this.relicSelectActive = false;
-      this.emit('relic-select-closed', { at: Date.now() });
-    }
+    if (leftMenu || RE_SELECT_CLOSED.test(line)) this.closeSelect();
+  }
+
+  closeSelect() {
+    if (!this.relicSelectActive) return;
+    this.relicSelectActive = false;
+    clearTimeout(this.selectGuard);
+    this.selectGuard = null;
+    this.emit('relic-select-closed', { at: Date.now() });
+  }
+
+  /**
+   * Notbremse gegen eine Anzeige, die stehen bleibt.
+   *
+   * Der Schluss haengt an einer Logzeile. Bleibt die aus - das Spiel stuerzt
+   * ab, DE benennt eine Zeile um, das Log wird gedreht -, klebt die Empfehlung
+   * ueber dem Bild und niemand wird sie los ausser ueber die Tastenkombination.
+   * Ueber einem laufenden Spiel ist das die schlechteste aller Eigenschaften,
+   * deshalb entscheidet ab jetzt die Uhr mit.
+   *
+   * Grosszuegig bemessen: vor einer Rissmission steht man auch mal zwei
+   * Minuten vor seinen Relikten und rechnet.
+   */
+  armSelectGuard() {
+    clearTimeout(this.selectGuard);
+    this.selectGuard = setTimeout(() => this.closeSelect(), SELECT_MAX_MS);
+    this.selectGuard.unref?.();
   }
 }

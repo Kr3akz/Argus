@@ -4,7 +4,9 @@
  *  - Erkennung mehrzeiliger Kartennamen (z.B. "Orthos Prime Blueprint", "Karyst Prime Handle")
  *  - Sonderzeichen (& vs and), Zahlen (2X Forma) und OCR-Vertipper
  *  - Echte Bildschirnaufnahme aus data/ocr/reward-2026-08-20T17-53-33.json
- *  - Schnellerfassung ueber den persistenten In-Memory-Worker
+ *  - Zusammenlegen zweier unvollstaendiger Aufnahmen
+ *  - Rahmen aus einem Ausschnitt in Bildschirmkoordinaten
+ *  - Schnellerfassung ueber den persistenten Erkennungsprozess
  *
  *   node src/cli/ocr-test.js
  */
@@ -12,7 +14,9 @@ import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { loadRelicTables, allRewardNames } from '../core/relics.js';
-import { buildRewardIndex, extractRewards, scanRewardScreen, stopOcrWorker } from '../core/rewardscan.js';
+import {
+  buildRewardIndex, extractRewards, mergeRewards, scanRewardScreen, stopOcrWorker
+} from '../core/rewardscan.js';
 
 console.log('=== Relikt-Belohnungserkennung (OCR) Test ===\n');
 
@@ -95,8 +99,58 @@ if (existsSync(realJsonPath)) {
   console.log('   (Datensatz nicht vorhanden, uebersprungen)');
 }
 
-// ---------------- Test 4: Fast Worker OCR Scan ----------------
-console.log('\n5. Test: Fast Worker In-Memory OCR Scan (Bilddatei-Auswertung)');
+// ---------------- Test 4: Zusammenlegen unvollstaendiger Aufnahmen ----------
+console.log('\n5. Test: Zwei halbe Aufnahmen ergeben vier Karten');
+/* Der Bildschirm baut sich auf, waehrend gelesen wird: der erste Blick sieht
+   Karte 1 und 2, der zweite Karte 3 und 4. Keiner allein ist vollstaendig. */
+const halfA = extractRewards({
+  ok: true, region: { x: 0, y: 0, w: 2560, h: 1440 },
+  lines: [
+    { text: 'Pyrana Prime Barrel',     words: [{ text: 'Pyrana', x: 678,  y: 581, w: 234, h: 30 }] },
+    { text: 'Vadarya Prime Receiver',  words: [{ text: 'Vadarya', x: 977, y: 581, w: 283, h: 30 }] }
+  ]
+}, index);
+const halfB = extractRewards({
+  ok: true, region: { x: 0, y: 0, w: 2560, h: 1440 },
+  lines: [
+    { text: 'Vadarya Prime Receiver',  words: [{ text: 'Vadarya', x: 977,  y: 581, w: 283, h: 30 }] },
+    { text: 'Dual Zoren Prime Handle', words: [{ text: 'Dual',    x: 1295, y: 581, w: 294, h: 24 }] },
+    { text: 'Perigale Prime Stock',    words: [{ text: 'Perigale', x: 1642, y: 581, w: 247, h: 30 }] }
+  ]
+}, index);
+assert(halfA.rewards.length === 2, 'Erste Aufnahme allein: 2 Karten');
+assert(halfB.rewards.length === 3, 'Zweite Aufnahme allein: 3 Karten');
+
+const both = mergeRewards(halfA, halfB);
+assert(both.rewards.length === 4, 'Zusammengelegt: alle 4 Karten');
+assert(both.complete === true, 'Zusammengelegt gilt als vollstaendig');
+assert(both.rewards.map(r => r.position).join() === '1,2,3,4', 'Nummerierung neu vergeben');
+assert(both.rewards[0]?.name === 'Pyrana Prime Barrel', 'Karte 1 aus der ersten Aufnahme');
+assert(both.rewards[3]?.name === 'Perigale Prime Stock', 'Karte 4 aus der zweiten Aufnahme');
+assert(both.rewards.filter(r => r.name === 'Vadarya Prime Receiver').length === 1,
+       'Die doppelt gelesene Karte steht nur einmal da');
+
+// ---------------- Test 5: Ausschnitt -> Bildschirmkoordinaten --------------
+console.log('\n6. Test: Rahmen aus einem Ausschnitt sind Bildschirmkoordinaten');
+/* Wird nur der Streifen aufgenommen, in dem die Namen stehen, zaehlt die
+   Erkennung ab der Oberkante DES STREIFENS. Die Preisschilder im Spiel
+   brauchen aber die Stelle auf dem BILDSCHIRM - sonst sitzen sie um den
+   Versatz des Streifens zu hoch. */
+const cropped = extractRewards({
+  ok: true, region: { x: 0, y: 403, w: 2560, h: 490 },
+  lines: [
+    { text: 'Pyrana Prime Barrel',     words: [{ text: 'Pyrana',   x: 678,  y: 178, w: 234, h: 30 }] },
+    { text: 'Vadarya Prime Receiver',  words: [{ text: 'Vadarya',  x: 977,  y: 178, w: 283, h: 30 }] },
+    { text: 'Dual Zoren Prime Handle', words: [{ text: 'Dual',     x: 1295, y: 178, w: 294, h: 24 }] },
+    { text: 'Perigale Prime Stock',    words: [{ text: 'Perigale', x: 1642, y: 178, w: 247, h: 30 }] }
+  ]
+}, index);
+assert(cropped.rewards.length === 4, 'Alle 4 Karten im Ausschnitt erkannt');
+assert(cropped.rewards[0]?.box.y === 581, 'Rahmen um den Versatz des Ausschnitts verschoben (178 + 403)');
+assert(cropped.rewards[0]?.box.x === 678, 'Waagerecht unveraendert, der Ausschnitt beginnt bei x = 0');
+
+// ---------------- Test 6: Fast Worker OCR Scan ----------------
+console.log('\n7. Test: Erkennungsprozess ohne Bild auf der Platte (Bilddatei-Auswertung)');
 const testPng = path.resolve('data/ocr/reward-2026-08-20T17-53-33.png');
 if (existsSync(testPng)) {
   const start = Date.now();

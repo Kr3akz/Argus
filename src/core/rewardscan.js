@@ -12,33 +12,25 @@
  *   verlesenen "kris Grip" wird so wieder "Paris Prime Grip". Erkannt werden
  *   muss nur genug, um im Kandidatenfeld eindeutig zu sein.
  *
- * NACHGEMESSEN (2560x1440, deutsche Windows-Erkennung, englischer Client):
- *   Alle vier Namen fehlerfrei gelesen, Aufnahme und Erkennung in 1,3 s -
- *   von 15 Sekunden Bedenkzeit.
- *
  * WAS AUFGENOMMEN WIRD:
- *   Ein Bild des Hauptbildschirms, das nach der Erkennung geloescht wird.
- *   Es verlaesst den Rechner nicht.
+ *   Ein Bild des Hauptbildschirms - oder nur des Streifens, in dem die Namen
+ *   stehen. Es geht direkt in die Erkennung und landet gar nicht erst auf der
+ *   Platte, ausser jemand verlangt es ausdruecklich (siehe ocr-host.ps1).
  */
-import { execFile } from 'node:child_process';
-import { readFile, unlink, mkdir } from 'node:fs/promises';
-import { promisify } from 'node:util';
-import path from 'node:path';
-import { dataFile, resourceFile } from './paths.js';
-
-const run = promisify(execFile);
-
-const SCRIPT  = () => resourceFile('tools', 'ocr-capture.ps1');
-const TMP_DIR = () => dataFile('ocr');
+import { recognise, warmUp, stop as stopOcrHost } from './ocr-host.js';
 
 /* Ab hier gilt ein unscharfer Treffer als derselbe Name. 0.72 laesst rund ein
    Viertel der Zeichen daneben liegen - genug fuer verlesene Buchstaben, zu
    wenig, um zwei verschiedene Prime-Teile zu verwechseln. */
 const FUZZY_MIN = 0.72;
 
-/* Die vier Namen stehen auf einer Hoehe. Alles, was weiter entfernt liegt,
-   gehoert zu etwas anderem auf dem Bildschirm. */
-const ROW_TOLERANCE_PX = 60;
+/* Wie viele Textzeilen ein Kartenname hoechstens belegt.
+   "Caliban Prime Neuroptics Blueprint" sind 34 Zeichen - im Spiel bricht das
+   unter der Karte auf zwei, bei schmalen Karten auf drei Zeilen um. Wer nur
+   einzelne Zeilen abgleicht, findet solche Namen NIE: "Caliban Prime" allein
+   erreicht gegen den vollen Namen keine 0.72. Genau daran fehlten bisher
+   regelmaessig ein oder zwei der vier Karten. */
+const MAX_LINES_PER_NAME = 3;
 
 const normalise = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
@@ -100,6 +92,60 @@ export function buildRewardIndex(names) {
   return index;
 }
 
+/** Rahmen einer erkannten Zeile, aus den Rahmen ihrer Woerter. */
+function lineBox(line) {
+  const words = line.words || [];
+  if (!words.length) return null;
+  const x = Math.min(...words.map(w => w.x));
+  const y = Math.min(...words.map(w => w.y));
+  const right = Math.max(...words.map(w => w.x + w.w));
+  const bottom = Math.max(...words.map(w => w.y + w.h));
+  return { text: line.text, x, y, w: right - x, h: bottom - y, cx: (x + right) / 2 };
+}
+
+function unionBox(boxes) {
+  const x = Math.min(...boxes.map(b => b.x));
+  const y = Math.min(...boxes.map(b => b.y));
+  const right = Math.max(...boxes.map(b => b.x + b.w));
+  const bottom = Math.max(...boxes.map(b => b.y + b.h));
+  return { x, y, w: right - x, h: bottom - y };
+}
+
+/**
+ * Gehoert `next` als Folgezeile zu `prev`, also zu derselben Karte?
+ *
+ * Zwei Bedingungen, beide notwendig: die Zeile steht DARUNTER und dicht
+ * darunter, und sie steht ungefaehr mittig unter derselben Karte. Ohne die
+ * zweite waechst der Name der ersten Karte in die zweite hinein - die vier
+ * stehen schliesslich auf einer Hoehe nebeneinander.
+ */
+function continuesCard(prev, next) {
+  if (next.y <= prev.y + prev.h * 0.5) return false;          // nicht darunter
+  if (next.y - (prev.y + prev.h) > prev.h * 1.2) return false; // zu weit weg
+  const reach = Math.max(prev.w, next.w) * 0.75;
+  return Math.abs(prev.cx - next.cx) <= reach;
+}
+
+/**
+ * Die naechste Zeile derselben Karte, oder -1.
+ *
+ * Gesucht wird ueber die ganze Liste ab `after` und nicht nur beim direkten
+ * Nachbarn - die Liste ist nach Hoehe sortiert, die Karten stehen aber
+ * nebeneinander. Von mehreren moeglichen Fortsetzungen gewinnt die hoechste,
+ * bei gleicher Hoehe die mittiger stehende.
+ */
+function continuationOf(lines, prev, after) {
+  let best = -1;
+  for (let j = after + 1; j < lines.length; j++) {
+    if (!continuesCard(prev, lines[j])) continue;
+    if (best < 0 ||
+        lines[j].y < lines[best].y ||
+        (lines[j].y === lines[best].y &&
+         Math.abs(lines[j].cx - prev.cx) < Math.abs(lines[best].cx - prev.cx))) best = j;
+  }
+  return best;
+}
+
 /**
  * Wertet ein OCR-Ergebnis aus: welche Zeilen sind Belohnungen, und in welcher
  * Reihenfolge stehen sie auf dem Bildschirm?
@@ -108,30 +154,66 @@ export function buildRewardIndex(names) {
  * Aufnahme pruefen laesst, ohne das Spiel zu starten.
  */
 export function extractRewards(ocr, index) {
+  /* Rahmen kommen in Koordinaten des AUSSCHNITTS an. Ab hier sind sie
+     Bildschirmkoordinaten - sonst liesse sich das Ergebnis zweier Aufnahmen
+     mit verschiedenem Ausschnitt nicht zusammenlegen, und die Preisschilder
+     saessen um den Versatz des Ausschnitts daneben. */
+  const originX = ocr.region?.x ?? 0;
+  const originY = ocr.region?.y ?? 0;
+
+  const lines = (ocr.lines || [])
+    .map(lineBox)
+    .filter(Boolean)
+    .sort((a, b) => a.y - b.y || a.x - b.x);
+
+  /* Jede Zeile, jede Zeile plus Fortsetzung, jede Zeile plus zwei:
+     welcher dieser Texte trifft einen bekannten Namen?
+
+     Die Fortsetzung wird ueber die LAGE gesucht, nicht ueber die Nachbarschaft
+     in der Liste. Die Liste ist nach Hoehe sortiert, und die vier Karten
+     stehen nebeneinander - auf "Karyst Prime" folgt darin "Hydroid Prime" von
+     der Nachbarkarte, nicht das "Handle" der eigenen. */
+  const candidates = [];
+  for (let i = 0; i < lines.length; i++) {
+    const group = [lines[i]];
+    const rows = [i];
+    for (let n = 0; n < MAX_LINES_PER_NAME; n++) {
+      const hit = matchReward(group.map(g => g.text).join(' '), index);
+      if (hit) candidates.push({ ...hit, rows: [...rows], box: unionBox(group) });
+
+      const j = continuationOf(lines, group[group.length - 1], rows[rows.length - 1]);
+      if (j < 0) break;
+      group.push(lines[j]);
+      rows.push(j);
+    }
+  }
+
+  /* Bester Treffer zuerst, bei Gleichstand der laengere: "Mesa Prime Systems"
+     und "Mesa Prime Systems Blueprint" koennen beide passen, gemeint ist der
+     vollstaendige. Jede Zeile gehoert am Ende zu hoechstens einer Karte. */
+  candidates.sort((a, b) => b.score - a.score || b.rows.length - a.rows.length);
+
+  const usedLines = new Set();
   const hits = [];
-  for (const line of ocr.lines || []) {
-    const hit = matchReward(line.text, index);
-    if (!hit) continue;
-
-    /* Der ganze Rahmen der Zeile, nicht nur das erste Wort: darunter soll
-       spaeter ein Preisschild sitzen, und das gehoert unter die Mitte des
-       Namens - nicht unter dessen linken Rand. */
-    const words = line.words || [];
-    if (!words.length) continue;
-    const x = Math.min(...words.map(w => w.x));
-    const y = Math.min(...words.map(w => w.y));
-    const right = Math.max(...words.map(w => w.x + w.w));
-    const bottom = Math.max(...words.map(w => w.y + w.h));
-
-    hits.push({ ...hit, x, y, w: right - x, h: bottom - y });
+  for (const c of candidates) {
+    if (c.rows.some(r => usedLines.has(r))) continue;
+    for (const r of c.rows) usedLines.add(r);
+    hits.push({
+      name: c.name, score: c.score,
+      x: originX + c.box.x, y: originY + c.box.y, w: c.box.w, h: c.box.h
+    });
   }
 
   /* Nach Zeilen gruppieren und die groesste Gruppe nehmen: ein Prime-Name kann
      auch anderswo auf dem Bildschirm stehen - im Arsenal, im Chat -, aber die
-     Belohnungen stehen zu viert nebeneinander auf einer Hoehe. */
+     Belohnungen stehen zu viert nebeneinander auf einer Hoehe.
+
+     Die Toleranz haengt an der Texthoehe und nicht an einer festen Pixelzahl:
+     was bei 1440p 60 px sind, ist bei 1080p schon zu grosszuegig. */
+  const tolerance = rowTolerance(hits);
   let best = [];
   for (const hit of hits) {
-    const row = hits.filter(h => Math.abs(h.y - hit.y) <= ROW_TOLERANCE_PX);
+    const row = hits.filter(h => Math.abs(h.y - hit.y) <= tolerance);
     if (row.length > best.length) best = row;
   }
 
@@ -150,43 +232,84 @@ export function extractRewards(ocr, index) {
      Sie entsteht aus der Reihenfolge der TREFFER von links nach rechts - fehlt
      die erste Karte, wird aus der zweiten eine Eins, und die Nummer zeigt auf
      die falsche Karte. Wer sie anzeigt, muss das wissen. */
-  return { rewards, complete: best.length >= 4,
+  return { rewards, complete: rewards.length >= 4,
            language: ocr.language, lines: (ocr.lines || []).length, region: ocr.region || null };
+}
+
+function rowTolerance(hits) {
+  if (!hits.length) return 60;
+  const heights = hits.map(h => h.h).sort((a, b) => a - b);
+  const median = heights[Math.floor(heights.length / 2)];
+  return Math.max(40, median * 2);
+}
+
+/**
+ * Zwei Aufnahmen desselben Bildschirms zu einem Ergebnis zusammenlegen.
+ *
+ * WARUM NICHT EINFACH DIE BESSERE NEHMEN:
+ *   Der Bildschirm baut sich auf, waehrend gelesen wird, und mitten hinein
+ *   schiebt sich eine Meldung oder ein Mitspielername. Ein Blick liest dann
+ *   Karte 1, 2 und 4, der naechste 2, 3 und 4 - beide unvollstaendig, zusammen
+ *   aber vollstaendig. Wer nur den besseren Blick behaelt, wirft die eine
+ *   Karte weg, die der andere hatte.
+ *
+ * Zusammengelegt wird ueber die Position: dieselbe Karte steht in beiden
+ * Aufnahmen an derselben Stelle. Bei zwei Lesungen derselben Karte gewinnt
+ * die mit der besseren Bewertung.
+ */
+export function mergeRewards(a, b) {
+  if (!a?.rewards?.length) return b;
+  if (!b?.rewards?.length) return a;
+
+  const merged = [];
+  for (const reward of [...a.rewards, ...b.rewards]) {
+    /* Toleranz aus der Kartenbreite: die vier stehen weit auseinander, aber
+       derselbe Name liegt zwischen zwei Aufnahmen nur wenige Pixel daneben. */
+    const near = merged.find(m =>
+      Math.abs(m.box.x - reward.box.x) <= Math.max(60, reward.box.w * 0.5) &&
+      Math.abs(m.box.y - reward.box.y) <= Math.max(40, reward.box.h * 1.5));
+
+    if (!near) { merged.push({ ...reward }); continue; }
+    if (reward.score > near.score) Object.assign(near, reward);
+  }
+
+  const rewards = merged
+    .sort((x, y) => x.box.x - y.box.x)
+    .slice(0, 4)
+    .map((r, i) => ({ ...r, position: i + 1 }));
+
+  return {
+    ok: true,
+    rewards,
+    complete: rewards.length >= 4,
+    language: b.language || a.language,
+    lines: (a.lines || 0) + (b.lines || 0),
+    /* Der Ausschnitt der letzten Aufnahme, nur noch zur Diagnose: die Rahmen
+       oben sind bereits Bildschirmkoordinaten. */
+    region: b.region || a.region
+  };
 }
 
 /**
  * Nimmt den Bildschirm auf und gibt die gefundenen Belohnungen zurueck,
  * sortiert wie sie auf dem Bildschirm stehen: von links nach rechts.
+ *
+ * top/bottom schneiden einen waagerechten Streifen aus, als Anteil der
+ * Bildschirmhoehe - ohne Angabe wird der ganze Hauptbildschirm gelesen.
  */
-export async function scanRewardScreen(index, { keepImage = false } = {}) {
-  const stamp = Date.now();
-  const png  = path.join(TMP_DIR(), `scan-${stamp}.png`);
-  const json = path.join(TMP_DIR(), `scan-${stamp}.json`);
+export async function scanRewardScreen(index, { top, bottom, sourceImage, keepImage } = {}) {
+  /* ARGUS_SCAN_IMAGE wertet ein vorhandenes Bild aus, statt den Bildschirm
+     aufzunehmen - fuer Tests ohne laufendes Spiel. */
+  const source = sourceImage || process.env.ARGUS_SCAN_IMAGE || null;
 
-  await mkdir(TMP_DIR(), { recursive: true });
+  const res = await recognise({ top, bottom, source, png: keepImage || undefined });
+  if (!res.ok) return { ok: false, error: res.error || 'OCR fehlgeschlagen' };
 
-  try {
-    /* ARGUS_SCAN_IMAGE wertet ein vorhandenes Bild aus, statt den Bildschirm
-       aufzunehmen - fuer Tests ohne laufendes Spiel. */
-    const args = ['-NoProfile', '-ExecutionPolicy', 'Bypass',
-                  '-File', SCRIPT(), '-Png', png, '-Json', json];
-    if (process.env.ARGUS_SCAN_IMAGE) args.push('-Source', process.env.ARGUS_SCAN_IMAGE);
-
-    await run('powershell', args, { windowsHide: true, timeout: 12000 });
-
-    /* PowerShell schreibt UTF-8 gern mit BOM - JSON.parse bricht daran ab. */
-    const res = JSON.parse((await readFile(json, 'utf8')).replace(/^\uFEFF/, ''));
-    if (!res.ok) return { ok: false, error: res.error || 'OCR fehlgeschlagen' };
-
-    return { ok: true, ...extractRewards(res, index) };
-  } catch (err) {
-    return { ok: false, error: err.message };
-  } finally {
-    /* Das Bild hat seinen Zweck erfuellt. Bildschirmfotos sammeln sich sonst
-       zu Gigabyte an - und niemand hat darum gebeten, sie aufzubewahren. */
-    if (!keepImage) {
-      await unlink(png).catch(() => {});
-      await unlink(json).catch(() => {});
-    }
-  }
+  return { ok: true, ...extractRewards(res, index) };
 }
+
+/** Die Erkennung vorziehen, bevor jemand auf sie wartet. */
+export { warmUp as warmUpOcr };
+
+/** Den Erkennungsprozess beenden - fuer CLI-Werkzeuge und das Herunterfahren. */
+export { stopOcrHost as stopOcrWorker };
