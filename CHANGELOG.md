@@ -21,6 +21,18 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.1.3] - 2026-08-28
+
+### Changed
+
+- **An update installs without a second window** — *Install and restart Argus*
+  now closes the app, installs in the background and brings Argus back up on the
+  new version. Until now the installer opened its own window and asked once more
+  where to install, although the window in Argus had already shown the version,
+  what changed and the checksum it had verified; the same questions, a second
+  time. It installs into the folder it was installed to before. Nothing changes
+  for the **portable** build — there is nothing to install there.
+
 ## [1.1.2] - 2026-08-28
 
 ### Fixed

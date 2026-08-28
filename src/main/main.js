@@ -3761,7 +3761,7 @@ ipcMain.handle('notifications:test', async () => {
  *      samt SHA256SUMS.txt
  *   3. Die App hier fragt stuendlich bei der Releases-API nach
  *   4. Ist die Version dort hoeher, erscheint das Abzeichen in der Titelleiste
- *   5. Auf Knopfdruck: laden, Pruefsumme vergleichen, Installer starten
+ *   5. Auf Knopfdruck: laden, Pruefsumme vergleichen, still installieren
  *
  * Schritt 5 ist der einzige, der etwas ausfuehrt - und nur eine Datei, deren
  * Hash zu dem passt, den derselbe Workflow-Lauf veroeffentlicht hat. Siehe
@@ -3780,7 +3780,8 @@ let readyInstaller = null;
 
 /* Die Sicht, die der Renderer bekommt. status ist der einzige Wert, an dem
    die Oberflaeche haengt:
-     idle | checking | uptodate | available | downloading | ready | error   */
+     idle | checking | uptodate | available | downloading | ready |
+     installing | error                                                   */
 let updateState = { status: 'idle', current: app.getVersion(), auto: true };
 
 /* Erst 15 Sekunden nach dem Start - beim Hochfahren laufen Katalog, Profil
@@ -3789,6 +3790,13 @@ const UPDATE_FIRST_DELAY = 15000;
 /* Stuendlich. GitHub laesst 60 Anfragen je Stunde und IP zu; eine davon fuer
    den Update-Check zu verbrauchen, faellt neben dem Inventar-Abruf nicht auf. */
 const UPDATE_INTERVAL = 60 * 60 * 1000;
+
+/* Zeit zwischen dem Start des Installers und dem Ende der App. Sie ist nicht
+   fuer den Installer da - der wartet mit --updated von sich aus, bis wir weg
+   sind -, sondern fuer den Blick aufs Fenster: ohne sie waere das Letzte, was
+   man sieht, der eigene Klick, und nicht die Zeile, die erklaert, warum Argus
+   gleich verschwindet. */
+const INSTALL_QUIT_DELAY = 1200;
 
 /* Der portable Build wird nicht installiert, sondern ist die .exe selbst -
    electron-builder setzt dafuer diese Variable. Ein Setup-Installer waere
@@ -3839,8 +3847,10 @@ async function runUpdateCheck({ manual = false } = {}) {
   if (updateBusy) return updateState;
   if (!manual && !updateCheckEnabled) return updateState;
   /* Ein laufender Download darf nicht von einer Pruefung ueberschrieben
-     werden - sonst springt der Balken zurueck auf "verfuegbar". */
+     werden - sonst springt der Balken zurueck auf "verfuegbar". Waehrend der
+     Installation gilt dasselbe, nur endgueltiger: die App ist gleich zu. */
   if (updateState.status === 'downloading') return updateState;
+  if (updateState.status === 'installing') return updateState;
 
   updateBusy = true;
   pushUpdateState({ status: 'checking', error: null });
@@ -3979,10 +3989,34 @@ ipcMain.handle('update:download', async () => {
 /**
  * Ausfuehren, was geprueft daliegt.
  *
- * Beim Installer: starten und die App schliessen - NSIS kann eine laufende
- * Fassung nicht ueberschreiben. Der Installer selbst bleibt sichtbar, mit
- * Zielordner und Fortschritt; still im Hintergrund zu installieren waere bei
- * einem Programm, das den Speicher des Spielprozesses liest, der falsche Ton.
+ * DER INSTALLER LAEUFT STILL. Drei Argumente machen das aus, und jedes davon
+ * wird gebraucht - nachgelesen in den NSIS-Vorlagen von electron-builder
+ * (node_modules/app-builder-lib/templates/nsis/):
+ *
+ *   /S           keine Oberflaeche. Der Zielordner faellt damit nicht unter
+ *                den Tisch: multiUser.nsh liest ihn aus InstallLocation in
+ *                der Registry - also derselbe Ordner wie beim ersten Mal,
+ *                auch wenn er dort von Hand gewaehlt wurde.
+ *   --updated    ohne das Flag fragt der Installer "Argus laeuft noch,
+ *                schliessen?" - und im stillen Lauf beantwortet er die Frage
+ *                selbst mit Ja und schiesst die App ab. Mit dem Flag wartet
+ *                er stattdessen, bis sie von allein weg ist
+ *                (allowOnlyOneInstallerInstance.nsh).
+ *   --force-run  startet Argus, wenn er fertig ist. Fehlt es, endet ein
+ *                Update damit, dass nichts mehr da ist.
+ *
+ * WARUM STILL - hier stand einmal das Gegenteil:
+ *   Ein sichtbarer Installer ist bei der ERSTEN Installation richtig. Wer ein
+ *   Programm einlaesst, das den Speicher des Spielprozesses liest, soll sehen,
+ *   wohin es installiert wird. Beim Update ist genau das laengst entschieden,
+ *   und der Weg hierher fuehrt ueber ein Fenster in Argus, das Version,
+ *   Notizen und die nachgerechnete Pruefsumme zeigt. Ein zweites Fenster, das
+ *   dieselbe Frage noch einmal stellt, ist keine Zustimmung mehr - nur ein
+ *   weiterer Klick.
+ *
+ * Zu beenden ist die App trotzdem: NSIS kann die laufende Argus.exe nicht
+ * ueberschreiben. Zu sehen bleibt davon ein Fenster, das zugeht, und eines,
+ * das ein paar Sekunden spaeter in der neuen Fassung wieder aufgeht.
  *
  * Beim portablen Build gibt es nichts zu installieren: dort oeffnet sich der
  * Ordner mit der neuen .exe, und die alte ersetzt man selbst. Die laufende
@@ -3991,6 +4025,9 @@ ipcMain.handle('update:download', async () => {
  */
 ipcMain.handle('update:install', async () => {
   if (!readyInstaller) return { ok: false, error: 'Nothing has been downloaded yet' };
+  /* Der Knopf ist danach abgeschaltet, aber ein zweiter Installer waere hier
+     der eine Fall, in dem ein doppelter Klick wirklich etwas anrichtet. */
+  if (updateState.status === 'installing') return { ok: false, error: 'The installer is already running' };
   if (!await updates.stillThere(readyInstaller.path, readyInstaller.size)) {
     readyInstaller = null;
     pushUpdateState({ status: 'available', error: 'The downloaded file is gone - please download it again' });
@@ -4003,14 +4040,20 @@ ipcMain.handle('update:install', async () => {
   }
 
   try {
-    spawn(readyInstaller.path, [], { detached: true, stdio: 'ignore' }).unref();
+    /* detached, weil der Installer uns ueberleben MUSS: er ersetzt gerade die
+       Dateien des Prozesses, der ihn gestartet hat. */
+    spawn(readyInstaller.path, ['--updated', '/S', '--force-run'], {
+      detached: true, stdio: 'ignore', windowsHide: true
+    }).unref();
   } catch (err) {
     return { ok: false, error: 'Could not start the installer: ' + err.message };
   }
-  /* Kurz warten, damit der Installer wirklich oben ist, bevor das Fenster
-     verschwindet - sonst sieht es aus, als waere die App abgestuerzt. */
-  setTimeout(() => app.quit(), 600);
-  return { ok: true };
+
+  /* Erst jetzt: bis hierher konnte der Start noch scheitern, und dann stuende
+     "Installing" in einem Fenster, in dem nichts installiert wird. */
+  pushUpdateState({ status: 'installing', error: null });
+  setTimeout(() => app.quit(), INSTALL_QUIT_DELAY);
+  return { ok: true, silent: true };
 });
 
 /** Version, Build und Unterbau fuer den Abschnitt "About" in den Einstellungen. */

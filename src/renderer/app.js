@@ -7933,7 +7933,7 @@ function renderUpdateBadge() {
   const st = updateState.status;
   /* Sichtbar nur, wenn es wirklich etwas zu tun gibt. Ein Abzeichen, das
      "alles aktuell" meldet, ist ein Abzeichen, das man wegsieht. */
-  const show = st === 'available' || st === 'downloading' || st === 'ready';
+  const show = st === 'available' || st === 'downloading' || st === 'ready' || st === 'installing';
   badge.classList.toggle('hidden', !show);
   if (!show) return;
 
@@ -7941,6 +7941,11 @@ function renderUpdateBadge() {
     const pct = updateState.size ? Math.floor((updateState.received || 0) / updateState.size * 100) : 0;
     text.textContent = updateState.size ? `${pct}%` : 'Loading …';
     badge.title = 'Downloading the update';
+  } else if (st === 'installing') {
+    /* Das Abzeichen ist das Einzige, was von hier aus in jedem Bereich zu
+       sehen ist - auch wenn das Fenster dahinter gerade zugeklickt wurde. */
+    text.textContent = 'Installing';
+    badge.title = 'Argus is installing the update and will restart';
   } else if (st === 'ready') {
     text.textContent = 'Install';
     badge.title = `Version ${updateState.latest} is ready to install`;
@@ -7961,7 +7966,10 @@ function renderUpdateModal() {
   const progress = $('update-progress');
   const status   = $('update-status');
 
-  title.textContent = st === 'ready' ? 'Ready to install' : `Version ${updateState.latest || ''} is available`;
+  title.textContent =
+      st === 'installing' ? 'Installing the update'
+    : st === 'ready'      ? 'Ready to install'
+    : `Version ${updateState.latest || ''} is available`;
 
   const published = updateState.publishedAt
     ? new Date(updateState.publishedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
@@ -7987,7 +7995,14 @@ function renderUpdateModal() {
       : 'Downloading …';
   }
 
-  if (st === 'ready') {
+  if (st === 'installing') {
+    /* Der einzige Moment, in dem das Fenster erklaert statt meldet: gleich
+       verschwindet die App, und ohne diese Zeile saehe das aus wie ein
+       Absturz - der Installer selbst zeigt ja nichts mehr an. */
+    status.className = 'settings-note';
+    status.textContent = 'Argus is closing. The installer runs in the background and starts the new version when it is done.';
+    status.classList.remove('hidden');
+  } else if (st === 'ready') {
     /* Die Pruefsumme steht ausgeschrieben da: sie laesst sich mit der
        SHA256SUMS.txt des Releases vergleichen, ohne uns zu glauben. */
     status.className = 'settings-note ok';
@@ -8001,13 +8016,15 @@ function renderUpdateModal() {
     status.classList.add('hidden');
   }
 
-  action.disabled = st === 'downloading';
+  action.disabled = st === 'downloading' || st === 'installing';
   if (st === 'downloading') {
     action.innerHTML = 'Downloading …';
+  } else if (st === 'installing') {
+    action.innerHTML = 'Installing …';
   } else if (st === 'ready') {
     action.innerHTML = updateState.portable
       ? Icon.download(15) + '<span>Show the file</span>'
-      : Icon.download(15) + '<span>Close Argus and install</span>';
+      : Icon.download(15) + '<span>Install and restart Argus</span>';
   } else if (updateState.downloadable) {
     action.innerHTML = Icon.download(15) + `<span>Download ${esc(updateState.latest || '')}</span>`;
   } else {
@@ -8045,8 +8062,9 @@ $('update-action')?.addEventListener('click', async () => {
   if (st === 'ready') {
     const res = await window.api.installUpdate();
     /* Beim portablen Build oeffnet sich nur der Ordner - dann bleibt das
-       Fenster stehen und sagt, was jetzt zu tun ist. Beim Installer sieht
-       man diese Zeile nie: die App ist gleich zu. */
+       Fenster stehen und sagt, was jetzt zu tun ist. Beim Installer kommt der
+       Zustand "installing" ueber onUpdateChanged herein, und kurz darauf ist
+       die App zu; hier ist dann nichts mehr zu tun. */
     if (res && res.ok && res.portable) {
       applyUpdateState({ error: 'The new file is in the folder that just opened. Close Argus and replace the old .exe with it.' });
     } else if (res && !res.ok) {
@@ -8091,6 +8109,9 @@ function renderAboutUpdateRow() {
     case 'ready':
       text.textContent = `Version ${updateState.latest} has been downloaded and verified.`;
       break;
+    case 'installing':
+      text.textContent = `Installing version ${updateState.latest} — Argus will close and reopen.`;
+      break;
     case 'error':
       text.textContent = 'Could not check for updates: ' + (updateState.error || 'unknown error');
       break;
@@ -8108,7 +8129,9 @@ function renderAboutUpdateRow() {
   $('update-settings-row')?.classList.toggle('warn', updateState.status === 'error');
   $('update-settings-row')?.classList.toggle('ok', updateState.status === 'ready');
   if (btn) {
-    btn.disabled = updateState.status === 'checking' || updateState.status === 'downloading';
+    btn.disabled = updateState.status === 'checking'
+                || updateState.status === 'downloading'
+                || updateState.status === 'installing';
     btn.classList.toggle('is-refreshing', updateState.status === 'checking');
   }
   if ($('set-update-check')) $('set-update-check').checked = updateState.auto !== false;

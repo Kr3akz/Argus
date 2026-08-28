@@ -137,10 +137,12 @@ between "the file built from this source" and "some .exe"; it is therefore not o
 and a release without a checksum file sends you to the browser rather than installing
 anything.
 
-Then the installer starts — visibly, with its target folder and progress, not silently in
-the background — and Argus closes so it can be replaced. On the **portable** build there
-is nothing to install: the folder with the new `.exe` opens and you swap the old one
-yourself.
+Then the installer runs in the background, without a window of its own: Argus closes so
+its files can be replaced and comes back on the new version, in the same folder it was
+installed to before. It asks nothing further — the window you clicked in has already
+shown the version, what changed and the checksum it verified. On the **portable** build
+there is nothing to install: the folder with the new `.exe` opens and you swap the old
+one yourself.
 
 The hourly check can be turned off under **Settings → About Argus**. It is the only
 connection Argus opens without you pressing something, and nothing is ever downloaded
