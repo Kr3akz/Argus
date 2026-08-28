@@ -3567,10 +3567,18 @@ async function scanRewardsRepeatedly(stillCurrent, expected = 4, lauf = 0, onFor
 const WATCH_INTERVAL_MS = 4000;
 
 /* Mindestabstand, solange Warframe VORN steht - dort spielt jemand, und genau
-   dort faellt ein Ruckler auf. Zwoelf Sekunden lassen den 15-Sekunden-
-   Bildschirm noch in einen Blick fallen und kosten ein Drittel des normalen
-   Taktes. Im Hintergrund gilt WATCH_INTERVAL_MS: da schaut niemand hin. */
-const WATCH_FOREGROUND_MS = 12000;
+   dort faellt ein Ruckler auf.
+   HIER STEHT EIN ZIELKONFLIKT, und er laesst sich nicht wegdefinieren: Dieser
+   Wert ist zugleich die Zeit, die der Waechter einen Bildschirm verschlafen
+   kann. Zwoelf Sekunden waren zu viel - nachgemessen wurde ein Bildschirm erst
+   elf Sekunden nach dem Aufgehen bemerkt, und von fuenfzehn Sekunden
+   Bedenkzeit blieben dem Menschen davor noch dreieinhalb.
+   Sechs Sekunden sind der Ausgleich: hoechstens sechs Sekunden Verzug, und
+   immer noch dreimal weniger Zugriffe als die zwei Sekunden, mit denen der
+   Eingabeverzug gemeldet wurde. Kommt er zurueck, ist nicht dieser Wert weiter
+   zu erhoehen, sondern der Waechter abzuschalten ("relicWatch": false) - eine
+   halb blinde Erkennung hilft niemandem. */
+const WATCH_FOREGROUND_MS = 6000;
 
 /* Nach so langer Stille gibt der Waechter auf. Eine Endlosmission kann lange
    dauern, aber irgendwann ist die Reliktrunde vorbei und niemand hat es

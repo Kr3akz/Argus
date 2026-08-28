@@ -57,10 +57,13 @@ follow [semantic versioning](https://semver.org/lang/en/).
 - **Input no longer feels sluggish while the watcher runs** — reading the screen
   costs almost no CPU, but each read touches the display, and with a game in
   fullscreen that can disturb its output. Checks now run every four seconds
-  instead of two, and only every twelve seconds while Warframe is in the
-  foreground, where someone is actually playing. A fifteen-second reward screen
-  still falls into at least one check. Set `"relicWatch": false` in
-  `data/config.json` to switch the watcher off entirely.
+  instead of two, and every six seconds while Warframe is in the foreground,
+  where someone is actually playing. That interval is also how long a reward
+  screen can go unnoticed, so it is a balance rather than a maximum: twelve
+  seconds was tried and left only three of the fifteen seconds usable. If the
+  sluggishness returns, set `"relicWatch": false` in `data/config.json` to
+  switch the watcher off rather than slowing it further — a half-blind watcher
+  helps nobody.
 - **The tags no longer blink when a card or price arrives** — every partial
   result rebuilt the panel, and the entrance animation restarted each time from
   fully transparent. The panel now animates only on its first appearance.
