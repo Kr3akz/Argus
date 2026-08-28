@@ -21,6 +21,37 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.1.5] - 2026-08-28
+
+### Fixed
+
+- **Reward recognition is faster, more complete and no longer depends on the
+  log** — the overlay used to wait for two network calls before looking at the
+  screen, which added up to ten seconds of the fifteen available. The screen is
+  now read first, and names, ducats and prices fill in beside it. An enlarged
+  second pass catches cards that a single zoom level misses; measured against
+  real captures, both zoom levels together found all four names in every case
+  where either level alone did not. When Warframe runs in the background, the
+  top of the screen is watched directly for the reward banner instead of
+  relying on the log, which can be delayed by minutes when nothing else flushes
+  its buffer. Partial results appear immediately — each card goes up as soon as
+  it is read, instead of waiting for all four. Every reward screen now carries a
+  sequence number in the log, and the active relic changes only through a single
+  function that records the reason.
+- **Price tags sit on a common baseline** — each tag hung from the bottom of
+  *its own* bounding box, and bounding boxes differ in height when a name wraps.
+  The row looked staggered even though the four cards in the game are level. The
+  lowest edge of all boxes is now used as the shared baseline.
+
+### Changed
+
+- **The update badge matches the inventory filter chips** — it used to carry its
+  own sizing that resembled the chips without matching them. Padding, font size,
+  weight and transition are now taken from the active chip style; measured, both
+  come out to the same 27.8 px height. No border, because the chips themselves
+  render borderless (their `border-color` token is undefined, so the declaration
+  falls back to `none`).
+
 ## [1.1.4] - 2026-08-28
 
 ### Fixed
