@@ -16,7 +16,7 @@
  */
 import { app, BrowserWindow, ipcMain, globalShortcut, shell, Notification, screen } from 'electron';
 import path from 'node:path';
-import { existsSync, mkdirSync, renameSync, cpSync } from 'node:fs';
+import { existsSync, mkdirSync, renameSync, cpSync, createWriteStream } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -100,6 +100,10 @@ let relicAutoShow = true;
 let relicScan = true;
 /* Preisschilder direkt im Spiel, unter den vier Karten. */
 let relicTags = true;
+/* Beweisaufnahme bei Fehlschlag - siehe scanRewardsRepeatedly. Nur ueber
+   data/config.json einschaltbar, weil es ein Werkzeug zur Fehlersuche ist und
+   keine Einstellung, die jemand im Betrieb braucht. */
+let relicScanDebug = false;
 let rewardIndex = null;
 let tagWin = null;
 let tagTimer = null;
@@ -193,6 +197,44 @@ if (app.isPackaged) {
   setDataDir(path.join(app.getPath('userData'), 'data'));
   setResourceDir(process.resourcesPath);   // extraResources: tools/ liegt daneben
 }
+
+/**
+ * Die Protokollzeilen zusaetzlich in eine Datei schreiben.
+ *
+ * WARUM: In der gepackten App gibt es keine Konsole. Bleibt die Relikt-Anzeige
+ * aus, steht der Grund zwar in einer der Zeilen von handleRelicReward - nur
+ * liest sie niemand, weil sie ins Leere geht. Aus "es kam nichts" liess sich
+ * dann nicht mehr herausfinden, WO es aufgehoert hat: beim Log, bei der
+ * Erkennung, bei der Anzeige.
+ *
+ * Eine Datei, die bei jedem Start neu beginnt - kein Sammeln ueber Wochen.
+ * Sie enthaelt dasselbe wie die Konsole: keine Zugangsdaten, keine
+ * AccountIds (siehe logwatch.js), nur Ablauf und Fehler.
+ */
+function startFileLog() {
+  let stream;
+  try {
+    mkdirSync(dataFile('.'), { recursive: true });
+    stream = createWriteStream(dataFile('argus.log'), { flags: 'w' });
+  } catch {
+    return;   // Kein Schreibrecht - dann eben nur die Konsole.
+  }
+
+  for (const level of ['log', 'warn', 'error']) {
+    const original = console[level].bind(console);
+    console[level] = (...args) => {
+      original(...args);
+      try {
+        const text = args.map(a => typeof a === 'string' ? a
+          : a instanceof Error ? (a.stack || a.message)
+          : (() => { try { return JSON.stringify(a); } catch { return String(a); } })()).join(' ');
+        stream.write(`${new Date().toISOString()} [${level}] ${text}\n`);
+      } catch { /* Ein misslungener Protokolleintrag darf nichts aufhalten. */ }
+    };
+  }
+  console.log('[Start] Argus', app.getVersion(), '| Protokoll:', dataFile('argus.log'));
+}
+startFileLog();
 
 function createWindow() {
   win = new BrowserWindow({
@@ -383,6 +425,7 @@ async function loadOverlayPrefs() {
     if (typeof cfg.relicAutoShow === 'boolean') relicAutoShow = cfg.relicAutoShow;
     if (typeof cfg.relicScan === 'boolean') relicScan = cfg.relicScan;
     if (typeof cfg.relicTags === 'boolean') relicTags = cfg.relicTags;
+    if (typeof cfg.relicScanDebug === 'boolean') relicScanDebug = cfg.relicScanDebug;
     if (Number.isFinite(cfg.relicTagOffset)) {
       /* Zwischen 0 und einem Drittel der Hoehe - alles andere schoebe die
          Schilder aus dem Bild. */
@@ -3273,7 +3316,7 @@ const SCAN_BAND = { top: 0.25, bottom: 0.68 };
  *   den ganzen Bildschirm sieht, egal woran der erste gescheitert ist. Was
  *   beide finden, wird ohnehin zusammengelegt.
  */
-async function scanRewardsRepeatedly(stillCurrent) {
+async function scanRewardsRepeatedly(stillCurrent, expected = 4) {
   const index = await ensureRewardIndex();
   const deadline = Date.now() + SCAN_BUDGET_MS;
   let merged = null;
@@ -3286,11 +3329,20 @@ async function scanRewardsRepeatedly(stillCurrent) {
   while (stillCurrent()) {
     attempts++;
     const scan = await scanRewardScreen(index, useBand ? SCAN_BAND : {});
-    if (!stillCurrent()) return null;
+    if (!stillCurrent()) {
+      /* Die Runde ist weitergezogen, waehrend dieser Blick lief. Das ist kein
+         Fehler - aber es MUSS hier stehen: ohne diese Zeile verliess der
+         Ablauf die Schleife stumm, und im Protokoll stand nur der Fund aus
+         dem Log, gefolgt von nichts. Genau so sah der Fall aus, in dem gar
+         keine Anzeige kam, und genau das machte ihn unlesbar. */
+      console.log('[Relikt] Erkennung abgebrochen - Runde vorbei nach',
+                  attempts, `Versuch${attempts === 1 ? '' : 'en'}`);
+      return null;
+    }
 
     if (scan.ok) {
       merged = merged ? mergeRewards(merged, scan) : scan;
-      if (merged.rewards.length >= 4) break;
+      if (merged.rewards.length >= expected) break;
     } else {
       lastError = scan.error;
     }
@@ -3301,8 +3353,22 @@ async function scanRewardsRepeatedly(stillCurrent) {
     await wait(SCAN_RETRY_MS);
   }
 
-  console.log('[Relikt] Erkennung:', merged ? `${merged.rewards.length} Treffer` : `Fehler ${lastError}`,
+  const found = merged ? merged.rewards.length : 0;
+  console.log('[Relikt] Erkennung:', merged ? `${found} Treffer (erwartet ${expected})` : `Fehler ${lastError}`,
               `| ${attempts} Versuch${attempts === 1 ? '' : 'e'}`);
+
+  /* Nichts gelesen UND der Beweisschalter ist an: eine letzte Aufnahme, diesmal
+     als Bild auf die Platte. Ohne sie bleibt "es kam nichts" eine Behauptung -
+     mit ihr laesst sich sehen, ob der Bildschirm schwarz war, das Spiel woanders
+     stand oder die Namen einfach anders aussehen als erwartet.
+     Standardmaessig AUS: es soll kein Bildschirmfoto entstehen, das niemand
+     bestellt hat. */
+  if (!found && relicScanDebug) {
+    const shot = dataFile('diag', `fehlschlag-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.png`);
+    const proof = await scanRewardScreen(index, { keepImage: shot }).catch(() => null);
+    console.log('[Relikt] Beweisaufnahme:', shot, '|', proof?.ok ? `${proof.lines} Zeilen erkannt` : 'auch das misslang');
+  }
+
   return merged || { ok: false, error: lastError || 'Keine Aufnahme moeglich' };
 }
 
@@ -3445,7 +3511,8 @@ async function handleRelicReward(ev) {
        Fund aus dem Log. Alles andere kommt in den naechsten Sekunden dazu. */
     currentRelic = {
       seconds: ev.seconds, at: Date.now(),
-      own, rewards: [], scanning: relicScan, scanError: null
+      own, rewards: [], scanning: relicScan, scanError: null,
+      expected: Math.min(4, Math.max(1, ev.players || 4))
     };
     /* Knappe Protokollzeilen: ohne sie ist bei einem Fehlschlag nicht
        unterscheidbar, ob das Log nichts hergab, die Erkennung nichts fand
@@ -3473,18 +3540,36 @@ async function handleRelicReward(ev) {
 
     if (!relicScan) return;
 
-    /* Und jetzt der Bildschirm: die drei Funde der Mitspieler stehen nirgends
-       sonst. Siehe scanRewardsRepeatedly - einmal hinsehen reicht nicht. */
+    /* Und jetzt der Bildschirm: die Funde der Mitspieler stehen nirgends sonst.
+       Siehe scanRewardsRepeatedly - einmal hinsehen reicht nicht.
+
+       expected kommt aus dem Log und ist NICHT immer vier: es steht eine Karte
+       pro Mitspieler da. Zu dritt wurde bisher auf eine vierte gewartet, die
+       nie kam - sieben Sekunden lang, von fuenfzehn. */
     const started = currentRelic;
-    const scan = await scanRewardsRepeatedly(() => currentRelic === started);
+    const expected = Math.min(4, Math.max(1, ev.players || 4));
+    const scan = await scanRewardsRepeatedly(() => currentRelic === started, expected);
     if (!scan || currentRelic !== started) return;   // inzwischen kam eine neue Runde
 
     if (!scan.ok || !scan.rewards.length) {
       currentRelic.scanning = false;
       currentRelic.scanError = scan.ok
-        ? 'Die vier Namen waren auf dem Bildschirm nicht zu finden.'
+        ? 'Die Namen waren auf dem Bildschirm nicht zu finden.'
         : scan.error;
       pushRelic();
+
+      /* UND JETZT DAS FENSTER AUFMACHEN, auch wenn die Schilder an sind.
+         Die Schilder brauchen die Bildschirmpositionen aus der Erkennung -
+         ohne sie gibt es keine. Bisher endete der Ablauf genau hier: Schilder
+         unmoeglich, Fenster unterdrueckt, weil ja Schilder an sind. Ergebnis
+         war GAR NICHTS - kein Fund, kein Grund, nichts. Dabei steht der eigene
+         Fund laengst fest, der kam aus dem Log. Lieber die halbe Anzeige mit
+         einer Zeile, woran es lag. */
+      if (relicAutoShow && !overlayVisible()) {
+        overlayShownForRelic = true;
+        showOverlay();
+        console.log('[Relikt] Fenster als Ersatz geoeffnet:', currentRelic.scanError);
+      }
       return;
     }
 
@@ -3501,7 +3586,9 @@ async function handleRelicReward(ev) {
     })));
     currentRelic.scanning = false;
     currentRelic.region = scan.region || null;
-    currentRelic.complete = !!scan.complete;
+    /* Vollstaendig heisst "so viele wie Mitspieler", nicht "vier". */
+    currentRelic.expected = expected;
+    currentRelic.complete = scan.rewards.length >= expected;
     pushRelic();
     showTags(currentRelic.rewards);
 

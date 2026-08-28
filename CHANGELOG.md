@@ -21,6 +21,38 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.1.4] - 2026-08-28
+
+### Fixed
+
+- **Squads of two or three no longer wait seven seconds** — there is one reward
+  card per player, not always four, and the reading stopped only once it had
+  four. In a squad of three that number never arrived, so it kept reading until
+  the time ran out and showed the three cards after seven seconds instead of
+  half a second. The number of cards to expect is now taken from the log, which
+  counts the players. For the same reason the overlay no longer claims "3 of 4
+  could be read" when three was all there ever was.
+- **Something always appears now.** If the screen could not be read, the price
+  tags in the game have no positions to sit at — and because tags were switched
+  on, the overlay window stayed shut as well. The result was nothing at all: no
+  drop, no reason, silence. Your own drop is known from the log regardless, so
+  the overlay now opens with it and says what went wrong.
+- **A reading cut short by the next round is no longer silent** in the log. It
+  left the loop without a word, so the record went straight from "found in log"
+  to nothing, which is exactly the case that most needed explaining.
+
+### Added
+
+- **A log file** at `%APPDATA%\Argus\data\argus.log`, rewritten at every start.
+  A packaged app has no console, so when the relic display stayed away the
+  reason was written to nowhere. Same content as the console — no credentials,
+  no account IDs.
+- **Evidence for a failed reading**, off by default. With
+  `{ "relicScanDebug": true }` in `%APPDATA%\Argus\data\config.json`, a reading
+  that finds nothing keeps one capture under `data/diag/` so it can be looked
+  at. Off by default, because no screenshot should be written that nobody asked
+  for.
+
 ## [1.1.3] - 2026-08-28
 
 ### Changed

@@ -63,6 +63,25 @@ const RE_TRADE       = /TradeService::\w*(?:Accept|Confirm|Complete)/i;
 
 const RE_OWN_REWARD = /VoidProjections:\s+[0-9a-f]{24}\s+gets reward\s+(\S+)/;
 const RE_READY      = /ProjectionRewardChoice\.lua:\s*Got rewards/;
+
+/**
+ * Wie viele Karten auf dem Bildschirm stehen werden.
+ *
+ * Eine pro Mitspieler, und das Log zaehlt sie mit: fuer jeden trifft genau eine
+ * Zeile "Client got reward info from <accountId>" ein, die eigene inbegriffen.
+ *
+ * WARUM DAS ZAEHLEN NOETIG IST:
+ *   Die Erkennung hoerte auf, sobald VIER Namen dastanden. In einer vollen
+ *   Gruppe stimmt das. Zu dritt kommt die Vier nie zustande - dann las sie
+ *   stur weiter, bis die Zeit abgelaufen war, und zeigte die drei Karten erst
+ *   nach sieben Sekunden statt nach einer halben. Von fuenfzehn Sekunden
+ *   Bedenkzeit ist das fast die Haelfte, vertan mit Warten auf eine vierte
+ *   Karte, die es nicht gibt.
+ *
+ * Die AccountIds werden nur gezaehlt, nicht behalten - siehe Kopfkommentar.
+ */
+const RE_REWARD_PEER = /VoidProjections:\s*Client got reward info from\s+([0-9a-f]{24})/;
+const RE_REWARD_OPEN = /VoidProjections:\s*OpenVoidProjectionRewardScreenRMI/;
 const RE_TIMER      = /ProjectionsCountdown\.lua:\s*Initialize timer\s+\S+\s+(\d+)/;
 const RE_CLOSED     = /ProjectionRewardChoice\.lua:\s*Relic reward screen shut down/;
 
@@ -241,6 +260,21 @@ export class LogWatcher extends EventEmitter {
       return;
     }
 
+    /* Ein neuer Belohnungsbildschirm - die Zaehlung beginnt von vorn. */
+    if (RE_REWARD_OPEN.test(line)) {
+      this.rewardPeers = new Set();
+      return;
+    }
+
+    const peer = RE_REWARD_PEER.exec(line);
+    if (peer) {
+      /* Nur die Anzahl zaehlt. Die Kennung dient hier als Unterscheidung
+         zwischen zwei Mitspielern und verlaesst dieses Modul nicht. */
+      if (!this.rewardPeers) this.rewardPeers = new Set();
+      this.rewardPeers.add(peer[1]);
+      return;
+    }
+
     const reward = RE_OWN_REWARD.exec(line);
     if (reward) {
       this.pendingReward = { uniqueName: reward[1], at: Date.now() };
@@ -255,10 +289,15 @@ export class LogWatcher extends EventEmitter {
         /* Ohne eigenen Fund trotzdem melden: der Bildschirm ist offen, und
            der Countdown allein ist schon etwas wert. */
         uniqueName: fresh ? this.pendingReward.uniqueName : null,
+        /* Wie viele Karten zu erwarten sind. 0 heisst "unbekannt" - dann
+           soll die Gegenseite ihre eigene Annahme behalten, nicht eine Null
+           als Zielmarke nehmen. */
+        players: this.rewardPeers ? this.rewardPeers.size : 0,
         seconds: 15,
         at: Date.now()
       });
       this.pendingReward = null;
+      this.rewardPeers = null;
       return;
     }
 

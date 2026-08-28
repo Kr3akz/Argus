@@ -3,5 +3,6 @@
   "platform": "pc",
   "inventoryScan": false,
   "relicTagOffset": 0.23,
+  "relicScanDebug": false,
   "notes": {}
 }

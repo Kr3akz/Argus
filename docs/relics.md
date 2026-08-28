@@ -151,6 +151,26 @@ From **warframe.market**, via the v2 API — v1 is retired (`/v1/items` answers 
 offers from sellers who are **currently in game** are counted: the cheapest offer from
 someone who has been offline for three days is not a price, it is a number.
 
+## When nothing appears
+
+The reward display has two halves, and they fail differently. Your **own drop** comes
+from the log and needs neither the screen nor the network — it is there in every case.
+The **other players' drops** have to be read off the screen, and if that fails there are
+no positions for the price tags either.
+
+Because of that, a failed reading used to end in silence: no tags, and no overlay either,
+since tags were switched on. It now opens the overlay with your own drop and the reason.
+
+If it happens, two places say what went on:
+
+- `%APPDATA%\Argus\data\argus.log` — rewritten at every start. The relic lines record
+  what came from the log, how many cards were expected, how many were read and in how
+  many attempts.
+- Setting `{ "relicScanDebug": true }` in `%APPDATA%\Argus\data\config.json` makes a
+  failed reading keep one capture under `data/diag/`. That answers the question the log
+  cannot: what the capture actually contained. Off by default — no screenshot should be
+  written that nobody asked for.
+
 ## Limits
 
 - Recognition covers the **primary screen**. If Warframe runs on a different monitor,

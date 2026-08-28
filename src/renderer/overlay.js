@@ -898,15 +898,18 @@ function renderRelic() {
     const allPriced = prices.length === list.length;
     const bestPlat = allPriced ? Math.max(...prices) : null;
 
-    /* Wurden nicht alle vier gelesen, taugen die Nummern nicht - siehe
-       rewardRow. relicState.complete fehlt beim Fund aus dem Log allein. */
-    const allRead = relicState.complete !== false && list.length >= 4;
+    /* Wurden nicht alle gelesen, taugen die Nummern nicht - siehe rewardRow.
+       relicState.complete fehlt beim Fund aus dem Log allein.
+       Erwartet wird eine Karte pro Mitspieler, nicht immer vier: zu dritt
+       stand hier sonst dauerhaft "3 von 4", obwohl alles gelesen war. */
+    const expected = relicState.expected || 4;
+    const allRead = relicState.complete !== false && list.length >= expected;
 
     body.innerHTML = `<div class="ov-rw-head">
         <span></span><span></span><span>Reward</span><span>${PLAT_IC}</span><span>${DUC_IC}</span>
       </div>`
       + list.map(r => rewardRow(r, bestPlat, allRead)).join('')
-      + (allRead ? '' : `<div class="ov-relic-note">Only ${list.length} of 4 could be read — the numbers are left out.</div>`);
+      + (allRead ? '' : `<div class="ov-relic-note">Only ${list.length} of ${expected} could be read — the numbers are left out.</div>`);
     return;
   }
 
@@ -915,7 +918,7 @@ function renderRelic() {
   const note = relicState.scanError
     ? `<div class="ov-relic-note">Bildschirm nicht lesbar: ${esc(relicState.scanError)}</div>`
     : relicState.scanning
-      ? '<div class="ov-relic-note">Lese die anderen drei vom Bildschirm …</div>'
+      ? '<div class="ov-relic-note">Lese die anderen vom Bildschirm …</div>'
       : '';
 
   body.innerHTML = (own
