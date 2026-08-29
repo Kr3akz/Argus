@@ -35,14 +35,27 @@
 #   Preisschilder bei jeder vergroesserten Lesung um den Faktor daneben, und
 #   zwei Lesungen liessen sich nicht ueber die Position zusammenlegen.
 #
+# WARUM DER AUSSCHNITT EINEN RAHMEN BRAUCHT (rect):
+#   top/bottom waren immer Anteile des HAUPTBILDSCHIRMS. Gemeint war aber das
+#   Spielfenster. Im randlosen Vollbild auf dem Hauptmonitor ist das dasselbe -
+#   sonst nicht: bei zwei Monitoren liegt der zweite womoeglich bei x=-2560,
+#   und PrimaryScreen kennt nur x=0..2560. Dann nimmt jeder Streifen den
+#   FALSCHEN Monitor auf. Wer den Rahmen mitschickt, schneidet aus dem Spiel
+#   aus statt aus dem Hauptbildschirm.
+#
 # PROTOKOLL (eine Zeile JSON rein, eine Zeile JSON raus):
 #   ->  {"id":1,"top":0.28,"bottom":0.62}      Ausschnitt als Anteil der Hoehe
 #   ->  {"id":2}                               ganzer Hauptbildschirm
 #   ->  {"id":3,"source":"C:\\bild.png"}       vorhandenes Bild auswerten
 #   ->  {"id":4,"png":"C:\\ablage.png"}        Aufnahme zusaetzlich sichern
 #   ->  {"id":5,"scale":2.5}                   vor der Erkennung vergroessern
+#   ->  {"id":6,"left":0.31,"right":0.44}      Ausschnitt als Anteil der Breite
+#   ->  {"id":7,"rect":{"x":-2560,"y":0,"w":2560,"h":1440}}
+#                                              Rahmen, auf den sich die
+#                                              Anteile beziehen (Spielfenster)
 #   <-  {"id":1,"ok":true,"language":"en-US","region":{...},"lines":[...]}
-#   <-  {"ok":true,"ready":true,"language":"en-US"}   einmal beim Start
+#   <-  {"ok":true,"ready":true,"language":"en-US","screen":{...},"dpiAware":true}
+#                                              einmal beim Start
 #
 #   Meldungen an stderr sind Diagnose und gehoeren nicht zum Protokoll.
 
@@ -51,6 +64,43 @@ $ErrorActionPreference = 'Stop'
 # stdout traegt das Protokoll: UTF-8 ohne BOM, sonst stolpert JSON.parse
 # ueber das erste Zeichen der ersten Antwort.
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false
+
+# ------------------------------------------------------- Bildschirmpixel --
+#
+# WARUM DAS HIER GANZ OBEN STEHT:
+#   powershell.exe (Windows PowerShell 5.1) meldet sich Windows gegenueber
+#   NICHT als DPI-bewusst. Bei einer Bildschirmskalierung von 125 % bekommt es
+#   deshalb eine gefaelschte Welt zu sehen: PrimaryScreen.Bounds meldet
+#   2048x1152 statt 2560x1440, und CopyFromScreen liefert eine hochgerechnete,
+#   weiche Aufnahme - genau das Falsche fuer eine Texterkennung.
+#
+#   Zwei Dinge haengen daran. Erstens die Bildschaerfe. Zweitens die
+#   Koordinaten: main.js teilt die zurueckgegebenen Rahmen durch den
+#   Skalierungsfaktor, weil es ECHTE Pixel erwartet - bekaeme es gefaelschte,
+#   saessen die Preisschilder bei 125 % um ein Fuenftel daneben. Und der
+#   Fensterrahmen, den der Aufrufer schickt, kommt aus einem DPI-bewussten
+#   Electron und ist immer echt.
+#
+#   Der Aufruf MUSS vor der ersten Bildschirmabfrage stehen; danach ist die
+#   Einstellung des Prozesses festgeschrieben. Er kostet einmalig den
+#   Add-Type-Uebersetzungslauf - deshalb gibt es warmUp().
+#
+#   Bei 100 % Skalierung aendert er nichts. Schlaegt er fehl (Windows aelter
+#   als 1703), greift der aeltere Aufruf; schlaegt auch der fehl, laeuft alles
+#   wie bisher.
+$dpiAware = $false
+try {
+  Add-Type -Namespace Argus -Name Dpi -MemberDefinition @'
+[DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+[DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+'@
+  # DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
+  $dpiAware = [Argus.Dpi]::SetProcessDpiAwarenessContext([IntPtr](-4))
+  if (-not $dpiAware) { $dpiAware = [Argus.Dpi]::SetProcessDPIAware() }
+} catch {
+  # Ohne DPI-Bewusstsein laeuft alles wie vor dieser Aenderung.
+  $dpiAware = $false
+}
 
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
@@ -135,6 +185,35 @@ function Get-ScreenBitmap([int]$X, [int]$Y, [int]$W, [int]$H, [string]$Png) {
   # Nur wenn ausdruecklich verlangt - sonst entsteht kein Bild auf der Platte.
   if ($Png) { $bmp.Save($Png, [System.Drawing.Imaging.ImageFormat]::Png) }
   return $bmp
+}
+
+# Aus Rahmen und Anteilen den Ausschnitt in Pixeln.
+#
+# Die Anteile sind absichtlich keine Pixel: dieser Prozess kennt die echte
+# Aufloesung, der Aufrufer rechnet in geraeteunabhaengigen Punkten - Anteile
+# gehen bei beidem auf, und bei einem gespeicherten Bild ebenfalls.
+#
+# Ein zu schmaler Ausschnitt traegt keinen lesbaren Text. Dann gilt in dieser
+# Achse wieder der ganze Rahmen: ein Fehlgriff soll den Blick nicht verbrennen,
+# sondern hoechstens weniger genau machen.
+function Get-CropRect($frame, [double]$top, [double]$bottom, [double]$left, [double]$right) {
+  if ($top -lt 0)    { $top    = 0.0 }
+  if ($bottom -gt 1) { $bottom = 1.0 }
+  if ($left -lt 0)   { $left   = 0.0 }
+  if ($right -gt 1)  { $right  = 1.0 }
+
+  $X = $frame.X; $Y = $frame.Y; $W = $frame.Width; $H = $frame.Height
+  if ($bottom -gt $top) {
+    $Y = $frame.Y + [int]($frame.Height * $top)
+    $H = [int]($frame.Height * ($bottom - $top))
+  }
+  if ($right -gt $left) {
+    $X = $frame.X + [int]($frame.Width * $left)
+    $W = [int]($frame.Width * ($right - $left))
+  }
+  if ($H -lt 16) { $Y = $frame.Y; $H = $frame.Height }
+  if ($W -lt 16) { $X = $frame.X; $W = $frame.Width }
+  return (New-Object System.Drawing.Rectangle $X, $Y, $W, $H)
 }
 
 # GDI-Bitmap -> SoftwareBitmap, ohne Umweg ueber Datei oder Kodierung.
@@ -233,7 +312,16 @@ function Build-Result([int]$replyId, $ocr, [int]$X, [int]$Y, [int]$W, [int]$H, [
 
 # ----------------------------------------------------------------- Schleife --
 
-Write-Reply ('{"ok":true,"ready":true,"language":' + (ConvertTo-JsonString $engine.RecognizerLanguage.LanguageTag) + '}')
+# Die Startmeldung nennt auch, WIE dieser Prozess den Desktop sieht. Das ist
+# nicht Zierde: weicht seine Sicht von der des Aufrufers ab - unterschiedliches
+# DPI-Bewusstsein -, sitzt jeder mitgeschickte Fensterrahmen daneben, und ohne
+# diese Zahlen waere das nirgends zu sehen.
+$virt = [System.Windows.Forms.SystemInformation]::VirtualScreen
+$prim = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+Write-Reply ('{"ok":true,"ready":true,"language":' + (ConvertTo-JsonString $engine.RecognizerLanguage.LanguageTag) +
+             ',"dpiAware":' + $(if ($dpiAware) { 'true' } else { 'false' }) +
+             ',"screen":{"x":' + $virt.X + ',"y":' + $virt.Y + ',"w":' + $virt.Width + ',"h":' + $virt.Height + '}' +
+             ',"primary":{"x":' + $prim.X + ',"y":' + $prim.Y + ',"w":' + $prim.Width + ',"h":' + $prim.Height + '}}')
 
 while ($true) {
   $raw = [Console]::In.ReadLine()
@@ -246,23 +334,17 @@ while ($true) {
     $req = $raw | ConvertFrom-Json
     if ($req.id) { $id = [int]$req.id }
 
-    $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-    $X = $screen.X; $Y = $screen.Y; $W = $screen.Width; $H = $screen.Height
-
-    # top/bottom sind Anteile der Bildschirmhoehe. Absichtlich nicht Pixel:
-    # dieser Prozess kennt die echte Aufloesung, der Aufrufer rechnet in
-    # geraeteunabhaengigen Punkten - Anteile gehen bei beidem auf.
-    $top = 0.0; $bottom = 1.0
+    # --- Die Anteile, die den Ausschnitt beschreiben ----------------------
+    #
+    # left/right kamen dazu, als klar wurde, dass nicht das Sprachmodell die
+    # Schwachstelle ist, sondern die Zeilenaufteilung: die Erkennung wirft zwei
+    # NEBENEINANDER stehende Karten in eine Zeile. Steht im Ausschnitt nur eine
+    # Karte, kann das nicht mehr passieren.
+    $top = 0.0; $bottom = 1.0; $left = 0.0; $right = 1.0
     if ($null -ne $req.top)    { $top    = [double]$req.top }
     if ($null -ne $req.bottom) { $bottom = [double]$req.bottom }
-    if ($top -lt 0)    { $top = 0.0 }
-    if ($bottom -gt 1) { $bottom = 1.0 }
-    if ($bottom -gt $top) {
-      $Y = $screen.Y + [int]($screen.Height * $top)
-      $H = [int]($screen.Height * ($bottom - $top))
-    }
-    # Ein zu schmaler Streifen taugt nicht zum Lesen - dann lieber alles.
-    if ($H -lt 16) { $Y = $screen.Y; $H = $screen.Height }
+    if ($null -ne $req.left)   { $left   = [double]$req.left }
+    if ($null -ne $req.right)  { $right  = [double]$req.right }
 
     # Nur vergroessern, nie verkleinern - und nicht ins Uferlose: bei 4x waere
     # ein 1440p-Bildschirm 5760 Zeilen hoch, und die Erkennung braucht dafuer
@@ -279,13 +361,50 @@ while ($true) {
       if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
     }
 
-    # Beide Quellen liefern jetzt ein GDI-Bitmap, damit die Vergroesserung
-    # danach fuer beide gilt. Gesichert wird immer das ORIGINAL - ein Beweisbild
-    # soll zeigen, was auf dem Bildschirm stand, nicht was daraus gemacht wurde.
+    # --- Der Rahmen, auf den sich die Anteile beziehen --------------------
+    #
+    #   ein gespeichertes Bild -> das Bild selbst
+    #   rect                   -> das Spielfenster
+    #   sonst                  -> der Hauptbildschirm, wie bisher
+    #
+    # Der Rahmen muss VOR dem Zuschnitt feststehen, denn er ist dessen
+    # Bezugsgroesse. Frueher stand er nur fuer den Bildschirm fest, und das
+    # gespeicherte Bild wurde ungeschnitten durchgereicht - dann liesse sich
+    # ausgerechnet die Spaltenlesung nie ohne laufendes Spiel pruefen.
+    $quelle = $null
+    if ($req.source) { $quelle = Open-ImageFile ([string]$req.source) }
+
+    if ($quelle) {
+      $frame = New-Object System.Drawing.Rectangle 0, 0, $quelle.Width, $quelle.Height
+    } else {
+      $frame = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+      if ($null -ne $req.rect) {
+        $cand = New-Object System.Drawing.Rectangle(
+                  [int]$req.rect.x, [int]$req.rect.y, [int]$req.rect.w, [int]$req.rect.h)
+        # Was ausserhalb des sichtbaren Desktops liegt, laesst sich nicht
+        # aufnehmen - CopyFromScreen liefert dort Schwarz. Also zuschneiden,
+        # und wenn nichts Brauchbares uebrig bleibt, lieber den Hauptbildschirm
+        # nehmen als in eine schwarze Flaeche zu lesen.
+        $cand = [System.Drawing.Rectangle]::Intersect(
+                  $cand, [System.Windows.Forms.SystemInformation]::VirtualScreen)
+        if ($cand.Width -ge 64 -and $cand.Height -ge 64) { $frame = $cand }
+      }
+    }
+
+    $crop = Get-CropRect $frame $top $bottom $left $right
+    $X = $crop.X; $Y = $crop.Y; $W = $crop.Width; $H = $crop.Height
+
+    # Beide Quellen liefern ein GDI-Bitmap, damit die Vergroesserung danach fuer
+    # beide gilt. Gesichert wird immer das ORIGINAL - ein Beweisbild soll
+    # zeigen, was auf dem Bildschirm stand, nicht was daraus gemacht wurde.
     $bitmap = $null
-    if ($req.source) {
-      $gdi = Open-ImageFile ([string]$req.source)
-      $X = 0; $Y = 0; $W = $gdi.Width; $H = $gdi.Height
+    if ($quelle) {
+      if ($crop.Width -eq $quelle.Width -and $crop.Height -eq $quelle.Height) {
+        $gdi = $quelle
+      } else {
+        $gdi = $quelle.Clone($crop, $quelle.PixelFormat)
+        $quelle.Dispose()
+      }
       if ($png) { $gdi.Save($png, [System.Drawing.Imaging.ImageFormat]::Png) }
     } else {
       $gdi = Get-ScreenBitmap $X $Y $W $H $png

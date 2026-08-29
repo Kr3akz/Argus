@@ -48,6 +48,11 @@ let idleTimer = null;
 let buffer = '';
 let language = null;
 let startError = null;
+/* Wie der Dauerlaeufer den Desktop sieht - aus seiner Startmeldung. Nur zur
+   Diagnose: weicht seine Sicht von der des Hauptprozesses ab, sitzt jeder
+   mitgeschickte Fensterrahmen daneben, und ohne diese Zahlen waere das
+   nirgends nachzuvollziehen. */
+let hostScreen = null;
 
 function clearIdle() {
   clearTimeout(idleTimer);
@@ -69,6 +74,7 @@ function teardown(reason) {
   buffer = '';
   language = null;
   startError = null;
+  hostScreen = null;
   clearIdle();
 
   for (const [, entry] of pending) {
@@ -102,6 +108,9 @@ function handleLine(line) {
   if ('ready' in msg) {
     language = msg.ready ? (msg.language || null) : null;
     startError = msg.ready ? null : (msg.error || 'Keine OCR-Sprache installiert');
+    hostScreen = msg.ready
+      ? { virtual: msg.screen || null, primary: msg.primary || null, dpiAware: !!msg.dpiAware }
+      : null;
     return;
   }
 
@@ -186,17 +195,27 @@ function start() {
   return attempt;
 }
 
+/** Sieht ein Rahmen aus, als liesse sich daraus etwas aufnehmen? */
+function usableRect(r) {
+  return !!r && [r.x, r.y, r.w, r.h].every(Number.isFinite) && r.w >= 64 && r.h >= 64;
+}
+
 /**
  * Eine Aufnahme auswerten.
  *
- * top/bottom schneiden einen waagerechten Streifen aus, als Anteil der
- * Bildschirmhoehe. Ohne Angabe: der ganze Hauptbildschirm.
+ * rect ist der RAHMEN, auf den sich alle Anteile beziehen - in echten
+ * Bildschirmpixeln. Gemeint ist damit das Spielfenster. Ohne rect bleibt es
+ * beim Hauptbildschirm, und dann greifen die Anteile auf dem zweiten Monitor
+ * oder im Fenstermodus daneben.
+ *
+ * top/bottom schneiden einen waagerechten Streifen aus, left/right einen
+ * senkrechten - je als Anteil des Rahmens. Ohne Angabe: der ganze Rahmen.
  *
  * scale vergroessert die Aufnahme vor der Erkennung. Die Rahmen kommen
  * trotzdem in echten Bildschirmpixeln zurueck - der Dauerlaeufer rechnet sie
  * vor der Antwort herunter. Wozu das gut ist, steht im Kopf von ocr-host.ps1.
  */
-export async function recognise({ top, bottom, source, png, scale } = {}) {
+export async function recognise({ top, bottom, left, right, rect, source, png, scale } = {}) {
   const started = await start();
   if (!started.ok) return started;
   if (!proc) return { ok: false, error: 'Texterkennung nicht erreichbar' };
@@ -207,6 +226,15 @@ export async function recognise({ top, bottom, source, png, scale } = {}) {
   const req = { id };
   if (Number.isFinite(top))    req.top = top;
   if (Number.isFinite(bottom)) req.bottom = bottom;
+  if (Number.isFinite(left))   req.left = left;
+  if (Number.isFinite(right))  req.right = right;
+  /* Ein unbrauchbarer Rahmen wird weggelassen und nicht durchgereicht: dann
+     faellt der Dauerlaeufer auf den Hauptbildschirm zurueck, statt in eine
+     leere Flaeche zu lesen. */
+  if (usableRect(rect)) {
+    req.rect = { x: Math.round(rect.x), y: Math.round(rect.y),
+                 w: Math.round(rect.w), h: Math.round(rect.h) };
+  }
   /* Nur mitschicken, wenn wirklich vergroessert werden soll: eine 1 im
      Protokoll waere Rauschen, und aeltere Dauerlaeufer wuerden sie ignorieren. */
   if (Number.isFinite(scale) && scale > 1) req.scale = scale;
@@ -257,4 +285,17 @@ export function stop() {
 
 export function ocrLanguage() {
   return language;
+}
+
+/**
+ * Wie der Dauerlaeufer den Desktop sieht, oder null.
+ *
+ * { virtual: {x,y,w,h}, primary: {x,y,w,h}, dpiAware: bool }
+ *
+ * Gedacht fuer eine einzige Frage: stimmt seine Sicht mit der des
+ * Hauptprozesses ueberein? Tut sie es nicht, sind alle mitgeschickten
+ * Fensterrahmen im falschen Massstab - und das faellt sonst nirgends auf.
+ */
+export function ocrScreen() {
+  return hostScreen;
 }

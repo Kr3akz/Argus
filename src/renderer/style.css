@@ -5930,6 +5930,61 @@ body.tags-window {
   transition: background .16s ease, box-shadow .16s ease;
 }
 
+/* EINE KARTE, DIE NOCH LAEDT
+   Sie steht schon, bevor die Texterkennung etwas gelesen hat - moeglich, seit
+   die Kartengeometrie gemessen statt geraten wird. Sie haelt ihren Platz in
+   der Reihe, damit das Dock beim Fuellen nicht zurechtrueckt. */
+.tag-card.laedt {
+  justify-content: center;
+  gap: 7px;
+  /* Etwas zurueckgenommen: sie ist Ankuendigung, nicht Inhalt. */
+  background: rgba(255, 255, 255, 0.022);
+  /* SO HOCH WIE EINE ECHTE KARTE. Nachgemessen ist eine gefuellte Karte ohne
+     Set-Reihe 106 px hoch, eine aus drei Balken nur 65 - das Dock waere also
+     beim ersten eintreffenden Namen um 41 px gewachsen. Genau das Zucken, das
+     die Platzhalter verhindern sollen. Eine feste Zahl ist hier richtig: alle
+     Masse dieser Karte sind fest, und ein Platzhalter darf naeherungsweise
+     stimmen - er muss nur nicht NIEDRIGER sein als das, was ihn ersetzt. */
+  min-height: 106px;
+}
+
+.tag-skel {
+  border-radius: 3px;
+  /* Der Verlauf ist dreimal so breit wie der Balken - so laeuft der helle
+     Streifen sichtbar hindurch, statt nur aufzublinken. */
+  background: linear-gradient(90deg,
+    rgba(255, 255, 255, 0.05) 0%,
+    rgba(255, 255, 255, 0.05) 35%,
+    rgba(255, 255, 255, 0.13) 50%,
+    rgba(255, 255, 255, 0.05) 65%,
+    rgba(255, 255, 255, 0.05) 100%);
+  background-size: 300% 100%;
+  animation: tagSkel 1.15s ease-in-out infinite;
+}
+
+/* Die Balken nehmen die Masse der echten Bausteine an, damit beim Fuellen
+   nichts in der Hoehe springt: Titelzeile, Status-Abzeichen, Preisreihe. */
+.tag-skel-title  { width: 78%; height: 11px; }
+.tag-skel-badge  { width: 52%; height: 9px;  }
+.tag-skel-prices { width: 64%; height: 13px; }
+
+/* Die Spalten laufen leicht versetzt - vier gleichzeitig pulsende Balken
+   wirken wie ein Fehler, ein Versatz wie Arbeit. */
+.tag-card.laedt:nth-child(2) .tag-skel { animation-delay: .09s; }
+.tag-card.laedt:nth-child(3) .tag-skel { animation-delay: .18s; }
+.tag-card.laedt:nth-child(4) .tag-skel { animation-delay: .27s; }
+
+@keyframes tagSkel {
+  0%   { background-position: 100% 0; }
+  100% { background-position: 0 0; }
+}
+
+/* Wer Bewegung im Bild nicht will, bekommt einen ruhigen Balken - der Platz
+   wird ja trotzdem gehalten, und darum geht es hier vor allem. */
+@media (prefers-reduced-motion: reduce) {
+  .tag-skel { animation: none; background: rgba(255, 255, 255, 0.07); }
+}
+
 /* Teuerstes Teil der Runde */
 .tag-card.best {
   background: 
@@ -6125,28 +6180,67 @@ body.tags-window {
    ---------------------------------------------------------------------------
    Schliesst nahtlos mit der Unterkante des Docks ab und traegt das leuchtende
    Argus-Signet als geschwungenes Tenno-Emblem. */
+/* WARUM DIE LASCHE NICHT MEHR GEFUELLT, SONDERN MASKIERT WIRD:
+   Sie war ein SVG mit fester Fuellung - und damit aus anderem Material als das
+   Dock darueber. Nachgemessen stand gegeneinander:
+
+     Dock:    linear-gradient(... rgba(16,21,31,.94) -> rgba(9,12,18,.97))
+              backdrop-filter: blur(20px) saturate(1.8)
+     Lasche:  rgba(10,13,20,.97) flach, backdrop-filter: none
+              dazu drop-shadow(0 6px 12px), die auch NACH OBEN aufs Dock fiel
+
+   Ein anderer Ton, kein Weichzeichner dahinter und ein eigener Schatten: das
+   liest sich als aufgelegtes Teil, nicht als Fortsetzung des Docks. Genau das
+   war zu sehen.
+
+   Jetzt traegt dieses Element selbst die Farbe - dieselbe wie die Unterkante
+   des Docks, mit demselben Weichzeichner - und eine Maske schneidet die Form
+   heraus. Damit KANN der Ton nicht mehr abweichen; es ist dieselbe Farbe.
+
+   Die oberen 2 px der Maske sind volle Breite und liegen ueber der Unterkante
+   des Docks. Das ist kein Zierrat: das Dock zieht mit box-shadow eine
+   umlaufende 1px-Haarlinie, die sonst quer durch die Laschenoeffnung liefe -
+   man saehe eine gerade Linie UND die Rundung. Der Pfad hatte das mit
+   "M 0 -1" auch versucht, nur lag die -1 ausserhalb der viewBox "0 0 106 24"
+   und wurde weggeschnitten. Der Versuch war also nie wirksam. */
 .tag-panel-fuss {
   position: absolute;
   left: 50%;
-  bottom: -22px;
+  bottom: -24px;
   transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+  width: 106px;
+  height: 26px;
   pointer-events: none;
   z-index: 10;
+
+  /* Der Endton des Dock-Verlaufs, unveraendert fortgesetzt. */
+  background: rgba(9, 12, 18, 0.97);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+
+  -webkit-mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 106 26"><path d="M 0 0 L 106 0 L 106 2 C 94 2 90 24 78 24 L 28 24 C 16 24 12 2 0 2 Z" fill="%23000"/></svg>');
+          mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 106 26"><path d="M 0 0 L 106 0 L 106 2 C 94 2 90 24 78 24 L 28 24 C 16 24 12 2 0 2 Z" fill="%23000"/></svg>');
+  -webkit-mask-size: 100% 100%;
+          mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+          mask-repeat: no-repeat;
 }
 
+/* Nur noch die Haarlinie. Keine Fuellung, kein Schatten - die Form kommt aus
+   der Maske darueber, und der Schatten des Docks reicht bis hier herunter.
+   Die Linie sitzt auf der Maskenkante: 1 px Strichbreite um y=1,5 deckt
+   1..2 und trifft damit genau die Schulter der Maske. */
 .tag-notch-svg {
+  position: absolute;
+  inset: 0;
   width: 106px;
-  height: 24px;
+  height: 26px;
   display: block;
-  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.6));
 }
 
 .tag-logo {
   position: absolute;
-  top: 4px;
+  top: 6px;
   left: 50%;
   transform: translateX(-50%);
   width: 14px;

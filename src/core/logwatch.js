@@ -260,9 +260,27 @@ export class LogWatcher extends EventEmitter {
       return;
     }
 
-    /* Ein neuer Belohnungsbildschirm - die Zaehlung beginnt von vorn. */
+    /* Ein neuer Belohnungsbildschirm - die Zaehlung beginnt von vorn.
+     *
+     * UND ER WIRD GEMELDET. Diese Zeile stand hier immer, wurde aber nur zum
+     * Zuruecksetzen des Zaehlers benutzt und dann verworfen - dabei ist sie
+     * das FRUEHESTE, was das Log ueber den Belohnungsbildschirm zu sagen hat.
+     *
+     * Nachgemessen an EE.log:
+     *   15977.878  OpenVoidProjectionRewardScreenRMI   <- diese Zeile
+     *   15978.043  Client got reward info from ...     +165 ms
+     *   15978.572  ... gets reward ...                 +694 ms
+     *   15978.636  Got rewards                         +758 ms  <- bisheriger Ausloeser
+     *
+     * Volle 758 Millisekunden lag also fest, dass der Bildschirm aufgeht,
+     * bevor irgendetwas passierte. Zum LESEN taugt der Zeitpunkt nicht - die
+     * Karten sind dann noch nicht gezeichnet, "Missing icon data!" kommt erst
+     * spaeter. Zum ANZEIGEN taugt er sehr wohl: das Dock kann schon dastehen,
+     * wenn die Namen eintreffen, statt erst danach aufzugehen.
+     */
     if (RE_REWARD_OPEN.test(line)) {
       this.rewardPeers = new Set();
+      this.emit('relic-screen-open', { at: Date.now() });
       return;
     }
 

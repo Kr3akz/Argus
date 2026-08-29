@@ -17,7 +17,7 @@
  *   stehen. Es geht direkt in die Erkennung und landet gar nicht erst auf der
  *   Platte, ausser jemand verlangt es ausdruecklich (siehe ocr-host.ps1).
  */
-import { recognise, warmUp, stop as stopOcrHost } from './ocr-host.js';
+import { recognise, warmUp, stop as stopOcrHost, ocrScreen } from './ocr-host.js';
 
 /* Ab hier gilt ein unscharfer Treffer als derselbe Name. 0.72 laesst rund ein
    Viertel der Zeichen daneben liegen - genug fuer verlesene Buchstaben, zu
@@ -291,22 +291,87 @@ export function mergeRewards(a, b) {
 }
 
 /**
+ * Mehrere Aufnahmen zu EINEM Erkennungsergebnis zusammenlegen.
+ *
+ * WOZU: Die Kartenreihe wird spaltenweise gelesen - ein Ausschnitt je Karte,
+ * damit die Erkennung zwei nebeneinander stehende Namen nicht in eine Zeile
+ * werfen kann (siehe scan-geometry.js). Danach sollen die vier Ergebnisse
+ * aber wieder wie EINE Aufnahme aussehen, denn extractRewards braucht alle
+ * Zeilen zusammen: es gruppiert sie nach Hoehe und nimmt die groesste Gruppe.
+ *
+ * Die Wortrahmen werden dabei in BILDSCHIRMKOORDINATEN verschoben. Deshalb
+ * traegt das Ergebnis region: null - es gibt keinen gemeinsamen Ausschnitt
+ * mehr, und extractRewards darf nichts mehr dazurechnen.
+ */
+function mergeOcrLines(results, crops) {
+  const lines = [];
+  let language = null;
+
+  for (const res of results) {
+    if (!res?.ok) continue;
+    language = language || res.language;
+    const ox = res.region?.x ?? 0;
+    const oy = res.region?.y ?? 0;
+    for (const line of res.lines || []) {
+      const words = (line.words || []).map(w => ({ ...w, x: w.x + ox, y: w.y + oy }));
+      if (words.length) lines.push({ text: line.text, words });
+    }
+  }
+
+  /* Kein einziger Ausschnitt kam durch - dann ist der Fehler des ersten
+     stellvertretend fuer alle, statt "nichts gefunden" vorzutaeuschen. */
+  if (!results.some(r => r?.ok)) {
+    return { ok: false, error: results.find(r => r && !r.ok)?.error || 'OCR fehlgeschlagen' };
+  }
+  return { ok: true, language, lines, region: null, crops };
+}
+
+/**
  * Nimmt den Bildschirm auf und gibt die gefundenen Belohnungen zurueck,
  * sortiert wie sie auf dem Bildschirm stehen: von links nach rechts.
  *
- * top/bottom schneiden einen waagerechten Streifen aus, als Anteil der
- * Bildschirmhoehe - ohne Angabe wird der ganze Hauptbildschirm gelesen.
+ * rect ist der Rahmen, auf den sich alle Anteile beziehen - gemeint ist das
+ * Spielfenster. Ohne rect bleibt es beim Hauptbildschirm.
+ *
+ * top/bottom schneiden einen waagerechten Streifen aus, left/right einen
+ * senkrechten - je als Anteil des Rahmens.
+ *
+ * columns ist eine Liste solcher Ausschnitte, einer je Karte. Dann wird
+ * mehrfach aufgenommen und das Ergebnis zusammengelegt: der Weg, auf dem zwei
+ * nebeneinander stehende Namen gar nicht erst in dieselbe Zeile geraten
+ * koennen. Die Begruendung steht in scan-geometry.js.
  *
  * scale vergroessert die Aufnahme vor der Erkennung, ohne an den
  * zurueckgegebenen Koordinaten etwas zu aendern. Warum das ueberhaupt etwas
  * bringt, steht im Kopf von ocr-host.ps1.
  */
-export async function scanRewardScreen(index, { top, bottom, sourceImage, keepImage, scale } = {}) {
-  /* ARGUS_SCAN_IMAGE wertet ein vorhandenes Bild aus, statt den Bildschirm
-     aufzunehmen - fuer Tests ohne laufendes Spiel. */
-  const source = sourceImage || process.env.ARGUS_SCAN_IMAGE || null;
+export async function scanRewardScreen(index, opts = {}) {
+  const { top, bottom, left, right, rect, columns, sourceImage, keepImage, scale } = opts;
 
-  const res = await recognise({ top, bottom, source, scale, png: keepImage || undefined });
+  /* ARGUS_SCAN_IMAGE wertet ein vorhandenes Bild aus, statt den Bildschirm
+     aufzunehmen - fuer Tests ohne laufendes Spiel. Ein Bild hat keinen
+     Fensterrahmen, also faellt rect dann weg; die Anteile gelten dort fuer
+     das Bild selbst. */
+  const source = sourceImage || process.env.ARGUS_SCAN_IMAGE || null;
+  const rahmen = source ? undefined : rect;
+
+  let res;
+  if (columns?.length) {
+    /* Nacheinander und nicht nebenlaeufig: der Dauerlaeufer ist EIN Prozess
+       mit einer Warteschlange. Gleichzeitig abgeschickte Anfragen wuerden dort
+       ohnehin hintereinander abgearbeitet, aber jede von ihnen liefe gegen
+       dieselbe Zeitschranke - und ein langsamer Ausschnitt wuerde die
+       Zeitschranke der anderen mit aufbrauchen. */
+    const teile = [];
+    for (const crop of columns) {
+      teile.push(await recognise({ ...crop, rect: rahmen, source, scale }));
+    }
+    res = mergeOcrLines(teile, columns);
+  } else {
+    res = await recognise({ top, bottom, left, right, rect: rahmen, source, scale,
+                            png: keepImage || undefined });
+  }
+
   if (!res.ok) return { ok: false, error: res.error || 'OCR fehlgeschlagen' };
 
   return { ok: true, ...extractRewards(res, index) };
@@ -378,6 +443,63 @@ export function panelGeometrie(rewards, screenWidth, maxKarten = MAX_KARTEN) {
   };
 }
 
+/**
+ * Dasselbe wie panelGeometrie, aber aus der GEMESSENEN Geometrie statt aus den
+ * gelesenen Karten.
+ *
+ * WARUM ES BEIDES GIBT:
+ *   panelGeometrie leitet Kartenbreite und linke Kante aus den Karten ab, die
+ *   gerade gelesen wurden. Das ist richtig, solange man nichts anderes hat -
+ *   und es hat eine Folge, die man beim Zusehen merkt: waehrend die Karten
+ *   einzeln eintreffen, aendert sich die Zahl der Spalten und damit die Breite
+ *   und Lage des Docks. Es zuckt.
+ *
+ *   Der Kommentar an panelGeometrie warnt ausdruecklich davor, das Feld auf
+ *   die Spielerzahl aufzublasen: die linke Kante sei die der linkesten
+ *   GELESENEN Karte, ein breiteres Feld saesse also um eine Spalte daneben.
+ *   Das stimmte - solange die linke Kante nur aus den Karten kam.
+ *
+ *   Mit der Messung kommt sie woanders her. Die Reihe ist im Rahmen ZENTRIERT
+ *   (nachgemessen: Mitte der vier Karten 1280,25 bei 2560 Rahmenbreite), und
+ *   die Kartenbreite steht ebenfalls fest. Damit ergibt sich die linke Kante
+ *   aus Rahmen, Breite und Anzahl - ganz ohne gelesene Karte. Der Einwand
+ *   faellt weg, und das Dock kann von der ersten bis zur letzten Karte
+ *   unveraendert stehen bleiben.
+ *
+ * `frame` traegt x/w in echten Bildschirmpixeln, `cardWidth` ist ein Anteil
+ * davon, `count` die erwartete Kartenzahl.
+ */
+export function panelGeometrieGemessen(rewards, frame, cardWidth, count) {
+  const anzahlSpalten = Math.max(1, Math.min(MAX_KARTEN, Math.round(count) || MAX_KARTEN));
+  const breite = cardWidth * frame.w;
+  const links = frame.x + frame.w / 2 - (anzahlSpalten * breite) / 2;
+
+  /* Jede gelesene Karte faellt in die Spalte, in der ihre Mitte liegt. */
+  const spalten = rewards.map(r => {
+    const mitte = r.box.x + r.box.w / 2;
+    return Math.min(anzahlSpalten - 1, Math.max(0, Math.floor((mitte - links) / breite)));
+  });
+
+  /* Zwei Karten koennen nicht in derselben Spalte stehen - dann war es
+     dieselbe Karte zweimal gelesen, und die bessere Lesung gewinnt. Dieselbe
+     Regel wie in panelGeometrie, aus demselben Grund. */
+  const proSpalte = new Map();
+  spalten.forEach((sp, i) => {
+    const bisher = proSpalte.get(sp);
+    if (bisher === undefined || (rewards[i].score ?? 0) > (rewards[bisher].score ?? 0)) {
+      proSpalte.set(sp, i);
+    }
+  });
+
+  return {
+    breite,
+    links,
+    anzahlSpalten,
+    eintraege: [...proSpalte.values()].sort((a, b) => spalten[a] - spalten[b])
+                                      .map(i => ({ index: i, spalte: spalten[i] }))
+  };
+}
+
 const TITLE_BAND = { top: 0.02, bottom: 0.10 };
 
 /**
@@ -395,15 +517,45 @@ const TITLE_BAND = { top: 0.02, bottom: 0.10 };
  * Ueberschrift. Ein Fehlalarm waere allerdings harmlos - der Blick auf die
  * Karten faende dann einfach keine Namen.
  */
-export async function rewardScreenVisible({ sourceImage } = {}) {
+const buchstaben = s => String(s || '').toUpperCase().replace(/[^A-Z]/g, '');
+
+export async function rewardScreenVisible({ sourceImage, rect } = {}) {
   /* Wie scanRewardScreen: ein vorhandenes Bild statt des Bildschirms, damit
-     sich der Ausloeser ohne laufendes Spiel pruefen laesst. */
+     sich der Ausloeser ohne laufendes Spiel pruefen laesst. Der Streifen gilt
+     seit dem Zuschnitt fuer Bilder auch dort - vorher wurde bei einem Bild
+     immer alles gelesen. */
   const source = sourceImage || process.env.ARGUS_SCAN_IMAGE || null;
-  const res = await recognise(source ? { source } : TITLE_BAND);
-  if (!res.ok) return false;
-  const text = (res.lines || []).map(l => l.text).join(' ')
-                 .toUpperCase().replace(/[^A-Z]/g, '');
-  return /FISSUREREW/.test(text);
+  const res = await recognise({ ...TITLE_BAND, source, rect: source ? undefined : rect });
+  if (!res.ok) return null;
+
+  const originX = res.region?.x ?? 0;
+  const originY = res.region?.y ?? 0;
+  const lines = (res.lines || []).map(lineBox).filter(Boolean);
+
+  /* Erst jede Zeile fuer sich, dann je zwei aufeinanderfolgende: die
+     Ueberschrift steht auf einer Zeile, aber die Erkennung darf sie umbrechen.
+     Nachgemessen las sie bei 2560x1440 "FISSURE/REW" am Stueck. */
+  for (let n = 1; n <= 2; n++) {
+    for (let i = 0; i + n <= lines.length; i++) {
+      const gruppe = lines.slice(i, i + n);
+      if (!/FISSUREREW/.test(buchstaben(gruppe.map(g => g.text).join('')))) continue;
+      const box = unionBox(gruppe);
+      return {
+        box: { x: originX + box.x, y: originY + box.y, w: box.w, h: box.h },
+        region: res.region || null
+      };
+    }
+  }
+
+  /* Rueckfall auf die alte Pruefung ueber ALLE Zeilen am Stueck. Sie findet
+     die Ueberschrift auch dann, wenn die Erkennung sie so zerlegt hat, dass
+     kein Zeilenpaar sie mehr traegt - dann gibt es eben keinen Anker, aber
+     der Waechter darf deswegen keinen Bildschirm verpassen. Genau das ist
+     seine einzige Aufgabe. */
+  if (/FISSUREREW/.test(buchstaben((res.lines || []).map(l => l.text).join(' ')))) {
+    return { box: null, region: res.region || null };
+  }
+  return null;
 }
 
 /** Die Erkennung vorziehen, bevor jemand auf sie wartet. */
@@ -411,3 +563,6 @@ export { warmUp as warmUpOcr };
 
 /** Den Erkennungsprozess beenden - fuer CLI-Werkzeuge und das Herunterfahren. */
 export { stopOcrHost as stopOcrWorker };
+
+/** Wie der Erkennungsprozess den Desktop sieht - siehe ocr-host.js. */
+export { ocrScreen };

@@ -33,12 +33,27 @@ function render(tags, panel) {
   if (!tags || !tags.length || !panel) { box.innerHTML = ''; return; }
 
   /* Das teuerste Teil hervorheben, aber erst wenn alle Preise da sind -
-     vorher waere die Auszeichnung eine Behauptung. */
+     vorher waere die Auszeichnung eine Behauptung. Noch ladende Karten zaehlen
+     dabei mit: solange eine von ihnen aussteht, kann die teuerste noch kommen. */
   const prices = tags.map(t => t.price?.min).filter(n => Number.isFinite(n));
   const complete = prices.length === tags.length;
   const best = complete ? Math.max(...prices) : null;
 
   const spalten = tags.map(t => {
+    /* Eine Karte, die es noch nicht gibt. Sie haelt ihren Platz, damit das
+       Dock nicht bei jeder Nachlieferung neu zurechtrueckt - und sie zeigt,
+       dass hier noch etwas kommt, statt eine Luecke zu lassen.
+       Der Aufbau ist derselbe wie bei einer echten Karte: Titel, Abzeichen,
+       Preisreihe. Nur eben als Balken. Dadurch springt beim Fuellen nichts. */
+    if (t.loading) {
+      return `
+      <div class="tag-card laedt" style="grid-column: ${(t.spalte ?? 0) + 1}">
+        <div class="tag-skel tag-skel-title"></div>
+        <div class="tag-skel tag-skel-badge"></div>
+        <div class="tag-skel tag-skel-prices"></div>
+      </div>`;
+    }
+
     const platVal = t.price ? t.price.min : null;
     const good = platVal !== null && platVal >= GOOD_PLAT;
     const isBest = platVal !== null && best !== null && platVal === best;
@@ -115,10 +130,13 @@ function render(tags, panel) {
     ` top:${Math.round(panel.top)}px; width:${Math.round(panel.width)}px;` +
     ` grid-template-columns: repeat(${panel.anzahlSpalten}, 1fr)">` +
     spalten +
+    /* Die FORM der Lasche steht im Stylesheet als Maske - dieses SVG traegt
+       nur noch die Haarlinie. Vorher fuellte es sich selbst, mit einem Ton,
+       der nicht der des Docks war; siehe den Kommentar an .tag-panel-fuss. */
     `<div class="tag-panel-fuss">` +
-      `<svg class="tag-notch-svg" viewBox="0 0 106 24" aria-hidden="true">` +
-        `<path d="M 0 -1 L 106 -1 L 106 0 C 94 0 90 22 78 22 L 28 22 C 16 22 12 0 0 0 Z" fill="rgba(10, 13, 20, 0.97)" />` +
-        `<path d="M 0 0 C 12 0 16 22 28 22 L 78 22 C 90 22 94 0 106 0" fill="none" stroke="rgba(255, 255, 255, 0.08)" stroke-width="1" />` +
+      `<svg class="tag-notch-svg" viewBox="0 0 106 26" aria-hidden="true">` +
+        `<path d="M 0 1.5 C 12 1.5 16 23.5 28 23.5 L 78 23.5 C 90 23.5 94 1.5 106 1.5"` +
+             ` fill="none" stroke="rgba(255, 255, 255, 0.08)" stroke-width="1" />` +
       `</svg>` +
       `<span class="tag-logo" aria-hidden="true"></span>` +
     `</div>` +

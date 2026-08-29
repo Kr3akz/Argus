@@ -21,6 +21,91 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-08-29
+
+### Added
+
+- **The dock is already standing when the names arrive.** It used to appear
+  only once text recognition had said where the cards are — which meant waiting
+  for the reward screen to be announced, read and matched before anything was
+  on screen. Two things changed that. The log announces the reward screen
+  opening a full **0.758 seconds** before the line Argus used to trigger on
+  (measured in `EE.log`); that line was already being read and thrown away.
+  And since the card geometry is now measured rather than guessed, the dock's
+  position is known before a single pixel is read. So it appears immediately,
+  empty, with a loading shimmer in each slot.
+- **Cards that are still loading keep their place.** While the four names
+  arrive one by one, the dock used to be rebuilt around whatever had been read
+  so far — growing and shifting with every addition. Each missing card now
+  holds its slot and shows that it is still loading, so the dock stands
+  perfectly still from the first name to the last: same position, same width,
+  same height throughout. You can see what you are still waiting for instead of
+  watching the panel rearrange itself.
+
+### Changed
+
+- **The reward screen is read where the game actually is.** Every crop used to be
+  a fraction of the *primary monitor*. That is only the same thing when the game
+  runs borderless-fullscreen on the primary screen. On a second monitor — which
+  can sit at `x = -2560`, entirely outside the primary screen's coordinates —
+  every quick strip captured the wrong screen, and only the slowest look found
+  anything at all. Argus now finds the game window's drawing area and measures
+  everything from that: fullscreen, windowed, either monitor.
+- **The four cards are read one at a time.** The one thing that reliably lost
+  names was the recognition throwing two side-by-side cards into a single line
+  ("Vadarya Prime Receiver Dual Zoren Prime Handle") — two names gone at once.
+  With one card per crop that cannot happen. It is also *faster* than the strip
+  it replaces: 123 ms for all four against 192 ms, and a third of a full-screen
+  look.
+- **Argus now measures your screen instead of guessing it.** The moment a run
+  reads every card, it records where they stood and starts there next time. The
+  measurement comes from your own screen, so it fits your resolution, your
+  window mode and your in-game interface size — nothing has to be configured,
+  and it improves by itself.
+- **The price tags follow the game window.** They were pinned to the primary
+  monitor and positioned once, at startup. Playing on a second screen put the
+  tags on the wrong one; playing windowed pushed them below the window, because
+  the drop beneath the cards was a fraction of the *screen* height rather than
+  the game's.
+
+### Fixed
+
+- **Reward screens missed while playing in the foreground.** The screen watcher
+  only wakes up once it has *seen* Warframe leave the foreground — that is when
+  its log buffer stalls. But it checked who was in front only every four
+  seconds, and a glance at Argus, Discord or a browser is shorter than that. The
+  excursion fell between two samples, the buffer stalled anyway, and the reward
+  screen was gone before anything looked at it: measured, the log arrived 15
+  seconds late while the watcher had looked four times in three minutes. Who is
+  in front is now sampled twice a second. That costs nothing and captures
+  nothing — it is a window question, not a screen capture, and the screen is
+  still left alone while you are actually playing.
+- **A missed reward screen now counts as evidence.** Argus already detected the
+  case where the log arrives after the screen has closed, said so in the log,
+  and then discarded the finding. That is the strongest possible proof that the
+  write buffer is stalling, so it now keeps the watcher awake for the rest of
+  the mission — in an endless run, the next round is no longer missed the same
+  way.
+- **The log now distinguishes "never looked" from "looked and found nothing".**
+  `4 looks` did not say whether 37 ticks bounced off the foreground check or
+  whether it looked 41 times and saw nothing. Two entirely different faults with
+  entirely different causes; the summary now names both, plus how often the game
+  left the foreground.
+- **The tab under the dock no longer looks stuck on.** It was a filled SVG, and
+  measured against the dock it was a different material throughout: a different
+  shade (`rgba(10,13,20,.97)` against the dock's `rgba(9,12,18,.97)`), no
+  backdrop blur where the dock has one, and its own drop shadow — which fell
+  upward onto the dock as well. The 1px seam it tried to hide never worked
+  either: the path started one unit above its own `viewBox` and was simply
+  clipped away, so the dock's hairline ran straight across the opening while
+  the tab drew its curve underneath. It is now cut out of the dock's own colour
+  layer with a mask, so the shade cannot drift apart — it is the same paint.
+- **Text recognition on scaled displays.** The recognition process did not
+  declare itself display-scaling aware, so at anything other than 100 % Windows
+  handed it an upscaled, soft copy of the screen and lied to it about the
+  coordinates — a blurrier image to read and price tags a fifth out of place. It
+  now reads real pixels. Nothing changes at 100 %.
+
 ## [1.2.0] - 2026-08-29
 
 ### Added

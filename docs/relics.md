@@ -96,12 +96,23 @@ Switchable off under **Settings**. Without tags, the list appears in the overlay
 Two sources, arriving one after the other:
 
 **Your own drop** is known immediately. Warframe's `EE.log` writes this the moment the
-reward screen opens:
+reward screen opens. The full sequence, with the game's own timestamps:
 
 ```
-VoidProjections: <accountId> gets reward /Lotus/StoreItems/.../PyranaPrimeBarrel
-ProjectionRewardChoice.lua: Got rewards
+15977.878  VoidProjections: OpenVoidProjectionRewardScreenRMI       ← screen opens
+15978.043  VoidProjections: Client got reward info from <peer>      +165 ms
+15978.572  VoidProjections: <accountId> gets reward /Lotus/…/CalibanPrimeBlueprint
+15978.636  ProjectionRewardChoice.lua: Got rewards                  +758 ms
+15978.638  ProjectionsCountdown.lua: Initialize timer nil  15       ← the 15 s start
+15993.641  ProjectionRewardChoice.lua: Relic reward screen shut down
 ```
+
+`Got rewards` is what starts the reading — by then every card is named and the peer
+count is known. But the **first** line lands three quarters of a second earlier, and
+Argus used to read it only to reset a counter. It now also puts the empty dock on
+screen and warms the recognition process, so both are done before the countdown even
+begins. It is too early to *read* — the cards are not drawn yet, which is what the
+`Missing icon data!` lines a moment later are about — but not too early to *show*.
 
 The account IDs in those lines are discarded and never passed on.
 
@@ -135,7 +146,24 @@ the hit within the set of **roughly 600 possible relic rewards** from DE's drop 
 A misread "kris Prime Grip" becomes *Paris Prime Grip* again. Only enough has to be
 recognised to be unambiguous in that field.
 
-Four things make it both fast and complete:
+Six things make it both fast and complete:
+
+- **The crop follows the game window, not the primary monitor.** Every crop used to be a
+  fraction of the primary screen. That is only the same thing when the game runs
+  borderless-fullscreen on the primary monitor. On a second screen — which may sit at
+  `x = -2560` — the primary screen bounds do not reach it at all, so every strip captured
+  the *wrong monitor* and only the expensive full-screen look found anything. Argus now
+  locates the game window's drawing area and treats that as the frame. The price tag
+  window follows it too, instead of staying pinned to the primary screen.
+- **The card row is read column by column.** The failure mode above — two side-by-side
+  cards merged into one line — cannot happen if only one card is inside the crop. The
+  four cards sit in an evenly spaced, centred row (measured at 2560×1440: 323.5 px apart,
+  centred on 1280.25, which is the frame centre to within half a pixel), so the row can be
+  cut into one crop per card. Four such crops cost 123 ms together — less than the single
+  wide strip they replace (192 ms) and a third of the full screen (392 ms). Where the
+  number of players is not known — the screen announcer has no log to read it from — the
+  columns are re-derived from the first card actually read: cards abut, so a neighbour is
+  exactly one card width away.
 
 - **The recognition process stays warm.** Starting it costs about a second — assemblies,
   WinRT types, the engine itself — against 116 ms for the recognition proper. It is
@@ -165,6 +193,16 @@ Four things make it both fast and complete:
   2/4. A fixed factor only moves the breaking point, so both readings are taken and
   merged. This costs nothing in practice: the loop stops as soon as every expected card
   is there, and from 720p upwards the first look already delivers all four.
+
+- **The geometry is measured, not guessed.** A tighter guess is still a guess, and where
+  a guess is wrong a tight crop finds *nothing* while a generous one still finds
+  something. So the moment a run reads every expected card, Argus records where they
+  stood — card width and name strip, as fractions of the game window — in
+  `scan-geometry.json`, keyed by window size. The next reward screen starts from that
+  measurement instead of a default. It comes from your own screen, so it fits your
+  resolution, your window mode and your in-game interface size without anyone having to
+  know those in advance. Change the resolution and the key changes with it; the next
+  complete run measures again.
 
 Measured at 2560×1440 with an English client: all four names, in one look, 0.6 s after
 the log line — out of 15 seconds of thinking time. Scaled-down copies of that same

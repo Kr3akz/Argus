@@ -10,13 +10,17 @@
  *
  *   node src/cli/ocr-test.js
  */
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdir, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { loadRelicTables, allRewardNames } from '../core/relics.js';
 import {
-  buildRewardIndex, extractRewards, mergeRewards, scanRewardScreen, stopOcrWorker
+  buildRewardIndex, extractRewards, mergeRewards, scanRewardScreen, stopOcrWorker,
+  panelGeometrie, panelGeometrieGemessen
 } from '../core/rewardscan.js';
+import { columnCrops, columnCropsFrom, recallGeometry, rememberGeometry } from '../core/scan-geometry.js';
+import { setDataDir } from '../core/paths.js';
 
 console.log('=== Relikt-Belohnungserkennung (OCR) Test ===\n');
 
@@ -159,6 +163,166 @@ if (existsSync(testPng)) {
   assert(res4.ok, 'Scan erfolgreich durchgefuehrt');
   assert(res4.rewards?.length === 4, `4 Belohnungen erkannt in ${took}ms`);
   console.log(`   Dauer: ${took} ms`);
+}
+
+// ---------------- Test 7: Spaltengeometrie ----------------
+/* Reine Rechnung, ohne Erkennung: sitzen die Spalten dort, wo die Namen in der
+   echten Aufnahme standen? Die Zahlen unten sind aus data/ocr/test.json
+   abgelesen und nicht erfunden - genau darin liegt der Wert dieses Tests. */
+console.log('\n8. Test: Spaltenausschnitte treffen die gemessenen Namen');
+/* In ein eigenes Verzeichnis, BEVOR die Geometrie zum ersten Mal gelesen wird:
+   sonst faende der Test eine echte Messung des Benutzers vor und pruefte je
+   nach Rechner etwas anderes. */
+const geoDir = path.join(tmpdir(), `argus-geo-test-${process.pid}`);
+await mkdir(geoDir, { recursive: true });
+setDataDir(geoDir);
+
+const rahmen1440 = { x: 0, y: 0, w: 2560, h: 1440 };
+const geo1440 = await recallGeometry(rahmen1440);
+assert(geo1440.gemessen === false, 'Ohne Messung gilt der Standard');
+const spalten = columnCrops(geo1440, 4);
+/* x und Breite der vier Namensrahmen bei 2560x1440. */
+const gemesseneNamen = [[678, 234], [977, 283], [1295, 294], [1642, 247]];
+
+assert(spalten.length === 4, 'Vier Karten ergeben vier Spalten');
+assert(columnCrops(geo1440, 1).length === 1, 'Ein Mitspieler ergibt eine Spalte');
+assert(columnCrops(geo1440, 9).length === 4, 'Mehr als vier Spalten kann es nicht geben');
+
+let alleDrin = true;
+let ueberlappung = false;
+for (let i = 0; i < 4; i++) {
+  const links  = spalten[i].left * 2560;
+  const rechts = spalten[i].right * 2560;
+  const [nx, nw] = gemesseneNamen[i];
+  if (nx < links || nx + nw > rechts) alleDrin = false;
+  /* Der Nachbarname darf NICHT hineinragen - das ist der ganze Zweck. */
+  for (let j = 0; j < 4; j++) {
+    if (j === i) continue;
+    const [ox, ow] = gemesseneNamen[j];
+    if (ox + ow > links && ox < rechts) ueberlappung = true;
+  }
+}
+assert(alleDrin, 'Jeder gemessene Name liegt vollstaendig in seiner Spalte');
+assert(!ueberlappung, 'Kein Nachbarname ragt in eine fremde Spalte');
+
+const streifen = geo1440.band;
+assert(streifen.top * 1440 < 581 && streifen.bottom * 1440 > 740,
+       'Der Standardstreifen umfasst die Namen (581) und drei Zeilen Umbruch (740)');
+
+/* Der Fall, an dem die Spalten sonst geschlossen scheitern: der Waechter
+   meldet den Bildschirm, es gibt kein Log und damit keine Mitspielerzahl,
+   also wird vier angenommen - dastehen aber drei Karten. Dann liegt die Reihe
+   um eine halbe Kartenbreite versetzt. */
+console.log('\n8b. Test: Spalten aus gelesenen Karten nachziehen');
+const dreierMitten = [1280 - 323.5, 1280, 1280 + 323.5];       // drei Karten, zentriert
+const dreierNamen = dreierMitten.map(m => ({ box: { x: m - 120, y: 581, w: 240, h: 30 } }));
+
+const fuerVier = columnCrops(geo1440, 4).map(c => (c.left + c.right) / 2 * 2560);
+assert(dreierMitten.every(m => fuerVier.some(c => Math.abs(c - m) < 40)) === false,
+       'Die Vierer-Spalten treffen eine Dreierreihe NICHT - genau das Problem');
+
+const nachgezogen = columnCropsFrom(rahmen1440, [dreierNamen[0]], geo1440);
+assert(!!nachgezogen && nachgezogen.length > 0, 'Eine einzige gelesene Karte genuegt zum Nachziehen');
+const nachMitten = nachgezogen.map(c => (c.left + c.right) / 2 * 2560);
+assert(dreierMitten.every(m => nachMitten.some(c => Math.abs(c - m) < 20)),
+       `Alle drei Karten haben danach eine eigene Spalte (${nachMitten.map(m => m.toFixed(0)).join(', ')})`);
+assert(nachgezogen.length <= 4, 'Nie mehr als vier Spalten');
+
+/* Und der gewoehnliche Fall: vier Karten bleiben vier Spalten an Ort und Stelle. */
+const vierNachgezogen = columnCropsFrom(rahmen1440, gemesseneNamen.map(([x, w]) =>
+  ({ box: { x, y: 581, w, h: 30 } })), geo1440);
+assert(vierNachgezogen.length === 4, 'Vier gelesene Karten ergeben vier Spalten');
+assert(vierNachgezogen.every((c, i) => {
+  const [nx, nw] = gemesseneNamen[i];
+  return nx >= c.left * 2560 && nx + nw <= c.right * 2560;
+}), 'Die nachgezogenen Spalten enthalten jeden gemessenen Namen');
+
+assert(columnCropsFrom(rahmen1440, [], geo1440) === null,
+       'Ohne gelesene Karte gibt es nichts nachzuziehen');
+
+/* Das Dock soll waehrend des Fuellens STILLSTEHEN. Aus den gelesenen Karten
+   abgeleitet tut es das nicht: mit zwei Karten ist es zwei Spalten breit, mit
+   vier dann vier - es rueckt bei jeder Nachlieferung zurecht. Aus der Messung
+   abgeleitet bleibt es, wo es ist. */
+console.log('\n8c. Test: Dock steht still, waehrend Karten nachkommen');
+const alleVier = gemesseneNamen.map(([x, w], i) =>
+  ({ name: 'Karte ' + i, score: 1, box: { x, y: 581, w, h: 30 } }));
+const nurZwei = [alleVier[0], alleVier[2]];        // Karte 1 und 3 gelesen
+
+const abgeleitetVier = panelGeometrie(alleVier, 2560, 4);
+const abgeleitetZwei = panelGeometrie(nurZwei, 2560, 4);
+assert(abgeleitetVier.anzahlSpalten !== abgeleitetZwei.anzahlSpalten ||
+       Math.abs(abgeleitetVier.links - abgeleitetZwei.links) > 1,
+       'Aus den Karten abgeleitet wandert das Dock - genau das stoert');
+
+const festVier = panelGeometrieGemessen(alleVier, rahmen1440, geo1440.cardWidth, 4);
+const festZwei = panelGeometrieGemessen(nurZwei, rahmen1440, geo1440.cardWidth, 4);
+assert(festVier.anzahlSpalten === 4 && festZwei.anzahlSpalten === 4,
+       'Aus der Messung bleibt es vier Spalten breit, egal wie viel gelesen ist');
+assert(Math.abs(festVier.links - festZwei.links) < 0.001,
+       'Und die linke Kante bleibt exakt dieselbe');
+assert(festVier.eintraege.map(e => e.spalte).join() === '0,1,2,3',
+       'Vier Karten landen in den Spalten 0-3');
+assert(festZwei.eintraege.map(e => e.spalte).join() === '0,2',
+       'Zwei gelesene Karten behalten ihre Spalten 0 und 2 - die Luecke bleibt');
+
+/* Und die Platzhalter-Lage muss mit der spaeteren Lage uebereinstimmen, sonst
+   rueckt das Dock beim ersten gelesenen Namen doch noch zur Seite. */
+const leer = panelGeometrieGemessen([], rahmen1440, geo1440.cardWidth, 4);
+assert(Math.abs(leer.links - festVier.links) < 0.001 && leer.anzahlSpalten === 4,
+       'Das leere Dock sitzt dort, wo spaeter die gelesenen Karten sitzen');
+
+// ---------------- Test 8: Geometrie merken und wiederfinden ----------------
+console.log('\n9. Test: Gemessene Geometrie ueberlebt den Neustart');
+const gemerkt = await rememberGeometry(rahmen1440, [
+  { box: { x: 678,  y: 581, w: 234, h: 30 } },
+  { box: { x: 977,  y: 581, w: 283, h: 30 } },
+  { box: { x: 1295, y: 581, w: 294, h: 24 } },
+  { box: { x: 1642, y: 581, w: 247, h: 30 } }
+], 4);
+assert(!!gemerkt, 'Ein vollstaendiger Durchgang wird gemerkt');
+/* Die Mittelpunkte liegen 323,5 px auseinander - das ist die Kartenbreite. */
+assert(Math.abs(gemerkt.cardWidth * 2560 - 323.5) < 2,
+       `Kartenbreite aus den Mittelpunkten gemessen (${(gemerkt.cardWidth * 2560).toFixed(1)} px)`);
+assert(Math.abs(gemerkt.band.top * 1440 - (581 - 0.02 * 1440)) < 2,
+       'Streifen beginnt eine Handbreit ueber dem obersten Namen');
+
+assert(await rememberGeometry(rahmen1440, [{ box: { x: 678, y: 581, w: 234, h: 30 } }], 4) === null,
+       'Ein unvollstaendiger Durchgang wird NICHT gemerkt');
+
+/* Frisch importieren: so liest das Modul die Datei wirklich neu, statt aus
+   seinem eigenen Zwischenspeicher zu antworten. */
+const frisch = await import(`../core/scan-geometry.js?neu=${Date.now()}`);
+const zurueck = await frisch.recallGeometry(rahmen1440);
+assert(zurueck.gemessen === true, 'Beim naechsten Start gilt die Messung, nicht der Standard');
+assert(Math.abs(zurueck.cardWidth - gemerkt.cardWidth) < 1e-9, 'Kartenbreite unveraendert wieder da');
+assert((await frisch.recallGeometry({ x: 0, y: 0, w: 1920, h: 1080 })).gemessen === false,
+       'Eine andere Aufloesung erbt die Messung nicht');
+
+await rm(geoDir, { recursive: true, force: true });
+setDataDir(null);
+
+// ---------------- Test 9: Spaltenlesung an einer echten Aufnahme ----------
+console.log('\n10. Test: Spaltenweise Lesung findet alle vier Karten');
+if (existsSync(testPng)) {
+  const ab = Date.now();
+  const spaltig = await scanRewardScreen(index, { sourceImage: testPng, columns: spalten });
+  assert(spaltig.ok, 'Spaltenlesung erfolgreich durchgefuehrt');
+  assert(spaltig.rewards?.length === 4, `4 Belohnungen aus 4 Ausschnitten in ${Date.now() - ab}ms`);
+  assert(spaltig.rewards?.[0]?.box.x === 678,
+         'Rahmen aus dem Spaltenausschnitt sind Bildschirmkoordinaten');
+  assert(spaltig.rewards?.[3]?.name === 'Perigale Prime Stock',
+         'Die rechte Karte kommt aus der rechten Spalte');
+
+  /* Der Beweis, dass der Ausschnitt wirklich schneidet: nur die linke Haelfte
+     lesen: dann duerfen die beiden rechten Karten NICHT dabei sein. Vor dieser
+     Aenderung ignorierte der Erkennungsprozess bei einem Bild jeden Zuschnitt
+     und lieferte immer alle vier. */
+  const linkeHaelfte = await scanRewardScreen(index, { sourceImage: testPng, left: 0, right: 0.5 });
+  const gefunden = (linkeHaelfte.rewards || []).map(r => r.name);
+  assert(gefunden.includes('Pyrana Prime Barrel'), 'Linke Haelfte enthaelt die erste Karte');
+  assert(!gefunden.includes('Perigale Prime Stock'),
+         'Linke Haelfte enthaelt die vierte Karte NICHT - der Zuschnitt greift');
 }
 
 stopOcrWorker();

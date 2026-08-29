@@ -46,7 +46,7 @@ import { loadCardImages, cardUrl } from '../core/cards.js';
 import { upgradeDetails } from '../core/upgrade-details.js';
 import { checkAllowed, formatWait } from '../core/ratelimit.js';
 import { matchesFissureFilter } from '../core/fissure-filter.js';
-import { captureForeground, restoreForeground, bringToForeground, moveCursorIntoWindow, foregroundPid } from '../core/foreground.js';
+import { captureForeground, restoreForeground, bringToForeground, moveCursorIntoWindow, foregroundPid, gameWindowRect } from '../core/foreground.js';
 import { LogWatcher } from '../core/logwatch.js';
 import { loadMarketItems, findMarketItem, getPrice, getPrices, marketImage, marketSubIcon } from '../core/market.js';
 /* Handelsteil: Anmeldung, Orders, Auktionen und das lokale Handelsbuch.
@@ -64,8 +64,11 @@ import {
 import { buildBaseSets } from '../core/basesets.js';
 import {
   scanRewardScreen, buildRewardIndex, mergeRewards, warmUpOcr, stopOcrWorker, rewardScreenVisible,
-  panelGeometrie
+  panelGeometrie, panelGeometrieGemessen, ocrScreen
 } from '../core/rewardscan.js';
+import {
+  recallGeometry, rememberGeometry, columnCrops, columnCropsFrom, frameKey, WIDE_BAND
+} from '../core/scan-geometry.js';
 import {
   parseBuildId, fetchBuild, toBuild, loadModMap, saveModMap,
   unknownModIds, mergeNames, USER_AGENT as OF_USER_AGENT
@@ -568,23 +571,55 @@ function createOverlayWindow() {
 }
 
 /**
- * Durchsichtiges Fenster ueber dem ganzen Bildschirm, in dem die Preisschilder
+ * Einen Bereich aus echten Bildschirmpixeln in Fensterkoordinaten umrechnen.
+ *
+ * Electron rechnet in geraeteunabhaengigen Punkten, die Texterkennung liefert
+ * echte Pixel. Bisher stand dafuer ueberall eine Division durch den
+ * Skalierungsfaktor des HAUPTBILDSCHIRMS - was schon bei zwei verschieden
+ * skalierten Monitoren nicht mehr stimmt. screenToDipRect kennt den richtigen
+ * Faktor je Monitor; die Division bleibt als Rueckfall, falls Electron die
+ * Funktion einmal nicht anbietet (sie ist Windows-eigen).
+ */
+function frameToDip(frame) {
+  try {
+    if (typeof screen.screenToDipRect === 'function') {
+      const r = screen.screenToDipRect(null, {
+        x: Math.round(frame.x), y: Math.round(frame.y),
+        width: Math.round(frame.w), height: Math.round(frame.h)
+      });
+      if (r && r.width > 0 && r.height > 0) return r;
+    }
+  } catch { /* Rueckfall darunter */ }
+  const sf = screen.getPrimaryDisplay().scaleFactor || 1;
+  return { x: frame.x / sf, y: frame.y / sf, width: frame.w / sf, height: frame.h / sf };
+}
+
+/**
+ * Durchsichtiges Fenster ueber dem SPIELFENSTER, in dem die Preisschilder
  * sitzen.
  *
  * EIN Fenster statt vier: vier Fenster waeren vier Renderer fuer dieselbe
  * Sache, vier Mal Fensterverwaltung und vier Gelegenheiten, dass eines haengen
  * bleibt. Die Schilder werden darin absolut positioniert.
  *
+ * WARUM UEBER DEM SPIELFENSTER UND NICHT UEBER DEM HAUPTBILDSCHIRM:
+ *   Es stand einmal fest ueber dem Hauptbildschirm - und wurde nur EINMAL
+ *   aufgebaut, danach wiederverwendet. Laeuft Warframe auf dem zweiten
+ *   Monitor, erschienen die Schilder damit auf dem falschen Schirm, ohne dass
+ *   irgendetwas darauf hingewiesen haette. Jetzt folgt das Fenster dem Spiel.
+ *
  * focusable: false und setIgnoreMouseEvents(true) sind hier nicht Komfort,
  * sondern Bedingung: das Fenster liegt genau ueber den Karten, die man
  * anklicken will. Wuerde es einen Klick abfangen, waere die Belohnung weg.
  */
-function createTagWindow() {
-  const display = screen.getPrimaryDisplay();
-
+/* Ohne Angabe der zuletzt bekannte Rahmen - beim Start ist das der
+   Hauptbildschirm, wie frueher. Das Fenster wird gleich beim Hochfahren
+   angelegt, damit es beim ersten Fund fertig geladen ist; wohin es dann
+   wirklich gehoert, weiss erst showTags. */
+function createTagWindow(bounds = frameToDip(cachedFrame())) {
   tagWin = new BrowserWindow({
-    x: display.bounds.x, y: display.bounds.y,
-    width: display.bounds.width, height: display.bounds.height,
+    x: Math.round(bounds.x), y: Math.round(bounds.y),
+    width: Math.round(bounds.width), height: Math.round(bounds.height),
     transparent: true,
     backgroundColor: '#00000000',
     frame: false,
@@ -634,11 +669,6 @@ function showTags(rewards, erwartet = 0) {
                 'Treffer:', rewards?.length ?? 0);
     return;
   }
-  if (!tagWin || tagWin.isDestroyed()) createTagWindow();
-
-  const display = screen.getPrimaryDisplay();
-  const scale = display.scaleFactor || 1;
-
   /* Ohne Rahmen laesst sich kein Schild setzen - solche Eintraege werden
      uebergangen, statt die ganze Anzeige mitzureissen. */
   const placeable = rewards.filter(r => r.box);
@@ -647,10 +677,36 @@ function showTags(rewards, erwartet = 0) {
     return;
   }
 
+  /* Das Fenster folgt dem Spiel. Es wird nicht nur beim ersten Mal gesetzt:
+     wer zwischen zwei Runden auf den anderen Monitor wechselt oder aus dem
+     Vollbild ins Fenster geht, bekaeme sonst Schilder ueber dem alten Platz. */
+  const frame = cachedFrame();
+  const dip = frameToDip(frame);
+  if (!tagWin || tagWin.isDestroyed()) createTagWindow(dip);
+  else {
+    const ist = tagWin.getBounds();
+    if (Math.abs(ist.x - dip.x) > 2 || Math.abs(ist.y - dip.y) > 2 ||
+        Math.abs(ist.width - dip.width) > 2 || Math.abs(ist.height - dip.height) > 2) {
+      tagWin.setBounds({ x: Math.round(dip.x), y: Math.round(dip.y),
+                         width: Math.round(dip.width), height: Math.round(dip.height) });
+      console.log('[Relikt] Schilderfenster verschoben auf', frame.quelle,
+                  `${Math.round(dip.width)}x${Math.round(dip.height)} bei ${Math.round(dip.x)},${Math.round(dip.y)}`);
+    }
+  }
+
+  /* Echte Bildschirmpixel -> Punkte INNERHALB des Schilderfensters. Der
+     Faktor kommt aus der Umrechnung selbst und nicht aus dem Skalierungsfaktor
+     des Hauptbildschirms - bei zwei verschieden skalierten Monitoren waere der
+     der falsche. */
+  const fx = dip.width / frame.w;
+  const fy = dip.height / frame.h;
+  const inFenster = (x, y) => ({ x: (x - frame.x) * fx, y: (y - frame.y) * fy });
+
   /* Nicht direkt unter den Namen: dort verdeckt das Schild die Karte. Ein
      Stueck tiefer sitzt es unter dem Bild und bleibt trotzdem eindeutig
-     zugeordnet. */
-  const dropPx = Math.round(display.bounds.height * relicTagOffset);
+     zugeordnet. Als Anteil der SPIELFENSTERhoehe, nicht der Bildschirmhoehe -
+     im Fenstermodus rutschten die Schilder sonst weit unter die Karten. */
+  const dropPx = Math.round(dip.height * relicTagOffset);
 
   /* EINE Hoehe fuer alle Schilder statt fuer jedes die eigene Unterkante.
      Die Rahmen sind naemlich unterschiedlich hoch: sie umschliessen den
@@ -664,13 +720,28 @@ function showTags(rewards, erwartet = 0) {
      garantiert unter jedem Namen. Ein Median liesse das Schild der Karte mit
      dem laengsten Namen ausgerechnet dort sitzen, wo noch Text steht. */
   const baseline = Math.max(...placeable.map(r => r.box.y + r.box.h));
-  const top = baseline / scale - display.bounds.y + dropPx;
+  const top = inFenster(0, baseline).y + dropPx;
 
   /* Breite und Spaltenzuordnung stehen in rewardscan.js - dort sind sie ohne
      Electron pruefbar, und genau das brauchte diese Rechnung: sie hat die
-     Anzeige schon einmal in achtzig schmale Streifen zerlegt. */
-  const geo = panelGeometrie(placeable, display.bounds.width, erwartet || undefined);
-  const spalte = Math.round(geo.breite / scale);
+     Anzeige schon einmal in achtzig schmale Streifen zerlegt.
+
+     Uebergeben wird die Breite des SPIELFENSTERS in echten Pixeln - dasselbe
+     Mass, in dem die Rahmen stehen. Vorher stand hier die Breite des
+     Hauptbildschirms in Punkten: zwei verschiedene Massstaebe in einer
+     Rechnung, die bei 125 % Skalierung die erwartete Kartenbreite um ein
+     Fuenftel zu klein ansetzte und damit ausgerechnet den Schutz vor den
+     achtzig Streifen aufweichte. */
+  /* MIT MESSUNG das zentrierte Modell, sonst wie bisher aus den gelesenen
+     Karten. Der Unterschied ist nicht die Genauigkeit, sondern die RUHE: das
+     zentrierte Feld hat von der ersten bis zur vierten Karte dieselbe Breite
+     und dieselbe Lage, waehrend das abgeleitete bei jeder Nachlieferung neu
+     zugeschnitten wird - und das sieht man. */
+  const gemessen = letzteGeometrie?.gemessen ? letzteGeometrie : null;
+  const geo = gemessen && erwartet
+    ? panelGeometrieGemessen(placeable, frame, gemessen.cardWidth, erwartet)
+    : panelGeometrie(placeable, frame.w, erwartet || undefined);
+  const spalte = Math.round(geo.breite * fx);
 
   /* Das Feld folgt den GELESENEN Karten und wird nicht auf die Spielerzahl
      aufgeblasen. Verlockend waere es - vier Spieler, vier Spalten -, aber die
@@ -680,7 +751,7 @@ function showTags(rewards, erwartet = 0) {
      Stelle. Die Spielerzahl deckelt dafuer oben (siehe panelGeometrie): mehr
      Spalten als Mitspieler kann es nie geben. */
   const panel = {
-    left:  geo.links / scale - display.bounds.x,
+    left:  inFenster(geo.links, 0).x,
     top,
     width: spalte * geo.anzahlSpalten,
     spalte,
@@ -689,7 +760,7 @@ function showTags(rewards, erwartet = 0) {
 
   /* Nur die behaltenen Eintraege: doppelt gelesene Karten hat die Geometrie
      bereits auf die bessere Lesung eingedampft. */
-  const tags = geo.eintraege.map(({ index, spalte: sp }) => {
+  const gelesen = geo.eintraege.map(({ index, spalte: sp }) => {
     const r = placeable[index];
     return {
     spalte: sp,
@@ -704,6 +775,22 @@ function showTags(rewards, erwartet = 0) {
     setParts: r.setParts || []
     };
   });
+
+  /* LEERE SPALTEN BLEIBEN SPALTEN. Waehrend die Karten einzeln eintreffen,
+     stand bisher nur da, was schon gelesen war - das Dock wuchs Karte um
+     Karte und schob dabei alles zurecht. Jetzt behaelt jede noch fehlende
+     Karte ihren Platz und zeigt darin, dass sie noch laedt. Das Dock steht
+     still, und man sieht, worauf man noch wartet.
+
+     Nur mit Messung: ohne sie kommt die Spaltenzahl aus den gelesenen Karten,
+     und dann waere eine "fehlende" Spalte reine Erfindung. */
+  const belegt = new Set(gelesen.map(t => t.spalte));
+  const tags = gemessen
+    ? [...gelesen, ...Array.from({ length: geo.anzahlSpalten }, (_, i) => i)
+                        .filter(i => !belegt.has(i))
+                        .map(i => ({ spalte: i, loading: true }))]
+        .sort((a, b) => a.spalte - b.spalte)
+    : gelesen;
 
   const send = () => {
     if (tagWin && !tagWin.isDestroyed()) tagWin.webContents.send('tags:show', { tags, panel });
@@ -720,7 +807,9 @@ function showTags(rewards, erwartet = 0) {
      nachgereicht, und jede Nachlieferung zeichnet die Schilder neu. */
   if (!tagWin.isVisible()) {
     tagWin.show();
-    console.log('[Relikt] Schilder gezeigt:', tags.length, '| sichtbar:', tagWin.isVisible());
+    console.log(`[Relikt] Schilder gezeigt: ${gelesen.length} von ${tags.length}`
+              + `${tags.length > gelesen.length ? ' (Rest laedt noch)' : ''}`
+              + ` | sichtbar: ${tagWin.isVisible()}`);
   }
 
   /* Zwangsabschaltung. Bisher hing das Verschwinden allein an der Schluss-
@@ -734,6 +823,85 @@ function showTags(rewards, erwartet = 0) {
   const endsAt = (currentRelic?.at ?? Date.now()) + (currentRelic?.seconds ?? 15) * 1000 + 2000;
   clearTimeout(tagTimer);
   tagTimer = setTimeout(hideTags, Math.max(1000, endsAt - Date.now()));
+}
+
+/* So lange bleiben Platzhalter hoechstens stehen, falls nach ihnen nichts
+   mehr kommt - der Countdown dauert 15 s, danach ist der Bildschirm ohnehin
+   weg. Ein Dock, das ueber einem laufenden Spiel klebt, ist das Schlimmste,
+   was diese Anzeige tun kann; deshalb hat auch hier die Uhr eine Stimme. */
+const SKELETON_MAX_MS = 20000;
+
+/**
+ * Das Dock aufstellen, BEVOR irgendetwas gelesen wurde.
+ *
+ * WARUM DAS GEHT:
+ *   Bisher konnte das Dock erst erscheinen, wenn die Texterkennung gesagt
+ *   hatte, WO die Karten stehen. Das ist seit der Messung nicht mehr noetig:
+ *   die gemerkte Geometrie kennt Kartenbreite und Namenskante, und die Reihe
+ *   ist im Spielfenster zentriert. Damit steht die Lage des Docks fest, bevor
+ *   ein einziges Pixel gelesen wurde.
+ *
+ * WANN ES AUFGERUFEN WIRD:
+ *   Auf `OpenVoidProjectionRewardScreenRMI` - die frueheste Zeile, die das Log
+ *   ueber den Belohnungsbildschirm hergibt, nachgemessen 758 ms vor dem
+ *   bisherigen Ausloeser. Zum Lesen taugt der Zeitpunkt nicht, die Karten sind
+ *   dann noch nicht gezeichnet. Zum Hinstellen des leeren Docks schon.
+ *
+ * WARUM NUR MIT MESSUNG:
+ *   Ohne sie waere die Lage geraten, und ein Dock an der falschen Stelle ueber
+ *   dem laufenden Spiel ist schlechter als gar keins. Beim allerersten
+ *   Belohnungsbildschirm auf einem Bildschirmformat gibt es deshalb keine
+ *   Platzhalter - ab dem zweiten schon.
+ */
+async function showSkeletonTags() {
+  /* Ohne Erkennung wuerden die Platzhalter nie gefuellt: dann stuenden vier
+     leere Karten da, bis die Uhr sie abraeumt. Lieber gar nichts. */
+  if (!relicTags || !relicScan) return;
+  if (currentRelic) return;              // die Runde laeuft schon, es gibt Echtes
+
+  const frame = await gameFrame();
+  const geo = await recallGeometry(frame);
+  if (!geo.gemessen) return;
+  /* Damit das Dock, das gleich mit echten Namen gefuellt wird, dieselbe
+     Aufteilung benutzt wie diese Platzhalter - sonst rueckt es beim ersten
+     gelesenen Namen zur Seite. */
+  letzteGeometrie = geo;
+
+  const dip = frameToDip(frame);
+  const fx = dip.width / frame.w;
+  const fy = dip.height / frame.h;
+
+  if (!tagWin || tagWin.isDestroyed()) createTagWindow(dip);
+
+  const anzahl = Math.min(4, Math.max(1, geo.players || 4));
+  const breite = geo.cardWidth * frame.w;
+  /* Zentriert im Rahmen - dieselbe Annahme, aus der auch die Spalten der
+     Erkennung entstehen (siehe scan-geometry.js). */
+  const links = frame.x + frame.w / 2 - (anzahl * breite) / 2;
+  const unten = frame.y + geo.names.bottom * frame.h;
+  const spalte = Math.round(breite * fx);
+
+  const panel = {
+    left: (links - frame.x) * fx,
+    top:  (unten - frame.y) * fy + Math.round(dip.height * relicTagOffset),
+    width: spalte * anzahl,
+    spalte,
+    anzahlSpalten: anzahl
+  };
+
+  const tags = Array.from({ length: anzahl }, (_, i) => ({ spalte: i, loading: true }));
+
+  const send = () => {
+    if (tagWin && !tagWin.isDestroyed()) tagWin.webContents.send('tags:show', { tags, panel });
+  };
+  if (tagWin.webContents.isLoading()) tagWin.webContents.once('did-finish-load', send);
+  else send();
+
+  if (!tagWin.isVisible()) tagWin.show();
+  console.log(`[Relikt] Dock steht (${anzahl} Platzhalter) - noch vor der Erkennung`);
+
+  clearTimeout(tagTimer);
+  tagTimer = setTimeout(hideTags, SKELETON_MAX_MS);
 }
 
 function hideTags() {
@@ -3485,46 +3653,145 @@ const SCAN_RETRY_MS       = 150;
    und im Normalfall reicht dafuer der erste Blick nach 71 ms. */
 const SCAN_BUDGET_MS      = 13000;
 
-/* Der Streifen, in dem die vier Namen stehen - Anteil der Bildschirmhoehe.
-   Nachgemessen bei 2560x1440 stehen sie bei 0.404; der Streifen laesst nach
-   oben und unten reichlich Luft fuer andere Aufloesungen und Seitenverhaeltnisse.
-   Ein Blick auf den Streifen kostet 70-90 ms statt 180-250 ms fuer den ganzen
-   Bildschirm - und liest nebenbei die Bildrate-Anzeige und den Chat nicht mit. */
-const SCAN_BAND = { top: 0.25, bottom: 0.68 };
-
 /* 2,5x, weil es der Faktor ist, mit dem die verschmolzenen Zeilen im Versuch
    wieder auseinanderfielen. Mehr kostet nur Zeit: die Erkennung waechst mit
    der Flaeche, und bei 4x liest sie laenger, als die Bedenkzeit hergibt. */
 const SCAN_SCALE = 2.5;
 
-/* Die Blickweisen in der Reihenfolge, in der sie versucht werden: erst die
-   beiden schnellen, dann dieselben vergroessert. Die Begruendung steht am
-   Kopf von scanRewardsRepeatedly - kurz: die ersten beiden reichen fast
-   immer, und wo sie es nicht tun, ist es keine Frage der Geschwindigkeit
-   mehr. */
-/* Die Reihenfolge folgt den KOSTEN, nicht der Systematik. Nachgemessen an
-   einem zaehen Durchgang (17 Blicke, 9,6 s):
+/* Fuer die Spalten darf es mehr sein: eine Spalte ist ein Fuenfzigstel des
+   Bildes, und 3x davon kostet immer noch weniger als ein einfacher
+   Vollbildblick (225 ms gegen 392 ms, nachgemessen bei 2560x1440). */
+const SCAN_COLUMN_SCALE = 3;
 
-     Streifen           ~100 ms
-     Vollbild           ~170 ms
-     Streifen 2,5x      ~430 ms
-     Vollbild 2,5x     ~1010 ms
+/* So lange gilt ein einmal gefundenes Spielfenster. Die Suche laeuft ueber
+   alle Fenster der Z-Reihenfolge - billig, aber nicht umsonst, und waehrend
+   eines Belohnungsbildschirms verschiebt niemand sein Spielfenster. */
+const FRAME_CACHE_MS = 5000;
 
-   Der teuerste Blick fand dabei nicht mehr als der billigste - gefunden hat es
-   am Ende ein gewoehnlicher Streifenblick. Nicht die Art des Blickes entschied,
-   sondern dass der Bildschirm irgendwann stillstand. Also moeglichst viele
-   Blicke pro Sekunde: der Vollbild-Blick mit Vergroesserung kommt nur noch
-   einmal je Sechserrunde statt jedes vierte Mal. Das druckt den Schnitt von
-   540 auf 455 ms je Blick, ohne ihn ganz aufzugeben - bei kleinen Aufloesungen
-   war er der einzige, der die verschmolzenen Zeilen noch trennte. */
-const SCAN_LOOKS = [
-  SCAN_BAND,
-  {},
-  { ...SCAN_BAND, scale: SCAN_SCALE },
-  SCAN_BAND,
-  {},
-  { scale: SCAN_SCALE }
-];
+let frameCache = { at: 0, frame: null };
+/* Die Geometrie des laufenden Durchgangs. showTags ist synchron und haengt an
+   einer Fuenfzehn-Sekunden-Uhr - es darf sie nicht selbst nachladen. */
+let letzteGeometrie = null;
+
+/**
+ * Der Rahmen, auf den sich alle Ausschnitte beziehen - in echten
+ * Bildschirmpixeln.
+ *
+ * WARUM NICHT EINFACH DER HAUPTBILDSCHIRM:
+ *   Genau das war er bisher. Auf einem zweiten Monitor liegt das Spiel aber
+ *   womoeglich bei x=-2560, und der Hauptbildschirm kennt nur x=0..2560 -
+ *   dann nimmt JEDER Streifen den falschen Monitor auf, und nur der teure
+ *   Vollbildblick findet ueberhaupt etwas. Im Fenstermodus dasselbe in klein:
+ *   die Anteile sitzen um den Fensterversatz daneben.
+ *
+ * DIE RUECKFALLKETTE:
+ *   Ohne Spielfenster - das Spiel laeuft nicht, oder koffi fehlt - bleibt es
+ *   beim Hauptbildschirm, und zwar so, wie der ERKENNUNGSPROZESS ihn sieht.
+ *   Er ist derjenige, der aufnimmt; seine Sicht ist die massgebliche. Erst
+ *   wenn auch die fehlt, rechnet Electron sie sich aus.
+ */
+async function gameFrame(maxAgeMs = FRAME_CACHE_MS) {
+  if (frameCache.frame && Date.now() - frameCache.at <= maxAgeMs) return frameCache.frame;
+
+  let frame = null;
+  const fenster = gameWindowRect(await gamePids(60000));
+  /* rect wird nur mitgeschickt, wenn es das Spielfenster IST. Fuer den
+     Hauptbildschirm bleibt es weg - dann faellt der Erkennungsprozess von
+     sich aus darauf zurueck, und die beiden koennen nicht auseinanderlaufen. */
+  if (fenster) frame = { ...fenster, rect: fenster, quelle: 'Spielfenster' };
+
+  if (!frame) {
+    const host = ocrScreen()?.primary;
+    if (host) {
+      frame = { ...host, rect: null, quelle: 'Hauptbildschirm' };
+    } else {
+      const display = screen.getPrimaryDisplay();
+      const sf = display.scaleFactor || 1;
+      frame = {
+        x: display.bounds.x * sf, y: display.bounds.y * sf,
+        w: display.bounds.width * sf, h: display.bounds.height * sf,
+        rect: null, quelle: 'Hauptbildschirm (geschaetzt)'
+      };
+    }
+  }
+
+  frameCache = { at: Date.now(), frame };
+  return frame;
+}
+
+/**
+ * Der zuletzt ermittelte Rahmen, ohne neu zu suchen.
+ *
+ * Fuer die Schilder: die stehen immer NACH einem Blick auf den Bildschirm, und
+ * der hat den Rahmen gerade ermittelt. Ein zweites Mal danach zu suchen wuerde
+ * nichts anderes ergeben und die Anzeige nur verzoegern - sie haengt an einer
+ * Fuenfzehn-Sekunden-Uhr.
+ */
+function cachedFrame() {
+  if (frameCache.frame) return frameCache.frame;
+  const display = screen.getPrimaryDisplay();
+  const sf = display.scaleFactor || 1;
+  return {
+    x: display.bounds.x * sf, y: display.bounds.y * sf,
+    w: display.bounds.width * sf, h: display.bounds.height * sf,
+    rect: null, quelle: 'Hauptbildschirm (geschaetzt)'
+  };
+}
+
+/**
+ * Die Blickweisen fuer diesen Durchgang, in der Reihenfolge ihrer Kosten.
+ *
+ * NACHGEMESSEN bei 2560x1440 auf dem echten Bildschirm, Median aus fuenf:
+ *
+ *     Spalten (4 Stueck)   123 ms      0,35 MP
+ *     Schmalband            97 ms      0,70 MP
+ *     Spalten 3x           225 ms
+ *     Breitband            192 ms      1,58 MP
+ *     Vollbild             392 ms      3,69 MP
+ *     Vollbild 2,5x       1019 ms
+ *
+ * WARUM DIE SPALTEN VORNE STEHEN, obwohl das Schmalband billiger ist:
+ *   Nicht die Geschwindigkeit entscheidet, sondern die Zeilenaufteilung. Der
+ *   dokumentierte Fehlermodus ist, dass die Erkennung zwei NEBENEINANDER
+ *   stehende Karten in eine Zeile wirft - dann fehlen zwei Namen auf einen
+ *   Schlag. Steht in einem Ausschnitt nur eine Karte, kann das nicht mehr
+ *   passieren. Die Spalten sind der einzige Blick, der diesen Fehler
+ *   ausschliesst statt ihn unwahrscheinlicher zu machen.
+ *
+ * WARUM TROTZDEM ALLES ANDERE STEHEN BLEIBT:
+ *   Ein enger Ausschnitt, der danebensitzt, findet GAR NICHTS - waehrend der
+ *   grosszuegige wenigstens noch etwas liefert. Deshalb wird die Leiter nach
+ *   unten hin immer grosszuegiger und endet dort, wo sie vor dieser Aenderung
+ *   anfing: beim ganzen Bildschirm. Was einer findet, wird ohnehin
+ *   zusammengelegt.
+ */
+async function scanLooks(frame, expected) {
+  const geo = await recallGeometry(frame);
+  const columns = columnCrops(geo, expected);
+  const rect = frame.rect || undefined;
+
+  return {
+    geo,
+    looks: [
+      { name: 'Spalten',       rect, columns },
+      { name: 'Schmalband',    rect, ...geo.band },
+      { name: 'Spalten 3x',    rect, columns, scale: SCAN_COLUMN_SCALE },
+      { name: 'Breitband',     rect, ...WIDE_BAND },
+      { name: 'Vollbild',      rect },
+      { name: 'Vollbild 2,5x', rect, scale: SCAN_SCALE },
+      /* OHNE Rahmen, und deshalb ganz am Ende: der ganze Hauptbildschirm, so
+         wie vor der Umstellung auf das Spielfenster.
+
+         Alle Blicke darueber beziehen sich auf den Rahmen. Das ist richtig -
+         aber es heisst auch, dass ein falscher Rahmen ausnahmslos JEDEN von
+         ihnen ins Leere schickt. Vorher gab es diesen Totalausfall nicht,
+         weil es keinen Rahmen gab. Dieser eine Blick holt die alte
+         Versicherung zurueck: was auch immer mit der Fenstersuche schiefgeht,
+         schlechter als vorher kann es nicht werden. */
+      { name: 'Hauptbildschirm' }
+    ]
+  };
+}
 
 /**
  * Den Belohnungsbildschirm lesen, bis alle vier dastehen.
@@ -3574,10 +3841,31 @@ async function scanRewardsRepeatedly(stillCurrent, expected = 4, lauf = 0, onFor
     console.log(`[Relikt #${lauf}] Abbruch: Runde weitergezogen, waehrend der Suchindex geladen wurde`);
     return null;
   }
+
+  /* Wo das Spiel steht und wo darin die Karten stehen. Beides EINMAL je
+     Durchgang: das Fenster verschiebt sich waehrend eines
+     Belohnungsbildschirms nicht, und die Geometrie schon gar nicht.
+
+     WAEHREND der Anlaufpause und nicht davor: das Fenster zu suchen kostet
+     einen tasklist-Aufruf, wenn die Spiel-PIDs gerade kalt sind. Die 200 ms
+     Pause laufen ohnehin - der Bildschirm baut sich noch auf -, und in ihnen
+     ist die Vorbereitung geschenkt. Davor waere sie vom Blickbudget abgezogen. */
+  const vorbereitung = gameFrame()
+    .then(async f => ({ frame: f, ...(await scanLooks(f, expected)) }))
+    /* Hier wirft nichts - alles darunter faengt selbst. Der Fang steht
+       trotzdem: dieses Versprechen wird nicht abgewartet, wenn die Runde
+       waehrend der Anlaufpause weiterzieht, und ein unbehandelter Fehlschlag
+       waere dann eine Warnung im Protokoll ohne jeden Bezug. */
+    .catch(async () => {
+      const f = cachedFrame();
+      return { frame: f, ...(await scanLooks(f, expected)) };
+    });
+
   const deadline = Date.now() + SCAN_BUDGET_MS;
   let merged = null;
   let lastError = null;
   let attempts = 0;
+  let spaltenNachgezogen = false;
 
   await wait(SCAN_FIRST_DELAY_MS);
   if (!stillCurrent()) {
@@ -3586,19 +3874,31 @@ async function scanRewardsRepeatedly(stillCurrent, expected = 4, lauf = 0, onFor
     return null;
   }
 
+  const { frame, geo, looks } = await vorbereitung;
+  /* Fuer showTags hinterlegen: es ist synchron und soll die Datei nicht
+     waehrend der Bedenkzeit noch einmal lesen. Bewusst NICHT aktualisiert,
+     wenn mitten im Durchgang neu gemessen wird - eine Messung, die das Dock
+     waehrend seiner eigenen Anzeige verschiebt, waere schlimmer als eine, die
+     erst beim naechsten Mal gilt. */
+  letzteGeometrie = geo;
+  console.log(`[Relikt #${lauf}] Rahmen: ${frame.quelle} ${frameKey(frame)}`
+            + ` bei ${Math.round(frame.x)},${Math.round(frame.y)}`
+            + ` | Geometrie: ${geo.gemessen ? 'gemessen' : 'Standard'}`
+            + ` (Karte ${(geo.cardWidth * 100).toFixed(1)} %,`
+            + ` Streifen ${geo.band.top.toFixed(3)}-${geo.band.bottom.toFixed(3)})`);
+
   while (stillCurrent()) {
     /* Der Reihe nach durch die Blickweisen, danach wieder von vorn: was beim
        ersten Durchgang am halb aufgebauten Bildschirm scheiterte, kann beim
        zweiten schon dastehen. */
-    const look = SCAN_LOOKS[attempts % SCAN_LOOKS.length];
+    const look = looks[attempts % looks.length];
     attempts++;
     const blickAb = Date.now();
     const scan = await scanRewardScreen(index, look);
     /* Je Blick mitschreiben, was er gekostet und gebracht hat. Ohne das steht
        am Ende nur eine Gesamtzahl, und ob die Zeit im Anlauf, in einem
        vergroesserten Blick oder im Warten dazwischen lag, bleibt offen. */
-    console.log(`[Relikt #${lauf}]   Blick ${attempts} (${look.top ? 'Streifen' : 'Vollbild'}`
-              + `${look.scale ? ` ${look.scale}x` : ''}): `
+    console.log(`[Relikt #${lauf}]   Blick ${attempts} (${look.name}): `
               + `${scan.ok ? `${scan.rewards.length} Treffer` : `Fehler ${scan.error}`}`
               + ` nach ${Date.now() - blickAb}ms`);
     if (!stillCurrent()) {
@@ -3616,11 +3916,37 @@ async function scanRewardsRepeatedly(stillCurrent, expected = 4, lauf = 0, onFor
       const vorher = merged ? merged.rewards.length : 0;
       merged = merged ? mergeRewards(merged, scan) : scan;
       if (merged.rewards.length >= expected) break;
-      /* Kam eine Karte dazu, geht sie SOFORT auf den Bildschirm - wer auf die
-         restlichen wartet, soll nicht auch auf die schon gelesenen warten. */
-      if (onFortschritt && merged.rewards.length > vorher) {
-        await onFortschritt(merged);
-        if (!stillCurrent()) return null;
+
+      if (merged.rewards.length > vorher) {
+        /* DIE SPALTEN AUS DEM NACHZIEHEN, WAS SCHON STEHT. Bis hierher sassen
+           sie auf einer Annahme - der Zahl der Mitspieler, die beim Melder
+           "Bildschirm" gar nicht bekannt ist und dann mit vier angenommen
+           wird. Steht in Wahrheit eine ungerade Zahl Karten da, liegt die
+           Reihe um eine halbe Kartenbreite versetzt und jede Karte faellt
+           zwischen zwei Spalten.
+
+           Eine einzige gelesene Karte beendet das Raten: die Karten stossen
+           aneinander, also stehen die Nachbarn genau eine Kartenbreite
+           daneben. Ab dem naechsten Spaltenblick wird dort geschnitten, wo
+           wirklich etwas steht. */
+        const verfeinert = columnCropsFrom(frame, merged.rewards, geo);
+        if (verfeinert) {
+          for (const look of looks) if (look.columns) look.columns = verfeinert;
+          if (!spaltenNachgezogen) {
+            spaltenNachgezogen = true;
+            console.log(`[Relikt #${lauf}]   Spalten nachgezogen aus`
+                      + ` ${merged.rewards.length} gelesenen Karten:`
+                      + ` ${verfeinert.length} Ausschnitte`);
+          }
+        }
+
+        /* Kam eine Karte dazu, geht sie SOFORT auf den Bildschirm - wer auf
+           die restlichen wartet, soll nicht auch auf die schon gelesenen
+           warten. */
+        if (onFortschritt) {
+          await onFortschritt(merged);
+          if (!stillCurrent()) return null;
+        }
       }
     } else {
       lastError = scan.error;
@@ -3634,6 +3960,26 @@ async function scanRewardsRepeatedly(stillCurrent, expected = 4, lauf = 0, onFor
   console.log(`[Relikt #${lauf}] Erkennung: ` + (merged ? `${found} Treffer (erwartet ${expected})` : `nichts gefunden${lastError ? ` - ${lastError}` : ''}`)
             + ` | ${attempts} Versuch${attempts === 1 ? '' : 'e'}`);
 
+  /* AUS DEM GELUNGENEN DURCHGANG LERNEN. Jetzt - und nur jetzt - steht fest,
+     wo die Karten auf DIESEM Bildschirm wirklich stehen. Beim naechsten
+     Belohnungsbildschirm greift der erste Blick dann auf eine Messung statt
+     auf eine Schaetzung zu.
+
+     Nach der Anzeige und ohne await davor: das Schreiben einer kleinen
+     JSON-Datei ist schnell, aber die Bedenkzeit laeuft, und die Schilder sind
+     wichtiger als die Buchfuehrung. */
+  if (found >= expected) {
+    rememberGeometry(frame, merged.rewards, expected)
+      .then(neu => {
+        if (!neu) return;
+        console.log(`[Relikt #${lauf}] Geometrie gemerkt fuer ${frameKey(frame)}:`
+                  + ` Karte ${(neu.cardWidth * 100).toFixed(1)} %,`
+                  + ` Streifen ${neu.band.top.toFixed(3)}-${neu.band.bottom.toFixed(3)}`
+                  + (geo.gemessen ? ' (aufgefrischt)' : ' (erstmals)'));
+      })
+      .catch(() => { /* Buchfuehrung ist kein Grund, den Durchgang zu stoeren. */ });
+  }
+
   /* Nichts gelesen UND der Beweisschalter ist an: eine letzte Aufnahme, diesmal
      als Bild auf die Platte. Ohne sie bleibt "es kam nichts" eine Behauptung -
      mit ihr laesst sich sehen, ob der Bildschirm schwarz war, das Spiel woanders
@@ -3642,7 +3988,12 @@ async function scanRewardsRepeatedly(stillCurrent, expected = 4, lauf = 0, onFor
      bestellt hat. */
   if (!found && relicScanDebug) {
     const shot = dataFile('diag', `fehlschlag-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.png`);
-    const proof = await scanRewardScreen(index, { keepImage: shot }).catch(() => null);
+    /* Das SPIELFENSTER sichern, nicht den Hauptbildschirm: sonst zeigt das
+       Beweisbild bei zwei Monitoren den falschen Schirm - und ausgerechnet
+       dann, wenn nichts gefunden wurde, waere das die irrefuehrendste
+       Auskunft von allen. */
+    const proof = await scanRewardScreen(index, { keepImage: shot, rect: frame.rect || undefined })
+                          .catch(() => null);
     console.log('[Relikt] Beweisaufnahme:', shot, '|', proof?.ok ? `${proof.lines} Zeilen erkannt` : 'auch das misslang');
   }
 
@@ -3708,10 +4059,19 @@ const WATCH_MAX_MS = 90 * 60 * 1000;
 const WATCH_ECHO_MS = 60 * 1000;
 
 let watchTimer = null;
+let watchFocusTimer = null;
 let watchDeadline = 0;
 let watchStartedAt = 0;
 let watchBusy = false;
 let watchBlicke = 0;
+/* Wie oft ein Takt am Vordergrund abgeprallt ist, und wie oft Warframe den
+   Vordergrund verlassen hat. Beides nur fuers Protokoll - aber ohne sie ist
+   ein verpasster Bildschirm nicht zu deuten. */
+let watchUebersprungen = 0;
+let watchAbstecher = 0;
+/* Stand Warframe bei der letzten Abtastung vorn? Nur fuer die Flankenzaehlung
+   in pollForeground. */
+let watchFokusVorn = true;
 /* Warframe war seit dem Missionsstart mindestens einmal im Hintergrund - dann
    ist sein Schreibpuffer verdaechtig, und der Waechter bleibt wach. */
 let watchPufferVerdacht = false;
@@ -3748,14 +4108,73 @@ async function gameIsForeground() {
   return pids.some(p => Number(p) === Number(pid));
 }
 
+/**
+ * Nur die Frage "ist Warframe gerade vorn?", so oft wie moeglich.
+ *
+ * WARUM ES DAS ZUSAETZLICH ZUM TAKT DES WAECHTERS GIBT:
+ *   Der Puffer-Verdacht - und damit ueberhaupt jeder Blick, solange das Spiel
+ *   vorn steht - haengt daran, dass EINMAL beobachtet wird, wie Warframe den
+ *   Vordergrund verlaesst. Beobachtet wurde das bisher im Takt des Waechters,
+ *   also alle vier Sekunden. Wer kurz auf Argus, Discord oder den Browser
+ *   schaut und zurueckwechselt, tut das in weniger als vier Sekunden: der
+ *   Abstecher faellt zwischen zwei Abtastungen und wird nie gesehen. Der
+ *   Puffer steht danach trotzdem.
+ *
+ *   Genau dieser Fall ist nachgemessen aufgetreten: das Logereignis kam 15 s
+ *   zu spaet, der Waechter hatte in knapp drei Minuten viermal hingesehen,
+ *   und der Bildschirm war weg, bevor irgendjemand ihn gelesen hatte.
+ *
+ * WARUM DAS NICHTS KOSTET:
+ *   Hier wird NICHT der Bildschirm aufgenommen. GetForegroundWindow und
+ *   GetWindowThreadProcessId sind Fensterabfragen im Mikrosekundenbereich -
+ *   nichts davon fasst den Bildinhalt an, und nur der Zugriff auf den
+ *   Bildinhalt war es, der das Spielgefuehl gestoert hat.
+ *
+ *   Auch tasklist wird hier NIE aufgerufen: gefragt wird ausschliesslich der
+ *   warme Zwischenspeicher. Ist er kalt, laesst dieser Abtaster es eben sein -
+ *   der Waechter selbst fuellt ihn im naechsten Takt.
+ */
+const WATCH_FOCUS_POLL_MS = 500;
+
+function pollForeground() {
+  const pid = foregroundPid();
+  if (!pid) return;
+  const pids = gamePidCache.pids;
+  if (!pids.length) return;             // kalter Zwischenspeicher: nicht nachschlagen
+
+  const vorn = pids.some(p => Number(p) === Number(pid));
+  if (vorn) { watchFokusVorn = true; return; }
+
+  /* Nur die FLANKE zaehlen, nicht jeden halben Takt im Hintergrund - sonst
+     stuenden am Ende zweihundert "Abstecher" da, wo einer war. */
+  if (watchFokusVorn) watchAbstecher++;
+  watchFokusVorn = false;
+
+  if (!watchPufferVerdacht) {
+    watchPufferVerdacht = true;
+    gameWasForeground = false;
+    console.log('[Waechter] Warframe war kurz nicht vorn - ab jetzt gilt der Schreibpuffer'
+              + ' als verdaechtig, es wird auch im Vordergrund hingesehen');
+  }
+}
+
 function stopRewardWatch(grund) {
   if (!watchTimer) return;
   clearInterval(watchTimer);
   watchTimer = null;
+  clearInterval(watchFocusTimer);
+  watchFocusTimer = null;
   /* Die Zahl der Blicke gehoert dazu. Ohne sie ist "der Waechter lief" nicht
      von "der Waechter hat nie hingesehen" zu unterscheiden - und genau das
-     war bei einem verpassten Bildschirm die offene Frage. */
-  console.log(`[Waechter] aus (${grund}) - ${watchBlicke} Blick${watchBlicke === 1 ? '' : 'e'} auf den Bildschirm`);
+     war bei einem verpassten Bildschirm die offene Frage.
+
+     Die uebersprungenen Takte stehen daneben, weil auch das noch offen blieb:
+     "4 Blicke" sagte nicht, ob 37 Takte am Vordergrund abgeprallt sind oder ob
+     41 Mal hingesehen und nichts gefunden wurde. Das sind zwei voellig
+     verschiedene Fehler mit zwei voellig verschiedenen Ursachen. */
+  console.log(`[Waechter] aus (${grund}) - ${watchBlicke} Blick${watchBlicke === 1 ? '' : 'e'}`
+            + ` auf den Bildschirm, ${watchUebersprungen} Takt(e) uebersprungen`
+            + ` (Warframe stand vorn), ${watchAbstecher} Abstecher aus dem Vordergrund`);
 }
 
 function startRewardWatch() {
@@ -3773,9 +4192,18 @@ function startRewardWatch() {
   watchBlicke = 0;
   watchPufferVerdacht = false;
   watchLetzterBlick = 0;
+  watchUebersprungen = 0;
+  watchAbstecher = 0;
+  watchFokusVorn = true;
   watchTimer = setInterval(() => { tickRewardWatch().catch(() => {}); }, WATCH_INTERVAL_MS);
   /* unref: der Waechter darf Electron nicht am Beenden hindern. */
   watchTimer.unref?.();
+
+  /* Der schnelle Abtaster laeuft NEBEN dem Takt und nimmt nichts auf -
+     siehe pollForeground. */
+  watchFocusTimer = setInterval(pollForeground, WATCH_FOCUS_POLL_MS);
+  watchFocusTimer.unref?.();
+
   console.log('[Waechter] an - Riss-Mission laeuft, Bildschirm wird beobachtet solange Warframe nicht vorn ist');
 }
 
@@ -3807,7 +4235,7 @@ async function tickRewardWatch() {
   if (vorn !== null) gameWasForeground = vorn;
 
   /* null heisst "nicht feststellbar" - dann lieber hinsehen als verpassen. */
-  if (vorn === true && !watchPufferVerdacht) return;
+  if (vorn === true && !watchPufferVerdacht) { watchUebersprungen++; return; }
 
   /* Im Vordergrund seltener hinsehen: dort spielt jemand, und jeder Zugriff auf
      den Bildschirm kann die Bildausgabe stoeren. Alle 12 s faellt der
@@ -3821,7 +4249,11 @@ async function tickRewardWatch() {
   watchLetzterBlick = Date.now();
   watchBlicke++;
   try {
-    if (!await rewardScreenVisible()) return;
+    /* Auch der Waechter sieht ins Spielfenster und nicht auf den
+       Hauptbildschirm - sonst sucht er die Ueberschrift auf dem falschen
+       Monitor und meldet nie etwas. */
+    const rahmen = await gameFrame();
+    if (!await rewardScreenVisible({ rect: rahmen.rect || undefined })) return;
     if (currentRelic) return;        // das Log war in der Zwischenzeit doch schneller
     console.log('[Waechter] Belohnungsbildschirm erkannt - das Log hat noch nichts gemeldet');
     /* Ohne Log gibt es keinen eigenen Fund und keine Mitspielerzahl. Vier ist
@@ -3924,6 +4356,16 @@ function startLogWatcher() {
     });
   });
 
+  /* Die frueheste Nachricht vom Belohnungsbildschirm - 758 ms vor "Got
+     rewards", nachgemessen. Gelesen wird hier noch nichts: die Karten sind
+     noch nicht gezeichnet. Aber das Dock kann schon stehen, und die Erkennung
+     kann warmlaufen, statt beides in die Bedenkzeit zu legen. */
+  logWatcher.on('relic-screen-open', () => {
+    warmUpOcr().catch(() => {});
+    showSkeletonTags().catch(err =>
+      console.error('[Relikt] Dock konnte nicht vorab gestellt werden:', err.message));
+  });
+
   logWatcher.on('relic-timer', ev => sendToOverlay('relic:timer', ev));
 
   logWatcher.on('relic-closed', () => {
@@ -3944,6 +4386,19 @@ function startLogWatcher() {
                 + ` als der Bildschirm schon zu war (${Date.now() - currentRelic.at}ms nach dem Anfang,`
                 + ` im Spiel lagen 15 s dazwischen).`
                 + ` Warframe puffert sein Log, wenn es nicht im Vordergrund laeuft.`);
+
+      /* UND DAS IST DER BEWEIS. Bisher wurde er gedruckt und weggeworfen.
+         Dabei ist ein verpasster Bildschirm die staerkste Auskunft, die es
+         ueber den Schreibpuffer ueberhaupt gibt: staerker als jede Beobachtung
+         des Vordergrunds, denn hier ist der Schaden schon eingetreten.
+
+         Der Verdacht gilt ab jetzt, egal was der Vordergrund sagt. In einer
+         Endlosmission folgt gleich die naechste Runde - und die soll nicht
+         genauso verpasst werden wie diese. */
+      if (watchTimer && !watchPufferVerdacht) {
+        watchPufferVerdacht = true;
+        console.log('[Waechter] verpasster Bildschirm - ab jetzt wird auch im Vordergrund hingesehen');
+      }
     }
     setCurrentRelic(null, frisch ? 'Bildschirm war schon zu (Log verspaetet)' : 'Belohnungsbildschirm zu');
     /* Der Waechter bleibt BEWUSST an: in Endlosmissionen folgt gleich die
