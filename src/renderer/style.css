@@ -2041,6 +2041,23 @@ select option { background: #161b25; color: var(--text); }
 /* ---------- Aktive Ziele im Kopfbereich ---------- */
 .section-head-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; }
 
+/* Die Knopfreihe rechts in einer Ueberschrift.
+   HATTE LANGE GAR KEINE REGEL - und ist damit durchgekommen, solange dort nur
+   Knoepfe mit demselben Innenleben standen. Als Inline-Boxen richten die sich
+   an der GRUNDLINIE aus, nicht an der Oberkante: sobald ein Element etwas
+   anderes enthaelt als eine Textzeile, wandert seine Grundlinie und die ganze
+   Reihe steht gestaffelt. Nachgemessen mit dem Anwesenheits-Schalter:
+   Oberkanten bei 77, 81 und 80 Pixeln, bei drei gleich hohen Elementen.
+   Der Abstand stand vorher auf 3 Pixeln - so breit war das Leerzeichen im
+   Quelltext. Das war keine Entscheidung, sondern was uebrig blieb; hier
+   steht jetzt der Abstand, den auch sonst zwischen Pillen liegt. */
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .activegoals { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; }
 .agoal {
   background: linear-gradient(140deg, rgba(74,158,255,.11), var(--surface) 55%);
@@ -8337,3 +8354,249 @@ input[type=number]:focus, input[type=email]:focus, input[type=password]:focus {
    Teshin und Nightwave ihre Chipreihen tragen, stehen sie so neben
    etwas Gleichhohem statt allein in einer Zeile. */
 
+
+/* ---------- Bestand gegen Bedarf ---------- */
+/* Die Regel liegt hier gesammelt, obwohl sie sechs verschiedene Kaesten
+   trifft (.mat, .im-mat, .ov-mat, .chip, .goal-comp-item, .ov-part). Der
+   Grund ist derselbe wie bei stock.js: es ist EINE Aussage, und sie darf
+   nicht je nach Fenster anders aussehen.
+
+   WAS "GENUG" MACHT: nichts. .stock-ok bekommt absichtlich keine eigene
+   Farbe. Wer zwanzig Rohstoffe vor sich hat und achtzehn davon beisammen,
+   will nicht achtzehnmal gruen sehen - er will die zwei finden. Ein
+   Blick soll die Luecke zeigen, nicht die Vollstaendigkeit feiern. */
+
+.stock-short b,
+.stock-short .goal-comp-count,
+.stock-short .ov-part-count {
+  color: var(--text-3);
+}
+
+/* Der eigene Bestand steht vorne und traegt das Gewicht - die Zahl dahinter
+   ist nur noch der Massstab, gegen den man sie liest. */
+.stock-have { font-style: normal; color: var(--text-2); }
+.stock-sep  { opacity: 0.45; margin: 0 1px; }
+
+/* Das Bild verliert Farbe, sobald es an der Zeile etwas zu tun gibt. Damit
+   traegt die Zeile ihre Aussage auch dann, wenn jemand die Zahlen gar nicht
+   liest - und Graustufen bleiben lesbar, wo eine Rot-Gruen-Trennung es fuer
+   einen Teil der Leute nicht ist.
+
+   DAS ELEMENT MUSS MIT IN DEN SELEKTOR. `.mat img.mat-icon` und
+   `.chip img.mat-icon` sind spezifischer als eine Klasse allein - ohne das
+   `img` hier blieben genau diese beiden Kaesten farbig, waehrend die vier
+   anderen ausgrauten. Nachgemessen im Probelauf: dort stand noch der
+   drop-shadow statt des Filters. */
+.stock-short img.mat-icon,
+.stock-short img.ov-part-img,
+.stock-short img { filter: grayscale(1); opacity: 0.55; }
+
+/* Der Schmiedepunkt. Kein Text, weil es in der engsten Zeile (Overlay) um
+   Pixel geht - die Erklaerung steht im Tooltip. */
+.stock-forge {
+  display: inline-block;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px rgb(var(--t-accent) / .22);
+  flex: 0 0 auto;
+  margin-left: 2px;
+}
+
+/* In der Schmiede ist kein Mangel, sondern Warten. Deshalb bleibt die Zahl
+   dort nicht ganz so stumm wie bei einem, den man noch farmen muss. */
+.stock-building b,
+.stock-building .goal-comp-count,
+.stock-building .ov-part-count { color: var(--text-2); }
+.stock-building img.mat-icon,
+.stock-building img.ov-part-img,
+.stock-building img { opacity: 0.72; }
+
+/* ---------- Anwesenheit auf warframe.market ---------- */
+/* Der Schalter steht in einer Knopfreihe, nicht in einer Einstellungsliste -
+   deshalb eine kleinere Fassung des Schalters aus dem Einstellungs-Tab.
+   Dieselbe Mechanik, dieselbe Farbe, zwei Drittel der Groesse. */
+/* Aussehen und Innenabstand kommen von .btn - hier steht nur, was ein Label
+   anders macht als ein Knopf. */
+.btn-presence {
+  cursor: pointer;
+  user-select: none;
+}
+
+.toggle-switch-sm { width: 30px; height: 17px; }
+.toggle-switch-sm::after { top: 2.5px; left: 2.5px; width: 12px; height: 12px; }
+.toggle-checkbox:checked + .toggle-switch-sm::after { transform: translateX(13px); }
+
+/* DER PUNKT IST DER ZUSTAND, DER TEXT IST DIE FUNKTION.
+   Ein Schalter, dessen Beschriftung sich mitdreht, zwingt zum Lesen, bevor
+   man weiss, ob man ihn treffen will. Hier bleibt "Auto in-game" stehen und
+   nur der Punkt wechselt - Grau heisst wartet, Gruen heisst steht, Rot
+   heisst es klemmt. Was genau, sagt der Tooltip und die Notizzeile darunter. */
+.presence-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--text-3);
+  flex: 0 0 auto;
+  transition: background .2s var(--ease), box-shadow .2s var(--ease);
+}
+
+.btn-presence[data-state="ingame"] .presence-dot {
+  background: var(--green);
+  box-shadow: 0 0 0 3px rgb(var(--t-green) / .2);
+}
+
+/* Verbindungsaufbau pulsiert, damit "haengt gerade" nicht wie "ist aus"
+   aussieht - die beiden Zustaende unterscheiden sich sonst nur im Ton. */
+.btn-presence[data-state="connecting"] .presence-dot {
+  background: var(--gold);
+  animation: presence-pulse 1.4s var(--ease) infinite;
+}
+
+.btn-presence[data-state="error"] .presence-dot {
+  background: var(--red);
+  box-shadow: 0 0 0 3px rgb(255 92 92 / .18);
+}
+
+@keyframes presence-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+
+/* Abgemeldet gibt es nichts zu schalten - warframe.market braucht die
+   Sitzung, um zu wissen, WESSEN Status gemeint ist. */
+.btn-presence.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-presence[data-state="connecting"] .presence-dot { animation: none; }
+}
+
+/* ---------- Aufklapper unter einer Kartenliste ---------- */
+/* Sitzt unter dem Raster und nimmt dessen ganze Breite ein - ein Knopf, der
+   nur so breit ist wie sein Text, sieht neben lauter Karten aus wie etwas,
+   das jemand vergessen hat. Gestrichelt statt gefuellt, weil hier nichts
+   steht: er markiert die Kante der Liste, statt eine weitere Karte
+   vorzutaeuschen. */
+.cards-more {
+  width: 100%;
+  margin-top: 14px;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  background: transparent;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  border-radius: var(--r-md);
+  padding: 13px 16px;
+  color: var(--text-2);
+  font-size: 13px; font-weight: 550;
+  cursor: pointer;
+  transition: background .15s var(--ease), border-color .15s var(--ease), color .15s var(--ease);
+}
+
+.cards-more:hover {
+  background: var(--surface);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: var(--text);
+}
+
+/* Zeigt nach unten, solange es nach unten weitergeht - und dreht sich beim
+   Aufklappen um, statt nur die Beschriftung zu wechseln. */
+.cards-more-chevron {
+  display: inline-flex;
+  color: var(--text-3);
+  transform: rotate(90deg);
+  transition: transform .2s var(--ease);
+}
+
+.cards-more[aria-expanded="true"] .cards-more-chevron { transform: rotate(-90deg); }
+
+@media (prefers-reduced-motion: reduce) {
+  .cards-more-chevron { transition: none; }
+}
+
+/* ---------- Markt: Angebote anderer Leute ---------- */
+/* Zeile und Trefferliste bauen auf .trade-offer und .trade-pick auf - dieselben
+   Bausteine wie im Bestellformular. Hier steht nur, was anders ist. */
+
+.market-hits { display: flex; flex-direction: column; gap: 3px; }
+
+.market-head {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 12px 14px; margin-bottom: 12px;
+  background: var(--surface-2); border-radius: var(--r-sm);
+}
+.market-head-img { width: 38px; height: 38px; object-fit: contain; flex-shrink: 0; }
+.market-head-body { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 190px; }
+
+/* DIE BREITE MUSS HIER STEHEN. Weiter oben gilt `input, select, textarea
+   { width: 100% }` fuer alles, und .select-sm setzt nur Farben und Polster -
+   die 100% bleiben. In einer Flexzeile heisst das: beide Auswahlfelder
+   wollen die volle Breite, schrumpfen gemeinsam auf je ein Drittel und
+   quetschen den Titel daneben auf null. Gemessen: Kopfzeile 916 px, davon
+   356 px je Feld und 0 px fuer den Namen, der daraufhin buchstabenweise
+   umbrach. Andere Stellen loesen dasselbe an Ort und Stelle (.filters
+   select), deshalb auch hier und nicht in .select-sm - dort haenge es
+   Kontexten an, die es nicht bestellt haben. */
+.market-head .select-sm { width: auto; flex: 0 0 auto; }
+.market-head-body b { font-size: 14.5px; font-weight: 600; }
+.market-head-body span { font-size: 11.5px; color: var(--text-3); }
+
+.market-offers { display: flex; flex-direction: column; gap: 4px; }
+
+/* Eine Spalte mehr als .trade-offer und eine weniger: vorne der Platz in der
+   Liste, hinten der Kopierknopf, und der Preisvergleich zur eigenen Order
+   faellt weg - hier gibt es keine eigene Order, gegen die man vergleicht. */
+.market-offer {
+  grid-template-columns: 18px 10px auto 42px 1fr auto auto auto;
+}
+
+/* Die Platzziffer. Der Grund, warum sie dasteht: "das dritte Angebot" ist
+   das, was man nach dem Blick ins Spiel wiederfinden will - der Name des
+   Verkaeufers ist bis dahin vergessen. */
+.market-rank {
+  font-size: 10.5px; font-weight: 700;
+  color: var(--text-3); text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.market-copy { white-space: nowrap; }
+
+.market-note {
+  margin-top: 12px;
+  font-size: 11.5px; line-height: 1.5;
+  color: var(--text-3);
+}
+
+/* Ein Chip, der sich unabhaengig von seinen Nachbarn umlegen laesst. Der
+   Punkt fuellt sich, wenn er an ist - bei den anderen Chips markiert die
+   Faerbung eine Auswahl aus einer Reihe, hier einen Zustand fuer sich. */
+.filter-chip.chip-toggle .chip-dot { background: var(--text-3); }
+.filter-chip.chip-toggle.active .chip-dot { background: var(--green); }
+
+/* ---------- Markt-Bild: Grundbild plus Abzeichen ---------- */
+/* warframe.market legt zwei Ebenen uebereinander, und ohne die zweite sehen
+   die vier Teile eines Primes identisch aus - siehe marketSubIcon(). */
+
+.mthumb { position: relative; display: inline-flex; flex-shrink: 0; }
+.mthumb > img { width: 100%; height: 100%; object-fit: contain; display: block; }
+
+.mthumb-30 { width: 30px; height: 30px; }
+.mthumb-34 { width: 34px; height: 34px; }
+.mthumb-38 { width: 38px; height: 38px; }
+.mthumb-42 { width: 42px; height: 42px; }
+
+/* ZWEI KLASSEN IM SELEKTOR, UND ZWAR MIT ABSICHT.
+   An drei der fuenf Einsatzorte steht schon eine Regel auf dem Bild -
+   `.trade-pick img`, `.trade-new-picked img`, `.trade-row-img`. Die sind
+   spezifischer als eine einzelne Klasse und wuerden das Abzeichen auf die
+   volle Kachelgroesse aufblasen, womit es das Grundbild verdeckt statt es
+   zu ergaenzen. `.mthumb .mthumb-sub` liegt darueber. */
+.mthumb .mthumb-sub {
+  position: absolute;
+  right: -3px; bottom: -3px;
+  width: 58%; height: 58%;
+  object-fit: contain;
+  /* Ein dunkler Rand loest das Abzeichen vom Bild darunter - ohne ihn geht
+     ein helles Teilsymbol in einer hellen Illustration unter. */
+  background: rgba(10, 13, 18, .82);
+  border-radius: 50%;
+  padding: 1px;
+}

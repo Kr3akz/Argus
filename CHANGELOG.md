@@ -21,6 +21,78 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-08-29
+
+### Added
+
+- **Goals now know what you already own.** Every resource and part on a goal is
+  checked against your inventory. What you have enough of looks exactly as it
+  did before; what you are short of turns grey and shows both numbers, so
+  `9/10` says at a glance that one Fieldron stands between you and the forge.
+  It reads the same way in the planner, on the dashboard cards, in the item
+  sheet, in the shopping list and in the overlay — where it matters most,
+  because that is the one you can see while farming.
+  - A part sitting in the foundry is not counted as missing. It gets a blue dot
+    and a note in the tooltip instead, because something that finishes in four
+    hours is not something to go farming for.
+  - A goal card answers "can I build *this*". The shopping list underneath
+    still adds up every open goal, so the same resource can be green in one
+    place and grey in the other — both are true, they are different questions.
+  - Without inventory data nothing is claimed at all: the numbers stay as they
+    were rather than showing you a grey zero about an account nobody looked at.
+- **Show up as "in game" on warframe.market automatically.** A switch next to
+  your account in the trading tab. While Warframe is running, Argus sets your
+  status to *in game*; when you close the game — or Argus — it takes it back.
+  Sellers who are actually in game get written to; the rest get scrolled past.
+  - It only ever adds *in game*. It never sets you to online or invisible, so
+    whatever you chose on the site yourself stays yours. Taking it back means
+    closing the connection, and what you look like afterwards is warframe.market's
+    call, not ours.
+  - Nothing is sent while the game is closed. Switch on, game shut: no
+    connection, no status, nothing said.
+  - The dot next to the switch carries the state — grey waiting, green live,
+    red if something went wrong. The label never changes, so you always know
+    what you are about to toggle.
+- **Look up what anything is going for, and copy the whisper.** A fourth tab in
+  trading: **Market**. Type an item name, pick it, and the top ten offers stand
+  there the way they do on the site — cheapest first, people who are in game
+  right now only, with a **Copy** button that puts the trade message on your
+  clipboard. You paste it in Warframe yourself; Argus does not message anyone
+  for you and has no way to.
+  - **Rank and condition are part of the price, so they are part of the search.**
+    Serration at rank 0 is 2p and at rank 10 is 49p — one list holding both is
+    not a price comparison. Mods get a rank picker, relics and arcanes their
+    condition, and both end up in the copied message so the other side knows
+    what you mean.
+  - It works signed out. Other people's offers are public, and looking up what
+    a part costs should not need an account.
+  - Change the search and the list of items comes straight back — there is no
+    button to press to look up something else.
+- **"Cheap to pick up" opens up.** The section still leads with the same eight
+  recommendations it always did; a button underneath unfolds two dozen more when
+  those eight are things you already looked at and passed on. The deeper list
+  allows four items per category instead of two, because someone who deliberately
+  asked for more is looking for choice rather than the same spread again. It stays
+  open while you set goals, so you do not lose your place after every click.
+
+### Fixed
+
+- **Prime parts no longer all wear the same picture.** Every Nidus Prime part
+  looked exactly like Nidus Prime, in the search, in the order list and in the
+  order form — which made a list of five near-identical names a reading exercise.
+  Warframe.market builds these images from two layers: one illustration shared by
+  the whole set, and a small badge on top saying *which* piece. Argus was only
+  drawing the first. The badge is now drawn as well, so the systems, the
+  neuroptics and the chassis are told apart at a glance. It affects 787 of the
+  3,840 items on the market; the rest were already unmistakable on their own.
+- **The buttons above the trading list sit level again** — that row never had a
+  layout rule of its own, so its buttons lined up on the text baseline. It went
+  unnoticed while they all held nothing but a label; the new presence switch has
+  a different baseline, and the whole row went crooked by up to four pixels. The
+  row is now laid out properly, which also replaces the three-pixel gap between
+  the buttons — that was the width of a space character in the source, not a
+  decision — with the spacing used between pills everywhere else.
+
 ## [1.1.6] - 2026-08-29
 
 ### Changed

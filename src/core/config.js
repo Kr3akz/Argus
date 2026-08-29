@@ -25,11 +25,15 @@ export const DEFAULT_HOTKEYS = { overlay: 'Ctrl+R', interact: 'Ctrl+E', main: 'C
    aus - weder das Tastenkuerzel noch eine Reliktbelohnung holen es dann hervor.
    Wer auf einem Bildschirm spielt, will unter Umstaenden gar nichts ueber dem
    Spiel liegen haben, und "einfach nicht druecken" ist keine Einstellung. */
+/* wfmAutoStatus steht auf AUS, und das ist keine Vorsicht aus Gewohnheit:
+   der Schalter aendert etwas, das andere Leute sehen. Wer ihn nie bemerkt,
+   soll auf warframe.market genau so dastehen wie vorher. */
 const DEFAULTS = {
   accountId: '', platform: 'pc', notes: {},
   overlayBounds: null, overlayOpacity: 0.94, overlayClickThrough: false,
   overlayEnabled: true,
   updateCheck: true,
+  wfmAutoStatus: false,
   hotkeys: { ...DEFAULT_HOTKEYS }
 };
 

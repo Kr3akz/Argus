@@ -141,6 +141,22 @@ export async function authState() {
 }
 
 /**
+ * Das rohe Token - AUSSCHLIESSLICH fuer die WebSocket-Anmeldung.
+ *
+ * Die Ausnahme zur Regel eine Funktion weiter oben, und sie braucht ihren
+ * Grund: der Status auf warframe.market wird nicht per HTTP gesetzt, sondern
+ * mit einer Nachricht auf einer offenen Verbindung (siehe wfm-socket.js).
+ * setTokenProvider hilft dort nicht - das ist die Leitung fuer fetch.
+ *
+ * WAS SICH DADURCH NICHT AENDERT: Das Token bleibt im Hauptprozess. Es geht
+ * an keinen Renderer, in keine IPC-Antwort und in keine Log-Zeile. Wer diese
+ * Funktion aufruft, muss dasselbe zusagen koennen.
+ */
+export async function socketToken() {
+  return (await readSession())?.token || null;
+}
+
+/**
  * Token gegen /v2/me pruefen.
  *
  * WIRFT NIE ETWAS WEG - und das ist eine bewusste Entscheidung:

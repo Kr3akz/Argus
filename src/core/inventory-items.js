@@ -404,3 +404,87 @@ export function ownedUpgradeRanks(inventory) {
 
   return owned;
 }
+
+/**
+ * Bestand und Schmiede, so wie ein Rezept danach fragt.
+ *
+ * ZWEI KARTEN, WEIL ES ZWEI ANTWORTEN SIND:
+ *
+ *   have      liegt im Inventar - MiscItems traegt Ferrit, Rubedo und die
+ *             fertigen Zwischenstufen (Fieldron, Detonite Injector), Recipes
+ *             die Blaupausen. Beide zaehlen ueber ItemCount und stehen unter
+ *             demselben uniqueName, unter dem sie auch im Rezept auftauchen.
+ *             Nachgemessen an Helios: alle sieben Rohstoffe trafen, und
+ *             Fieldron traf als Bauteil gleich mit.
+ *
+ *   building  steht in der Schmiede und ist noch nicht abgeholt. Das ist der
+ *             Zustand, den man sonst als "fehlt" praesentiert bekommt, obwohl
+ *             er in vier Stunden von selbst verschwindet.
+ *
+ * DER UMWEG BEI building: PendingRecipes fuehrt die BLAUPAUSE
+ * (/Types/Recipes/Weapons/PaladinMaceBlueprint), das Rezept aber fragt nach
+ * dem ERGEBNIS (Magistar). Ohne den Sprung ueber recipeByUniqueName trifft
+ * keine einzige Zeile - beide Seiten heissen anders und liegen in einem
+ * anderen Pfad.
+ *
+ * Upgrades bleiben absichtlich draussen. Mods sind Einzelstuecke mit Rang;
+ * wer wissen will, ob er einen besitzt, fragt ownedUpgradeRanks.
+ */
+export function ownedStock(inventory, catalog = null) {
+  const have = new Map();
+  const building = new Map();
+
+  const add = (map, type, n) => {
+    if (!type || !n) return;
+    map.set(type, (map.get(type) || 0) + n);
+  };
+
+  for (const row of inventory?.MiscItems || []) add(have, row.ItemType, row.ItemCount || 0);
+  for (const row of inventory?.Recipes   || []) add(have, row.ItemType, row.ItemCount || 0);
+
+  /* Ohne Katalog gibt es den Sprung von der Blaupause zum Ergebnis nicht -
+     dann bleibt die Schmiede leer, statt falsch zu zaehlen. */
+  for (const row of inventory?.PendingRecipes || []) {
+    const recipe = catalog?.recipeByUniqueName?.get(row.ItemType);
+    if (recipe?.resultType) add(building, recipe.resultType, 1);
+  }
+
+  return { have, building };
+}
+
+/**
+ * Macht aus einer Rezeptzeile das, was die Oberflaeche zeichnen kann: Bild,
+ * eigener Bestand, Schmiede.
+ *
+ * WARUM enough NUR AUF have SCHAUT: Ein Bauteil in der Schmiede ist bezahlt,
+ * aber nicht abgeholt - damit laesst sich heute nichts bauen. Es als "genug"
+ * zu zaehlen hiesse, jemanden vor eine Schmiede zu schicken, die ihn
+ * wegschickt. `building` steht daneben und beantwortet die andere Frage,
+ * naemlich ob sich das Farmen ueberhaupt noch lohnt.
+ *
+ * Die Rekursion ueber ingredients ist noetig, weil ein Bauteil selbst ein
+ * Rezept sein kann (Fieldron aus Fieldron Sample) - und dort stellt sich
+ * dieselbe Frage nochmal eine Ebene tiefer.
+ *
+ * OHNE INVENTAR IST have NULL, NICHT NULL-KOMMA-NICHTS. Wer noch nie abgerufen
+ * hat, bekaeme sonst jede Zeile ausgegraut mit einer Null davor - eine
+ * Behauptung ueber sein Konto, in das wir nie geschaut haben. null heisst
+ * "nicht bekannt", und die Oberflaeche zeichnet dann wie vorher.
+ *
+ * @param stock  Ergebnis von ownedStock, oder null wenn kein Inventar vorliegt
+ */
+export function recipeRow(stock) {
+  const decorate = row => {
+    const have     = stock ? (stock.have.get(row.uniqueName)     ?? 0) : null;
+    const building = stock ? (stock.building.get(row.uniqueName) ?? 0) : 0;
+    return {
+      ...row,
+      image: imageUrl(row.uniqueName, 128),
+      have,
+      building,
+      enough: have === null ? null : have >= row.count,
+      ...(row.ingredients ? { ingredients: row.ingredients.map(decorate) } : {})
+    };
+  };
+  return decorate;
+}

@@ -565,6 +565,13 @@
           <p>Straight from the market or a dojo lab — no long farming prerequisites</p>
         </div>
         <div id="easy-gains" class="cards"></div>
+        <!-- Erscheint nur, wenn es hinter den acht sichtbaren noch etwas gibt.
+             Ein Knopf, der "0 more" anbietet, ist schlimmer als keiner. -->
+        <button class="cards-more hidden" id="btn-easy-more"
+                aria-expanded="false" aria-controls="easy-gains">
+          <span class="cards-more-chevron" data-icon="chevron"></span>
+          <span id="btn-easy-more-label">Show more</span>
+        </button>
 
         <div class="section-head">
           <h2>Warframes you are missing</h2>
@@ -810,6 +817,18 @@
           <p>Your orders, contracts and everything you have traded</p>
         </div>
         <div class="head-actions">
+          <!-- Anwesenheit. Steht neben dem Konto, weil es dazu gehoert: was
+               hier geschaltet wird, sehen andere Leute an DIESEM Konto.
+
+               Der Punkt links traegt den Zustand, nicht der Text - der Text
+               sagt, was der Schalter TUT, und das aendert sich nie. Wer
+               wissen will, warum der Punkt grau ist, faehrt darueber. -->
+          <label class="btn btn-presence" id="trade-presence" title="Show as “in game” on warframe.market while Warframe is running">
+            <input type="checkbox" id="set-trade-presence" class="toggle-checkbox">
+            <span class="toggle-switch toggle-switch-sm"></span>
+            <span class="presence-dot" id="trade-presence-dot"></span>
+            <span id="trade-presence-label">Auto in-game</span>
+          </label>
           <!-- Ein Knopf, drei Zustaende: abgemeldet, angemeldet, gestoert.
                Er traegt den Zustand sichtbar, statt dass man ihn aus einer
                leeren Liste erraten muss. -->
@@ -875,6 +894,12 @@
             <button class="ducats-tab-btn active" data-trade-mode="orders">
               <span class="btn-ic" data-icon="tag"></span><span>Orders</span>
               <span class="counter-badge" id="trade-badge-orders">0</span>
+            </button>
+            <!-- Neben Orders, weil es dieselbe Bewegung ist: was kostet das,
+                 was verlange ich. Kein Zaehlerabzeichen - es gibt nichts zu
+                 zaehlen, bis jemand sucht. -->
+            <button class="ducats-tab-btn" data-trade-mode="market">
+              <span class="btn-ic" data-icon="search"></span><span>Market</span>
             </button>
             <button class="ducats-tab-btn" data-trade-mode="contracts">
               <span class="btn-ic" data-icon="gem"></span><span>Contracts</span>
@@ -1924,6 +1949,8 @@
 
 
 <script src="icons.js"></script>
+<script src="stock.js"></script>
+<script src="whisper.js"></script>
 <script src="fissure-filter.js"></script>
 <script src="app.js"></script>
 </body>

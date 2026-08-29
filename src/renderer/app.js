@@ -173,6 +173,19 @@ function jumpToGoalDetails() {
 }
 if ($('btn-to-goals')) $('btn-to-goals').onclick = jumpToGoalDetails;
 
+$('btn-easy-more')?.addEventListener('click', () => {
+  easyGainsOpen = !easyGainsOpen;
+  if (state) renderEasyGains(state);
+
+  /* Beim Zuklappen schrumpft die Liste um bis zu drei Reihen. Wer weiter
+     unten stand, landete dadurch hinter dem Abschnitt und musste zurueck-
+     scrollen, um den Knopf wiederzufinden, den er gerade gedrueckt hat. */
+  if (!easyGainsOpen) {
+    requestAnimationFrame(() =>
+      $('btn-easy-more')?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+  }
+});
+
 /* ---------------- Ersteinrichtung ---------------- */
 
 const ACCOUNT_ID_RE = /^[0-9a-f]{24}$/i;
@@ -420,7 +433,7 @@ function render(data) {
 
   renderActiveGoals(data);
   renderCards('quick-wins', data.quickWins);
-  renderCards('easy-gains', data.easyGains);
+  renderEasyGains(data);
   renderCards('warframes', data.warframes);
   renderCategories(data.categories);
   renderGoals(data);
@@ -582,10 +595,11 @@ function renderActiveGoals(data) {
       ` : `
         <div class="agoal-mats">
           ${shown.map(m => `
-            <span class="chip">
+            <span class="chip ${Stock.cls(m)}" title="${esc(Stock.hint(m, m.name, nf))}">
               ${m.image ? `<img class="mat-icon" src="${esc(m.image)}" alt="" onerror="this.style.display='none'">` : ''}
               <span>${esc(m.name)}</span>
-              <b>${nf(m.count)}</b>
+              ${Stock.forge(m)}
+              <b>${Stock.num(m, nf)}</b>
             </span>`).join('')}
           ${rest > 0 ? `<span class="chip more">+${rest} more</span>` : ''}
         </div>
@@ -671,6 +685,39 @@ function renderCards(target, list) {
       if (res.ok) render(res.data);
     };
   });
+}
+
+/* Aufgeklappt oder nicht - und zwar ueber ein Neuzeichnen hinweg.
+   Ein Ziel zu setzen baut das ganze Dashboard neu auf; wuerde der Zustand
+   dabei zuruecksetzen, saesse man nach jedem Klick wieder vor acht Karten
+   und muesste sich die Stelle neu suchen, an der man war. */
+let easyGainsOpen = false;
+
+/**
+ * "Cheap to pick up" mit Aufklapper.
+ *
+ * Der Hauptprozess schickt EINE Liste, in der die ersten easyGainsTop
+ * Eintraege die eigentliche Empfehlung sind - hier wird nur geschnitten.
+ * Damit bleibt die Reihenfolge in beiden Zustaenden dieselbe: aufklappen
+ * haengt an, es sortiert nicht um.
+ */
+function renderEasyGains(data) {
+  const alle = data.easyGains || [];
+  const oben = data.easyGainsTop || 8;
+  const rest = Math.max(0, alle.length - oben);
+
+  renderCards('easy-gains', easyGainsOpen ? alle : alle.slice(0, oben));
+
+  const btn = $('btn-easy-more');
+  if (!btn) return;
+
+  /* Ohne Nachschub kein Knopf. "Show 0 more" waere ein Versprechen, hinter
+     dem nichts steht. */
+  btn.classList.toggle('hidden', rest === 0);
+  if (rest === 0) return;
+
+  btn.setAttribute('aria-expanded', String(easyGainsOpen));
+  $('btn-easy-more-label').textContent = easyGainsOpen ? 'Show fewer' : `Show ${rest} more`;
 }
 
 const CAT_ICONS = {
@@ -795,13 +842,15 @@ function renderGoals(data) {
             <div class="goal-section-label">Required parts & components</div>
             <div class="goal-comps-grid">
               ${g.components.map(c => `
-                <div class="goal-comp-item ${c.isSubRecipe ? 'craftable' : ''}">
+                <div class="goal-comp-item ${c.isSubRecipe ? 'craftable' : ''} ${Stock.cls(c)}"
+                     title="${esc(Stock.hint(c, c.name, nf))}">
                   <img class="mat-icon" src="${esc(c.image)}" alt="" onerror="this.style.display='none'">
                   <div class="goal-comp-body">
                     <b>${esc(c.name)}</b>
-                    <span>${c.isSubRecipe ? 'Wird geschmiedet (12h)' : 'Ressource / Teil'}</span>
+                    <span>${c.isSubRecipe ? 'Forged' : 'Resource / part'}</span>
                   </div>
-                  <span class="goal-comp-count">${c.count}x</span>
+                  ${Stock.forge(c)}
+                  <span class="goal-comp-count">${Stock.num(c, nf)}x</span>
                 </div>
               `).join('')}
             </div>
@@ -811,10 +860,11 @@ function renderGoals(data) {
             <div class="goal-section-label" style="margin-top: ${g.components && g.components.length > 0 ? '14px' : '0'};">Total resources & materials</div>
             <div class="matgrid">
               ${g.materials.map(mt => `
-                <div class="mat">
+                <div class="mat ${Stock.cls(mt)}" title="${esc(Stock.hint(mt, mt.name, nf))}">
                   ${mt.image ? `<img class="mat-icon" src="${esc(mt.image)}" alt="" onerror="this.style.display='none'">` : ''}
                   <span>${esc(mt.name)}</span>
-                  <b>${nf(mt.count)}</b>
+                  ${Stock.forge(mt)}
+                  <b>${Stock.num(mt, nf)}</b>
                 </div>`).join('')}
             </div>
           ` : ''}
@@ -871,10 +921,11 @@ function renderGoals(data) {
     $('shop-time').textContent    = s.buildTime;
     $('shopping-mats').innerHTML  = s.materials
       .map(mt => `
-        <div class="mat">
+        <div class="mat ${Stock.cls(mt)}" title="${esc(Stock.hint(mt, mt.name, nf))}">
           ${mt.image ? `<img class="mat-icon" src="${esc(mt.image)}" alt="" onerror="this.style.display='none'">` : ''}
           <span>${esc(mt.name)}</span>
-          <b>${nf(mt.count)}</b>
+          ${Stock.forge(mt)}
+          <b>${Stock.num(mt, nf)}</b>
         </div>`).join('');
   } else {
     $('shopping').classList.add('hidden');
@@ -2324,10 +2375,11 @@ async function openItemModal(uniqueName) {
         </div>
         <div class="im-mats-grid">
           ${d.materials.map(m => `
-            <div class="im-mat">
+            <div class="im-mat ${Stock.cls(m)}" title="${esc(Stock.hint(m, m.name, nf))}">
               ${m.image ? `<img class="mat-icon" src="${esc(m.image)}" alt="" onerror="this.style.display='none'">` : ''}
               <span>${esc(m.name)}</span>
-              <b>${nf(m.count)}</b>
+              ${Stock.forge(m)}
+              <b>${Stock.num(m, nf)}</b>
             </div>
           `).join('')}
         </div>
@@ -5956,6 +6008,14 @@ const TRADE_FILTERS = {
     { key: 'sister',  label: 'Sisters',  cls: 'chip-junk' },
     { key: 'closed',  label: 'Closed',   cls: 'chip-neutral' }
   ],
+  /* "Sellers" heisst: Leute, die verkaufen - also die Liste, aus der man
+     KAUFT. Die Beschriftung nennt bewusst die Gegenseite und nicht die
+     eigene Absicht: auf der Webseite steht dort dasselbe, und wer zwischen
+     beiden hin und her springt, soll nicht jedesmal umdenken muessen. */
+  market: [
+    { key: 'sell',    label: 'Sellers',  cls: 'chip-plat', title: 'People selling this — the list you buy from' },
+    { key: 'buy',     label: 'Buyers',   cls: 'chip-gold', title: 'People buying this — the list you sell to' }
+  ],
   transactions: [
     { key: 'all',     label: 'All' },
     { key: 'sold',    label: 'Sold',     cls: 'chip-plat' },
@@ -5978,6 +6038,15 @@ const TRADE_SORTS = {
     ['plat-asc',  'Price (lowest)'],
     ['recent',    'Recently changed'],
     ['name-asc',  'Weapon (A–Z)']
+  ],
+  /* Der billigste zuerst - das ist die Frage, mit der man auf eine
+     Angebotsliste schaut. Bei "Buyers" dreht der Renderer das um: dort
+     sucht man den, der am meisten zahlt. */
+  market: [
+    ['plat-asc',   'Price (lowest)'],
+    ['plat-desc',  'Price (highest)'],
+    ['recent',     'Recently updated'],
+    ['reputation', 'Reputation']
   ],
   transactions: [
     ['date-desc',  'Newest first'],
@@ -6052,6 +6121,12 @@ async function loadTrading({ refresh = false } = {}) {
   try {
     const auth = await window.api.tradeAuthState();
     tradeAuth = auth?.ok ? auth : { signedIn: false, user: null };
+
+    /* Der Schalter kommt aus der Konfiguration, nicht aus dieser Sitzung -
+       er ueberlebt einen Neustart, und der Tab muss ihn beim ersten Aufbau
+       richtig zeigen. */
+    const pres = await window.api.tradeAutoStatus();
+    if (pres) tradePresence = { enabled: !!pres.enabled, state: pres.state || 'off', error: pres.error || null };
 
     /* Die lokale Historie braucht keine Anmeldung - sie wird immer geladen,
        damit der Tab auch abgemeldet etwas zu zeigen hat. */
@@ -6226,13 +6301,46 @@ function renderTradeAccount() {
       : `Signed in as ${u.ingameName || '?'} · click for account and connection check`;
   }
 
+  renderTradePresence();
   renderTradeNotice();
 }
 
+/* Zustand des Anwesenheits-Schalters, wie ihn der Hauptprozess meldet. */
+let tradePresence = { enabled: false, state: 'off', error: null };
+
 /**
- * Die Zeile unter dem Kopf. Sie erscheint nur, wenn es etwas zu sagen gibt -
- * und sie sagt, was zu tun ist, nicht bloss dass etwas schiefging.
+ * Der Schalter neben dem Konto.
+ *
+ * ABGEMELDET IST ER AUS UND GESPERRT, nicht bloss wirkungslos: ohne Sitzung
+ * weiss warframe.market nicht, wessen Status gemeint ist. Ein Schalter, den
+ * man umlegen kann und der dann nichts tut, ist schlimmer als einer, der
+ * sagt, warum er nicht geht.
  */
+function renderTradePresence() {
+  const wrap = $('trade-presence');
+  const box  = $('set-trade-presence');
+  if (!wrap || !box) return;
+
+  const signedIn = !!tradeAuth?.signedIn;
+  const state = tradePresence.enabled ? tradePresence.state : 'off';
+
+  box.checked = signedIn && tradePresence.enabled;
+  box.disabled = !signedIn;
+  wrap.classList.toggle('is-disabled', !signedIn);
+  wrap.dataset.state = state;
+
+  wrap.title = !signedIn
+    ? 'Sign in to warframe.market first — the status belongs to an account'
+    : !tradePresence.enabled
+    ? 'Off. Your status on warframe.market is whatever you set there.'
+    : state === 'ingame'
+    ? 'You are shown as “in game” on warframe.market. Closing Warframe or Argus takes it back.'
+    : state === 'error'
+    ? `Could not set the status: ${tradePresence.error || 'unknown reason'}`
+    : state === 'connecting'
+    ? 'Connecting to warframe.market …'
+    : 'On, waiting for Warframe to start. Nothing is sent until it does.';
+}
 function renderTradeNotice() {
   const box = $('trade-notice');
   if (!box) return;
@@ -6429,6 +6537,7 @@ function renderTradeKPIs() {
 function updateTradeModeTabs() {
   document.querySelectorAll('[data-trade-mode]').forEach(b =>
     b.classList.toggle('active', b.dataset.tradeMode === tradeMode));
+  updateTradeSearchBox();
 
   const label = $('btn-trade-new-label');
   if (label) label.textContent = tradeMode === 'transactions' ? 'Add transaction' : 'New order';
@@ -6439,6 +6548,18 @@ function updateTradeModeTabs() {
   if (btn) btn.classList.toggle('hidden', tradeMode === 'contracts');
 }
 
+/* Das Suchfeld filtert je nach Modus die eigene Liste oder befragt den
+   Markt. Der Platzhalter sagt, welches von beidem gerade gilt - sonst tippt
+   man einen Itemnamen in einen Filter, der nichts findet, und haelt das
+   Ergebnis fuer eine Auskunft ueber den Markt. */
+function updateTradeSearchBox() {
+  const el = $('trade-search');
+  if (!el) return;
+  el.placeholder = tradeMode === 'market'
+    ? 'Search warframe.market … e.g. Nidus Prime Blueprint, Serration, Axi A1 Relic'
+    : 'Search your orders … e.g. Braton, Serration, Kulstar';
+}
+
 function renderTradeFilters() {
   const box = $('trade-filter-chips');
   if (box) {
@@ -6447,9 +6568,39 @@ function renderTradeFilters() {
               data-trade-filter="${esc(f.key)}"${f.title ? ` title="${esc(f.title)}"` : ''}>
         ${f.cls ? '<span class="chip-dot"></span>' : ''}${esc(f.label)}
       </button>
-    `).join('');
+    `).join('')
+    /* Anwesenheit ist keine Richtung, sondern eine zweite Frage - deshalb
+       ein Chip, der sich unabhaengig von der Auswahl daneben umlegen laesst
+       und nicht in die Reihe der sich ausschliessenden gehoert. */
+    + (tradeMode === 'market' ? `
+      <button class="filter-chip chip-toggle ${marketOnline ? 'active' : ''}"
+              id="chip-market-online"
+              title="Only people who are online or in game right now">
+        <span class="chip-dot"></span>In game only
+      </button>` : '');
+
     box.querySelectorAll('[data-trade-filter]').forEach(b => {
-      b.onclick = () => { tradeFilter = b.dataset.tradeFilter; renderTradeFilters(); renderTradeList(); };
+      b.onclick = () => {
+        tradeFilter = b.dataset.tradeFilter;
+        /* Bei Verkaeufern sucht man den billigsten, bei Kaeufern den, der am
+           meisten zahlt. Die Sortierung dreht deshalb mit der Richtung mit -
+           wer sie von Hand geaendert hat, bekommt sie trotzdem passend zur
+           neuen Liste, weil die alte dort die falsche Frage stellt. */
+        if (tradeMode === 'market') {
+          tradeSort = tradeFilter === 'buy' ? 'plat-desc' : 'plat-asc';
+          renderTradeFilters();
+          if (marketItem) return marketLoadOffers();
+          return renderTradeList();
+        }
+        renderTradeFilters();
+        renderTradeList();
+      };
+    });
+
+    $('chip-market-online')?.addEventListener('click', () => {
+      marketOnline = !marketOnline;
+      renderTradeFilters();
+      if (marketItem) marketLoadOffers(); else renderTradeList();
     });
   }
 
@@ -6477,6 +6628,11 @@ function renderTradeList() {
   if (!box) return;
 
   if (tradeMode === 'transactions') return renderTransactionList(box);
+  /* Angebote ANDERER Leute sind oeffentlich - /v2/orders/item verlangt kein
+     Token. Deshalb steht die Marktsuche vor der Anmeldungspruefung: wer
+     nachsehen will, was ein Teil kostet, braucht dafuer kein Konto. Zum
+     Anschreiben braucht er ohnehin nur das Spiel. */
+  if (tradeMode === 'market') return renderMarketList(box);
   if (!tradeAuth?.signedIn) {
     box.innerHTML = tradeEmpty(Icon.coin(30), 'Not signed in',
       'Your orders live on warframe.market. Sign in to see and change them - your trade history works without an account.',
@@ -6486,6 +6642,235 @@ function renderTradeList() {
   }
   if (tradeMode === 'contracts') return renderContractList(box);
   return renderOrderList(box);
+}
+
+/* ---------------------------- Market ---------------------------- */
+
+/**
+ * Bild eines Markt-Items: Grundbild, und darauf das Abzeichen des Teils.
+ *
+ * warframe.market legt beides uebereinander, und ohne die zweite Ebene sind
+ * die vier Teile eines Primes optisch nicht zu unterscheiden - alle tragen
+ * die Illustration des ganzen Frames (siehe marketSubIcon in market.js).
+ * In einer Trefferliste heisst das: vier gleiche Bilder, und die Auswahl
+ * haengt allein daran, den Text richtig zu lesen.
+ *
+ * Das Abzeichen faellt bei einem Fehler still weg statt ein Platzhalterkreuz
+ * zu hinterlassen - es ist Zusatz, nicht Inhalt.
+ */
+function marketThumb(it, cls = '') {
+  return `<span class="mthumb ${cls}">
+    <img src="${esc(it?.image || '')}" alt="" onerror="this.style.visibility='hidden'">
+    ${it?.subIcon ? `<img class="mthumb-sub" src="${esc(it.subIcon)}" alt=""
+                          onerror="this.style.display='none'">` : ''}
+  </span>`;
+}
+
+/* Der einzige Modus, in dem das Suchfeld nicht die eigene Liste filtert,
+   sondern warframe.market befragt. Deshalb ein eigener Zustand statt eines
+   weiteren Filters auf tradeOrders. */
+let marketItem = null;       // gewaehltes Item, oder null
+let marketHits = [];         // Treffer der Itemsuche
+let marketOffers = null;     // Antwort von trade:offers
+let marketOnline = true;     // nur Leute, die gerade erreichbar sind
+let marketSubtype = null;    // Zustand bei Relikten, Variante bei Mods
+let marketRank = null;       // genau dieser Rang, oder null fuer alle
+let marketBusy = false;
+let marketError = null;
+
+/* Ein Angebot von jemandem, der zuletzt vor drei Tagen online war, ist eine
+   Zahl und kein Preis - deshalb steht der Filter standardmaessig AN. Wer die
+   ganze Preisspanne sehen will, schaltet ihn aus. */
+
+function marketReset() {
+  marketItem = null;
+  marketHits = [];
+  marketOffers = null;
+  marketSubtype = null;
+  marketRank = null;
+  marketError = null;
+}
+
+/**
+ * Itemsuche gegen die Marktliste - dieselbe Quelle wie beim Anlegen einer Order.
+ *
+ * DAS SUCHFELD IST DER RUECKWEG. Wer im Feld etwas aendert, sucht ein anderes
+ * Item - dann ist die Angebotsliste, die gerade dasteht, die Antwort auf eine
+ * Frage von vorhin. Sie faellt hier weg, statt dass man sie ueber einen
+ * eigenen Knopf wegraeumen muss.
+ */
+async function marketSearch() {
+  const q = ($('trade-search')?.value || '').trim();
+  marketError = null;
+  /* Die Auswahl loesen, aber den gewaehlten Zustand nicht: wer "Axi A1" gegen
+     "Axi A2" tauscht, will weiter strahlende Relikte sehen. */
+  marketItem = null;
+  marketOffers = null;
+
+  if (q.length < 2) { marketHits = []; renderTradeList(); return; }
+
+  marketHits = await window.api.tradeSearchItems(q) || [];
+  renderTradeList();
+}
+
+/** Angebote zum gewaehlten Item holen. */
+async function marketLoadOffers() {
+  if (!marketItem?.slug) return;
+  marketBusy = true;
+  marketError = null;
+  renderTradeList();
+
+  /* ZWEI SORTIER-VOKABULARE, UND SIE PASSEN NICHT ZUSAMMEN.
+     Die Handelslisten heissen ihre Schluessel plat-asc/plat-desc, itemOffers
+     erwartet price-asc/price-desc. Ein unbekannter Schluessel wirft dort
+     nichts, er faellt still auf "zuletzt geaendert" zurueck - die Liste sah
+     sortiert aus und war es nicht. Nachgemessen an Serration: 90p, 10p, 17p
+     unter der Ueberschrift "Price (lowest)". */
+  const SORT_KEYS = { 'plat-asc': 'price-asc', 'plat-desc': 'price-desc' };
+
+  const res = await window.api.tradeOffers(marketItem.slug, {
+    type: tradeFilter === 'buy' ? 'buy' : 'sell',
+    onlineOnly: marketOnline,
+    subtype: marketSubtype,
+    /* Ein Rang ist bei Mods keine Eigenschaft, sondern die Ware: Serration
+       Rang 0 kostet 10p, Rang 10 kostet 90p. Beides in einer nach Preis
+       sortierten Liste ist kein Preisvergleich, sondern ein Missverstaendnis
+       mit Zahlen. Deshalb exakt EIN Rang, wenn einer gewaehlt ist. */
+    minRank: marketRank,
+    maxRank: marketRank,
+    sort: SORT_KEYS[tradeSort] || tradeSort,
+    limit: 10,
+    refresh: true
+  });
+
+  marketBusy = false;
+  if (res?.ok) marketOffers = res;
+  else { marketOffers = null; marketError = tradeError(res, 'offers'); }
+  renderTradeList();
+}
+
+function marketPick(item) {
+  marketItem = item;
+  marketOffers = null;
+  /* Bei Relikten und Arcanes ist der Zustand Teil der Ware. Ein zuvor
+     gewaehlter bleibt stehen, WENN das neue Item ihn ueberhaupt kennt - wer
+     Axi A1 strahlend angesehen hat und dann Axi A2 sucht, meint weiterhin
+     strahlend. Sonst die erste Stufe, also die, die im Spiel als erstes
+     anfaellt: intakt, ungerankt. */
+  marketSubtype = item.subtypes?.length
+    ? (item.subtypes.includes(marketSubtype) ? marketSubtype : item.subtypes[0])
+    : null;
+  /* Der Rang dagegen faellt zurueck auf "alle": er gehoert zu einem Mod, und
+     "Rang 10" von Serration sagt nichts ueber das naechste Item aus. */
+  marketRank = null;
+  marketLoadOffers();
+}
+
+function renderMarketList(box) {
+  if (marketItem) return renderMarketOffers(box);
+
+  const q = ($('trade-search')?.value || '').trim();
+  if (q.length < 2) {
+    box.innerHTML = tradeEmpty(Icon.search(30), 'Search warframe.market',
+      'Type an item name above — Nidus Prime Blueprint, Serration, Axi A1 Relic — and Argus shows the offers standing at the top, with the message to whisper in game.');
+    return;
+  }
+  if (!marketHits.length) {
+    box.innerHTML = tradeEmpty(Icon.search(30), 'No item found',
+      `warframe.market lists nothing called “${q}”. Tradable items only — base sets and untradable parts are not on the market.`);
+    return;
+  }
+
+  /* Dieselbe Zeile wie beim Anlegen einer Order - dort sucht man aus
+     derselben Liste dasselbe Item aus. Zwei Suchen, die verschieden
+     aussehen, waeren zwei Suchen zum Lernen. */
+  box.innerHTML = `<div class="market-hits">${marketHits.slice(0, 24).map(it => `
+    <button class="trade-pick" data-market-slug="${esc(it.slug)}">
+      ${marketThumb(it, 'mthumb-30')}
+      <span class="pick-name">${esc(it.name)}</span>
+      ${it.ducats ? `<span class="offer-rank">${nf(it.ducats)} ducats</span>` : ''}
+    </button>`).join('')}</div>`;
+
+  box.querySelectorAll('[data-market-slug]').forEach(b => {
+    b.onclick = () => marketPick(marketHits.find(h => h.slug === b.dataset.marketSlug));
+  });
+}
+
+function renderMarketOffers(box) {
+  const it = marketItem;
+  const kaufen = tradeFilter !== 'buy';   // Verkaeuferliste = ich kaufe
+
+  const kopf = `
+    <div class="market-head">
+      ${marketThumb(it, 'mthumb-38')}
+      <div class="market-head-body">
+        <b>${esc(it.name)}</b>
+        <span>${kaufen ? 'People selling — cheapest first' : 'People buying — highest first'}${
+          marketOffers?.total ? ` · showing ${marketOffers.offers.length} of ${nf(marketOffers.total)}` : ''}</span>
+      </div>
+      ${it.subtypes?.length ? `
+        <select class="select-sm" id="market-subtype">
+          ${it.subtypes.map(s => `<option value="${esc(s)}"${s === marketSubtype ? ' selected' : ''}>${esc(s)}</option>`).join('')}
+        </select>` : ''}
+      ${it.maxRank != null ? `
+        <select class="select-sm" id="market-rank" title="Rank 0 and rank ${it.maxRank} are different goods at different prices">
+          <option value="">Any rank</option>
+          ${Array.from({ length: it.maxRank + 1 }, (_, r) =>
+            `<option value="${r}"${marketRank === r ? ' selected' : ''}>Rank ${r}${r === it.maxRank ? ' (max)' : ''}</option>`).join('')}
+        </select>` : ''}
+    </div>`;
+
+  const rumpf = marketBusy
+    ? '<p class="trade-offers-empty">Loading offers …</p>'
+    : marketError
+    ? `<p class="trade-offers-empty">Could not load offers: ${esc(marketError)}</p>`
+    : !marketOffers?.offers?.length
+    ? `<p class="trade-offers-empty">${marketOnline
+        ? 'Nobody offering this is in game right now. Switch off “In game only” to see the rest.'
+        : 'No offer for this item.'}</p>`
+    : `<div class="market-offers">${marketOffers.offers.map((f, i) => {
+        const text = Whisper.build(f, it);
+        return `
+        <div class="trade-offer market-offer">
+          <span class="market-rank">${i + 1}</span>
+          <span class="offer-status status-${esc(f.user.status)}" title="${esc(f.user.status)}"></span>
+          <span class="offer-price">${platImg}<b>${nf(f.platinum)}</b></span>
+          <span class="offer-qty">×${nf(f.quantity)}</span>
+          <span class="offer-user">
+            ${esc(f.user.name)}
+            <small>${nf(f.user.reputation)} rep · ${esc((f.user.platform || 'pc').toUpperCase())}</small>
+          </span>
+          ${f.rank != null ? `<span class="offer-rank">R${f.rank}</span>` : ''}
+          <span class="offer-age">${esc(relativeAge(Date.parse(f.updatedAt || f.createdAt || 0)))}</span>
+          <button class="btn-sm market-copy" data-copy="${esc(text)}" title="${esc(text)}">
+            ${Icon.copy(13)}<span>Copy</span>
+          </button>
+        </div>`;
+      }).join('')}</div>
+      <p class="market-note">Copy puts the whisper on your clipboard. Paste it in Warframe yourself —
+         Argus does not message anyone for you. Change the search above to look up something else.</p>`;
+
+  box.innerHTML = kopf + rumpf;
+
+  const sub = $('market-subtype');
+  if (sub) sub.onchange = e => { marketSubtype = e.target.value; marketLoadOffers(); };
+  const rk = $('market-rank');
+  if (rk) rk.onchange = e => {
+    marketRank = e.target.value === '' ? null : Number(e.target.value);
+    marketLoadOffers();
+  };
+
+  box.querySelectorAll('[data-copy]').forEach(b => {
+    b.onclick = async () => {
+      const res = await window.api.copyText(b.dataset.copy);
+      /* Rueckmeldung am Knopf selbst: eine Zwischenablage ist unsichtbar, und
+         ohne Quittung klickt man zweimal und weiss trotzdem nichts. */
+      const alt = b.innerHTML;
+      b.innerHTML = res?.ok ? `${Icon.check(13)}<span>Copied</span>` : '<span>Failed</span>';
+      b.classList.toggle('on', !!res?.ok);
+      setTimeout(() => { b.innerHTML = alt; b.classList.remove('on'); }, 1600);
+    };
+  });
 }
 
 /* ---------------------------- Orders ---------------------------- */
@@ -6537,8 +6922,7 @@ function orderRowHtml(o) {
   return `
     <div class="trade-row ${o.visible ? '' : 'is-hidden-order'}" data-order="${esc(o.id)}">
       <div class="trade-row-main">
-        <img class="trade-row-img" src="${esc(o.image || 'assets/icons/relic.png')}" alt=""
-             onerror="this.src='assets/icons/relic.png'">
+        ${marketThumb(o, 'mthumb-42 trade-row-img')}
         <div class="trade-row-text">
           <div class="trade-row-title">
             <b>${esc(o.name)}</b>
@@ -7153,7 +7537,7 @@ async function searchNewOrderItems() {
   }
   box.innerHTML = hits.map((h, i) => `
     <button class="trade-pick" data-pick="${i}">
-      <img src="${esc(h.image || 'assets/icons/relic.png')}" alt="" onerror="this.src='assets/icons/relic.png'">
+      ${marketThumb(h, 'mthumb-30')}
       <span class="pick-name">${esc(h.name)}</span>
       ${h.maxRank != null ? `<span class="trade-dim">max rank ${h.maxRank}</span>` : ''}
       ${h.ducats ? `<span class="trade-dim">${h.ducats} ducats</span>` : ''}
@@ -7168,7 +7552,7 @@ async function pickNewOrderItem(item) {
   newOrderItem = item;
   $('trade-new-results').innerHTML = '';
   $('trade-new-picked').innerHTML = `
-    <img src="${esc(item.image || 'assets/icons/relic.png')}" alt="" onerror="this.src='assets/icons/relic.png'">
+    ${marketThumb(item, 'mthumb-34')}
     <b>${esc(item.name)}</b>
   `;
   $('trade-new-rank-field').classList.toggle('hidden', item.maxRank == null);
@@ -7251,22 +7635,65 @@ function initTradingEvents() {
   document.querySelectorAll('[data-trade-mode]').forEach(btn => {
     btn.onclick = () => {
       tradeMode = btn.dataset.tradeMode;
-      tradeFilter = 'all';
+      /* Der erste Chip des Modus statt eines festen 'all': den Schluessel
+         gibt es im Marktmodus nicht, und ein Filter, der auf nichts zeigt,
+         laesst die Chipreihe ohne aktiven Eintrag stehen. */
+      tradeFilter = (TRADE_FILTERS[tradeMode] || [{ key: 'all' }])[0].key;
+
+      /* UND DIE SORTIERUNG GENAUSO. Sie blieb bisher stehen, wenn der alte
+         Schluessel im neuen Modus zufaellig auch existiert - und
+         plat-desc gibt es ueberall. Aus Orders ("Platinum highest") kam man
+         so im Markt bei "Price (highest)" heraus, waehrend der Chip daneben
+         auf "Sellers" stand: die teuersten Verkaeufer zuerst, also genau
+         andersherum als gemeint. Der erste Eintrag der Liste IST die
+         Voreinstellung des Modus, hier wie beim Filter. */
+      tradeSort = (TRADE_SORTS[tradeMode] || [['plat-desc']])[0][0];
+      /* Das Suchfeld bedeutet hier etwas anderes - was drinsteht, gilt nicht
+         weiter. */
+      marketReset();
+      if ($('trade-search')) $('trade-search').value = '';
       renderTradeFilters();
       renderTradeList();
       updateTradeModeTabs();
     };
   });
 
-  $('trade-sort').onchange = e => { tradeSort = e.target.value; renderTradeList(); };
+  $('trade-sort').onchange = e => {
+    tradeSort = e.target.value;
+    if (tradeMode === 'market' && marketItem) return marketLoadOffers();
+    renderTradeList();
+  };
   $('trade-search').oninput = () => {
-    /* Tippen loest sonst je Zeichen ein Neuzeichnen der ganzen Liste aus. */
+    /* Tippen loest sonst je Zeichen ein Neuzeichnen der ganzen Liste aus -
+       im Marktmodus waere es je Zeichen eine Suche. */
     clearTimeout(tradeSearchTimer);
-    tradeSearchTimer = setTimeout(renderTradeList, 150);
+    tradeSearchTimer = setTimeout(
+      () => (tradeMode === 'market' ? marketSearch() : renderTradeList()), 220);
   };
 
   $('btn-trade-new').onclick = () =>
     tradeMode === 'transactions' ? openTxModal(null) : openNewOrderModal();
+
+  /* ---- Anwesenheit ---- */
+  $('set-trade-presence').onchange = async e => {
+    const on = e.target.checked;
+    /* Sofort zeichnen, damit der Schalter nicht zurueckspringt, waehrend der
+       Hauptprozess antwortet. Was danach kommt, korrigiert es notfalls. */
+    tradePresence = { ...tradePresence, enabled: on, state: on ? 'connecting' : 'off', error: null };
+    renderTradePresence();
+
+    const res = await window.api.tradeSetAutoStatus(on);
+    if (res?.ok) tradePresence = { enabled: !!res.enabled, state: res.state || 'off', error: res.error || null };
+    else tradePresence = { enabled: false, state: 'error', error: res?.error || 'could not reach warframe.market' };
+    renderTradePresence();
+  };
+
+  /* Der Hauptprozess meldet jeden Wechsel von sich aus - das Spiel geht auf
+     oder zu, ohne dass hier jemand klickt. */
+  window.api.onTradePresence(st => {
+    tradePresence = { ...tradePresence, state: st.state, error: st.error };
+    renderTradePresence();
+  });
 
   /* ---- Konto-Fenster ---- */
   $('btn-trade-account').onclick = openAccountModal;

@@ -184,6 +184,16 @@ contextBridge.exposeInMainWorld('api', {
   tradeSignIn:     (mail, pw)  => ipcRenderer.invoke('trade:signIn', mail, pw),
   tradeSignOut:    ()          => ipcRenderer.invoke('trade:signOut'),
   tradeDiagnose:   ()          => ipcRenderer.invoke('trade:diagnose'),
+  /* Anwesenheit: "ingame" setzen, solange Warframe laeuft. Auch hier geht
+     nur der Zustand nach draussen ('off' | 'connecting' | 'ingame' |
+     'error'), nie das Token, mit dem die Verbindung angemeldet wird. */
+  tradeAutoStatus:    ()       => ipcRenderer.invoke('trade:autoStatus'),
+  tradeSetAutoStatus: (on)     => ipcRenderer.invoke('trade:setAutoStatus', on),
+  onTradePresence: (cb)        => {
+    const handler = (_e, st) => cb(st);
+    ipcRenderer.on('trade:presence', handler);
+    return () => ipcRenderer.removeListener('trade:presence', handler);
+  },
   /* Orders: eigene Verkaufs- und Kaufauftraege */
   tradeOrders:     ()          => ipcRenderer.invoke('trade:orders'),
   tradeCreateOrder:(data)      => ipcRenderer.invoke('trade:createOrder', data),
@@ -191,6 +201,9 @@ contextBridge.exposeInMainWorld('api', {
   tradeDeleteOrder:(id)        => ipcRenderer.invoke('trade:deleteOrder', id),
   tradeMarkSold:   (id, info)  => ipcRenderer.invoke('trade:markSold', id, info),
   tradeOffers:     (slug, o)   => ipcRenderer.invoke('trade:offers', slug, o),
+  /* Nur schreiben, nie lesen. Argus hat keinen Grund zu wissen, was jemand
+     sonst in seiner Zwischenablage hat. */
+  copyText:        (text)      => ipcRenderer.invoke('clip:write', text),
   tradeSearchItems:(q)         => ipcRenderer.invoke('trade:searchItems', q),
   tradeItemBySlug: (slug)      => ipcRenderer.invoke('trade:itemBySlug', slug),
   /* Contracts: Riven-, Lich- und Sister-Auktionen */

@@ -53,3 +53,28 @@ they fly there and find nothing — and then they assume they are searching wron
 and a planet mix-up; the check exists so that cannot happen again quietly.
 
 ---
+
+## What you already have
+
+Set something as a goal and Argus resolves it down to raw materials — then checks every one
+of them against your inventory.
+
+What you have enough of looks the way it always did. What you are short of turns grey and
+shows both numbers, so `9/10` tells you in one glance that a single Fieldron is all that
+stands between you and the forge. The same reading appears in the planner, on the dashboard
+cards, in the item sheet, in the shopping list and in the overlay — the last one being the
+point, because it is the one you can see while you are actually farming.
+
+**A part in the foundry is not a missing part.** Anything already building gets a blue dot
+and a line in the tooltip instead of being counted as absent. Something that finishes in
+four hours is not a reason to go back out.
+
+**A goal card and the shopping list answer different questions.** The card asks "can I build
+*this*", and counts your stock against that goal alone. The list underneath adds up every
+open goal at once. With two goals wanting Ferrite, the same resource can read green on a
+card and grey in the list — both are correct, and collapsing them into one number would lose
+whichever question you happened to be asking.
+
+**Without inventory data, nothing is claimed.** If you have never fetched your inventory the
+numbers stay exactly as they were before, rather than greying everything out behind a zero
+about an account nobody has looked at.

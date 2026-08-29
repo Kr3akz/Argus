@@ -7,8 +7,9 @@
 ---
 
 
-The trading tab is your warframe.market order book, without the browser. Three lists,
-one place: what you are offering, what you are auctioning, and what actually sold.
+The trading tab is your warframe.market order book, without the browser. Four lists,
+one place: what you are offering, what you are auctioning, what actually sold — and what
+everyone else is asking, for the times you are the one buying.
 
 ## Orders
 
@@ -60,6 +61,53 @@ offers rather than the highest: a single bidder far above the field is not a mar
 prefilling it would mean accidentally outbidding them. One real set had offers of 175p, then
 69, 60, 60, 57 — the suggestion is 60.
 
+## Looking up what something costs
+
+The **Market** tab sits next to Orders, because it is the same motion from the other side:
+what does this cost, and what am I asking. Type an item name — Nidus Prime Blueprint,
+Serration, Axi A1 Relic — pick it from the hits, and the ten offers standing at the top
+appear: cheapest first, and by default only from people who are online or in game right now.
+
+Changing the search brings the item list straight back. There is no button to press to look
+up something else; the field you typed in is the way back out.
+
+**The little badge on each picture is doing real work.** Warframe.market draws every part of
+a Prime with the same illustration — the whole frame — and distinguishes them with a small
+mark in the corner: a blueprint, a helmet, a chassis. Without it, five entries called
+"Nidus Prime …" look identical and the choice rests entirely on reading the text.
+
+*In game only* is on to begin with, and that is the point rather than a default worth
+changing lightly. Warframe.market lists hundreds of offers for a popular part; the cheapest
+one belongs to somebody who last logged in on Tuesday. An offer nobody is behind is a
+number, not a price.
+
+**Rank and condition are part of the price, so they are part of the search.** Serration at
+rank 0 goes for 2 platinum and at rank 10 for around 49 — a single list holding both, sorted
+by price, is not a price comparison but a misunderstanding with numbers in it. Mods get a
+rank picker, relics and arcanes their condition, and the choice carries into the message you
+copy so the other side knows which one you mean.
+
+## Copying the whisper
+
+Each offer has a **Copy** button. It puts a line like this on your clipboard:
+
+```
+/w RRPrimeKnight Hi! I want to buy: "Serration" (rank 10) for 49 platinum. (warframe.market)
+```
+
+Paste it into Warframe's chat yourself. **Argus never sends it** — it cannot; nothing in it
+talks to the game's chat, and nothing ever will. A program that writes to strangers on your
+behalf is a bot, including when it is polite about it. The clipboard is the line where a tool
+stops and you start.
+
+The direction flips with the list you are looking at. Under **Sellers** you are the one
+buying, so the message says *I want to buy*; under **Buyers** it says *I want to sell*. That
+is the most common thing to get backwards, and it only shows up once both of you are already
+in the trade window expecting different things.
+
+You do not need to be signed in for any of this. Other people's offers are public on
+warframe.market, and what you do with the copied line happens in the game, not here.
+
 ## Contracts
 
 Riven, Kuva Lich and Sister of Parvos auctions. They are a different thing from orders and
@@ -103,6 +151,41 @@ what a part cost you to farm is not something this file can know. Buy for 10p, s
 
 The local half keeps working when you are signed out. If warframe.market's history cannot be
 reached, the summary line says *local only* rather than quietly showing you less.
+
+## Showing up as "in game"
+
+Warframe.market sorts offers by presence, and most people filter for *online only* before
+they write to anyone. An offer from someone who last logged in three days ago is a number,
+not a price — which cuts both ways: your own orders are just as invisible while your dot
+says offline.
+
+The switch next to your account in the trading tab takes care of it. While Warframe is
+running, Argus shows you as **in game** on warframe.market. Close the game, or close Argus,
+and it is taken back.
+
+**It only ever adds.** Argus never sets you to *online* and never sets you to *invisible* —
+the two other states the protocol has do not appear anywhere in its code. Whatever you chose
+on the site yourself is still yours; the switch lays *in game* on top of it while you play,
+and lifts it off when you stop.
+
+That is not politeness, it is how the protocol works. In warframe.market's v2 API the status
+is not a setting that stays put — it hangs on an open connection and lasts exactly as long
+as that connection does. So "taking it back" is nothing more than hanging up, and what your
+account looks like afterwards is warframe.market's decision, not ours.
+
+**With the game closed, nothing is sent at all.** Switch on and Warframe shut means no
+connection, no message, no claim about you. Argus looks at the process list every thirty
+seconds, and only then does anything happen. Switch off and even that stops — no timer, no
+connection, nothing.
+
+The dot next to the switch says where you stand: grey is waiting for the game, green means
+your status is live, red means it did not work and the tooltip says why. The wording next to
+it never changes, so you can tell what the switch does without reading its current state
+first.
+
+You need to be signed in — the status belongs to an account, so there is nothing to set
+without one. Signed out, the switch is greyed out rather than silently doing nothing, and
+your setting is remembered for when you come back.
 
 ## Signing in
 
@@ -149,3 +232,4 @@ you what happened. Earlier it discarded the token on the first 401 and put the l
 back, which made a *successful* sign-in look like nothing had happened.
 
 ---
+

@@ -95,6 +95,29 @@ export function marketImage(item, { full = false } = {}) {
   return rel ? `https://warframe.market/static/assets/${rel}` : null;
 }
 
+/**
+ * Das Abzeichen, das ein Teil von seinem Set unterscheidet.
+ *
+ * WARUM ES DAS BRAUCHT: Das Grundbild ist bei allen Teilen eines Primes
+ * DASSELBE. "Nidus Prime Systems Blueprint" traegt dieselbe Illustration wie
+ * "Nidus Prime Set" - unterschieden wird ausschliesslich ueber dieses zweite
+ * Bild, das warframe.market in die Ecke legt:
+ *
+ *   Nidus Prime Blueprint            blueprint_128x128.png
+ *   Nidus Prime Systems Blueprint    prime_systems_128x128.png
+ *   Nidus Prime Neuroptics Blueprint prime_helmet_128x128.png
+ *   Nidus Prime Chassis Blueprint    prime_chassis_128x128.png
+ *   Nidus Prime Set                  keins
+ *
+ * Ohne diese Ebene sehen in einer Trefferliste alle fuenf Zeilen gleich aus,
+ * und die Auswahl haengt allein am Text. 787 der 3840 Markt-Items haben eins;
+ * wer keins hat, ist selbst schon eindeutig.
+ */
+export function marketSubIcon(item) {
+  const rel = item?.i18n?.en?.subIcon;
+  return rel ? `https://warframe.market/static/assets/${rel}` : null;
+}
+
 /** Handelbare Items inklusive Dukatenwert. Faellt auf den Cache zurueck. */
 export async function loadMarketItems({ refresh = false } = {}) {
   if (items && !refresh) return items;

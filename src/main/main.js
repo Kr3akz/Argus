@@ -14,7 +14,7 @@
  *     dieselbe Drosselung (siehe ratelimit.js) - DE sperrt pro IP.
  *   - Renderer laeuft ohne Node-Zugriff (contextIsolation an).
  */
-import { app, BrowserWindow, ipcMain, globalShortcut, shell, Notification, screen } from 'electron';
+import { app, BrowserWindow, ipcMain, globalShortcut, shell, Notification, screen, clipboard } from 'electron';
 import path from 'node:path';
 import { existsSync, mkdirSync, renameSync, cpSync, createWriteStream } from 'node:fs';
 import { readFile } from 'node:fs/promises';
@@ -40,7 +40,7 @@ import { getMiningGuide } from '../core/mining.js';
 import { getDucatsReferenceList, buildPrimeSets, buildDucatsCatalog, buildInventoryDucats } from '../core/ducats.js';
 import { loadInventory } from '../core/inventory.js';
 import { scanCredentials, findGameProcessIds } from '../core/gamecreds.js';
-import { buildInventory, SECTIONS, ownedUpgradeRanks, miscItemCount } from '../core/inventory-items.js';
+import { buildInventory, SECTIONS, ownedUpgradeRanks, miscItemCount, ownedStock, recipeRow } from '../core/inventory-items.js';
 import { loadDropTables, sourcesFor } from '../core/droptables.js';
 import { loadCardImages, cardUrl } from '../core/cards.js';
 import { upgradeDetails } from '../core/upgrade-details.js';
@@ -48,11 +48,12 @@ import { checkAllowed, formatWait } from '../core/ratelimit.js';
 import { matchesFissureFilter } from '../core/fissure-filter.js';
 import { captureForeground, restoreForeground, bringToForeground, moveCursorIntoWindow, foregroundPid } from '../core/foreground.js';
 import { LogWatcher } from '../core/logwatch.js';
-import { loadMarketItems, findMarketItem, getPrice, getPrices, marketImage } from '../core/market.js';
+import { loadMarketItems, findMarketItem, getPrice, getPrices, marketImage, marketSubIcon } from '../core/market.js';
 /* Handelsteil: Anmeldung, Orders, Auktionen und das lokale Handelsbuch.
    Vier Module, weil es vier verschiedene Dinge sind - siehe die Kopf-
    kommentare dort. */
 import * as wfmAuth from '../core/wfm-auth.js';
+import { MarketPresence } from '../core/wfm-socket.js';
 import * as wfmOrders from '../core/wfm-orders.js';
 import * as wfmAuctions from '../core/wfm-auctions.js';
 import * as ledger from '../core/transactions.js';
@@ -465,6 +466,14 @@ async function loadOverlayPrefs() {
     if (cfg.overlayBounds) overlayBounds = cfg.overlayBounds;
     if (typeof cfg.updateCheck === 'boolean') updateCheckEnabled = cfg.updateCheck;
     clickThrough = !!cfg.overlayClickThrough;
+    /* Der Schalter ueberlebt den Neustart - sonst muesste ihn jeder bei
+       jedem Start neu setzen, und ein Schalter, den man taeglich nachziehen
+       muss, ist keine Automatik. Der Socket geht dabei NICHT sofort auf:
+       presence verbindet erst, wenn der Waechter das laufende Spiel meldet. */
+    if (cfg.wfmAutoStatus) {
+      presence.setEnabled(true);
+      startPresenceWatch();
+    }
   } catch {
     /* Ohne Konfiguration gelten die Voreinstellungen. */
   }
@@ -991,6 +1000,12 @@ function profileExtras(profile) {
   };
 }
 
+/* Wie viele Vorschlaege unter "Cheap to pick up" sichtbar sind, bevor jemand
+   aufklappt. Acht ist der Stand, den es immer gab - zwei Reihen auf einem
+   breiten Fenster, und wenig genug, dass die Liste eine Empfehlung bleibt
+   und keine Suchergebnisseite wird. */
+const EASY_GAINS_TOP = 8;
+
 async function buildDashboard(meta) {
   const a = cache.analysis;
   const s = a.summary;
@@ -999,6 +1014,10 @@ async function buildDashboard(meta) {
 
   const invRes = await loadInventory({ refresh: false }).catch(() => null);
   const inv = invRes?.inventory || null;
+
+  /* Einmal pro Aufbau, nicht einmal pro Zeile: die Karten wandern durch jedes
+     Ziel, jedes Bauteil und die Einkaufsliste. */
+  const asRecipeRow = recipeRow(inv ? ownedStock(inv, cache.catalog) : null);
 
   if (!cache.dropTables) {
     try {
@@ -1099,18 +1118,8 @@ async function buildDashboard(meta) {
       rank,
       maxLvl,
       ranksLeft,
-      components: r ? r.components.map(c => ({
-        ...c,
-        image: imageUrl(c.uniqueName, 128),
-        ingredients: c.ingredients.map(ing => ({
-          ...ing,
-          image: imageUrl(ing.uniqueName, 128)
-        }))
-      })) : [],
-      materials: r ? r.materials.slice(0, 14).map(m => ({
-        ...m,
-        image: imageUrl(m.uniqueName, 128)
-      })) : [],
+      components: r ? r.components.map(asRecipeRow) : [],
+      materials: r ? r.materials.slice(0, 14).map(asRecipeRow) : [],
       credits: r ? r.totalCredits : 0,
       buildTime: r ? formatDuration(r.totalBuildSeconds) : '',
       note: st.notes[g.uniqueName] || ''
@@ -1146,17 +1155,34 @@ async function buildDashboard(meta) {
       message: (meta && meta.message) || null
     },
     quickWins: rec.quickWins.slice(0, 8).map(decorate),
-    easyGains: diversify(rec.easyGains, 2, 8).map(decorate),
+    /* Zwei Listen in einer, und die Reihenfolge ist die ganze Logik:
+       vorne die acht, die schon immer dastanden - dieselbe Auswahl, gleiche
+       Regel (hoechstens zwei je Kategorie), damit Aufklappen die Empfehlung
+       nicht umsortiert. Dahinter der Rest fuer den aufgeklappten Zustand,
+       diesmal mit vier je Kategorie: wer bewusst mehr sehen will, sucht
+       Auswahl und nicht nochmal dieselbe Streuung.
+       Die Oberflaeche schneidet bei EASY_GAINS_TOP ab. */
+    easyGains: (() => {
+      const oben = diversify(rec.easyGains, 2, EASY_GAINS_TOP);
+      const gezeigt = new Set(oben.map(r => r.uniqueName));
+      const rest = diversify(rec.easyGains, 4, EASY_GAINS_TOP + 40)
+        .filter(r => !gezeigt.has(r.uniqueName))
+        .slice(0, 24);
+      return [...oben, ...rest].map(decorate);
+    })(),
+    easyGainsTop: EASY_GAINS_TOP,
     warframes: rec.all.filter(r => r.category === 'Suits' && !r.owned).slice(0, 8).map(decorate),
     categories: Object.entries(byCategory)
       .map(([k, v]) => ({ key: k, label: CATEGORY_LABELS[k] || k, ...v }))
       .sort((x, y) => y.gain - x.gain),
     goals,
     shopping: {
-      materials: shopping.materials.slice(0, 20).map(m => ({
-        ...m,
-        image: imageUrl(m.uniqueName, 128)
-      })),
+      /* Die Einkaufsliste beantwortet die ANDERE Frage: nicht "reicht es fuer
+         dieses Ziel", sondern "reicht es fuer alle offenen zusammen". Deshalb
+         laeuft hier der summierte Bedarf aus combineGoals gegen denselben
+         Bestand - eine Zeile kann in ihrer Zielkarte gruen und hier grau sein,
+         und beides stimmt. */
+      materials: shopping.materials.slice(0, 20).map(asRecipeRow),
       credits: shopping.totalCredits,
       buildTime: formatDuration(shopping.totalBuildSeconds)
     },
@@ -1517,18 +1543,13 @@ ipcMain.handle('item:details', async (_e, uniqueName) => {
 
     // Recipe
     const recipe = resolveGoal(uniqueName, cache.catalog);
-    const components = (recipe.components || []).map(c => ({
-      ...c,
-      image: imageUrl(c.uniqueName, 128),
-      ingredients: (c.ingredients || []).map(ing => ({
-        ...ing,
-        image: imageUrl(ing.uniqueName, 128)
-      }))
-    }));
-    const materials = recipe.materials.map(m => ({
-      ...m,
-      image: imageUrl(m.uniqueName, 128)
-    }));
+    /* Eigener Abruf statt des Dashboard-Bestands: dieses Fenster geht auch
+       ueber die Suche auf, ohne dass vorher ein Dashboard gebaut wurde. Der
+       Abruf ist rein lokal (refresh: false) und kostet kein Netz. */
+    const invForStock = (await loadInventory({ refresh: false }).catch(() => null))?.inventory || null;
+    const asRow = recipeRow(invForStock ? ownedStock(invForStock, cache.catalog) : null);
+    const components = (recipe.components || []).map(asRow);
+    const materials = recipe.materials.map(asRow);
 
     // Stats formatting
     let stats = [];
@@ -2120,9 +2141,87 @@ ipcMain.handle('trade:verify',     () => trade(async () => await wfmAuth.verifyS
  * wfm-session.json (siehe wfm-auth.js).
  */
 ipcMain.handle('trade:signIn', (_e, email, password) =>
-  trade(async () => await wfmAuth.signIn(email, password)));
+  trade(async () => {
+    const res = await wfmAuth.signIn(email, password);
+    /* Der Schalter steht in der Konfiguration, die Verbindung haengt an der
+       Sitzung: nach einer Abmeldung ist das eine noch an und das andere
+       weg. Hier passt es wieder zusammen, ohne dass jemand den Schalter
+       zweimal umlegen muss. */
+    const cfg = await loadConfig();
+    if (cfg.wfmAutoStatus) { presence.setEnabled(true); startPresenceWatch(); }
+    return res;
+  }));
 
-ipcMain.handle('trade:signOut', () => trade(async () => await wfmAuth.signOut()));
+ipcMain.handle('trade:signOut', () => trade(async () => {
+  /* Ohne Token gibt es nichts mehr anzumelden - die Verbindung muss weg,
+     bevor die Sitzung geloescht wird. Sonst laeuft der Socket weiter und
+     meldet "ingame" fuer ein Konto, von dem man sich gerade abgemeldet hat.
+     Die EINSTELLUNG bleibt: wer sich wieder anmeldet, findet seinen Schalter
+     so vor, wie er ihn gesetzt hat. */
+  presence.setEnabled(false);
+  stopPresenceWatch();
+  return await wfmAuth.signOut();
+}));
+
+/* ------------------- Anwesenheit auf warframe.market ------------------- */
+
+/**
+ * "Ingame", solange Warframe laeuft - und sonst gar nichts.
+ *
+ * Der Schalter sitzt im Trading-Tab neben dem Konto. Was er tut, steht in
+ * wfm-socket.js; hier steht nur, WANN er es tut.
+ *
+ * DER TAKT: Alle 30 Sekunden ein Blick in die Prozessliste. Das ist die
+ * Zeit, die zwischen "Spiel beendet" und "Status weg" hoechstens vergeht -
+ * und niemand handelt in der halben Minute, in der er das Spiel gerade
+ * zumacht. Haeufiger nachzusehen hiesse, oefter einen Unterprozess zu
+ * starten, um dieselbe Antwort zu bekommen.
+ *
+ * Der Blick laeuft NUR, solange der Schalter an ist. Wer ihn aus hat, zahlt
+ * fuer dieses Feature nichts - kein Timer, kein tasklist, kein Socket.
+ */
+const PRESENCE_POLL_MS = 30000;
+
+const presence = new MarketPresence(() => wfmAuth.socketToken());
+let presenceTimer = null;
+
+presence.on('state', st => sendToMain('trade:presence', st));
+
+async function presenceTick() {
+  /* 20 Sekunden statt der vollen Minute: der Zwischenspeicher wird hier
+     ohnehin bei jedem zweiten Takt erneuert, und ein frischerer Stand kommt
+     dem Belohnungs-Waechter zugute, der denselben Topf liest. */
+  presence.setGameRunning((await gamePids(20000)).length > 0);
+}
+
+function startPresenceWatch() {
+  if (presenceTimer) return;
+  presenceTimer = setInterval(() => { presenceTick().catch(() => {}); }, PRESENCE_POLL_MS);
+  presenceTick().catch(() => {});
+}
+
+function stopPresenceWatch() {
+  clearInterval(presenceTimer);
+  presenceTimer = null;
+}
+
+/** Schalter setzen, Zustand merken, Waechter an oder aus. */
+async function setAutoStatus(on) {
+  presence.setEnabled(!!on);
+  if (on) startPresenceWatch();
+  else { stopPresenceWatch(); presence.setGameRunning(false); }
+
+  const cfg = await loadConfig();
+  await saveConfig({ ...cfg, wfmAutoStatus: !!on });
+  return { enabled: !!on, ...presence.state };
+}
+
+ipcMain.handle('trade:autoStatus', async () => {
+  const cfg = await loadConfig();
+  return { enabled: !!cfg.wfmAutoStatus, ...presence.state };
+});
+
+ipcMain.handle('trade:setAutoStatus', (_e, on) => trade(async () => await setAutoStatus(on)));
 
 /**
  * Welche Endpunkte nehmen das Token an.
@@ -2184,6 +2283,23 @@ ipcMain.handle('trade:offers', (_e, slug, opts = {}) =>
   trade(async () => await wfmOrders.itemOffers(slug, opts)));
 
 /**
+ * Text in die Zwischenablage.
+ *
+ * Ueber den Hauptprozess und nicht ueber navigator.clipboard: der Renderer
+ * laeuft unter file://, und ob Chromium das als sicheren Kontext durchgehen
+ * laesst, haengt an Umstaenden, die sich mit einer Electron-Fassung aendern
+ * koennen. Electrons eigenes Modul haengt an nichts davon.
+ *
+ * Nur Text, und gedeckelt: was hier durchgeht, ist eine Chatzeile.
+ */
+ipcMain.handle('clip:write', (_e, text) => {
+  const s = String(text ?? '');
+  if (!s || s.length > 2000) return { ok: false, error: 'nothing to copy' };
+  clipboard.writeText(s);
+  return { ok: true };
+});
+
+/**
  * Itemsuche fuer eine neue Order.
  *
  * Bewusst gegen die Marktliste und nicht gegen den Spielkatalog: handelbar
@@ -2203,6 +2319,7 @@ const marketItemForOrder = it => ({
   itemId: it.id,
   name: it.i18n?.en?.name || it.slug,
   image: marketImage(it),
+  subIcon: marketSubIcon(it),
   maxRank: it.maxRank ?? null,
   subtypes: it.subtypes?.length ? it.subtypes : null,
   bulkTradable: !!it.bulkTradable,
@@ -3603,17 +3720,32 @@ let watchRunsAtStart = 0;
 let gameWasForeground = null;
 let gamePidCache = { at: 0, pids: [] };
 
+/**
+ * PIDs des Spiels, hoechstens `maxAgeMs` alt.
+ *
+ * Ein tasklist-Aufruf ist ein Unterprozess - billig, aber nicht umsonst.
+ * Deshalb teilen sich der Belohnungs-Waechter und die Anwesenheit auf
+ * warframe.market EINEN Zwischenspeicher: wer zuerst fragt, bezahlt, der
+ * zweite liest mit. Der Waechter darf dabei aeltere Daten nehmen als die
+ * Anwesenheit, weil ihn nur interessiert, WELCHE PID das Spiel hat - nicht,
+ * ob es ueberhaupt noch laeuft.
+ */
+async function gamePids(maxAgeMs = 60000) {
+  if (Date.now() - gamePidCache.at > maxAgeMs) {
+    gamePidCache = { at: Date.now(), pids: await findGameProcessIds().catch(() => []) };
+  }
+  return gamePidCache.pids;
+}
+
 /** Laeuft Warframe gerade im Vordergrund? null, wenn nicht feststellbar. */
 async function gameIsForeground() {
   const pid = foregroundPid();
   if (!pid) return null;
-  /* Die Prozessliste kostet einen tasklist-Aufruf - einmal pro Minute reicht,
-     die PID des Spiels aendert sich waehrend einer Mission nicht. */
-  if (Date.now() - gamePidCache.at > 60000) {
-    gamePidCache = { at: Date.now(), pids: await findGameProcessIds().catch(() => []) };
-  }
-  if (!gamePidCache.pids.length) return null;
-  return gamePidCache.pids.some(p => Number(p) === Number(pid));
+  /* Die PID des Spiels aendert sich waehrend einer Mission nicht - eine
+     Minute alte Auskunft reicht hier voellig. */
+  const pids = await gamePids(60000);
+  if (!pids.length) return null;
+  return pids.some(p => Number(p) === Number(pid));
 }
 
 function stopRewardWatch(grund) {
@@ -4703,6 +4835,11 @@ app.on('will-quit', () => {
   if (logWatcher) logWatcher.stop();
   if (notificationPollerTimer) clearInterval(notificationPollerTimer);
   if (updateTimer) clearInterval(updateTimer);
+  /* Die Verbindung IST der Status - beim Beenden faellt beides zusammen weg.
+     Das ist der Rueckweg, den der Schalter verspricht: Argus zu, und
+     warframe.market steht wieder so da wie ohne uns. */
+  stopPresenceWatch();
+  presence.shutdown();
   /* Der Erkennungsprozess haengt an dieser App und an nichts sonst. Bliebe er
      stehen, waere er ein PowerShell-Fenster ohne Fenster im Taskmanager. */
   stopOcrWorker();

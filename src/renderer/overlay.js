@@ -496,12 +496,13 @@ function goalDetails(g) {
         <div class="ov-goal-block">
           <div class="ov-goal-label">${Icon.cube(10)} Parts</div>
           ${parts.map(c => `
-            <div class="ov-part ${c.isSubRecipe ? 'is-craft' : ''}">
+            <div class="ov-part ${c.isSubRecipe ? 'is-craft' : ''} ${Stock.cls(c)}"
+                 title="${esc(Stock.hint(c, c.name, nf))}">
               <img class="ov-part-img" src="${esc(c.image || '')}" alt=""
                    onerror="this.style.visibility='hidden'">
               <span class="ov-part-name">${esc(c.name)}</span>
               ${c.isSubRecipe ? '<span class="ov-part-tag">forge</span>' : ''}
-              <span class="ov-part-count">×${nf(c.count)}</span>
+              <span class="ov-part-count">×${Stock.num(c, nf)}</span>
             </div>`).join('')}
         </div>` : ''}
       ${mats.length ? `
@@ -509,9 +510,9 @@ function goalDetails(g) {
           <div class="ov-goal-label">${Icon.crate(10)} Resources</div>
           <div class="ov-mats">
             ${mats.map(m => `
-              <span class="ov-mat" title="${esc(m.name)} ×${nf(m.count)}">
+              <span class="ov-mat ${Stock.cls(m)}" title="${esc(Stock.hint(m, m.name, nf))}">
                 <img src="${esc(m.image || '')}" alt="" onerror="this.style.display='none'">
-                <em>${esc(m.name)}</em><b>${compact(m.count)}</b>
+                <em>${esc(m.name)}</em><b>${Stock.num(m, compact)}</b>
               </span>`).join('')}
           </div>
         </div>` : ''}

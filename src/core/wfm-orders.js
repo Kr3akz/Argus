@@ -25,7 +25,7 @@
  *   Vorgang zusaetzlich ins lokale Handelsbuch, das die Webseite nicht hat.
  */
 import { request } from './wfm-http.js';
-import { loadMarketItems, marketImage } from './market.js';
+import { loadMarketItems, marketImage, marketSubIcon } from './market.js';
 
 /* Der volle Angebotsbestand eines Items je Slug. Kurz gehalten: wer ein
    Angebot vergleicht, will den Stand von eben, nicht von vor einer Stunde. */
@@ -57,6 +57,10 @@ function decorate(order, idx) {
     slug: item?.slug || null,
     name: item?.i18n?.en?.name || order.itemId || 'Unknown item',
     image: item ? marketImage(item) : null,
+    /* Ohne das Abzeichen sehen alle Teile eines Primes gleich aus - siehe
+       marketSubIcon(). Gilt fuer die eigenen Orders genauso wie fuer die
+       Suche: "Nidus Prime Systems" traegt das Bild von Nidus Prime. */
+    subIcon: item ? marketSubIcon(item) : null,
     maxRank: item?.maxRank ?? null,
     /* Die Oberflaeche muss wissen, welche Zusatzfelder dieses Item
        verlangt - sonst baut sie ein Formular, das die API ablehnt. */

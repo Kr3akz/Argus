@@ -1,7 +1,7 @@
 {
   "name": "argus",
   "productName": "Argus",
-  "version": "1.1.6",
+  "version": "1.2.0",
   "description": "Mastery rank planner and live companion for Warframe: world state, inventory, builds and an in-game overlay",
   "type": "module",
   "main": "src/main/main.js",
@@ -38,6 +38,7 @@
     "electron-builder": "^25.1.8"
   },
   "dependencies": {
-    "koffi": "^3.1.5"
+    "koffi": "^3.1.5",
+    "ws": "^8.21.3"
   }
 }
