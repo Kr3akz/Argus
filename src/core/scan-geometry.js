@@ -88,6 +88,106 @@ export function frameKey(frame) {
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
+function median(werte) {
+  if (!werte.length) return null;
+  const s = [...werte].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+/**
+ * Die Kartenbreite aus den Abstaenden der gelesenen Namen.
+ *
+ * DIE EINE EINSICHT, DIE ALLES TRAEGT: Die Karten stossen aneinander, also ist
+ * JEDER Abstand ein ganzzahliges Vielfaches der Kartenbreite. Zwischen zwei
+ * benachbarten Karten liegt eine Breite, ueber eine uebersprungene hinweg zwei,
+ * ueber zwei hinweg drei.
+ *
+ * ZWEI SCHAETZER, DIE BEIDE SCHEITERN - und zwar an je einer Haelfte davon:
+ *
+ *   Math.min traf die Vielfachen richtig (das kleinste Vielfache ist die
+ *   Breite), verzerrte aber nach unten: die Abstaende sind Differenzen von
+ *   TEXTrahmen-Mitten, OCR-Kanten wackeln um ein paar Pixel, und das Minimum
+ *   mehrerer verrauschter Messungen liegt systematisch zu tief. Nachgemessen
+ *   sackte die gemerkte Breite darueber von 12,64 % auf 12,3 %.
+ *
+ *   Der Median war gegen das Rauschen richtig, zerbrach aber an den
+ *   Vielfachen: aus den Abstaenden [323, 647] - Karten 1, 2 und 4 gelesen -
+ *   macht er 485. Nachgemessen am Lauf #6 vom 30.08. entstand daraus eine
+ *   gemerkte Breite von 10,7 %, und das Dock sass sichtbar zu schmal unter
+ *   den Karten.
+ *
+ * RICHTIG IST BEIDES ZUSAMMEN: erst die Vielfachheit jedes Abstands bestimmen,
+ * dann herausteilen, dann den Median ueber die entzerrten Werte. Das kleinste
+ * Vielfache dient dabei als Massstab - es ist die beste verfuegbare Naeherung,
+ * und ein Rundungsfehler darin faellt beim Teilen wieder heraus.
+ *
+ * null, wenn sich daraus nichts Verlaessliches ergibt - siehe `einheitlich`.
+ */
+/* Wie weit die gemessene Breite vom Standard abweichen darf. Warframes
+   Oberflaechengroesse laesst sich verstellen, also muss Luft bleiben - aber
+   das Dreifache ist keine andere Einstellung mehr, sondern ein
+   Missverstaendnis. 0,6 bis 1,6 deckt 7,6 bis 20,2 % der Rahmenbreite ab.
+
+   DER ANKER IST BEWUSST DER STANDARD und nicht der zuletzt gemerkte Wert:
+   an einem mitwandernden Anker koennte sich der Fehler in kleinen Schritten
+   immer weiter fortsetzen, und genau dieses Davonlaufen soll die Schranke ja
+   verhindern. */
+const PLAUSIBEL_MIN = 0.6;
+const PLAUSIBEL_MAX = 1.6;
+
+export function kartenbreiteAus(abstaende, rahmenBreite) {
+  if (!abstaende?.length) return null;
+  const klein = Math.min(...abstaende);
+  if (!(klein > 0)) return null;
+
+  const einheit = median(abstaende.map(d => d / Math.max(1, Math.round(d / klein))));
+  if (!einheit) return null;
+
+  /* Jeder Abstand muss zur Einheit passen - siehe einheitlich(). */
+  if (!einheitlich(abstaende, einheit)) return null;
+
+  /* UND DIE EINHEIT MUSS EINE KARTENBREITE SEIN KOENNEN.
+     Ohne diese Schranke bleibt genau ein Fall offen, und er ist aus den
+     Abstaenden allein nicht loesbar: wurden nur die Karten 1 und 4 gelesen,
+     gibt es einen einzigen Abstand von drei Kartenbreiten - und ein einzelner
+     Abstand ist immer "ein Vielfaches seiner selbst". Auch die Zentrierung
+     hilft nicht weiter, denn Karte 1 und 4 liegen symmetrisch zur Mitte und
+     sehen damit aus wie eine Zweierreihe aus sehr breiten Karten.
+     Was bleibt, ist die Groessenordnung: 970 px sind bei 2560 Rahmenbreite
+     achtunddreissig Prozent, und so breit ist keine Karte. */
+  if (Number.isFinite(rahmenBreite) && rahmenBreite > 0) {
+    const referenz = DEFAULT_CARD_WIDTH * rahmenBreite;
+    if (einheit < referenz * PLAUSIBEL_MIN || einheit > referenz * PLAUSIBEL_MAX) return null;
+  }
+  return einheit;
+}
+
+/**
+ * Passt die gemessene Einheit zu ALLEN Abstaenden?
+ *
+ * WOZU: Aus einem EINZELNEN Abstand laesst sich die Kartenbreite nicht
+ * gewinnen. Wurden nur die Karten 1 und 4 gelesen, betraegt der Abstand drei
+ * Kartenbreiten - und nichts daran verraet, dass es drei sind und nicht eine.
+ * Jeder Schaetzer muss hier scheitern, auch der obige; er liefert dann 970
+ * statt 323.
+ *
+ * Solche Faelle sollen nicht gelernt werden. Geprueft wird deshalb, dass jeder
+ * Abstand nahe an einem ganzzahligen Vielfachen der Einheit liegt UND dass
+ * mindestens einer eine EINFACHE Breite ist - nur dann war ueberhaupt ein
+ * benachbartes Kartenpaar dabei, und nur dann ist die Einheit belegt.
+ */
+export function einheitlich(abstaende, einheit, toleranz = 0.15) {
+  if (!abstaende?.length || !einheit) return false;
+  let einfache = 0;
+  for (const d of abstaende) {
+    const k = d / einheit;
+    if (Math.abs(k - Math.round(k)) > toleranz) return false;
+    if (Math.round(k) === 1) einfache++;
+  }
+  return einfache > 0;
+}
+
 let cache = null;          // { [key]: geometry }, null solange ungelesen
 
 async function load() {
@@ -184,7 +284,19 @@ export async function rememberGeometry(frame, rewards, expected) {
       const mitten = boxes.map(b => b.x + b.w / 2).sort((a, b) => a - b);
       const abstaende = mitten.slice(1).map((m, i) => m - mitten[i])
                               .filter(d => d > frame.w * MIN_CARD_WIDTH * 0.9);
-      if (abstaende.length) cardWidth = Math.min(...abstaende) / frame.w;
+      /* Nur lernen, wenn die Abstaende die Einheit auch belegen - siehe
+         einheitlich(). Sonst bleibt es beim Standard, und der naechste
+         vollstaendige Durchgang misst neu. Eine falsch gemerkte Breite waere
+         schlimmer als gar keine: sie schneidet die Spalten zu eng, die engen
+         Spalten liefern beschnittene Namen, und deren Rahmen bestaetigen die
+         falsche Breite. Genau diese Rueckkopplung hat sie von 12,6 auf 10,7 %
+         gezogen. */
+      const einheit = kartenbreiteAus(abstaende, frame.w);
+      if (einheit) cardWidth = einheit / frame.w;
+      /* Sonst bleibt es beim Standard - NICHT bei einer erfundenen Zahl, und
+         auch nicht ohne Eintrag: der Streifen darunter ist unabhaengig davon
+         gemessen und bleibt wertvoll. Genau so stand es schon fuer den Fall
+         "nur eine Karte gelesen" hier. */
     }
 
     const geometry = {
@@ -283,7 +395,8 @@ export function columnCropsFrom(frame, rewards, geometry) {
   if (mitten.length >= 2) {
     const abstaende = mitten.slice(1).map((m, i) => m - mitten[i])
                             .filter(d => d > frame.w * MIN_CARD_WIDTH * 0.9);
-    if (abstaende.length) breite = Math.min(...abstaende);
+    const einheit = kartenbreiteAus(abstaende, frame.w);
+    if (einheit) breite = einheit;
   }
 
   /* Von jeder bekannten Mitte aus die Reihe nach beiden Seiten fortsetzen.

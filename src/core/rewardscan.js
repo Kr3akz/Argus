@@ -18,6 +18,10 @@
  *   Platte, ausser jemand verlangt es ausdruecklich (siehe ocr-host.ps1).
  */
 import { recognise, warmUp, stop as stopOcrHost, ocrScreen } from './ocr-host.js';
+/* median statt Math.min ueber die Kartenabstaende - die Begruendung steht an
+   der Funktion selbst in scan-geometry.js. Beide Stellen leiten dieselbe
+   Kartenbreite ab und muessen es deshalb gleich tun. */
+import { kartenbreiteAus } from './scan-geometry.js';
 
 /* Ab hier gilt ein unscharfer Treffer als derselbe Name. 0.72 laesst rund ein
    Viertel der Zeichen daneben liegen - genug fuer verlesene Buchstaben, zu
@@ -270,7 +274,31 @@ export function mergeRewards(a, b) {
       Math.abs(m.box.y - reward.box.y) <= Math.max(40, reward.box.h * 1.5));
 
     if (!near) { merged.push({ ...reward }); continue; }
-    if (reward.score > near.score) Object.assign(near, reward);
+
+    /* Bessere Bewertung gewinnt - und bei GLEICHER Bewertung der laengere Name.
+     *
+     * WARUM DER LAENGERE: Ein beschnittener Name ist immer kuerzer als der
+     * vollstaendige, nie laenger. Und beschnitten wird oefter, als man denkt:
+     * faellt beim Lesen ein Wort aus, ergibt das bei 154 der 596
+     * Belohnungsnamen einen ANDEREN, ebenfalls echten Namen - jedes
+     * Warframe-Teil faellt auf seinen Hauptbauplan zurueck, wenn "Systems",
+     * "Chassis" oder "Neuroptics" verlorengeht.
+     *
+     * Der bekommt dann Bewertung 1,00, denn er trifft ja exakt. Beobachtet am
+     * 30.08.: aus "Caliban Prime Neuroptics Blueprint" wurde auf dem Schild
+     * "Caliban Prime Blueprint" - 45 statt 100 Dukaten, 2 statt 10 Platin. Die
+     * Bewertung verraet davon nichts, beide Lesungen sind exakt.
+     *
+     * Was sie unterscheidet, ist die Laenge. Hat ein anderer Blick denselben
+     * Platz mit mehr Text gelesen, ist das die vollstaendigere Lesung.
+     *
+     * Das ist dieselbe Regel, nach der extractRewards innerhalb EINER Aufnahme
+     * schon sortiert ("gemeint ist der vollstaendige") - sie fehlte nur beim
+     * Zusammenlegen zweier Aufnahmen. */
+    if (reward.score > near.score ||
+        (reward.score === near.score && reward.name.length > near.name.length)) {
+      Object.assign(near, reward);
+    }
   }
 
   const rewards = merged
@@ -416,7 +444,7 @@ export function panelGeometrie(rewards, screenWidth, maxKarten = MAX_KARTEN) {
 
   const abstaende = sortiert.slice(1).map((m, i) => m - sortiert[i])
                             .filter(d => d >= erwartet * 0.55);
-  const breite = abstaende.length ? Math.min(...abstaende) : erwartet;
+  const breite = kartenbreiteAus(abstaende, screenWidth) ?? erwartet;
 
   const links = sortiert[0];
   const deckel = Math.max(1, Math.min(MAX_KARTEN, maxKarten)) - 1;

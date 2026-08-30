@@ -21,6 +21,50 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-08-30
+
+### Fixed
+
+- **The price tags sit under the cards again, not slightly beside them.** The
+  app measures how wide a reward card is on your screen and remembers it, and
+  that measurement had been drifting: from the correct **12.64 %** of the
+  window down to 12.3 %, then 11.4 %, and in one run 10.7 %. At 2560 pixels the
+  last of those is fifty pixels too narrow per card, which pushes the rightmost
+  tag most of a card's width away from the card it belongs to.
+
+  The measurement comes from the gaps between the names just read. Two things
+  were going wrong at once, and each hid the other. The gaps are distances
+  between text outlines, which wobble by a few pixels every time a name is
+  recognised — so taking the *smallest* of them, as the app did, lands below
+  the truth every time. But the obvious repair, taking the middle one instead,
+  breaks a second property nobody had written down: when a card in the middle
+  of the row is not read, the gap that spans it is **two** card widths, not
+  one. The middle of `[323, 647]` is 485, and a row built on 485 is worse than
+  one built on 316.
+
+  Both are now handled together. Every gap is a whole number of card widths, so
+  each one is divided by the number of cards it spans before the middle value
+  is taken — unaffected by wobble, and unaffected by gaps that skip a card. A
+  measurement that cannot be pinned down at all — two cards read at opposite
+  ends of the row, with a single gap that could be one wide card or three
+  narrow ones — is now discarded rather than guessed at, and the previous
+  known-good width stands. The old drifted measurement is cleared once, so the
+  correction applies to the next reward screen rather than the one after.
+
+- **A card read twice now keeps the fuller reading, not the first one.** When a
+  word is lost while reading a name, the remainder is often not nonsense but
+  *another real item*: **154 of the 596** possible rewards turn into a
+  different, genuine name if one word drops out. Every Warframe part does it —
+  lose "Systems", "Chassis" or "Neuroptics" and what is left is that Warframe's
+  main blueprint, which is nearly always worth less. Seen on a reward screen:
+  "Caliban Prime Neuroptics Blueprint" shown as "Caliban Prime Blueprint", 45
+  ducats instead of 100 and 2 platinum instead of 10. Nothing in the match
+  score gives this away — the shortened name matches a real item perfectly. But
+  a name that lost a word is always *shorter* than the full one, so when two
+  passes over the same card agree on how confident they are, the longer reading
+  now wins. This is the rule the app already used within a single pass; it was
+  missing when two passes were combined.
+
 ## [1.4.1] - 2026-08-30
 
 ### Fixed
