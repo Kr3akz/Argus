@@ -77,10 +77,6 @@ follow [semantic versioning](https://semver.org/lang/en/).
   now wins. This is the rule the app already used within a single pass; it was
   missing when two passes were combined.
 
-## [1.4.1] - 2026-08-30
-
-### Fixed
-
 - **The price tags no longer load forever when the game log runs late.** The
   dock with its four placeholders went up as soon as the log announced the
   reward screen — but the reading of the cards only started on a *second* log
