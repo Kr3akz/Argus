@@ -239,6 +239,92 @@ export async function getPrice(slug, { maxAgeMs = PRICE_TTL_MS } = {}) {
   }
 }
 
+/**
+ * Was ueber diesen Slug auf der Platte steht - OHNE Netz, sofort.
+ *
+ * WOZU ES DAS GIBT: getPrice haelt eine Frist von 30 Minuten. Was aelter ist,
+ * gilt dort als nicht vorhanden und kostet einen Abruf. Fuer den Dukaten-Tab
+ * war das nie ein Thema - der liest die Datei direkt und zeigt jeden Eintrag,
+ * egal wie alt (siehe readPriceCache in main.js). Die Preisschilder im Spiel
+ * gingen dagegen ueber getPrice und standen deshalb vor einer Uhr: nachgemessen
+ * waren von 751 gemerkten Preisen nur 119 innerhalb der Frist, der Median lag
+ * bei acht Tagen. Vier Karten hiessen also fast immer vier Netzabrufe - und
+ * zwar in den fuenfzehn Sekunden, die der Bildschirm ueberhaupt offen ist.
+ *
+ * Ein acht Tage alter Platinpreis beantwortet "lohnt sich das oder mache ich
+ * Dukaten draus" genauso gut wie ein frischer. Er kommt deshalb SOFORT auf das
+ * Schild, mit stale-Marke, und der frische loest ihn ab, sobald er da ist.
+ *
+ * null heisst hier "darueber ist nichts bekannt" - auch dann, wenn der Markt
+ * das Teil gar nicht fuehrt und als Preis null gemerkt wurde.
+ */
+export async function cachedPrice(slug, { maxAgeMs = PRICE_TTL_MS } = {}) {
+  if (!slug) return null;
+  const cache = await loadPriceCache();
+
+  const hit = cache[slug];
+  if (!hit || !hit.price) return null;
+  if (Date.now() - hit.fetchedAt < maxAgeMs) return hit.price;
+  return { ...hit.price, stale: true, fetchedAt: hit.fetchedAt };
+}
+
+/* Nur ein Vorlauf gleichzeitig. Ein zweiter wuerde sich mit dem ersten in
+   dieselbe Warteschlange stellen und beide verdoppelt langsam machen. */
+let vorlauf = null;
+
+/**
+ * Preise im Voraus holen, solange niemand auf sie wartet.
+ *
+ * WARUM DAS DIE EIGENTLICHE ANTWORT IST: Auf dem Belohnungsbildschirm stehen
+ * bis zu vier Karten, und drei davon stammen aus den Relikten der Mitspieler.
+ * Welche das sind, steht nirgends - das Log nennt nur die ANZAHL der Spieler,
+ * nie ihre Items (siehe logwatch.js). Das eigene Relikt vorzuwaermen deckt
+ * also genau eine der vier Karten ab.
+ *
+ * Die Menge aller ueberhaupt moeglichen Karten ist aber klein: nachgezaehlt
+ * an data/relic-drops.json sind es 596 verschiedene Belohnungen ueber saemtliche
+ * Relikte, 425 bis 441 je Aera. Wer die Aera kennt - und die steht fest, sobald
+ * ein Relikt eingelegt ist -, kann jede Karte abdecken, die auf diesem
+ * Bildschirm erscheinen kann. Bei 350 ms Abstand sind das rund zweieinhalb
+ * Minuten Hintergrundarbeit, und eine Rissmission dauert laenger.
+ *
+ * Abgebrochen wird ueber stop(): wer aus der Mission zurueck ist, braucht den
+ * Rest nicht mehr, und die Leitung soll dann dem gehoeren, der wirklich wartet.
+ */
+export function prewarmPrices(slugs, { maxAgeMs = PRICE_TTL_MS, onProgress } = {}) {
+  vorlauf?.stop();
+
+  let gestoppt = false;
+  const handle = { stop() { gestoppt = true; }, get stopped() { return gestoppt; } };
+  vorlauf = handle;
+
+  handle.done = (async () => {
+    const cache = await loadPriceCache();
+    /* Was schon frisch dasteht, wird nicht noch einmal geholt. Nach der ersten
+       Mission ist das die grosse Mehrheit, und dann kostet der Vorlauf nichts. */
+    const offen = [...new Set(slugs.filter(Boolean))]
+      .filter(s => !(cache[s] && Date.now() - cache[s].fetchedAt < maxAgeMs));
+
+    let geholt = 0;
+    for (const slug of offen) {
+      if (gestoppt) break;
+      await getPrice(slug, { maxAgeMs }).catch(() => null);
+      geholt++;
+      onProgress?.(geholt, offen.length);
+    }
+    if (vorlauf === handle) vorlauf = null;
+    return { geholt, offen: offen.length, abgebrochen: gestoppt };
+  })();
+
+  return handle;
+}
+
+/** Einen laufenden Vorlauf abbrechen. Ohne Vorlauf passiert nichts. */
+export function stopPrewarm() {
+  vorlauf?.stop();
+  vorlauf = null;
+}
+
 /** Preise fuer mehrere Items. Nacheinander, die Warteschlange haelt den Takt. */
 export async function getPrices(slugs, opts) {
   const out = {};

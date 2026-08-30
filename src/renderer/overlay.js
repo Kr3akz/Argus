@@ -853,14 +853,19 @@ let relicTicker = null;
 /* Ab hier lohnt ein Teil mehr als der uebliche Prime-Schrott. */
 const RELIC_GOOD_PLAT = 20;
 
-function priceText(price) {
+/* Drei Zustaende, nicht zwei - dieselbe Regel wie in tags.js: `tradeable:
+   false` heisst "kann nie einen Preis haben" (Forma steht nicht auf
+   warframe.market) und ist etwas anderes als "der Preis kommt noch". Ohne die
+   Unterscheidung stand hier dauerhaft ein Ladepunkt. */
+function priceText(price, tradeable = true) {
+  if (!tradeable) return '–';
   if (price === null || price === undefined) return '…';
   if (!price) return '–';
   return price.min + 'p';
 }
 
 function rewardRow(r, bestPlat, complete) {
-  const plat = priceText(r.price);
+  const plat = priceText(r.price, r.tradeable !== false);
   const good = r.price && r.price.min >= RELIC_GOOD_PLAT;
   const best = r.price && bestPlat && r.price.min === bestPlat;
 
@@ -894,10 +899,16 @@ function renderRelic() {
 
   if (list.length) {
     /* Der hoechste Platinpreis wird hervorgehoben - aber erst, wenn alle
-       Preise da sind. Vorher waere die Auszeichnung eine Behauptung. */
-    const prices = list.map(r => r.price?.min).filter(n => Number.isFinite(n));
-    const allPriced = prices.length === list.length;
-    const bestPlat = allPriced ? Math.max(...prices) : null;
+       Preise da sind. Vorher waere die Auszeichnung eine Behauptung.
+
+       Gezaehlt wird nur, was ueberhaupt einen Preis haben KANN. Ein Forma in
+       der Liste ist nicht handelbar und bekommt nie einen; wurde es
+       mitgezaehlt, ging die Rechnung nie auf und die Hervorhebung blieb aus.
+       Dieselbe Falle wie in tags.js. */
+    const bepreisbar = list.filter(r => r.tradeable !== false);
+    const prices = bepreisbar.map(r => r.price?.min).filter(n => Number.isFinite(n));
+    const allPriced = prices.length === bepreisbar.length;
+    const bestPlat = allPriced && prices.length ? Math.max(...prices) : null;
 
     /* Wurden nicht alle gelesen, taugen die Nummern nicht - siehe rewardRow.
        relicState.complete fehlt beim Fund aus dem Log allein.
@@ -928,7 +939,7 @@ function renderRelic() {
          <img class="ov-rw-img" src="${esc(own.image || '')}" alt=""
               onerror="this.style.visibility='hidden'">
          <div class="ov-rw-body"><b>${esc(own.name)}</b><span>your relic</span></div>
-         <span class="ov-rw-plat">${priceText(own.price)}</span>
+         <span class="ov-rw-plat">${priceText(own.price, own.tradeable !== false)}</span>
          <span class="ov-rw-duc">${own.ducats != null ? own.ducats : '–'}</span>
        </div>`
     : '<div class="ov-relic-note">Choice in progress — your drop was not in the log.</div>') + note;

@@ -2160,10 +2160,17 @@ select option { background: #161b25; color: var(--text); }
 }
 /* Der Kasten begrenzt sich auf 88vh, aber nur, wenn der Inhalt selbst eine
    Spalte ist: sonst waechst .im-scroll-body auf volle Hoehe und alles unter
-   dem Bildschirmrand wird unerreichbar. Gilt fuer BEIDE Datenblaetter. */
+   dem Bildschirmrand wird unerreichbar.
+
+   GILT FUER JEDEN KASTEN MIT .item-modal-box. Das Teile-Blatt fehlte hier und
+   war damit genau der Fall, vor dem dieser Absatz warnt: bei einem Teil aus
+   vielen Relikten blieb "Still to farm" unter dem Rand stehen, ohne dass man
+   hinscrollen konnte. Wer ein weiteres Modal auf .item-modal-box setzt, traegt
+   seine Kennung hier mit ein. */
 #item-modal-content,
 #upgrade-modal-content,
-#relic-modal-content {
+#relic-modal-content,
+#part-modal-content {
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -6514,6 +6521,12 @@ body.tags-window {
 .set-val b { font-size: 13px; color: var(--text); font-weight: 600; }
 .set-val small { font-size: 10.5px; }
 .set-val.is-done { color: var(--green); }
+
+/* Ein Preis, der noch von warframe.market unterwegs ist, sieht anders aus als
+   ein Set, das dort niemand anbietet: sonst waere beides derselbe Strich und
+   die Karte saehe kaputt aus, waehrend sie in Wahrheit gerade laedt. */
+.set-val.is-pending b { color: var(--text-3); animation: setPlatWait 1.5s var(--ease) infinite; }
+@keyframes setPlatWait { 0%, 100% { opacity: .3; } 50% { opacity: .75; } }
 
 /* ---------- Handelsknoepfe auf der Set-Karte ----------
    Rechtsbuendig, damit sie die Zahlen links nicht auseinanderdruecken - die

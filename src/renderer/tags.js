@@ -13,7 +13,20 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
 /* Ab hier lohnt ein Teil mehr als der uebliche Prime-Schrott. */
 const GOOD_PLAT = 20;
 
-function priceText(price) {
+/**
+ * Was in der Platinspalte steht.
+ *
+ * DREI ZUSTAENDE, NICHT ZWEI. Hier stand einmal nur der Preis gegen null, und
+ * der Zweig fuer "kein Preis" war damit unerreichbar: null hiess "laedt noch"
+ * und wurde zuerst gefangen. Ein nicht handelbares Teil - Forma - bekam
+ * deshalb einen Ladepunkt, der nie wegging.
+ *
+ * `tradeable: false` heisst: fuer dieses Teil kann es nie einen Preis geben,
+ * es steht nicht einmal auf warframe.market. Das ist eine Auskunft und kein
+ * Warten, und es soll auch so aussehen.
+ */
+function priceText(price, tradeable = true) {
+  if (!tradeable) return '–';
   if (price === null || price === undefined) return '…';
   if (!price) return '–';
   return price.min;
@@ -34,10 +47,19 @@ function render(tags, panel) {
 
   /* Das teuerste Teil hervorheben, aber erst wenn alle Preise da sind -
      vorher waere die Auszeichnung eine Behauptung. Noch ladende Karten zaehlen
-     dabei mit: solange eine von ihnen aussteht, kann die teuerste noch kommen. */
-  const prices = tags.map(t => t.price?.min).filter(n => Number.isFinite(n));
-  const complete = prices.length === tags.length;
-  const best = complete ? Math.max(...prices) : null;
+     dabei mit: solange eine von ihnen aussteht, kann die teuerste noch kommen.
+
+     GEZAEHLT WIRD NUR, WAS UEBERHAUPT EINEN PREIS HABEN KANN. Vorher stand
+     hier `prices.length === tags.length` ueber ALLE Karten. Sass ein Forma
+     dabei - nicht handelbar, also nie ein Preis -, konnte das nie aufgehen:
+     `complete` blieb dauerhaft falsch, `best` blieb null, und die goldene
+     Hervorhebung erschien gar nicht mehr. Nachgezaehlt haben 47 % aller
+     Vierer-Bildschirme mindestens ein Forma; in fast jedem zweiten Durchgang
+     war der wichtigste Hinweis des Docks damit still abgeschaltet. */
+  const bepreisbar = tags.filter(t => t.tradeable !== false);
+  const prices = bepreisbar.map(t => t.price?.min).filter(n => Number.isFinite(n));
+  const complete = prices.length === bepreisbar.length;
+  const best = complete && prices.length ? Math.max(...prices) : null;
 
   const spalten = tags.map(t => {
     /* Eine Karte, die es noch nicht gibt. Sie haelt ihren Platz, damit das
@@ -104,7 +126,7 @@ function render(tags, panel) {
 
         <div class="tag-prices-row">
           <div class="tag-price-col tag-plat ${good ? 'good' : ''}">
-            <span class="tag-price-val">${esc(priceText(t.price))}</span>
+            <span class="tag-price-val">${esc(priceText(t.price, t.tradeable !== false))}</span>
             <img src="assets/icons/currency/platinum.png" class="currency-ic" alt="p">
           </div>
           <div class="tag-price-col tag-duc">

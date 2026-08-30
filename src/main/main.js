@@ -48,7 +48,8 @@ import { checkAllowed, formatWait } from '../core/ratelimit.js';
 import { matchesFissureFilter } from '../core/fissure-filter.js';
 import { captureForeground, restoreForeground, bringToForeground, moveCursorIntoWindow, foregroundPid, gameWindowRect } from '../core/foreground.js';
 import { LogWatcher } from '../core/logwatch.js';
-import { loadMarketItems, findMarketItem, getPrice, getPrices, marketImage, marketSubIcon } from '../core/market.js';
+import { loadMarketItems, findMarketItem, getPrice, getPrices, cachedPrice, prewarmPrices,
+         stopPrewarm, marketImage, marketSubIcon } from '../core/market.js';
 /* Handelsteil: Anmeldung, Orders, Auktionen und das lokale Handelsbuch.
    Vier Module, weil es vier verschiedene Dinge sind - siehe die Kopf-
    kommentare dort. */
@@ -772,6 +773,10 @@ function showTags(rewards, erwartet = 0) {
     name: r.name,
     ducats: r.ducats,
     price: r.price,
+    /* Ohne diese Zeile kann das Schild "kein Preis moeglich" nicht von
+       "Preis kommt noch" unterscheiden - siehe describeScanned. Aeltere
+       Eintraege ohne das Feld gelten als handelbar, wie bisher. */
+    tradeable: r.tradeable !== false,
     isOwn: r.isOwn,
     position: r.position,
     isCrafted: r.isCrafted ?? false,
@@ -3449,7 +3454,11 @@ async function describeReward(uniqueName) {
     /* Ohne Marktliste bleiben Name und Bild - besser als gar keine Anzeige. */
   }
 
-  return { uniqueName: clean, name, image: imageUrl(clean, 128), ducats, slug };
+  /* tradeable wie in describeScanned: ohne Markt-Eintrag kann es nie einen
+     Preis geben, und das ist etwas anderes als "der Preis kommt noch". Der
+     eigene Fund kann genauso ein Forma sein wie jeder andere. */
+  return { uniqueName: clean, name, image: imageUrl(clean, 128), ducats, slug,
+           tradeable: !!slug };
 }
 
 function sendToOverlay(channel, payload) {
@@ -3466,6 +3475,97 @@ async function ensureRewardIndex() {
   const relics = await loadRelicTables();
   rewardIndex = buildRewardIndex(allRewardNames(relics));
   return rewardIndex;
+}
+
+/**
+ * Die Preise ALLER moeglichen Reliktbelohnungen vorwaermen, sobald ein Relikt
+ * eingelegt ist.
+ *
+ * WARUM NICHT NUR DAS EINGELEGTE RELIKT:
+ *   Auf dem Belohnungsbildschirm steht je Mitspieler eine Karte, und die
+ *   fremden kommen aus DEREN Relikten. Welche das sind, laesst sich nicht
+ *   erfahren: das Log schreibt je Relikt eine Zeile "Client got reward info
+ *   from <accountId>", aber niemals das Item dazu (siehe logwatch.js). Nur das
+ *   eigene Relikt vorzuwaermen deckt also genau eine Karte ab - und zwar
+ *   ausgerechnet die, deren Namen ohnehin im Log steht.
+ *
+ * WARUM NICHT NUR DIE EIGENE AERA:
+ *   Das war der erste Entwurf, und er stimmt fuer gewoehnliche Risse: die sind
+ *   nach Aera gebunden, in einem Lith-Riss laufen alle mit Lith-Relikten.
+ *   OMNIA-Risse sind es nicht - dort bringt jeder mit, was er will, und die
+ *   Aera des eigenen Relikts sagt nichts ueber die der anderen. Nachgemessen
+ *   deckt eine vorgewaermte Aera nur 72-78 % einer fremden ab; jede vierte
+ *   fremde Karte waere also wieder ein Abruf unter laufender Uhr.
+ *
+ * WAS ES KOSTET: nachgezaehlt an data/relic-drops.json gibt es ueber SAEMTLICHE
+ * Relikte nur 596 verschiedene Belohnungen - die Aeren ueberschneiden sich
+ * stark (Lith 425, Meso 425, Neo 441, Axi 430). Alles vorzuwaermen kostet
+ * gegenueber der groessten Einzelaera also nur 155 Abrufe oder 53 Sekunden,
+ * und dafuer gibt es keinen Fall mehr, in dem eine Karte durchfaellt.
+ * Beim zweiten Mal ist ohnehin fast nichts mehr zu tun: was innerhalb der
+ * Frist dasteht, wird uebersprungen.
+ *
+ * Der Vorlauf laeuft im Hintergrund und wird nirgends abgewartet. Am
+ * Missionsende bricht stopPrewarm ihn ab.
+ */
+async function prewarmRewardPrices() {
+  const [idx, market] = await Promise.all([loadRelicTables(), loadMarketItems()]);
+
+  /* Dieselbe Menge, aus der auch der OCR-Suchindex entsteht - siehe
+     ensureRewardIndex. Was die Erkennung erkennen kann, soll auch einen Preis
+     haben. */
+  const namen = new Set(allRewardNames(idx));
+
+  /* DAS EIGENE RELIKT ZUERST, DIE EIGENE AERA DANACH. Der volle Vorlauf dauert
+     beim ersten Mal knapp dreieinhalb Minuten, und eine kurze Rissmission ist
+     eher vorbei. Welche Karten bis dahin abgedeckt sind, entschiede sonst die
+     Reihenfolge einer Menge - also der Zufall.
+
+     Die sechs Belohnungen des eingelegten Relikts stehen nach zwei Sekunden;
+     das ist die eigene Karte. Danach die restliche Aera, denn ausserhalb von
+     Omnia-Rissen kommen die fremden Karten genau daher. Der Rest der Welt
+     bleibt hinten - er wird nur in Omnia-Rissen ueberhaupt gebraucht. */
+  const eigene = new Set();
+  if (equippedRelic) {
+    const treffer = rewardsFor(idx, equippedRelic.key, equippedRelic.state);
+    for (const r of treffer?.rewards || []) if (r.itemName) eigene.add(r.itemName);
+  }
+
+  const aera = new Set();
+  const meineAera = equippedRelic?.key?.split(' ')[0] || null;
+  if (meineAera) {
+    for (const relic of idx.relics || []) {
+      if (relic.tier !== meineAera) continue;
+      for (const rewards of Object.values(relic.states || {})) {
+        for (const r of rewards) if (r.itemName && !eigene.has(r.itemName)) aera.add(r.itemName);
+      }
+    }
+  }
+
+  const sortiert = [
+    ...eigene,
+    ...aera,
+    ...[...namen].filter(n => !eigene.has(n) && !aera.has(n))
+  ];
+
+  const slugs = [...new Set(sortiert
+    .map(name => findMarketItem(market, { name })?.slug)
+    .filter(Boolean))];
+  if (!slugs.length) return;
+
+  const start = Date.now();
+  const lauf = prewarmPrices(slugs);
+  console.log(`[Preise] Vorlauf: ${slugs.length} moegliche Belohnungen`
+            + (meineAera ? ` (${meineAera} zuerst)` : ''));
+
+  const { geholt, offen, abgebrochen } = await lauf.done;
+  if (offen === 0) {
+    console.log('[Preise] Vorlauf: alles schon frisch, nichts zu holen');
+  } else {
+    console.log(`[Preise] Vorlauf: ${geholt} von ${offen} geholt`
+              + ` in ${Math.round((Date.now() - start) / 1000)}s`
+              + (abgebrochen ? ' (abgebrochen)' : ''));
+  }
 }
 
 /**
@@ -3624,6 +3724,15 @@ async function describeScanned(name) {
     ducats,
     slug,
     uniqueName,
+    /* OB ES FUER DIESES TEIL UEBERHAUPT JE EINEN PREIS GEBEN KANN.
+       Forma ist nicht handelbar und steht deshalb gar nicht auf
+       warframe.market - kein Eintrag, kein Slug, nie ein Preis. Ohne diese
+       Auskunft ist "es gibt keinen Preis" von "der Preis kommt noch" nicht zu
+       unterscheiden: beides waere price === null, und die Anzeige zeigte
+       dauerhaft einen Ladepunkt. Nachgezaehlt an den Droptabellen fuehren
+       70 % der Relikte Forma, und 47 % aller Vierer-Bildschirme haben
+       mindestens eines dabei - das ist kein Randfall. */
+    tradeable: !!slug,
     isCrafted: setInfo.isCrafted,
     currentOwned: setInfo.currentOwned,
     currentRequired: setInfo.currentRequired,
@@ -3635,6 +3744,23 @@ async function describeScanned(name) {
 function pushRelic() {
   sendToOverlay('relic:reward', currentRelic);
 }
+
+/**
+ * Buchfuehrung ueber die laufenden Preisabrufe eines Durchgangs.
+ *
+ * WARUM NEBEN DEM DURCHGANG UND NICHT DARIN: Das Durchgangsobjekt geht durch
+ * pushRelic() per IPC an das Overlay, und Electron klont die Nutzlast
+ * strukturiert. Ein Set ueberlebt das, ein VERSPRECHEN nicht - und genau das
+ * lag hier einmal drin. Die Folge stand als "Failed to serialize arguments" im
+ * Protokoll, dreimal, und war schwer zuzuordnen: die Preisschilder liefen
+ * weiter, weil die ueber einen eigenen Kanal mit sauberer Nutzlast gehen. Nur
+ * das grosse Overlay-Fenster bekam von den nachgereichten Preisen nichts mehr
+ * mit.
+ *
+ * WeakMap und nicht Map: der Schluessel ist das Durchgangsobjekt, und wenn die
+ * Runde vorbei ist, soll der Eintrag von selbst verschwinden.
+ */
+const preisBuch = new WeakMap();
 
 const wait = ms => new Promise(res => setTimeout(res, ms));
 
@@ -3657,6 +3783,22 @@ const SCAN_RETRY_MS       = 150;
    Teuer wird das nicht - die Schleife bricht ab, sobald alle Karten dastehen,
    und im Normalfall reicht dafuer der erste Blick nach 71 ms. */
 const SCAN_BUDGET_MS      = 13000;
+
+/* So lange darf nichts Neues mehr kommen, bevor der Durchgang als
+   ausgeschoepft gilt - gerechnet ab dem letzten Fund, nicht ab dem Anfang.
+
+   WARUM ALS ZEIT UND NICHT ALS ZAHL VON BLICKEN: bisher stand hier "zwei volle
+   Runden durch alle Blickarten". Das ist dieselbe Idee, aber die Runde ist
+   nicht immer gleich lang - sobald die teuren Blicke wegfallen (siehe
+   `bewaehrt` in der Schleife), schrumpft sie von 3490 auf 1237 ms, und aus
+   "zwei Runden" wuerden ploetzlich 2,5 statt 7 Sekunden. Die Schwelle soll
+   aber an der Wirklichkeit haengen und nicht daran, wie teuer gerade gesucht
+   wird.
+
+   8 Sekunden, weil die spaeteste je gemessene Karte bei 7,17 s kam - im
+   Augenblick des Zurueckwechselns aus dem Hintergrund (siehe oben). Knapper
+   waere genau diese Karte verloren. */
+const SCAN_STILLE_MS      = 8000;
 
 /* 2,5x, weil es der Faktor ist, mit dem die verschmolzenen Zeilen im Versuch
    wieder auseinanderfielen. Mehr kostet nur Zeit: die Erkennung waechst mit
@@ -3783,13 +3925,18 @@ async function scanLooks(frame, expected) {
 
   return {
     geo,
+    /* `teuer` markiert die Stufen, die es NUR fuer den Fall gibt, dass Rahmen
+       oder Streifen danebensitzen: sie lesen die ganze Flaeche und kosten das
+       Drei- bis Achtfache der billigen. Sobald ein Blick Karten geliefert hat,
+       ist dieser Fall widerlegt, und die Schleife laesst sie weg - siehe
+       `bewaehrt` in scanRewardsRepeatedly. */
     looks: [
       { name: 'Spalten',       rect, columns },
       { name: 'Schmalband',    rect, ...geo.band },
       { name: 'Spalten 3x',    rect, columns, scale: SCAN_COLUMN_SCALE },
       { name: 'Breitband',     rect, ...WIDE_BAND },
-      { name: 'Vollbild',      rect },
-      { name: 'Vollbild 2,5x', rect, scale: SCAN_SCALE },
+      { name: 'Vollbild',      rect, teuer: true },
+      { name: 'Vollbild 2,5x', rect, scale: SCAN_SCALE, teuer: true },
       /* OHNE Rahmen, und deshalb ganz am Ende: der ganze Hauptbildschirm, so
          wie vor der Umstellung auf das Spielfenster.
 
@@ -3799,7 +3946,7 @@ async function scanLooks(frame, expected) {
          weil es keinen Rahmen gab. Dieser eine Blick holt die alte
          Versicherung zurueck: was auch immer mit der Fenstersuche schiefgeht,
          schlechter als vorher kann es nicht werden. */
-      { name: 'Hauptbildschirm' }
+      { name: 'Hauptbildschirm', teuer: true }
     ]
   };
 }
@@ -3878,9 +4025,14 @@ async function scanRewardsRepeatedly(stillCurrent, expected = 4, lauf = 0, onFor
   let lastError = null;
   let attempts = 0;
   let spaltenNachgezogen = false;
-  /* Bei welchem Blick zuletzt eine Karte dazukam - Grundlage fuer den
-     Ausstieg bei unbekannter Kartenzahl, siehe unten. */
-  let letzterFund = 0;
+  /* WANN zuletzt eine Karte dazukam - Grundlage fuer den Ausstieg, siehe
+     unten. Die Zeit und nicht mehr die Zahl der Blicke: Begruendung an
+     SCAN_STILLE_MS. */
+  let letzterFundAt = 0;
+  /* Der teuerste Blick, der jemals etwas gelesen hat. Alles darueber in der
+     Leiter ist ab dann Versicherung gegen ein Problem, das nachweislich nicht
+     vorliegt - siehe die Verkuerzung der Leiter in der Schleife. */
+  let bewaehrt = -1;
   /* Eine volle Runde Blicke brachte nichts Neues - bei unbekannter Kartenzahl
      gilt der Durchgang damit als ausgeschoepft. */
   let nichtsNeuesMehr = false;
@@ -3905,11 +4057,40 @@ async function scanRewardsRepeatedly(stillCurrent, expected = 4, lauf = 0, onFor
             + ` (Karte ${(geo.cardWidth * 100).toFixed(1)} %,`
             + ` Streifen ${geo.band.top.toFixed(3)}-${geo.band.bottom.toFixed(3)})`);
 
+  letzterFundAt = Date.now();
+
   while (stillCurrent()) {
     /* Der Reihe nach durch die Blickweisen, danach wieder von vorn: was beim
        ersten Durchgang am halb aufgebauten Bildschirm scheiterte, kann beim
-       zweiten schon dastehen. */
-    const look = looks[attempts % looks.length];
+       zweiten schon dastehen.
+
+       DIE LEITER WIRD KUERZER, SOBALD EIN BLICK GELIEFERT HAT. Die unteren
+       Stufen sind Versicherung gegen genau zwei Faelle: der Streifen sitzt
+       falsch (dagegen Vollbild) und der RAHMEN sitzt falsch (dagegen
+       Hauptbildschirm ohne rect). Hat aber schon einmal ein Blick Karten
+       gelesen, sind beide Faelle ausgeschlossen - dann sind Rahmen und
+       Streifen nachweislich in Ordnung, und alles darunter kostet nur noch.
+
+       Und es kostet viel: nachgemessen an einer Dreiergruppe liefen 34 Blicke
+       ueber 13 Sekunden, darunter sechsmal der teuerste zu je einer Sekunde -
+       3,69 Megapixel, um 2,5 hochskaliert. Das ist die Last, die das Spiel
+       zaeh macht, und sie faellt genau dann an, wenn ohnehin nichts mehr
+       kommt. Eine volle Runde schrumpft damit von 3490 auf 1237 ms: mehr
+       Versuche fuer die fehlende Karte, und trotzdem weniger Arbeit.
+
+       WEGGENOMMEN WERDEN NUR DIE TEUREN. Die billigen bleiben ALLE stehen,
+       auch die, die noch nie etwas geliefert haben - sie haben verschiedene
+       Staerken, und was der Streifen nicht trennt, trennt der vergroesserte
+       Ausschnitt. Wer nur den einen behielte, der zufaellig zuerst traf,
+       naehme der fehlenden Karte genau die Blickweise weg, an der sie
+       vielleicht haengt. Und ein teurer Blick, der SELBST geliefert hat,
+       bleibt ebenfalls - dann ist er ja nicht Versicherung, sondern der
+       Grund, warum ueberhaupt etwas dasteht. */
+    const leiter = bewaehrt < 0
+      ? looks
+      : looks.filter((l, i) => !l.teuer || i <= bewaehrt);
+    const stufe = attempts % leiter.length;
+    const look = leiter[stufe];
     attempts++;
     const blickAb = Date.now();
     const scan = await scanRewardScreen(index, look);
@@ -3928,6 +4109,23 @@ async function scanRewardsRepeatedly(stillCurrent, expected = 4, lauf = 0, onFor
       console.log(`[Relikt #${lauf}] Abbruch: Runde vorbei nach ${attempts}`
                 + ` Versuch${attempts === 1 ? '' : 'en'}`);
       return null;
+    }
+
+    /* Dieser Blick hat gelesen - also stimmen Rahmen UND Streifen. Ab jetzt
+       faellt alles weg, was teurer ist als er.
+       Der Index wird nachgeschlagen statt mitgezaehlt: `leiter` ist gefiltert,
+       und eine Position darin ist nicht zwangslaeufig dieselbe wie in `looks`. */
+    if (scan.ok && scan.rewards.length) {
+      const echterIndex = looks.indexOf(look);
+      if (echterIndex > bewaehrt) {
+        const vorherTeuer = looks.filter((l, i) => l.teuer && i > bewaehrt).length;
+        bewaehrt = echterIndex;
+        const jetztTeuer = looks.filter((l, i) => l.teuer && i > bewaehrt).length;
+        if (jetztTeuer < vorherTeuer) {
+          console.log(`[Relikt #${lauf}]   Leiter verkuerzt nach Treffer in "${look.name}":`
+                    + ` ${vorherTeuer - jetztTeuer} teure Blickart(en) fallen weg`);
+        }
+      }
     }
 
     if (scan.ok) {
@@ -3958,7 +4156,7 @@ async function scanRewardsRepeatedly(stillCurrent, expected = 4, lauf = 0, onFor
           }
         }
 
-        letzterFund = attempts;
+        letzterFundAt = Date.now();
 
         /* Kam eine Karte dazu, geht sie SOFORT auf den Bildschirm - wer auf
            die restlichen wartet, soll nicht auch auf die schon gelesenen
@@ -3972,34 +4170,36 @@ async function scanRewardsRepeatedly(stillCurrent, expected = 4, lauf = 0, onFor
       lastError = scan.error;
     }
 
-    /* WANN AUFHOEREN, WENN NIEMAND SAGT, WIE VIELE KARTEN DASTEHEN.
-       Ist die Zahl gemeldet, bricht die Schleife oben ab, sobald sie erreicht
-       ist. Ohne Meldung - der Waechter hat kein Log, aus dem er sie lesen
-       koennte - gab es diesen Ausstieg nicht, und gesucht wurde bis zum Ende
-       der Bedenkzeit. Nachgemessen an einer Dreiergruppe: 34 Blicke ueber
-       13 Sekunden, ab dem ersten durchgehend dieselben drei Treffer, darunter
-       sechsmal der teuerste Blick zu je einer Sekunde. Das ist Zugriff auf den
-       Bildschirm waehrend des Spielens - genau die Last, die das Spielgefuehl
-       zaeh macht.
+    /* WANN AUFHOEREN, WENN NICHTS MEHR KOMMT.
+       Ist die gemeldete Zahl erreicht, bricht die Schleife oben ab. Dieser
+       Ausstieg gilt allen anderen Faellen - und zwar seit dieser Aenderung
+       AUCH DEM, IN DEM EINE ZAHL GEMELDET WURDE.
 
-       Aufgehoert wird, wenn ZWEI volle Runden durch alle Blickarten nichts
-       Neues gebracht haben. Nicht eine - das waere um Haaresbreite zu knapp:
-       nachgemessen an einem Durchgang vom 29.08. standen von Blick 1 bis 7
-       dieselben drei Karten, und die vierte kam bei Blick 8, also exakt eine
-       volle Runde nach dem letzten Fund. Bei einer Runde als Schwelle waere
-       genau diese Karte verloren gegangen.
+       WARUM DAS FRUEHER ANDERS WAR UND WARUM ES FALSCH WAR: Hier stand
+       `!karten`, der Ausstieg galt also nur ohne Meldung. Meldete das Log vier
+       Karten und waren nur drei lesbar - eine verdeckt, ein Name nicht im
+       Index -, gab es gar keinen Ausstieg mehr: die Schleife lief die vollen
+       13 Sekunden Budget aus, auf der Suche nach einer vierten Karte, die
+       nicht kommen wuerde. Nachgemessen 34 Blicke, darunter sechsmal der
+       teuerste zu je einer Sekunde, waehrend im Spiel gespielt wird. Die
+       Meldung sagt eben nur, wie viele Relikte AUFGEGANGEN sind - nicht, dass
+       alle vier Namen auch lesbar auf dem Bildschirm stehen.
 
-       Und nicht ein einzelner Blick, weil die Blickarten verschiedene Staerken
-       haben: was der Streifen nicht trennt, trennt der vergroesserte
-       Ausschnitt.
+       GERECHNET WIRD IN ZEIT, NICHT IN BLICKEN. Vorher waren es "zwei volle
+       Runden durch die Leiter". Dieselbe Idee, aber die Runde ist seit der
+       Verkuerzung (siehe `bewaehrt`) nicht mehr gleich lang: aus 3490 ms
+       werden 1237 ms, und aus "zwei Runden" waeren damit 2,5 statt 7 Sekunden
+       geworden - die Schwelle haette sich heimlich mehr als halbiert. Die Uhr
+       ist gegen solche Nebenwirkungen immun.
 
        Erst ab der ersten gelesenen Karte: solange gar nichts dasteht, kann der
        Bildschirm auch einfach noch im Aufbau sein, und dann waere Aufgeben das
        Falsche. */
-    if (!karten && merged?.rewards.length && attempts - letzterFund >= looks.length * 2) {
+    if (merged?.rewards.length && Date.now() - letzterFundAt >= SCAN_STILLE_MS) {
       nichtsNeuesMehr = true;
-      console.log(`[Relikt #${lauf}] Zwei volle Runden Blicke ohne Neues -`
-                + ` es bleibt bei ${merged.rewards.length} Karte`
+      console.log(`[Relikt #${lauf}] ${Math.round((Date.now() - letzterFundAt) / 1000)}s ohne`
+                + ` neue Karte - es bleibt bei ${merged.rewards.length}`
+                + `${karten ? ` von ${karten}` : ''} Karte`
                 + `${merged.rewards.length === 1 ? '' : 'n'}`);
       break;
     }
@@ -4229,6 +4429,9 @@ function stopRewardWatch(grund) {
   watchTimer = null;
   clearInterval(watchFocusTimer);
   watchFocusTimer = null;
+  /* Kein Belohnungsbildschirm mehr in Sicht - dann muss auch niemand mehr
+     Preise auf Vorrat holen. Was bis hierher im Cache gelandet ist, bleibt. */
+  stopPrewarm();
   /* Die Zahl der Blicke gehoert dazu. Ohne sie ist "der Waechter lief" nicht
      von "der Waechter hat nie hingesehen" zu unterscheiden - und genau das
      war bei einem verpassten Bildschirm die offene Frage.
@@ -4401,6 +4604,10 @@ function startLogWatcher() {
     /* Ab hier steht fest, dass ein Belohnungsbildschirm kommt - der Waechter
        darf mitsehen, falls das Log ihn verschlaeft. */
     startRewardWatch();
+    /* Und die Preise vorwaermen, solange niemand auf sie wartet.
+       Begruendung in prewarmRewardPrices. */
+    prewarmRewardPrices().catch(err =>
+      console.error('[Preise] Vorlauf fehlgeschlagen:', err.message));
   });
 
   logWatcher.on('relic-reward', ev => {
@@ -4554,15 +4761,21 @@ async function zeigeGelesene(scan, started, { fertig = false } = {}) {
 
   started.rewards = await Promise.all(scan.rewards.map(async r => {
     const alt = bekannt.get(r.name);
+    const basis = alt || await describeScanned(r.name);
     return {
-      ...(alt || await describeScanned(r.name)),
+      ...basis,
       position: r.position,
       score: r.score,
       /* box muss mit: daran haengt die Position der Preisschilder im Spiel.
          Ohne diese Zeile bekommt showTags Eintraege ohne Rahmen. */
       box: r.box,
       isOwn: !!ownName && r.name === ownName,
-      price: alt?.price ?? null
+      /* Der gemerkte Preis geht SOFORT mit, auch wenn er ueber die Frist ist.
+         Vorher stand hier null, und die Schilder zeigten "…", bis ein
+         Netzabruf durch war - obwohl die Zahl auf der Platte lag. Der Dukaten-
+         Tab macht es seit jeher so und wirkt deshalb schnell; siehe
+         cachedPrice in market.js. Der frische Preis loest ihn gleich ab. */
+      price: alt?.price ?? await cachedPrice(basis.slug)
     };
   }));
 
@@ -4571,6 +4784,63 @@ async function zeigeGelesene(scan, started, { fertig = false } = {}) {
   started.complete = started.rewards.length >= (started.expected || 4);
   pushRelic();
   showTags(started.rewards, started.karten);
+
+  /* Und die frischen Preise anstossen, SOBALD ein Name steht - nicht erst,
+     wenn die Erkennung fertig ist. Der Aufruf wird bewusst nicht abgewartet:
+     er soll den naechsten Blick nicht aufhalten. */
+  frischePreise(started);
+}
+
+/**
+ * Frische Preise nachziehen, jeder fuer sich.
+ *
+ * WARUM NICHT MEHR AM ENDE VON handleRelicReward: Dort stand eine Schleife
+ * hinter `await scanLaeuft` - die Preise gingen also erst raus, wenn die
+ * Erkennung KOMPLETT durch war. Im guten Fall waren das 400 ms, im schlechten
+ * die vollen 13 Sekunden Blickbudget: dann fiel der erste Preisabruf in eine
+ * Zeit, in der der Bildschirm im Spiel schon zu war. Ausgerechnet der Lauf,
+ * bei dem die Erkennung sich quaelt, bekam also gar keine Preise.
+ *
+ * Jetzt haengt jeder Preis an SEINER Karte und startet, sobald diese gelesen
+ * ist. Die Warteschlange in wfm-http.js serialisiert ohnehin - frueher
+ * anzustossen kostet also nichts und gewinnt im schlechten Fall alles.
+ *
+ * Je Durchgang wird jeder Slug hoechstens einmal angefragt: zeigeGelesene
+ * laeuft bei jedem Fortschritt erneut, und ohne diese Sperre haette dieselbe
+ * Karte bei jedem Blick einen neuen Abruf ausgeloest.
+ */
+function frischePreise(started) {
+  let buch = preisBuch.get(started);
+  if (!buch) {
+    /* Die laufenden Abrufe, nicht nur die neu angestossenen. Der Aufruf am
+       Ende von handleRelicReward wartet auf DIESE Liste: haette er nur die
+       eigenen neuen Versprechen, kaeme er sofort zurueck - alle Slugs sind da
+       ja laengst angefragt - und "Preise vollstaendig" stuende im Protokoll,
+       bevor ein einziger Preis eingetroffen ist. */
+    buch = { angefragt: new Set(), laeuft: [] };
+    preisBuch.set(started, buch);
+  }
+
+  for (const reward of started.rewards) {
+    if (!reward.slug || buch.angefragt.has(reward.slug)) continue;
+    buch.angefragt.add(reward.slug);
+
+    const slug = reward.slug;
+    buch.laeuft.push(getPrice(slug).then(price => {
+      if (currentRelic !== started) return;
+      /* Kein Treffer darf einen bereits stehenden - womoeglich veralteten -
+         Preis wieder wegnehmen. Ein alter Preis ist besser als "…". */
+      let geaendert = false;
+      for (const r of started.rewards) {
+        if (r.slug !== slug) continue;
+        if (price != null || r.price == null) { r.price = price; geaendert = true; }
+      }
+      if (!geaendert) return;
+      pushRelic();
+      showTags(started.rewards, started.karten);
+    }).catch(() => { /* Ohne Preis bleibt der Name - der zaehlt. */ }));
+  }
+  return Promise.all(buch.laeuft);
 }
 
 /**
@@ -4758,20 +5028,17 @@ async function handleRelicReward(ev) {
     currentRelic.expected = expected;
     currentRelic.karten = karten;
     await zeigeGelesene(scan, started, { fertig: true });
-    console.log(`[Relikt #${lauf}] Schilder stehen`, seit(), '- Preise fehlen noch');
 
-    /* Preise nachreichen, jeder fuer sich: sie haengen alle an derselben
-       gedrosselten Warteschlange, kommen also ohnehin nacheinander an. Wichtig
-       ist nur, dass jeder EINZELNE sofort auf die Schilder geht statt am Ende
-       gesammelt - sonst steht die Reihe still, bis auch der letzte da ist. */
-    for (const reward of currentRelic.rewards) {
-      if (!reward.slug) continue;
-      const price = await getPrice(reward.slug).catch(() => null);
-      if (currentRelic !== started) return;
-      reward.price = price;
-      pushRelic();
-      showTags(currentRelic.rewards, currentRelic.karten);
-    }
+    const mitPreis = currentRelic.rewards.filter(r => r.price).length;
+    console.log(`[Relikt #${lauf}] Schilder stehen`, seit(),
+                `- ${mitPreis} von ${currentRelic.rewards.length} schon mit Preis`);
+
+    /* Die Abrufe laufen seit dem ersten gelesenen Namen (siehe frischePreise).
+       Hier wird nur noch abgewartet, was davon offen ist - der Aufruf deckt
+       ausserdem den Fall ab, dass die letzte Karte erst in diesem Durchlauf
+       dazugekommen ist. */
+    await frischePreise(started);
+    if (currentRelic !== started) return;
     console.log(`[Relikt #${lauf}] Preise vollstaendig`, seit());
 }
 

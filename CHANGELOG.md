@@ -21,6 +21,91 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-08-30
+
+### Changed
+
+- **The prices are on the cards the moment the names are.** Until now a price
+  tag went up blank and stayed blank: every price was fetched live, one at a
+  time, a third of a second apart — and none of it started until the whole
+  reward screen had been read. On a good run that meant a wait; on a run where
+  one card would not read, the first price request went out after **13
+  seconds**, by which time the screen in the game had already closed. So the
+  runs that struggled were exactly the runs that got no prices at all. Two
+  things changed. Prices already on disk now go on the card immediately, even
+  if they are a few days old — the ducat tab has always shown them that way,
+  and an old platinum price still answers "sell or turn into ducats". And each
+  price is now fetched the moment *its own* card is read, instead of after the
+  last one. Measured in a live run: **342 ms** from the reward screen opening
+  to price tags standing, where the same path used to take well over a second
+  at best.
+
+- **Prices for the whole reward pool are fetched during the mission, not on the
+  reward screen.** When you slot a relic, the app quietly collects the prices
+  of every reward any relic can drop — **596 items in all**, which is far fewer
+  than it sounds because the eras overlap heavily. It starts with the six
+  rewards of the relic you just slotted, so your own card is covered within two
+  seconds, and works outwards from there; a full pass takes about three and a
+  half minutes and a mission takes longer. Anything already fresh is skipped,
+  so the second run costs nothing. It stops when the mission ends. Not just
+  your own era, because in an Omnia fissure your squad can bring anything —
+  measured, one era covers only about three quarters of another.
+
+- **The reward screen is read with a much lighter touch.** The ladder of
+  reading strategies ends in three full-screen passes that exist for one
+  reason: in case the game window or the name band was located wrongly. Once
+  any pass has actually read a card, both of those worries are answered — so
+  those three are now dropped for the rest of that screen. They were not cheap:
+  a single one of them reads 3.7 megapixels scaled up two and a half times, and
+  a run that was missing a card used to spend **eleven** of them, roughly seven
+  seconds of screen capture while you were playing. It now spends none, and
+  gets more attempts at the missing card for less work.
+
+- **A screen that will not give up its last card no longer holds on to the
+  end.** If the log said four rewards and only three could ever be read, the
+  search used to run the full thirteen seconds looking for a fourth that was
+  never coming. It now stops once nothing new has appeared for eight seconds,
+  whether or not a count was reported. Eight, because the latest a card has
+  ever been observed arriving is 7.17 seconds — at the moment of tabbing back
+  into the game.
+
+### Fixed
+
+- **Forma no longer shows a price that never comes.** Forma is not tradeable
+  and does not exist on warframe.market, so there will never be a price for it
+  — but its card showed the same quiet dots as a price still on its way, and
+  kept showing them. Worse, and less visible: the golden highlight on the most
+  valuable card waits until every price has arrived, and it counted the Forma
+  as one it was still waiting for. That highlight therefore never appeared at
+  all on any screen with a Forma on it. **70 %** of relics can drop Forma and
+  **47 %** of four-card screens have at least one, so for nearly every second
+  reward screen the dock's main signal was silently switched off. A card that
+  can never have a price now says so with a dash, and the highlight only waits
+  for prices that can actually turn up.
+
+- **The platinum price of a set now actually arrives.** Under Inventory → *My
+  sets* almost every card showed a dash where the set price belongs, while the
+  same set's individual parts had prices and a click on any of them showed one
+  straight away. Nobody was asking for it: the ducat tab loads prices for
+  single parts only, and its own set view had moved into this grid, taking the
+  one place that ever requested a set price with it. The cards were left
+  showing whatever happened to be on disk — **41 of 160 sets**, the leftovers
+  of the old view. The grid now loads what is missing in the background,
+  starting with the sets you are actually looking at, and writes each price
+  into its card as it lands — no redrawing, so nothing jumps while you scroll.
+  A price still on its way is also no longer indistinguishable from one that
+  does not exist: it fades quietly until it arrives, and the tooltip says which
+  of the two it is.
+
+- **The part sheet scrolls again.** A click on a part in *My sets* opens the
+  list of relics it drops from. For a part like Burston Prime Receiver that is
+  **41 relics** — far more than fits — and everything past the bottom edge was
+  simply unreachable, "Still to farm" included. The three older data sheets
+  were each told to keep their content in a column so the list inside can
+  scroll; this one had been left out and grew straight through the bottom of
+  its box, which clips. Measured on the Burston sheet: **983 pixels** of relics
+  with no way to reach them.
+
 ## [1.3.2] - 2026-08-30
 
 ### Changed

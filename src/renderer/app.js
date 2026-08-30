@@ -4547,11 +4547,108 @@ function setFoot(s) {
       <img class="currency-ic ducat-ic" src="assets/icons/ducats.png" alt="Ducats">
       <b>${nf(s.ownedDucats)}</b> <small>ducats</small>
     </span>
-    <span class="set-val">
-      <img class="currency-ic" src="assets/icons/currency/platinum.png" alt="Platin">
-      <b>${s.setPrice ? s.setPrice.min : '–'}</b> <small>Set</small>
-    </span>
+    ${setPlatCell(s)}
     ${setTradeButtons(s)}`;
+}
+
+/**
+ * Die Platin-Zelle einer Set-Karte.
+ *
+ * Steht als eigener Baustein da, weil sie an ZWEI Stellen entsteht: beim
+ * Zeichnen der Karte und noch einmal, wenn ihr Preis nachtraeglich eintrifft.
+ * Der Slug an der Zelle ist die Adresse dafuer.
+ *
+ * DREI ZUSTAENDE, NICHT ZWEI: ein Preis, der noch unterwegs ist, sah bisher
+ * genauso aus wie ein Set, das auf warframe.market niemand anbietet - beides
+ * war derselbe Strich. Der Titel sagt jetzt, welcher der beiden Faelle es ist.
+ */
+function setPlatCell(s) {
+  const known = s.setPrice?.min != null;
+  const pending = !known && Boolean(s.setSlug) && !setPriceTried.has(s.setSlug);
+  const title = known
+    ? 'Lowest price for the complete set on warframe.market'
+    : (pending ? 'Loading the set price from warframe.market …'
+               : 'No price for this set on warframe.market');
+
+  return `<span class="set-val${pending ? ' is-pending' : ''}"${
+      s.setSlug ? ` data-set-plat="${esc(s.setSlug)}"` : ''} title="${title}">
+      <img class="currency-ic" src="assets/icons/currency/platinum.png" alt="Platin">
+      <b>${known ? nf(s.setPrice.min) : '–'}</b> <small>Set</small>
+    </span>`;
+}
+
+/* Slugs, deren Set-Preis in dieser Sitzung schon einmal angefragt wurde - egal
+   mit welchem Ergebnis. Ohne dieses Gedaechtnis fragte jeder Besuch des
+   Bereichs die Sets erneut ab, die warframe.market gar nicht fuehrt. */
+const setPriceTried = new Set();
+let isFetchingSetPrices = false;
+
+/**
+ * Platinpreise der Set-Karten nachladen.
+ *
+ * WARUM DAS NOETIG IST: die Karten kommen mit dem Preisstand, der beim Aufbau
+ * zufaellig auf Platte lag - abgefragt hat den Preis des SET-Items niemand.
+ * Der Dukaten-Tab holt nur Einzelteile nach, und seine Set-Ansicht ist beim
+ * Umzug in dieses Raster weggefallen. Also stand auf den meisten Karten
+ * dauerhaft ein Strich, waehrend dasselbe Teil eine Ebene tiefer im Datenblatt
+ * einen Preis hatte.
+ *
+ * DAS RASTER WIRD NICHT NEU GEZEICHNET: die eingetroffenen Preise wandern in
+ * die Zellen, die schon stehen. Ein Neuaufbau waere mitten im Scrollen ein
+ * Sprung nach oben und wuerde die nachgeladenen Karten verwerfen.
+ */
+async function fetchMissingSetPrices() {
+  if (isFetchingSetPrices) return;
+
+  const missing = (inventoryData?.sections?.sets || []).filter(s =>
+    s.setSlug && s.setPrice?.min == null && !setPriceTried.has(s.setSlug));
+  if (!missing.length) return;
+
+  /* Was gerade gefiltert auf dem Schirm steht, kommt zuerst: 160 Sets im
+     Mindestabstand der Warteschlange sind gut eine Minute, und in der will man
+     den Preis des Sets sehen, nach dem man gesucht hat - nicht den von Ash
+     Prime, nur weil A vorne im Alphabet steht. */
+  const onScreen = new Set((currentInvList || []).map(s => s.setSlug));
+  const queue = [...missing.filter(s => onScreen.has(s.setSlug)),
+                 ...missing.filter(s => !onScreen.has(s.setSlug))];
+
+  isFetchingSetPrices = true;
+  try {
+    const BATCH_SIZE = 10;
+    for (let i = 0; i < queue.length; i += BATCH_SIZE) {
+      const batch = queue.slice(i, i + BATCH_SIZE);
+      /* VOR dem Abruf vermerken, nicht danach: ein Fehlschlag darf denselben
+         Slug nicht beim naechsten Blick wieder in die Schlange stellen. */
+      batch.forEach(s => setPriceTried.add(s.setSlug));
+
+      const prices = await window.api.fetchDucatPrices(batch.map(s => s.setSlug));
+      for (const s of batch) {
+        if (prices?.[s.setSlug]) s.setPrice = prices[s.setSlug];
+        paintSetPlat(s);
+      }
+    }
+  } catch (err) {
+    console.error('Could not load set prices:', err);
+  } finally {
+    isFetchingSetPrices = false;
+  }
+}
+
+/**
+ * Einen eingetroffenen Preis in die Karte schreiben - falls sie gerade steht.
+ *
+ * Findet sich keine Zelle, ist die Karte noch nicht nachgeladen oder gerade
+ * herausgefiltert. Das ist kein Fehler: der Preis haengt am Set-Objekt, und
+ * beim naechsten Zeichnen holt setPlatCell ihn von dort.
+ */
+function paintSetPlat(s) {
+  if (!s.setSlug) return;
+  const cell = $('inv-grid')?.querySelector(`[data-set-plat="${CSS.escape(s.setSlug)}"]`);
+  if (!cell) return;
+
+  const tmp = document.createElement('div');
+  tmp.innerHTML = setPlatCell(s);
+  if (tmp.firstElementChild) cell.replaceWith(tmp.firstElementChild);
 }
 
 /**
@@ -4851,6 +4948,11 @@ function renderInventoryGrid() {
   } else {
     grid.innerHTML = initialHtml;
   }
+
+  /* Erst zeichnen, dann nachladen: der Aufruf steht hinter dem Raster, damit
+     er die sichtbare Liste kennt und dort anfangen kann. Laeuft im Hintergrund
+     weiter, ohne dass das Zeichnen darauf wartet. */
+  if (invSection === 'sets') fetchMissingSetPrices();
 }
 
 /* ---------------- Kacheln des Inventar-Rasters ---------------- */
