@@ -51,6 +51,18 @@ follow [semantic versioning](https://semver.org/lang/en/).
   known-good width stands. The old drifted measurement is cleared once, so the
   correction applies to the next reward screen rather than the one after.
 
+- **Reading stops when the reward screen closes, instead of a few seconds
+  later.** The search gave up once nothing *new* had turned up for eight
+  seconds — which cannot tell "the same three cards are still on screen" apart
+  from "there is no screen any more". Measured on one run: passes 1 to 20 found
+  three cards every time, and from pass 21 onwards not one found anything at
+  all, because the countdown had run out. The search carried on regardless for
+  another **3.8 seconds and eighteen more captures of the screen** — while you
+  were already playing again. Three empty passes in a row after cards have been
+  read now end it. Three rather than one, because a single empty pass happens
+  while the screen is up too. Nothing changes about when the price tags appear;
+  they had been standing since 693 milliseconds in.
+
 - **A card read twice now keeps the fuller reading, not the first one.** When a
   word is lost while reading a name, the remainder is often not nonsense but
   *another real item*: **154 of the 596** possible rewards turn into a

@@ -4053,6 +4053,9 @@ async function scanRewardsRepeatedly(stillCurrent, expectedStart = 4, lauf = 0,
      Leiter ist ab dann Versicherung gegen ein Problem, das nachweislich nicht
      vorliegt - siehe die Verkuerzung der Leiter in der Schleife. */
   let bewaehrt = -1;
+  /* Wieviele gelungene Blicke hintereinander nichts gefunden haben. Grundlage
+     fuer den Ausstieg "Bildschirm ist zu" - siehe unten. */
+  let nullFolge = 0;
   /* Eine volle Runde Blicke brachte nichts Neues - bei unbekannter Kartenzahl
      gilt der Durchgang damit als ausgeschoepft. */
   let nichtsNeuesMehr = false;
@@ -4166,6 +4169,11 @@ async function scanRewardsRepeatedly(stillCurrent, expectedStart = 4, lauf = 0,
       }
     }
 
+    /* LEERE BLICKE ZAEHLEN - der Bildschirm koennte zu sein.
+       Nur ein gelungener Blick OHNE Treffer zaehlt: ein Fehler heisst, dass
+       die Erkennung nicht konnte, nicht dass dort nichts steht. */
+    if (scan.ok) nullFolge = scan.rewards.length ? 0 : nullFolge + 1;
+
     if (scan.ok) {
       const vorher = merged ? merged.rewards.length : 0;
       merged = merged ? mergeRewards(merged, scan) : scan;
@@ -4233,6 +4241,28 @@ async function scanRewardsRepeatedly(stillCurrent, expectedStart = 4, lauf = 0,
        Erst ab der ersten gelesenen Karte: solange gar nichts dasteht, kann der
        Bildschirm auch einfach noch im Aufbau sein, und dann waere Aufgeben das
        Falsche. */
+    /* DER BILDSCHIRM IST ZU - und das ist etwas anderes als "nichts Neues".
+       Die Regel darunter wartet acht Sekunden ohne NEUE Karte. Sie kann nicht
+       unterscheiden, ob derselbe Bildschirm immer noch dieselben drei Karten
+       zeigt oder ob ueberhaupt nichts mehr dasteht. Nachgemessen an Lauf #2
+       vom 30.08.: die Blicke 1 bis 20 fanden durchgehend drei Karten, ab
+       Blick 21 fand KEIN einziger mehr etwas - der Countdown war abgelaufen.
+       Trotzdem lief die Suche noch 3,8 Sekunden und achtzehn Aufnahmen weiter,
+       bis die Uhr sie einholte. Achtzehn Zugriffe auf den Bildschirm, waehrend
+       laengst wieder gespielt wurde.
+
+       Wer schon Karten gelesen hat und jetzt dreimal hintereinander nichts
+       mehr findet, sieht keinen Belohnungsbildschirm mehr. Drei und nicht
+       einer: ein einzelner Leerblick kommt auch mitten im Bildschirm vor -
+       Blick 1 desselben Laufs lieferte null, waehrend die Karten dastanden. */
+    if (merged?.rewards.length && nullFolge >= 3) {
+      nichtsNeuesMehr = true;
+      console.log(`[Relikt #${lauf}] Bildschirm ist zu (${nullFolge} leere Blicke)`
+                + ` - es bleibt bei ${merged.rewards.length} Karte`
+                + `${merged.rewards.length === 1 ? '' : 'n'}`);
+      break;
+    }
+
     if (merged?.rewards.length && Date.now() - letzterFundAt >= SCAN_STILLE_MS) {
       nichtsNeuesMehr = true;
       console.log(`[Relikt #${lauf}] ${Math.round((Date.now() - letzterFundAt) / 1000)}s ohne`
