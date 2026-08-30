@@ -3843,7 +3843,8 @@ async function scanLooks(frame, expected) {
  *   erwarteten Karten dastehen. Wo eine einzelne Lesung reicht - und das ist
  *   ab 720p der Normalfall - werden die vergroesserten Runden nie erreicht.
  */
-async function scanRewardsRepeatedly(stillCurrent, expected = 4, lauf = 0, onFortschritt = null) {
+async function scanRewardsRepeatedly(stillCurrent, expected = 4, lauf = 0, onFortschritt = null,
+                                     karten = 0) {
   /* Der Anlauf VOR der Schleife: beides kann dauern, und wenn die Runde
      dabei weiterzieht, faengt der Blick gar nicht erst an. Bisher stand dann
      nur "0 Versuche" da - ohne zu sagen, an welcher der beiden Stellen. */
@@ -3877,6 +3878,12 @@ async function scanRewardsRepeatedly(stillCurrent, expected = 4, lauf = 0, onFor
   let lastError = null;
   let attempts = 0;
   let spaltenNachgezogen = false;
+  /* Bei welchem Blick zuletzt eine Karte dazukam - Grundlage fuer den
+     Ausstieg bei unbekannter Kartenzahl, siehe unten. */
+  let letzterFund = 0;
+  /* Eine volle Runde Blicke brachte nichts Neues - bei unbekannter Kartenzahl
+     gilt der Durchgang damit als ausgeschoepft. */
+  let nichtsNeuesMehr = false;
 
   await wait(SCAN_FIRST_DELAY_MS);
   if (!stillCurrent()) {
@@ -3951,6 +3958,8 @@ async function scanRewardsRepeatedly(stillCurrent, expected = 4, lauf = 0, onFor
           }
         }
 
+        letzterFund = attempts;
+
         /* Kam eine Karte dazu, geht sie SOFORT auf den Bildschirm - wer auf
            die restlichen wartet, soll nicht auch auf die schon gelesenen
            warten. */
@@ -3963,12 +3972,47 @@ async function scanRewardsRepeatedly(stillCurrent, expected = 4, lauf = 0, onFor
       lastError = scan.error;
     }
 
+    /* WANN AUFHOEREN, WENN NIEMAND SAGT, WIE VIELE KARTEN DASTEHEN.
+       Ist die Zahl gemeldet, bricht die Schleife oben ab, sobald sie erreicht
+       ist. Ohne Meldung - der Waechter hat kein Log, aus dem er sie lesen
+       koennte - gab es diesen Ausstieg nicht, und gesucht wurde bis zum Ende
+       der Bedenkzeit. Nachgemessen an einer Dreiergruppe: 34 Blicke ueber
+       13 Sekunden, ab dem ersten durchgehend dieselben drei Treffer, darunter
+       sechsmal der teuerste Blick zu je einer Sekunde. Das ist Zugriff auf den
+       Bildschirm waehrend des Spielens - genau die Last, die das Spielgefuehl
+       zaeh macht.
+
+       Aufgehoert wird, wenn ZWEI volle Runden durch alle Blickarten nichts
+       Neues gebracht haben. Nicht eine - das waere um Haaresbreite zu knapp:
+       nachgemessen an einem Durchgang vom 29.08. standen von Blick 1 bis 7
+       dieselben drei Karten, und die vierte kam bei Blick 8, also exakt eine
+       volle Runde nach dem letzten Fund. Bei einer Runde als Schwelle waere
+       genau diese Karte verloren gegangen.
+
+       Und nicht ein einzelner Blick, weil die Blickarten verschiedene Staerken
+       haben: was der Streifen nicht trennt, trennt der vergroesserte
+       Ausschnitt.
+
+       Erst ab der ersten gelesenen Karte: solange gar nichts dasteht, kann der
+       Bildschirm auch einfach noch im Aufbau sein, und dann waere Aufgeben das
+       Falsche. */
+    if (!karten && merged?.rewards.length && attempts - letzterFund >= looks.length * 2) {
+      nichtsNeuesMehr = true;
+      console.log(`[Relikt #${lauf}] Zwei volle Runden Blicke ohne Neues -`
+                + ` es bleibt bei ${merged.rewards.length} Karte`
+                + `${merged.rewards.length === 1 ? '' : 'n'}`);
+      break;
+    }
+
     if (Date.now() + SCAN_RETRY_MS >= deadline) break;
     await wait(SCAN_RETRY_MS);
   }
 
   const found = merged ? merged.rewards.length : 0;
-  console.log(`[Relikt #${lauf}] Erkennung: ` + (merged ? `${found} Treffer (erwartet ${expected})` : `nichts gefunden${lastError ? ` - ${lastError}` : ''}`)
+  console.log(`[Relikt #${lauf}] Erkennung: `
+            + (merged
+                ? `${found} Treffer (${karten ? `erwartet ${karten}` : 'Zahl nicht gemeldet'})`
+                : `nichts gefunden${lastError ? ` - ${lastError}` : ''}`)
             + ` | ${attempts} Versuch${attempts === 1 ? '' : 'e'}`);
 
   /* AUS DEM GELUNGENEN DURCHGANG LERNEN. Jetzt - und nur jetzt - steht fest,
@@ -3979,8 +4023,18 @@ async function scanRewardsRepeatedly(stillCurrent, expected = 4, lauf = 0, onFor
      Nach der Anzeige und ohne await davor: das Schreiben einer kleinen
      JSON-Datei ist schnell, aber die Bedenkzeit laeuft, und die Schilder sind
      wichtiger als die Buchfuehrung. */
-  if (found >= expected) {
-    rememberGeometry(frame, merged.rewards, expected)
+  /* Was hier als "vollstaendig" gilt: die GEMELDETE Zahl erreicht - oder, wo
+     keine gemeldet wurde, eine volle Runde Blicke ohne etwas Neues. Ohne den
+     zweiten Fall lernte ausgerechnet der Waechter-Durchgang nie etwas: er
+     kennt die Zahl nicht, `expected` steht dann auf vier, und drei gefundene
+     Karten galten als unvollstaendig - obwohl es nur drei gab. */
+  const zielzahl = karten || (nichtsNeuesMehr ? found : expected);
+  if (found && found >= zielzahl) {
+    /* Und die so ermittelte Zahl merken, damit das Dock der naechsten Runde
+       nicht wieder raten muss. Nur wenn nichts gemeldet war - eine Meldung
+       ist immer die bessere Auskunft. */
+    if (!karten) letzteKartenzahl = found;
+    rememberGeometry(frame, merged.rewards, zielzahl)
       .then(neu => {
         if (!neu) return;
         console.log(`[Relikt #${lauf}] Geometrie gemerkt fuer ${frameKey(frame)}:`
@@ -4623,9 +4677,14 @@ async function handleRelicReward(ev) {
       ? scanRewardsRepeatedly(() => currentRelic === started, expected, lauf,
           async teil => {
             await zeigeGelesene(teil, started);
-            console.log(`[Relikt #${lauf}] ${started.rewards.length} von ${expected}`
-                      + ` Schildern stehen ${seit()} - der Rest wird noch gesucht`);
-          })
+            /* "von N" nur, wenn N auch gemeldet wurde. Ohne Meldung stand hier
+               "3 von 4", obwohl es nur drei Karten gab - das liest sich beim
+               Nachsehen wie ein Fehlschlag, wo alles gefunden wurde. */
+            console.log(`[Relikt #${lauf}] ${started.rewards.length}`
+                      + `${karten ? ` von ${karten}` : ''}`
+                      + ` Schilder${karten ? 'n' : ''} stehen ${seit()}`
+                      + ` - ${karten ? 'der Rest wird noch gesucht' : 'es wird weiter gesucht'}`);
+          }, karten)
       : Promise.resolve(null);
 
     /* Der eigene Fund laeuft DANEBEN und wird nirgends abgewartet, wo etwas

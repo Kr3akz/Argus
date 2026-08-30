@@ -21,6 +21,32 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-08-30
+
+### Changed
+
+- **The reading stops once there is nothing left to find.** When the log
+  reports how many relics were opened, the loop stops the moment it has them
+  all. When nothing is reported — the screen watcher has no log to read it from
+  — there was no such exit, so it kept looking until the 15 seconds were up.
+  Measured on a three-player defense: **34 looks over 13 seconds**, showing the
+  same three cards from the very first one, including six of the most expensive
+  look at about a second each. That is screen capture while you are playing,
+  which is exactly the load that makes the game feel sluggish. It now stops
+  after two full rounds through every kind of look without anything new —
+  measured, that ends the same run after 15 looks and about 5 seconds.
+  - Two rounds and not one: in an earlier run the fourth card turned up at look
+    8, exactly one full round after the previous find. One round as the
+    threshold would have lost that card.
+  - A run that ends this way now counts as complete, so the geometry is
+    recorded from it and the next dock starts with the right number of slots.
+    Before, a watcher-announced round never taught anything, because three
+    found cards were measured against an assumed four.
+- **Log lines no longer claim a number nobody reported.** A three-card round
+  announced by the watcher used to log `3 von 4 Schildern` and
+  `3 Treffer (erwartet 4)` — which reads like a failure where everything was
+  found. Where no count was reported, that is now what it says.
+
 ## [1.3.1] - 2026-08-30
 
 ### Fixed
