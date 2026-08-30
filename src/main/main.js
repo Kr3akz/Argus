@@ -4354,6 +4354,13 @@ let watchBlicke = 0;
    ein verpasster Bildschirm nicht zu deuten. */
 let watchUebersprungen = 0;
 let watchAbstecher = 0;
+/* Was ein Blick auf den Bildschirm gekostet hat - Groesstwert und Summe, um am
+   Ende einen Mittelwert nennen zu koennen. Sie beantworten die einzige Frage,
+   an der der Takt dieses Waechters haengt: stoert der Zugriff das Spiel oder
+   nicht. Bisher wurde sie mit einer Rueckmeldung beantwortet, nicht mit
+   Zahlen. */
+let watchBlickMax = 0;
+let watchBlickSumme = 0;
 /* Stand Warframe bei der letzten Abtastung vorn? Nur fuer die Flankenzaehlung
    in pollForeground. */
 let watchFokusVorn = true;
@@ -4462,7 +4469,13 @@ function stopRewardWatch(grund) {
      verschiedene Fehler mit zwei voellig verschiedenen Ursachen. */
   console.log(`[Waechter] aus (${grund}) - ${watchBlicke} Blick${watchBlicke === 1 ? '' : 'e'}`
             + ` auf den Bildschirm, ${watchUebersprungen} Takt(e) uebersprungen`
-            + ` (Warframe stand vorn), ${watchAbstecher} Abstecher aus dem Vordergrund`);
+            + ` (Warframe stand vorn), ${watchAbstecher} Abstecher aus dem Vordergrund`
+            /* Die Kosten eines Blicks - siehe watchBlickMax. Ohne diese Zahlen
+               laesst sich der Takt oben nicht begruenden, sondern nur glauben. */
+            + (watchBlicke
+                ? ` | Blickdauer: Mittel ${Math.round(watchBlickSumme / watchBlicke)}ms,`
+                  + ` Groesstwert ${watchBlickMax}ms`
+                : ''));
 }
 
 function startRewardWatch() {
@@ -4482,6 +4495,8 @@ function startRewardWatch() {
   watchLetzterBlick = 0;
   watchUebersprungen = 0;
   watchAbstecher = 0;
+  watchBlickMax = 0;
+  watchBlickSumme = 0;
   watchFokusVorn = true;
   watchTimer = setInterval(() => { tickRewardWatch().catch(() => {}); }, WATCH_INTERVAL_MS);
   /* unref: der Waechter darf Electron nicht am Beenden hindern. */
@@ -4541,7 +4556,27 @@ async function tickRewardWatch() {
        Hauptbildschirm - sonst sucht er die Ueberschrift auf dem falschen
        Monitor und meldet nie etwas. */
     const rahmen = await gameFrame();
-    if (!await rewardScreenVisible({ rect: rahmen.rect || undefined })) return;
+    /* WIE LANGE EIN BLICK WIRKLICH DAUERT.
+       Der Takt dieses Waechters ist der einzige Wert im Programm, der bewusst
+       gegen das Spielgefuehl abgewogen wurde: CopyFromScreen greift auf den
+       Bildschirminhalt zu, und im exklusiven Vollbild kann das die Bildausgabe
+       stoeren. Die Abwaegung stuetzt sich aber auf EINE Rueckmeldung, ohne
+       Angabe von Anzeigemodus oder Hardware - und im randlosen Fenster
+       komponiert Windows ohnehin, der Zugriff ist dort deutlich harmloser.
+       Ohne Zahlen laesst sich das nicht entscheiden. Ein Blick kostet
+       dokumentiert 31 ms; laeuft er in Wahrheit regelmaessig ueber 100, ist
+       das der Stillstand, den man im Spiel merkt. Eine Zahl je Blick, hoechstens
+       fuenfzehn in der Minute - das ist billiger als jede Vermutung. */
+    const blickAb = Date.now();
+    const gesehen = await rewardScreenVisible({ rect: rahmen.rect || undefined });
+    const dauer = Date.now() - blickAb;
+    if (dauer > watchBlickMax) watchBlickMax = dauer;
+    watchBlickSumme += dauer;
+    if (dauer > 100) {
+      console.log(`[Waechter] langsamer Blick: ${dauer}ms`
+                + ` (dokumentiert sind 31ms - so lange stand die Bildausgabe womoeglich)`);
+    }
+    if (!gesehen) return;
     if (currentRelic) return;        // das Log war in der Zwischenzeit doch schneller
     console.log('[Waechter] Belohnungsbildschirm erkannt - das Log hat noch nichts gemeldet');
     /* Ohne Log gibt es keinen eigenen Fund und keine Mitspielerzahl. Vier ist
