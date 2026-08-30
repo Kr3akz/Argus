@@ -4079,6 +4079,24 @@ async function scanRewardsRepeatedly(stillCurrent, expectedStart = 4, lauf = 0,
 
   letzterFundAt = Date.now();
 
+  /* BEWEISBILD, SOLANGE DER BILDSCHIRM NOCH STEHT.
+     Es gab schon eine Beweisaufnahme, aber sie lag am ENDE des Durchgangs -
+     und damit regelmaessig zu spaet: endet der Durchgang, weil die Runde
+     vorbei ist, sind die Pixel weg und das Bild zeigt, was danach kam.
+     Nachgemessen an einem Lauf vom 30.08., der 3 von 4 Karten fand: der
+     Durchgang brach mit "Runde vorbei" ab, das Bild waere leer gewesen.
+
+     Hier dagegen steht der Bildschirm sicher. Das Bild entsteht EINMAL je
+     Durchgang und nur mit eingeschaltetem relicScanDebug; ohne den Schalter
+     entsteht kein Bildschirmfoto. Nicht abgewartet - die Bedenkzeit laeuft,
+     und eine Diagnose darf sie nicht verkuerzen. */
+  let beweisbild = null;
+  if (relicScanDebug) {
+    beweisbild = dataFile('diag', `relikt-${lauf}-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.png`);
+    scanRewardScreen(index, { keepImage: beweisbild, rect: frame.rect || undefined })
+      .catch(() => null);
+  }
+
   while (stillCurrent()) {
     /* Der Reihe nach durch die Blickweisen, danach wieder von vorn: was beim
        ersten Durchgang am halb aufgebauten Bildschirm scheiterte, kann beim
@@ -4265,21 +4283,35 @@ async function scanRewardsRepeatedly(stillCurrent, expectedStart = 4, lauf = 0,
       .catch(() => { /* Buchfuehrung ist kein Grund, den Durchgang zu stoeren. */ });
   }
 
-  /* Nichts gelesen UND der Beweisschalter ist an: eine letzte Aufnahme, diesmal
-     als Bild auf die Platte. Ohne sie bleibt "es kam nichts" eine Behauptung -
-     mit ihr laesst sich sehen, ob der Bildschirm schwarz war, das Spiel woanders
-     stand oder die Namen einfach anders aussehen als erwartet.
+  /* Ein Beweisbild, wenn der Durchgang NICHT VOLLSTAENDIG war - und der
+     Beweisschalter an ist.
+
+     WARUM NICHT MEHR NUR BEI "GAR NICHTS": Genau der interessante Fall fiel
+     bisher durch. Am 30.08. las ein Durchgang nach dem Austabben 3 von 4
+     Karten; die vierte fand kein einziger der 31 Blicke, auch Breitband und
+     Vollbild nicht. Aus dem Protokoll allein laesst sich dann nicht sagen, ob
+     die Karte gar nicht in den aufgenommenen Pixeln stand - verdeckt von einem
+     Fenster, weil ausgetabbt war - oder ob sie dastand und nur unlesbar war.
+     Das sind zwei voellig verschiedene Ursachen mit zwei voellig verschiedenen
+     Antworten, und ohne Bild ist die Frage nicht zu entscheiden. `found` war 3,
+     also sprang die alte Bedingung nicht an, und der Beweis blieb aus.
+
+     VIER als Schwelle und nicht die gemeldete Zahl: die Meldung fehlt in genau
+     diesen Faellen (nachgemessen "Mitspieler: ?"), und mehr als vier Karten
+     gibt es nie. Ein Bild bei einer echten Dreiergruppe ist dabei kein
+     Fehlalarm, sondern die Antwort "es waren wirklich nur drei".
+
      Standardmaessig AUS: es soll kein Bildschirmfoto entstehen, das niemand
-     bestellt hat. */
-  if (!found && relicScanDebug) {
-    const shot = dataFile('diag', `fehlschlag-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.png`);
-    /* Das SPIELFENSTER sichern, nicht den Hauptbildschirm: sonst zeigt das
-       Beweisbild bei zwei Monitoren den falschen Schirm - und ausgerechnet
-       dann, wenn nichts gefunden wurde, waere das die irrefuehrendste
-       Auskunft von allen. */
-    const proof = await scanRewardScreen(index, { keepImage: shot, rect: frame.rect || undefined })
-                          .catch(() => null);
-    console.log('[Relikt] Beweisaufnahme:', shot, '|', proof?.ok ? `${proof.lines} Zeilen erkannt` : 'auch das misslang');
+     bestellt hat. Wer sucht, schaltet relicScanDebug in data/config.json ein
+     und danach wieder aus. */
+  /* Das Bild selbst entstand zu Beginn der Schleife, solange der Bildschirm
+     noch stand. Hier wird nur noch verknuepft, was dabei herauskam - sonst
+     liegt ein Ordner voller Aufnahmen da, und zu keiner steht dabei, ob sie
+     einen Fehlschlag zeigt oder eine ganz normale Dreiergruppe. */
+  if (beweisbild) {
+    console.log(`[Relikt #${lauf}] Beweisaufnahme: ${beweisbild}`
+              + ` | ${found} Karte${found === 1 ? '' : 'n'} gelesen`
+              + `${found < 4 ? ' - auf dem Bild nachsehen, ob die fehlenden ueberhaupt dastanden' : ''}`);
   }
 
   return merged || { ok: false, error: lastError || 'Keine Aufnahme moeglich' };
