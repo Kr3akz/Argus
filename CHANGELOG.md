@@ -21,6 +21,32 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-08-30
+
+### Fixed
+
+- **The price tags no longer load forever when the game log runs late.** The
+  dock with its four placeholders went up as soon as the log announced the
+  reward screen — but the reading of the cards only started on a *second* log
+  line, the one carrying your own drop. Those two lines normally arrive 758
+  milliseconds apart. When Warframe is not the foreground window it buffers its
+  log, and then they do not: measured in one run, the dock stood at 20:03:13
+  and the second line arrived at **20:03:30**, in the same breath as "screen
+  closed". By then there was nothing left to read. Not a single card was ever
+  looked at, and four loading bars sat there for twenty seconds until a timer
+  cleared them. The reading now begins on the first line — the one that says
+  the screen is open — instead of waiting for the second. As a side effect it
+  also starts **758 ms earlier** on a normal run. If nothing can be read at
+  all, the placeholders are now taken down straight away instead of being left
+  to the timer: a dock that promises something it cannot deliver is worse than
+  no dock.
+
+- **The screen watcher no longer sleeps through the round after a mission
+  ends.** It was switched off when you returned to your ship and only started
+  again when you slotted the next relic. A reward screen appearing in between —
+  which is exactly what happened in the run above — found nobody watching. It
+  now also starts when the log announces a reward screen.
+
 ## [1.4.0] - 2026-08-30
 
 ### Changed

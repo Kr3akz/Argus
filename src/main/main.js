@@ -3990,8 +3990,28 @@ async function scanLooks(frame, expected) {
  *   erwarteten Karten dastehen. Wo eine einzelne Lesung reicht - und das ist
  *   ab 720p der Normalfall - werden die vergroesserten Runden nie erreicht.
  */
-async function scanRewardsRepeatedly(stillCurrent, expected = 4, lauf = 0, onFortschritt = null,
-                                     karten = 0) {
+/**
+ * `runde` ist das Durchgangsobjekt. Es wird gebraucht, weil `expected` und
+ * `karten` sich WAEHREND des Durchgangs noch aendern koennen: seit die
+ * Erkennung auf `relic-screen-open` anlaeuft, startet sie, bevor das Log die
+ * Mitspielerzahl nennt. Die kommt 758 ms spaeter nach, und der Zweig "Log holt
+ * auf" traegt sie in die Runde ein.
+ *
+ * Bekaeme die Schleife die Zahlen nur als Wert mitgegeben, wuerde sie davon
+ * nichts merken: bei einer Dreiergruppe suchte sie weiter nach einer vierten
+ * Karte, faende sie nie und liefe erst nach acht Sekunden Stille aus - acht
+ * Sekunden Bildschirmaufnahme fuer eine Karte, von der das Log laengst gesagt
+ * hat, dass es sie nicht gibt. Deshalb wird bei jedem Durchlauf frisch
+ * nachgesehen.
+ */
+async function scanRewardsRepeatedly(stillCurrent, expectedStart = 4, lauf = 0,
+                                     onFortschritt = null, kartenStart = 0, runde = null) {
+  /* Die Startwerte gelten, solange die Runde nichts Besseres weiss. Der
+     Ausschnitt unten wird EINMAL aus expectedStart gebaut - das ist richtig so,
+     denn er entsteht vor der Meldung, und columnCropsFrom zieht ihn spaeter
+     ohnehin aus den gelesenen Karten nach. Alles andere fragt live. */
+  const erwarteteZahl = () => Math.min(4, Math.max(1, runde?.expected || expectedStart));
+  const gemeldeteZahl = () => Math.min(4, Math.max(0, runde?.karten ?? kartenStart));
   /* Der Anlauf VOR der Schleife: beides kann dauern, und wenn die Runde
      dabei weiterzieht, faengt der Blick gar nicht erst an. Bisher stand dann
      nur "0 Versuche" da - ohne zu sagen, an welcher der beiden Stellen. */
@@ -4010,14 +4030,14 @@ async function scanRewardsRepeatedly(stillCurrent, expected = 4, lauf = 0, onFor
      Pause laufen ohnehin - der Bildschirm baut sich noch auf -, und in ihnen
      ist die Vorbereitung geschenkt. Davor waere sie vom Blickbudget abgezogen. */
   const vorbereitung = gameFrame()
-    .then(async f => ({ frame: f, ...(await scanLooks(f, expected)) }))
+    .then(async f => ({ frame: f, ...(await scanLooks(f, expectedStart)) }))
     /* Hier wirft nichts - alles darunter faengt selbst. Der Fang steht
        trotzdem: dieses Versprechen wird nicht abgewartet, wenn die Runde
        waehrend der Anlaufpause weiterzieht, und ein unbehandelter Fehlschlag
        waere dann eine Warnung im Protokoll ohne jeden Bezug. */
     .catch(async () => {
       const f = cachedFrame();
-      return { frame: f, ...(await scanLooks(f, expected)) };
+      return { frame: f, ...(await scanLooks(f, expectedStart)) };
     });
 
   const deadline = Date.now() + SCAN_BUDGET_MS;
@@ -4131,7 +4151,7 @@ async function scanRewardsRepeatedly(stillCurrent, expected = 4, lauf = 0, onFor
     if (scan.ok) {
       const vorher = merged ? merged.rewards.length : 0;
       merged = merged ? mergeRewards(merged, scan) : scan;
-      if (merged.rewards.length >= expected) break;
+      if (merged.rewards.length >= erwarteteZahl()) break;
 
       if (merged.rewards.length > vorher) {
         /* DIE SPALTEN AUS DEM NACHZIEHEN, WAS SCHON STEHT. Bis hierher sassen
@@ -4199,7 +4219,7 @@ async function scanRewardsRepeatedly(stillCurrent, expected = 4, lauf = 0, onFor
       nichtsNeuesMehr = true;
       console.log(`[Relikt #${lauf}] ${Math.round((Date.now() - letzterFundAt) / 1000)}s ohne`
                 + ` neue Karte - es bleibt bei ${merged.rewards.length}`
-                + `${karten ? ` von ${karten}` : ''} Karte`
+                + `${gemeldeteZahl() ? ` von ${gemeldeteZahl()}` : ''} Karte`
                 + `${merged.rewards.length === 1 ? '' : 'n'}`);
       break;
     }
@@ -4211,7 +4231,7 @@ async function scanRewardsRepeatedly(stillCurrent, expected = 4, lauf = 0, onFor
   const found = merged ? merged.rewards.length : 0;
   console.log(`[Relikt #${lauf}] Erkennung: `
             + (merged
-                ? `${found} Treffer (${karten ? `erwartet ${karten}` : 'Zahl nicht gemeldet'})`
+                ? `${found} Treffer (${gemeldeteZahl() ? `erwartet ${gemeldeteZahl()}` : 'Zahl nicht gemeldet'})`
                 : `nichts gefunden${lastError ? ` - ${lastError}` : ''}`)
             + ` | ${attempts} Versuch${attempts === 1 ? '' : 'e'}`);
 
@@ -4228,12 +4248,12 @@ async function scanRewardsRepeatedly(stillCurrent, expected = 4, lauf = 0, onFor
      zweiten Fall lernte ausgerechnet der Waechter-Durchgang nie etwas: er
      kennt die Zahl nicht, `expected` steht dann auf vier, und drei gefundene
      Karten galten als unvollstaendig - obwohl es nur drei gab. */
-  const zielzahl = karten || (nichtsNeuesMehr ? found : expected);
+  const zielzahl = gemeldeteZahl() || (nichtsNeuesMehr ? found : erwarteteZahl());
   if (found && found >= zielzahl) {
     /* Und die so ermittelte Zahl merken, damit das Dock der naechsten Runde
        nicht wieder raten muss. Nur wenn nichts gemeldet war - eine Meldung
        ist immer die bessere Auskunft. */
-    if (!karten) letzteKartenzahl = found;
+    if (!gemeldeteZahl()) letzteKartenzahl = found;
     rememberGeometry(frame, merged.rewards, zielzahl)
       .then(neu => {
         if (!neu) return;
@@ -4628,14 +4648,72 @@ function startLogWatcher() {
     });
   });
 
-  /* Die frueheste Nachricht vom Belohnungsbildschirm - 758 ms vor "Got
-     rewards", nachgemessen. Gelesen wird hier noch nichts: die Karten sind
-     noch nicht gezeichnet. Aber das Dock kann schon stehen, und die Erkennung
-     kann warmlaufen, statt beides in die Bedenkzeit zu legen. */
-  logWatcher.on('relic-screen-open', () => {
+  /**
+   * Die frueheste Nachricht vom Belohnungsbildschirm - 758 ms vor "Got
+   * rewards", nachgemessen. HIER faengt die Runde an, nicht erst beim
+   * Belohnungsereignis.
+   *
+   * WARUM DAS UMGESTELLT WURDE. Vorher stellte diese Zeile nur das Dock hin
+   * und liess die Erkennung auf `relic-reward` warten. Das ist genau so lange
+   * richtig, wie das Log puenktlich ist - und es ist nicht puenktlich, wenn
+   * Warframe nicht im Vordergrund laeuft. Nachgemessen an einem Lauf vom
+   * 30.08.:
+   *
+   *   20:03:13.115  Dock steht (4 Platzhalter)
+   *   20:03:30.891  Belohnungsereignis - und im selben Atemzug "Bildschirm zu"
+   *
+   * 17,8 Sekunden. Der Bildschirm war laengst weg, gelesen wurde nie eine
+   * einzige Karte, und die vier Platzhalter standen zwanzig Sekunden lang da,
+   * bis die Uhr sie abraeumte. Wer das sieht, sieht eine Anzeige, die laedt
+   * und nie fertig wird.
+   *
+   * Der Waechter haette einspringen koennen, war aber aus: ein Missionsende
+   * hatte ihn abgeschaltet, und an ging er erst beim naechsten Einlegen. Der
+   * Bildschirm fiel in genau dieses Loch.
+   *
+   * DIESE Zeile dagegen kam puenktlich - sie IST die Meldung, dass der
+   * Bildschirm offen ist. Also wird ab hier gelesen. Der Einwand, die Karten
+   * seien noch nicht gezeichnet, stimmt zwar, geht aber ins Leere: die
+   * Schleife wartet ohnehin erst 200 ms und blickt danach wiederholt.
+   *
+   * Im Normalfall kostet das nichts und gewinnt 758 ms - die Schleife bricht
+   * ab, sobald alle Karten dastehen. Trifft das Logereignis spaeter doch noch
+   * ein, traegt handleRelicReward ueber den Zweig "Log holt auf" nur den
+   * eigenen Fund nach, statt neu zu starten.
+   */
+  logWatcher.on('relic-screen-open', async () => {
     warmUpOcr().catch(() => {});
-    showSkeletonTags().catch(err =>
+
+    /* Auch der Waechter ab hier, nicht erst beim naechsten Einlegen: nach
+       einem Missionsende steht er still, und in Endlos-Missionen kommt fuer
+       Runde 2 kein neues relic-equipped. Genau dort lag das Loch. */
+    startRewardWatch();
+
+    /* Das Dock ZUERST und abgewartet: es steht in wenigen Millisekunden, und
+       die Erkennung braucht bis zu ihrem ersten Namen ein paar hundert. Danach
+       laeuft die Runde, und showSkeletonTags wuerde ohnehin abbrechen - es
+       weicht einer laufenden Runde bewusst aus. Nebenbei waermt es den
+       Fensterrahmen vor, den die Erkennung gleich auch braucht. */
+    await showSkeletonTags().catch(err =>
       console.error('[Relikt] Dock konnte nicht vorab gestellt werden:', err.message));
+
+    /* Ohne Erkennung gaebe es nichts, was die Platzhalter je fuellt - dann
+       lieber gar keine Runde aufmachen. */
+    if (!relicScan) return;
+
+    /* Laeuft schon eine Runde, ist das Log doch schneller gewesen oder der
+       Waechter hat gemeldet - dann nicht dazwischenfunken.
+       ABER NUR, WENN SIE FRISCH IST. currentRelic wird erst durch "Bildschirm
+       zu" geraeumt, und genau diese Zeile kann im Schreibpuffer haengen. Eine
+       Runde, deren Countdown von fuenfzehn Sekunden laengst abgelaufen ist,
+       ist keine laufende Runde mehr, sondern ein Rest - und duerfte die
+       naechste sonst blockieren. Dieselbe Zwanzig-Sekunden-Grenze wie im
+       Zweig "Log holt auf". */
+    if (currentRelic && Date.now() - currentRelic.at < 20000) return;
+
+    console.log('[Relikt] Bildschirm offen laut Log - Erkennung startet, ohne auf den Fund zu warten');
+    handleRelicReward({ uniqueName: null, players: 0, seconds: 15, vomWaechter: true })
+      .catch(err => console.error('[Relikt] Ablauf abgebrochen:', err.message));
   });
 
   logWatcher.on('relic-timer', ev => sendToOverlay('relic:timer', ev));
@@ -4873,6 +4951,26 @@ async function handleRelicReward(ev) {
       const laufend = currentRelic;
       console.log(`[Relikt #${laufend.lauf}] Log holt auf - eigener Fund wird nachgetragen`
                 + ` (${Date.now() - laufend.at}ms nach dem Waechter)`);
+
+      /* UND DIE KARTENZAHL, falls die Runde sie noch nicht kannte. Seit die
+         Erkennung schon auf `relic-screen-open` anlaeuft, ist das der
+         Normalfall: dort gibt es noch kein "Client got reward info", also
+         startet die Runde mit karten = 0 und das Dock waechst mit den
+         gelesenen Karten mit, statt gleich in voller Breite dazustehen.
+
+         Das Logereignis bringt die Zahl 758 ms spaeter nach - frueh genug,
+         dass die Korrektur in die Zeit faellt, in der ohnehin noch
+         Platzhalter stehen. Ohne diese Zeilen waere der Frueherstart mit
+         einem unruhigeren Dock erkauft. */
+      const gemeldet = Math.min(4, Math.max(0, ev.players || 0));
+      if (gemeldet && !laufend.karten) {
+        laufend.karten = gemeldet;
+        laufend.expected = gemeldet;
+        letzteKartenzahl = gemeldet;
+        console.log(`[Relikt #${laufend.lauf}] Kartenzahl nachgetragen: ${gemeldet}`);
+        if (relicTags && laufend.rewards.length) showTags(laufend.rewards, gemeldet);
+      }
+
       if (ev.uniqueName) {
         describeReward(ev.uniqueName).then(own => {
           if (currentRelic !== laufend || !own) return;
@@ -4950,11 +5048,15 @@ async function handleRelicReward(ev) {
             /* "von N" nur, wenn N auch gemeldet wurde. Ohne Meldung stand hier
                "3 von 4", obwohl es nur drei Karten gab - das liest sich beim
                Nachsehen wie ein Fehlschlag, wo alles gefunden wurde. */
+            /* started.karten und nicht das karten von oben: seit die Erkennung
+               auf `relic-screen-open` anlaeuft, kann die Zahl mitten im
+               Durchgang nachgetragen worden sein. */
+            const n = started.karten;
             console.log(`[Relikt #${lauf}] ${started.rewards.length}`
-                      + `${karten ? ` von ${karten}` : ''}`
-                      + ` Schilder${karten ? 'n' : ''} stehen ${seit()}`
-                      + ` - ${karten ? 'der Rest wird noch gesucht' : 'es wird weiter gesucht'}`);
-          }, karten)
+                      + `${n ? ` von ${n}` : ''}`
+                      + ` Schilder${n ? 'n' : ''} stehen ${seit()}`
+                      + ` - ${n ? 'der Rest wird noch gesucht' : 'es wird weiter gesucht'}`);
+          }, karten, started)
       : Promise.resolve(null);
 
     /* Der eigene Fund laeuft DANEBEN und wird nirgends abgewartet, wo etwas
@@ -5002,6 +5104,14 @@ async function handleRelicReward(ev) {
         : scan.error;
       pushRelic();
 
+      /* UND DIE PLATZHALTER WEG. Sie sind ein Versprechen - "hier kommt gleich
+         etwas" -, und ab hier steht fest, dass nichts mehr kommt. Ohne diese
+         Zeile blieben vier ladende Balken stehen, bis SKELETON_MAX_MS sie nach
+         zwanzig Sekunden abraeumt. Genau so sah der Fall aus, der diese ganze
+         Umstellung ausgeloest hat: eine Anzeige, die laedt und nie fertig wird.
+         Lieber nichts als ein Ladebalken ohne Absender. */
+      hideTags();
+
       /* UND JETZT DAS FENSTER AUFMACHEN, auch wenn die Schilder an sind.
          Die Schilder brauchen die Bildschirmpositionen aus der Erkennung -
          ohne sie gibt es keine. Bisher endete der Ablauf genau hier: Schilder
@@ -5024,9 +5134,14 @@ async function handleRelicReward(ev) {
     if (currentRelic !== started) return;
 
     currentRelic.region = scan.region || null;
-    /* Vollstaendig heisst "so viele wie Mitspieler", nicht "vier". */
-    currentRelic.expected = expected;
-    currentRelic.karten = karten;
+    /* expected und karten werden hier NICHT mehr gesetzt. Sie stehen seit dem
+       Anlegen der Runde drin - die Zuweisung war immer schon eine Wiederholung
+       derselben Werte. Seit die Erkennung auf `relic-screen-open` anlaeuft, ist
+       sie sogar schaedlich: die Runde startet ohne Mitspielerzahl, der Zweig
+       "Log holt auf" traegt sie 758 ms spaeter nach, und diese Zeilen haetten
+       genau das wieder auf 0 zurueckgesetzt - unmittelbar vor der letzten
+       Anzeige, sodass das Dock statt der gemeldeten Breite wieder den gelesenen
+       Karten gefolgt waere. */
     await zeigeGelesene(scan, started, { fertig: true });
 
     const mitPreis = currentRelic.rewards.filter(r => r.price).length;
