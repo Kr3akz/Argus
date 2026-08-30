@@ -272,6 +272,55 @@ const leer = panelGeometrieGemessen([], rahmen1440, geo1440.cardWidth, 4);
 assert(Math.abs(leer.links - festVier.links) < 0.001 && leer.anzahlSpalten === 4,
        'Das leere Dock sitzt dort, wo spaeter die gelesenen Karten sitzen');
 
+/* Weniger als vier aufgegangene Relikte. Es standen trotzdem vier Schilder da,
+   weil eine fehlende Angabe als "vier" gelesen wurde statt als "unbekannt". */
+console.log('\n8d. Test: Kleine Gruppen bekommen kein Viererdock');
+const mitteRahmen = rahmen1440.x + rahmen1440.w / 2;
+const kartenBreite = geo1440.cardWidth * rahmen1440.w;
+
+/* Die Reihe ist zentriert: bei n Karten liegen die Mitten auf
+   Rahmenmitte + (i - (n-1)/2) * Kartenbreite. */
+const reiheMit = n => Array.from({ length: n }, (_, i) => {
+  const m = mitteRahmen + (i - (n - 1) / 2) * kartenBreite;
+  return { name: 'Karte ' + i, score: 1, box: { x: m - 120, y: 581, w: 240, h: 30 } };
+});
+
+for (const n of [1, 2, 3]) {
+  const reihe = reiheMit(n);
+  const g = panelGeometrieGemessen(reihe, rahmen1440, geo1440.cardWidth, n);
+  assert(g.anzahlSpalten === n, `${n} aufgegangene Relikte ergeben ${n} Spalten`);
+  assert(g.eintraege.length === n && g.eintraege.every((e, i) => e.spalte === i),
+         `  und jede Karte sitzt in ihrer eigenen Spalte`);
+  /* Das Dock muss ueber der Reihe zentriert sein, nicht daneben. */
+  const dockMitte = g.links + g.breite * n / 2;
+  assert(Math.abs(dockMitte - mitteRahmen) < 1,
+         `  das Dock sitzt mittig ueber der Reihe (${Math.round(dockMitte)} statt ${mitteRahmen})`);
+}
+
+/* Der Rueckfall in den alten Zustand: wird trotz kleinerer Gruppe eine Vier
+   durchgereicht, wird das Dock nicht nur zu breit - es sitzt auch nicht mehr
+   ueber der Reihe. Nachgerechnet an zwei Karten sind es anderthalb
+   Kartenbreiten Versatz nach rechts. */
+const zweiKarten = reiheMit(2);
+const mitVier = panelGeometrieGemessen(zweiKarten, rahmen1440, geo1440.cardWidth, 4);
+const mitZwei = panelGeometrieGemessen(zweiKarten, rahmen1440, geo1440.cardWidth, 2);
+assert(Math.abs((mitZwei.links + mitZwei.breite) - mitteRahmen) < 1,
+       'Mit der richtigen Zahl sitzt das Dock ueber der Reihe');
+assert(Math.abs((mitVier.links + mitVier.breite * 2) - mitteRahmen) < 1 &&
+       mitVier.eintraege.every(e => e.spalte >= 1),
+       'Mit einer erfundenen Vier rutschen die Karten aus der Mitte - die Karten'
+     + ` landen in Spalte ${mitVier.eintraege.map(e => e.spalte).join(' und ')} statt 0 und 1`);
+
+/* Und die Ausschnitte der Erkennung muessen dieselbe Reihe treffen - sonst
+   sucht sie an vier Stellen, an denen nur zwei Karten stehen. */
+for (const n of [1, 2, 3]) {
+  const crops = columnCrops(geo1440, n);
+  const mitten = crops.map(c => (c.left + c.right) / 2 * rahmen1440.w);
+  const soll = reiheMit(n).map(r => r.box.x + r.box.w / 2);
+  assert(crops.length === n && soll.every(s => mitten.some(m => Math.abs(m - s) < 2)),
+         `Bei ${n} Relikten wird an genau ${n} Stellen gesucht`);
+}
+
 // ---------------- Test 8: Geometrie merken und wiederfinden ----------------
 console.log('\n9. Test: Gemessene Geometrie ueberlebt den Neustart');
 const gemerkt = await rememberGeometry(rahmen1440, [

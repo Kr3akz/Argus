@@ -21,6 +21,23 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-08-30
+
+### Fixed
+
+- **Fewer than four relics no longer get a four-slot dock.** Two different
+  things had been sharing one number: how many cards the recognition should
+  look for, and how many slots the dock should show. For the search, four is
+  the right answer when nothing is known — there are never more. For the
+  display it is not: a missing count was read as "four" rather than as "no
+  information", so a squad that opened two relics got a dock built for four.
+  It was not only too wide but **off centre** — measured, the two cards landed
+  in slots 2 and 3 of 4, a card and a half to the right of where they belong.
+  The two numbers are now separate, and the dock follows only what was actually
+  reported: the count of opened relics from the log, and where that is silent,
+  the cards that were actually read. Nothing is held open for a card nobody
+  said exists.
+
 ## [1.3.0] - 2026-08-29
 
 ### Added

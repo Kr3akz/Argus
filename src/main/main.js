@@ -737,6 +737,11 @@ function showTags(rewards, erwartet = 0) {
      zentrierte Feld hat von der ersten bis zur vierten Karte dieselbe Breite
      und dieselbe Lage, waehrend das abgeleitete bei jeder Nachlieferung neu
      zugeschnitten wird - und das sieht man. */
+  /* `erwartet` ist die GEMELDETE Zahl der aufgegangenen Relikte, oder 0 fuer
+     "keine Auskunft". Ohne Auskunft folgt das Feld wieder den gelesenen Karten:
+     lieber ein Dock, das mitwaechst, als eines, das Plaetze fuer Karten
+     freihaelt, die es gar nicht gibt. Genau das war zu sehen - vier Schilder
+     ueber einer kleineren Gruppe. */
   const gemessen = letzteGeometrie?.gemessen ? letzteGeometrie : null;
   const geo = gemessen && erwartet
     ? panelGeometrieGemessen(placeable, frame, gemessen.cardWidth, erwartet)
@@ -785,7 +790,7 @@ function showTags(rewards, erwartet = 0) {
      Nur mit Messung: ohne sie kommt die Spaltenzahl aus den gelesenen Karten,
      und dann waere eine "fehlende" Spalte reine Erfindung. */
   const belegt = new Set(gelesen.map(t => t.spalte));
-  const tags = gemessen
+  const tags = gemessen && erwartet
     ? [...gelesen, ...Array.from({ length: geo.anzahlSpalten }, (_, i) => i)
                         .filter(i => !belegt.has(i))
                         .map(i => ({ spalte: i, loading: true }))]
@@ -873,7 +878,7 @@ async function showSkeletonTags() {
 
   if (!tagWin || tagWin.isDestroyed()) createTagWindow(dip);
 
-  const anzahl = Math.min(4, Math.max(1, geo.players || 4));
+  const anzahl = Math.min(4, Math.max(1, letzteKartenzahl || geo.players || 4));
   const breite = geo.cardWidth * frame.w;
   /* Zentriert im Rahmen - dieselbe Annahme, aus der auch die Spalten der
      Erkennung entstehen (siehe scan-geometry.js). */
@@ -3672,6 +3677,12 @@ let frameCache = { at: 0, frame: null };
 /* Die Geometrie des laufenden Durchgangs. showTags ist synchron und haengt an
    einer Fuenfzehn-Sekunden-Uhr - es darf sie nicht selbst nachladen. */
 let letzteGeometrie = null;
+/* Wie viele Relikte zuletzt aufgegangen sind. Nur fuer das Dock, das VOR der
+   Erkennung erscheint und die Zahl da noch nicht kennen kann: die Gruppe
+   bleibt innerhalb einer Mission dieselbe. Sobald das Log sie nennt, gilt
+   diese - und die Korrektur faellt in die Zeit, in der noch lauter
+   Platzhalter dastehen, ist also nicht zu sehen. */
+let letzteKartenzahl = 0;
 
 /**
  * Der Rahmen, auf den sich alle Ausschnitte beziehen - in echten
@@ -4260,7 +4271,7 @@ async function tickRewardWatch() {
        die richtige Annahme: mehr Karten als Mitspieler stehen nie da, und die
        Erkennung nimmt ohnehin, was sie findet. Der eigene Fund traegt sich
        nach, sobald das Log endlich schreibt. */
-    await handleRelicReward({ uniqueName: null, players: 4, seconds: 15, vomWaechter: true });
+    await handleRelicReward({ uniqueName: null, players: 0, seconds: 15, vomWaechter: true });
   } finally {
     watchBusy = false;
   }
@@ -4505,7 +4516,7 @@ async function zeigeGelesene(scan, started, { fertig = false } = {}) {
   started.scanning = !fertig;
   started.complete = started.rewards.length >= (started.expected || 4);
   pushRelic();
-  showTags(started.rewards, started.expected);
+  showTags(started.rewards, started.karten);
 }
 
 /**
@@ -4546,7 +4557,7 @@ async function handleRelicReward(ev) {
              eigene ist - vorher fehlte dafuer der Name. */
           for (const r of laufend.rewards) r.isOwn = r.name === own.name;
           pushRelic();
-          if (relicTags && laufend.rewards.length) showTags(laufend.rewards, laufend.expected);
+          if (relicTags && laufend.rewards.length) showTags(laufend.rewards, laufend.karten);
           if (own.slug) {
             return getPrice(own.slug).then(price => {
               if (currentRelic !== laufend) return;
@@ -4564,7 +4575,26 @@ async function handleRelicReward(ev) {
               + ` | Mitspieler: ${ev.players || '?'}`
               + (ev.vomWaechter ? ' | Melder: Bildschirm' : ' | Melder: Log'));
 
-    const expected = Math.min(4, Math.max(1, ev.players || 4));
+    /* ZWEI ZAHLEN, DIE NICHT DASSELBE SIND - und deren Vermischung dazu
+       gefuehrt hat, dass ueber einer Zweiergruppe vier Schilder standen.
+
+       `karten` ist, was das Log ueber die Zahl der aufgegangenen Relikte sagt:
+       eine Zeile "Client got reward info" je Relikt. NULL heisst hier
+       ausdruecklich "keine Auskunft" und NICHT "vier" - der Waechter etwa hat
+       gar kein Log, aus dem er das lesen koennte.
+
+       `expected` ist, wonach die ERKENNUNG sucht. Dafuer braucht es eine Zahl,
+       auch wenn keine gemeldet wurde; vier ist dann die richtige Obergrenze,
+       denn mehr Karten gibt es nie.
+
+       Die Anzeige darf nur der ersten folgen. Eine Karte, von der niemand
+       gesagt hat, dass es sie gibt, darf nicht als leerer Platz dastehen. */
+    const karten = Math.min(4, Math.max(0, ev.players || 0));
+    const expected = karten || 4;
+    /* Fuer das Dock, das VOR der Erkennung erscheint: die Gruppe bleibt
+       innerhalb einer Mission dieselbe, also ist die zuletzt gesehene Zahl der
+       beste Anhaltspunkt, den es zu diesem Zeitpunkt gibt. */
+    if (karten) letzteKartenzahl = karten;
 
     /* DER BILDSCHIRM ZUERST, und zwar OHNE davor auf das Netz zu warten.
        Er ist das Einzige hier, das an eine Uhr gebunden ist: die Namen der
@@ -4582,7 +4612,7 @@ async function handleRelicReward(ev) {
       lauf,
       seconds: ev.seconds, at: t0,
       own: null, rewards: [], scanning: relicScan, scanError: null,
-      expected
+      expected, karten
     };
     setCurrentRelic(started, `Belohnungsbildschirm #${lauf} auf`);
 
@@ -4667,6 +4697,7 @@ async function handleRelicReward(ev) {
     currentRelic.region = scan.region || null;
     /* Vollstaendig heisst "so viele wie Mitspieler", nicht "vier". */
     currentRelic.expected = expected;
+    currentRelic.karten = karten;
     await zeigeGelesene(scan, started, { fertig: true });
     console.log(`[Relikt #${lauf}] Schilder stehen`, seit(), '- Preise fehlen noch');
 
@@ -4680,7 +4711,7 @@ async function handleRelicReward(ev) {
       if (currentRelic !== started) return;
       reward.price = price;
       pushRelic();
-      showTags(currentRelic.rewards, currentRelic.expected);
+      showTags(currentRelic.rewards, currentRelic.karten);
     }
     console.log(`[Relikt #${lauf}] Preise vollstaendig`, seit());
 }
