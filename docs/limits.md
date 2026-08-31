@@ -10,7 +10,20 @@
 - **The MR display can be off by one.** MR XP per star chart node is not publicly
   documented; the calculation assumes 100. The item lists and the MR gains per item are
   **not** affected — those come straight from your profile data.
-- **Vaulted primes** are still listed as obtainable.
+- **Prime Resurgence is invisible to the vault check.** Argus reads which
+  relics currently drop and works out from there which prime parts are still
+  farmable. Varzia's monthly Aya offering is not in any drop table, so a part
+  marked `0/4` may well be buyable from her this month. "Vaulted" here means
+  precisely: *it drops nowhere.*
+- **Baro's next offer is not knowable.** DE publishes his manifest only once he is
+  standing in the relay; for the other twelve days of the fortnight there is no list at
+  all. Argus keeps a copy of the last one it saw and labels it as that — it does not
+  guess, and no source can. → [details](baro.md)
+- **The crafting chains only know what is in a recipe.** A weapon that requires another
+  weapon appears; a weapon that merely *replaces* one (a Wraith or Vandal variant, an
+  incarnon adapter) does not, because DE's recipes do not link them. Both are separate
+  mastery either way, so nothing is lost — but the list is "what eats what", not "what
+  supersedes what".
 - Zaw/kitgun/amp parts are roughly classified.
 - **Mod ownership needs the inventory.** The public profile contains no mod data
   whatsoever — ownership comes from the authenticated inventory fetch. Until that has run

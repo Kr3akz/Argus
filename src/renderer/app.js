@@ -125,22 +125,35 @@ document.querySelectorAll('.nav-item').forEach(tab => {
   tab.onclick = () => showTab(tab.dataset.tab);
 });
 
-/* ---------------- Mastery: Manager <-> Katalog ---------------- */
-let masteryMode = 'manager';   // 'manager' | 'catalog'
+/* ---------------- Mastery: Manager <-> Katalog <-> Schmiede ---------------- */
+const MASTERY_MODES = ['manager', 'catalog', 'foundry'];
+let masteryMode = 'manager';
 
 const MASTERY_HINTS = {
   manager: 'Goals, resources & mastery recommendations',
-  catalog: 'Search every item and set it as a goal'
+  catalog: 'Search every item and set it as a goal',
+  foundry: 'What is building and what is finished'
 };
 
 function applyMasteryMode() {
-  $('tab-mastery-mode-manager')?.classList.toggle('active', masteryMode === 'manager');
-  $('tab-mastery-mode-catalog')?.classList.toggle('active', masteryMode === 'catalog');
-  $('mastery-pane-manager')?.classList.toggle('active', masteryMode === 'manager');
-  $('mastery-pane-catalog')?.classList.toggle('active', masteryMode === 'catalog');
+  /* Ueber die Liste statt Zeile fuer Zeile: bei drei Modi war die vierte
+     vergessene Zeile nur eine Frage der Zeit. */
+  for (const m of MASTERY_MODES) {
+    $('tab-mastery-mode-' + m)?.classList.toggle('active', masteryMode === m);
+    $('mastery-pane-' + m)?.classList.toggle('active', masteryMode === m);
+  }
   const hint = $('mastery-mode-hint');
   if (hint) hint.textContent = MASTERY_HINTS[masteryMode] || '';
+
   if (masteryMode === 'catalog' && !checklistCache.length) loadChecklist();
+  /* Die Schmiede laedt bei JEDEM Aufschlagen neu, anders als der Katalog:
+     ihr Inhalt ist eine Uhr. Ein Stand von vor einer Stunde waere hier nicht
+     "schon da", sondern falsch.
+
+     Die Ketten darunter NICHT: sie aendern sich nur, wenn ein Bau fertig oder
+     ein Rang erreicht ist - und dann kommt ein neuer Inventarabruf, der sie
+     verwirft. */
+  if (masteryMode === 'foundry') { loadForge(); initChainEvents(); loadChains(); }
 }
 
 function setMasteryMode(mode) {
@@ -148,8 +161,437 @@ function setMasteryMode(mode) {
   applyMasteryMode();
 }
 
-$('tab-mastery-mode-manager')?.addEventListener('click', () => setMasteryMode('manager'));
-$('tab-mastery-mode-catalog')?.addEventListener('click', () => setMasteryMode('catalog'));
+for (const m of MASTERY_MODES) {
+  $('tab-mastery-mode-' + m)?.addEventListener('click', () => setMasteryMode(m));
+}
+
+/* ------------------------- Die Schmiede ------------------------- */
+
+/**
+ * Restzeit als Text.
+ *
+ * Eigene Fassung im Renderer, obwohl core/foundry.js dieselbe Funktion hat:
+ * ueber die IPC-Bruecke kommen Daten, keine Funktionen, und ein zweiter
+ * Kanal nur fuer eine Formatierung waere teurer als diese zwoelf Zeilen.
+ *
+ * Unter einer Stunde ist "0h" die falsche Antwort - dann zaehlen Minuten,
+ * und in der letzten Minute die Sekunden.
+ */
+function forgeRemaining(ms) {
+  if (ms == null) return '—';
+  if (ms <= 0) return 'ready';
+  const s = Math.floor(ms / 1000);
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m`;
+  if (m > 0) return `${m}m`;
+  return `${s % 60}s`;
+}
+
+let forgeData = null;
+let forgeTicker = null;
+
+/**
+ * Die Schmiede holen und zeichnen.
+ *
+ * EIGENER ABRUF, NICHT DER DES INVENTARS: Diese Seite liegt im Mastery-Tab.
+ * Haenge sie an die Inventardaten, muesste man erst das Inventar aufmachen,
+ * damit hier etwas steht - genau der Umweg, den die Seite abschaffen soll.
+ * Der Abruf ist rein lokal und kostet weder Netz noch Speicherzugriff.
+ */
+async function loadForge() {
+  const box = $('forge-body');
+  if (!box) return;
+
+  const res = await window.api.getFoundry();
+  forgeData = res?.ok ? res.data : null;
+
+  if (!forgeData) {
+    box.innerHTML = `<div class="forge-empty">
+      <b>No inventory fetched yet.</b>
+      <p>The foundry is part of your account data. Start Warframe and press
+         <b>Fetch inventory</b> on the Inventory tab once — after that it is
+         read from the local copy and costs nothing.</p>
+    </div>`;
+    return;
+  }
+  renderForge();
+}
+
+/**
+ * Was in der Schmiede steht.
+ *
+ * DIE ZEITEN LAUFEN HIER, NICHT IM HAUPTPROZESS.
+ *   Ueber die Bruecke kommt completionAt - ein fester Zeitpunkt. Die
+ *   Restzeit daraus zu rechnen ist Sache dessen, der sie anzeigt; haette der
+ *   Hauptprozess sie mitgeschickt, waere sie in der Sekunde nach dem Abruf
+ *   schon falsch und bliebe es bis zum naechsten.
+ *
+ * WAS DIE UHR NICHT WEISS: ob jemand im Spiel etwas abgeholt oder neu
+ * eingelegt hat. Das steht erst im naechsten Inventarabruf. Die Anzeige
+ * bleibt deshalb bei dem, was sie belegen kann - sie zaehlt herunter, aber
+ * sie erfindet nichts dazu.
+ */
+function renderForge() {
+  const box = $('forge-body');
+  if (!box || !forgeData) return;
+
+  const items = forgeData.items || [];
+  const helminth = forgeData.helminth;
+
+  if (!items.length && !helminth) {
+    box.innerHTML = `<div class="forge-empty">
+      <b>Nothing in the foundry.</b>
+      <p>Whatever you put in next shows up here with the time it will be done.</p>
+    </div>`;
+    if (forgeTicker) { clearInterval(forgeTicker); forgeTicker = null; }
+    return;
+  }
+
+  const now = Date.now();
+
+  /* Ein Bild je Zeile. Faellt es aus - kein Katalogeintrag, kein Netz -,
+     bleibt der Rahmen stehen statt zu verschwinden: sonst rutschen Name und
+     Zeit nach links und die Liste wird unruhig. */
+  const bild = (src, alt) => src
+    ? `<img class="forge-img" src="${esc(src)}" alt="${esc(alt)}" onerror="this.style.visibility='hidden'">`
+    : '<span class="forge-img"></span>';
+
+  /**
+   * Eine Zeile.
+   *
+   * FERTIG UND LAUFEND SEHEN VERSCHIEDEN AUS, weil sie Verschiedenes von
+   * einem wollen. Fertig ist eine AUFFORDERUNG - hingehen und abholen -, und
+   * die traegt deshalb ein Abzeichen statt einer Zeitangabe: "ready to
+   * collect" als grauer Fliesstext rechts sah aus wie eine Uhr, die stehen
+   * geblieben ist. Laufend ist eine AUSKUNFT, und die gehoert an dieselbe
+   * Stelle wie jede andere Restzeit.
+   *
+   * @param total  Gesamtdauer des Baus in ms - macht aus der Restzeit einen
+   *               Fortschritt. Fehlt sie (Helminth), bleibt der Balken weg,
+   *               statt einen geratenen Stand zu zeigen.
+   */
+  const zeile = (name, at, img, extra = '', total = null) => {
+    const rest = at == null ? null : at - now;
+    const bereit = rest != null && rest <= 0;
+
+    /* Ein gerushter Bau kann laenger her sein als seine eigene Bauzeit -
+       der Anteil wird deshalb gedeckelt, nicht nur gerechnet. */
+    const anteil = total > 0 && rest != null
+      ? Math.max(0, Math.min(1, (total - rest) / total))
+      : null;
+
+    return `
+      <div class="forge-row ${bereit ? 'is-ready' : ''}">
+        ${img}
+        <div class="forge-main">
+          <span class="forge-name">${esc(name)}${extra}</span>
+          ${!bereit && anteil != null ? `
+            <span class="forge-bar" data-forge-total="${total}">
+              <i style="width:${(anteil * 100).toFixed(1)}%"></i>
+            </span>` : ''}
+        </div>
+        ${bereit
+          ? `<span class="forge-pill" data-forge-at="${at ?? ''}">
+               <i class="forge-pip"></i>Collect
+             </span>`
+          : `<span class="forge-time" data-forge-at="${at ?? ''}">${forgeRemaining(rest)}</span>`}
+      </div>`;
+  };
+
+  /* Zwei Gruppen statt einer sortierten Liste. Sie sind zwei verschiedene
+     Nachrichten - "geh hin" und "warte noch" -, und mit Ueberschrift muss
+     man den Bruch dazwischen nicht an der Farbe der Zeilen ablesen.
+
+     Der Helminth zaehlt mit: fuer den Spieler ist er dieselbe Frage. */
+  const alle = [
+    ...items.map(i => ({
+      name: i.name, at: i.completionAt, total: i.buildSeconds ? i.buildSeconds * 1000 : null,
+      img: bild(i.image, i.name), extra: i.count > 1 ? ` <em>x${i.count}</em>` : ''
+    })),
+    ...(helminth ? [{
+      name: helminth.ability, at: helminth.readyAt, total: null,
+      img: `<span class="forge-img forge-img-helminth">${Icon.qaHelminth(24)}</span>`,
+      extra: ' <em>Helminth</em>'
+    }] : [])
+  ];
+
+  const fertig = alle.filter(z => z.at != null && z.at <= now);
+  const laeuft = alle.filter(z => !(z.at != null && z.at <= now));
+
+  const gruppe = (titel, zeilen, ready = false) => zeilen.length ? `
+    <div class="forge-group ${ready ? 'is-ready' : ''}">
+      <div class="forge-group-head">
+        ${ready ? '<i class="forge-pip"></i>' : ''}
+        <span>${titel}</span>
+        <em>${zeilen.length}</em>
+      </div>
+      <div class="forge-list">
+        ${zeilen.map(z => zeile(z.name, z.at, z.img, z.extra, z.total)).join('')}
+      </div>
+    </div>` : '';
+
+  /* Der naechste Umschlag steht im Kopf, weil er die einzige Zahl ist, die
+     man sich merkt: wann muss ich wieder nachsehen. */
+  const naechster = laeuft
+    .map(z => z.at).filter(t => t != null && t > now).sort((a, b) => a - b)[0] || null;
+
+  box.innerHTML = `
+    <div class="forge-card">
+      <div class="forge-head">
+        <span class="forge-title">${alle.length} in the foundry</span>
+        ${naechster
+          ? `<span class="forge-next">next in
+               <b data-forge-at="${naechster}">${forgeRemaining(naechster - now)}</b></span>`
+          : ''}
+      </div>
+      ${gruppe('Ready to collect', fertig, true)}
+      ${gruppe('Building', laeuft)}
+    </div>`;
+
+  /* Ein Ticker fuer die ganze Liste statt einer Uhr je Zeile. Er schreibt nur
+     Text in vorhandene Elemente - und laesst neu zeichnen, sobald eine Zeile
+     die Grenze zu "fertig" ueberschreitet, weil sich dann Bild, Farbe und
+     Kopfzeile mitaendern muessen. */
+  if (forgeTicker) clearInterval(forgeTicker);
+  forgeTicker = setInterval(() => {
+    if (!document.body.contains(box)) { clearInterval(forgeTicker); forgeTicker = null; return; }
+    /* Nicht sichtbar, nicht rechnen - und sichtbar ist die Liste nur, wenn
+       BEIDES stimmt: der Mastery-Tab ist vorn und darin der Schmiede-Modus.
+       Der Modus allein reicht nicht, er bleibt auch gesetzt, waehrend man
+       ganz woanders in der App ist. */
+    if (!$('tab-mastery')?.classList.contains('active') ||
+        !$('mastery-pane-foundry')?.classList.contains('active')) return;
+
+    let umschlag = false;
+    box.querySelectorAll('[data-forge-at]').forEach(el => {
+      const at = Number(el.dataset.forgeAt);
+      if (!Number.isFinite(at) || !at) return;
+      const rest = at - Date.now();
+      /* Das Abzeichen einer fertigen Zeile traegt denselben Zeitpunkt wie die
+         Uhr einer laufenden. Nur die Zeile entscheidet, ob hier ein Umschlag
+         stattfindet - sonst loeste jede fertige Zeile im Sekundentakt ein
+         Neuzeichnen aus. Die Zahl im Kopf haengt an keiner Zeile und wird
+         zusammen mit ihr neu gesetzt. */
+      const row = el.closest('.forge-row');
+      if (rest <= 0) {
+        if (row && !row.classList.contains('is-ready')) umschlag = true;
+        return;
+      }
+      el.textContent = forgeRemaining(rest);
+    });
+
+    /* Die Fortschrittsbalken laufen mit. Sie haengen an einem anderen Element
+       als die Zeit derselben Zeile, deshalb eine zweite Runde. */
+    box.querySelectorAll('.forge-bar[data-forge-total]').forEach(bar => {
+      const at = Number(bar.closest('.forge-row')?.querySelector('[data-forge-at]')?.dataset.forgeAt);
+      const total = Number(bar.dataset.forgeTotal);
+      if (!Number.isFinite(at) || !(total > 0)) return;
+      const anteil = Math.max(0, Math.min(1, (total - (at - Date.now())) / total));
+      if (bar.firstElementChild) bar.firstElementChild.style.width = (anteil * 100).toFixed(1) + '%';
+    });
+
+    if (umschlag) renderForge();
+  }, 1000);
+}
+
+/* ------------------------- Bauketten -------------------------
+   Waffen, die aus anderen Waffen gebaut werden. Die Kette steht unter der
+   Schmiede, weil sie dieselbe Handlung betrifft - was lege ich als Naechstes
+   ein - und weil sie die Reihenfolge vorgibt: jede Stufe wird beim Bau der
+   naechsten VERBRAUCHT. Wer die Bolto ungerankt in die Akbolto steckt, hat
+   3.000 Mastery-Punkte weggeworfen, und das Spiel sagt es ihm nicht.
+   ------------------------------------------------------------- */
+
+let chainData = null;
+let chainFilter = 'open';   // 'open' | 'risk' | 'ready' | 'all'
+
+const CHAIN_CATEGORY = {
+  Suits: 'Warframe', LongGuns: 'Primary', Pistols: 'Secondary', Melee: 'Melee',
+  SpaceGuns: 'Archwing gun', SpaceMelee: 'Archwing melee', SpaceSuits: 'Archwing',
+  Sentinels: 'Sentinel', SentinelWeapons: 'Sentinel weapon', MechSuits: 'Necramech',
+  KubrowPets: 'Companion', KDrive: 'K-Drive', AmpPrism: 'Amp prism',
+  ZawStrike: 'Zaw strike', KitgunChamber: 'Kitgun chamber'
+};
+
+async function loadChains() {
+  const box = $('chains-body');
+  if (!box) return;
+
+  if (!chainData) {
+    const res = await window.api.getCraftChains();
+    chainData = res?.ok ? res.data : { chains: [], hasMastery: false, hasInventory: false };
+  }
+  renderChains();
+}
+
+/** Alle Glieder einer Kette flach - fuer Suche und Baureihenfolge. */
+function chainNodes(node, out = []) {
+  out.push(node);
+  for (const s of node.steps || []) chainNodes(s, out);
+  return out;
+}
+
+/**
+ * Ein Glied als Zeile.
+ *
+ * DIE EINRUECKUNG IST DIE AUSSAGE: was weiter rechts steht, wird frueher
+ * gebaut und vom Ding darueber gefressen. Deshalb traegt jede Zeile ihre
+ * Tiefe als Variable und nicht als eigene Klasse - bei vier Stufen waere die
+ * fuenfte nur eine Frage der Zeit.
+ */
+function chainRank(n) {
+  return n.status === 'missing'
+    ? '<span class="chain-rank is-missing">not owned</span>'
+    : `<span class="chain-rank ${n.status === 'mastered' ? 'is-done' : 'is-part'}">${n.rank}/${n.maxRank}</span>`;
+}
+
+function chainNodeRow(n, hasInventory) {
+  /* Der Bestand nur, wo er etwas sagt: "0/2 in stock" neben einem "not
+     owned" ist dieselbe Auskunft zweimal. Interessant wird er, sobald man
+     etwas HAT - dann steht dort, ob es fuer den naechsten Bau reicht. */
+  const bestand = hasInventory && n.owned > 0
+    ? `<span class="chain-have ${n.covered ? 'is-ok' : ''}">${n.owned}/${n.need} in stock</span>`
+    : '';
+
+  /* Die Wurzel steht im Kopf der Karte, die Zutaten ruecken deshalb um eine
+     Stufe nach links - sonst begaenne der Baum mit einer leeren Spalte. */
+  const tiefe = Math.max(0, n.depth - 1);
+
+  return `
+    <div class="chain-node d${Math.min(tiefe, 4)} is-${n.status}" style="--depth:${tiefe}">
+      <span class="chain-mark">${n.status === 'mastered' ? Icon.check(12) : ''}</span>
+      <img class="chain-img" src="${esc(n.image || '')}" alt="" loading="lazy"
+           onerror="this.style.visibility='hidden'">
+      <span class="chain-name">
+        ${n.need > 1 ? `<b class="chain-need">${n.need}×</b>` : ''}${esc(n.name)}
+      </span>
+      ${n.building ? '<span class="chain-flag is-building">in the foundry</span>' : ''}
+      ${bestand}
+      ${chainRank(n)}
+    </div>`;
+}
+
+function renderChains() {
+  const box = $('chains-body');
+  if (!box || !chainData) return;
+
+  const alle = chainData.chains || [];
+  const q = ($('chain-search')?.value || '').trim().toLowerCase();
+
+  /* Die Suche greift auf die ganze Kette, nicht nur auf den Namen oben: wer
+     "Bolto" sucht, meint die Kette, in der eine Bolto steckt - und die heisst
+     Akjagara. */
+  let liste = q
+    ? alle.filter(c => chainNodes(c).some(n => n.name.toLowerCase().includes(q)))
+    : alle;
+
+  if (chainFilter === 'open')  liste = liste.filter(c => !c.complete);
+  if (chainFilter === 'risk')  liste = liste.filter(c => c.atRisk.length);
+  if (chainFilter === 'ready') liste = liste.filter(c => c.ready === true);
+
+  /* Die Kopfzeile spricht ueber ALLE Ketten, nicht ueber die gefilterten -
+     sonst aendert sich die Gesamtlage, sobald man einen Chip anklickt. */
+  const offen = alle.filter(c => !c.complete).length;
+  const summe = alle.reduce((s, c) => s + c.openGain, 0);
+  const kopf = $('chain-summary');
+  if (kopf) {
+    kopf.textContent = alle.length
+      ? `${alle.length} chains · ${alle.length - offen} complete · ${nf(summe)} mastery points still open`
+      : '';
+  }
+
+  if (!liste.length) {
+    box.innerHTML = `
+      <div class="forge-empty">
+        <b>${alle.length ? 'Nothing matches' : 'No chains found'}</b>
+        <p>${alle.length
+          ? 'No chain matches your search and filter. “All” shows the finished ones as well.'
+          : 'The chains come from DE&rsquo;s own recipes — if this stays empty, the item catalogue could not be loaded.'}</p>
+      </div>`;
+    return;
+  }
+
+  /* Ohne Mastery-Daten waere jedes Glied "not owned" - das ist keine Aussage,
+     sondern eine fehlende Quelle, und es steht dabei. */
+  const hinweis = !chainData.hasMastery ? `
+    <div class="chain-note">
+      ${Icon.warning(13)} No mastery data yet — fetch your profile once and every link below
+      shows its own rank instead of “not owned”.
+    </div>` : '';
+
+  box.innerHTML = hinweis + liste.map(c => {
+    const nodes = chainNodes(c);
+
+    /* Die Baureihenfolge: von unten nach oben, Stufe fuer Stufe. Sie steht in
+       einer Zeile, weil genau das die Antwort auf "und was mache ich jetzt"
+       ist - der Baum darueber sagt, WAS zusammengehoert, diese Zeile sagt,
+       in welcher Reihenfolge. */
+    const stufen = [];
+    for (let d = c.depthMax; d >= 0; d--) {
+      const auf = nodes.filter(n => n.depth === d);
+      if (auf.length) stufen.push(auf.map(n => (n.need > 1 ? `${n.need}× ` : '') + n.name).join(' + '));
+    }
+
+    return `
+      <div class="chain-card ${c.complete ? 'is-complete' : ''}">
+        <div class="chain-head">
+          <img class="chain-head-img" src="${esc(c.image || '')}" alt=""
+               onerror="this.style.visibility='hidden'">
+          <div class="chain-title">
+            <b>${esc(c.name)}</b>
+            <span class="chain-sub">${esc(CHAIN_CATEGORY[c.category] || c.category)}
+              · ${c.links} links${c.masteryReq ? ` · MR ${c.masteryReq}` : ''}
+              · ${chainRank(c)}</span>
+          </div>
+          <div class="chain-stats">
+            <span class="chain-done ${c.complete ? 'is-complete' : ''}">${c.mastered}/${c.links}</span>
+            <span class="chain-gain">${c.complete ? 'all mastered' : `+${nf(c.openGain)} MR`}</span>
+          </div>
+        </div>
+
+        <!-- Die Wurzel steht schon im Kopf - hier steht, was sie frisst. -->
+        <div class="chain-tree">
+          ${nodes.slice(1).map(n => chainNodeRow(n, chainData.hasInventory)).join('')}
+        </div>
+
+        ${c.atRisk.length ? `
+          <div class="chain-warn">
+            ${Icon.warning(13)}
+            <span>Rank <b>${c.atRisk.map(esc).join('</b>, <b>')}</b> to 30 first — the next build
+                  consumes ${c.atRisk.length > 1 ? 'them' : 'it'}, and the mastery goes with ${c.atRisk.length > 1 ? 'them' : 'it'}.</span>
+          </div>` : ''}
+
+        ${c.ready === true && !c.complete ? `
+          <div class="chain-ok">${Icon.check(13)}
+            <span>Everything for the final build is in your inventory.</span></div>` : ''}
+
+        ${c.depthMax > 1 ? `
+          <div class="chain-order">
+            <span class="chain-order-label">Build order</span>
+            ${stufen.map(s => `<span class="chain-step">${esc(s)}</span>`).join('<i class="chain-arrow">→</i>')}
+          </div>` : ''}
+      </div>`;
+  }).join('');
+}
+
+let chainEventsReady = false;
+function initChainEvents() {
+  if (chainEventsReady) return;
+  chainEventsReady = true;
+
+  $('chain-search')?.addEventListener('input', () => renderChains());
+  document.querySelectorAll('[data-chainfilter]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      chainFilter = btn.dataset.chainfilter;
+      document.querySelectorAll('[data-chainfilter]').forEach(b =>
+        b.classList.toggle('active', b === btn));
+      renderChains();
+    });
+  });
+}
 
 /* Der Knopf im Kopf springt zu den ausfuehrlichen Zielkarten - die liegen im
    Manager, also erst umschalten und dann dorthin scrollen. */
@@ -2160,6 +2602,39 @@ async function loadChecklist() {
   drawChecklist();
 }
 
+/**
+ * Die zwei Ecken einer Katalogkachel, die nicht vom Mastery-Fortschritt
+ * handeln: ist das Ding ueberhaupt noch zu holen, und liegt es schon im
+ * Helminth.
+ *
+ * BEIDE FELDER KENNEN DREI ZUSTAENDE, NICHT ZWEI. `null` heisst "keine
+ * Aussage" - kein Prime, oder es wurde nie ein Inventar abgerufen. Dann steht
+ * dort nichts. Ein leeres Eck ist die ehrliche Antwort auf eine Frage, die
+ * niemand beantworten kann; ein graues Abzeichen waere eine.
+ */
+function tileMarks(i) {
+  const out = [];
+
+  if (i.vault?.vaulted) {
+    /* Immer als Bruch, auch bei null: "0/4" sagt dasselbe wie ein Symbol,
+       aber ohne dass man die Bedeutung erst lernen muss - und es steht in
+       derselben Schreibweise da wie das halb offene "2/4" daneben. Die Farbe
+       trennt die beiden Faelle: gar nichts zu holen ist rot, ein Teil davon
+       noch zu holen ist gold. */
+    const teils = i.vault.have > 0;
+    out.push(`<span class="tile-mark vault${teils ? ' partial' : ''}"
+      title="${teils
+        ? `Vaulted — only ${i.vault.have} of ${i.vault.total} parts still drop`
+        : 'Vaulted — none of its parts drop anywhere right now'}">${i.vault.have}/${i.vault.total}</span>`);
+  }
+
+  if (i.subsumed === true) {
+    out.push(`<span class="tile-mark subsumed" title="Subsumed — its ability is available from the Helminth">${Icon.qaHelminth(11)}</span>`);
+  }
+
+  return out.length ? `<span class="tile-marks">${out.join('')}</span>` : '';
+}
+
 function drawChecklist() {
   const cat    = $('filter-category')?.value || '';
   const status = $('filter-status')?.value || '';
@@ -2181,6 +2656,7 @@ function drawChecklist() {
       <div class="tile ${esc(i.status)} ${isGoal ? 'is-goal' : ''}" data-item-u="${esc(i.uniqueName)}">
         <span class="dot ${esc(i.status)}"></span>
         ${isGoal ? `<span class="tile-goal-badge" title="Active farming goal">${Icon.target(12)}</span>` : ''}
+        ${tileMarks(i)}
         <img src="${esc(i.image)}" alt="" onerror="this.style.visibility='hidden'">
         <div class="tile-name">${esc(i.name)}</div>
         <div class="tile-rank">${i.status === 'missing' ? 'Missing' : 'Rank ' + i.rank + ' / ' + i.maxLvl}</div>
@@ -2257,6 +2733,8 @@ async function openItemModal(uniqueName) {
             <span class="im-badge cat">${esc(d.categoryLabel)}</span>
             ${d.masteryReq > 0 ? `<span class="im-badge mr">MR ${d.masteryReq}</span>` : ''}
             <span class="im-badge status ${esc(d.status)}">${statusText}</span>
+            ${d.vault?.vaulted ? `<span class="im-badge vaulted">Vaulted${d.vault.have > 0 ? ` · ${d.vault.have}/${d.vault.total}` : ''}</span>` : ''}
+            ${d.subsumed === true ? `<span class="im-badge subsumed">Subsumed</span>` : ''}
           </div>
           <h2>${esc(d.name)}</h2>
           <div class="im-gain-hint">
@@ -2279,6 +2757,22 @@ async function openItemModal(uniqueName) {
     </div>
 
     <div class="im-scroll-body">
+    ${d.vault?.vaulted ? `
+      <div class="im-section im-vault">
+        <p>
+          <b>${d.vault.have > 0
+            ? `Partly vaulted — ${d.vault.have} of ${d.vault.total} parts still drop.`
+            : 'Vaulted — none of its parts drop anywhere right now.'}</b>
+          ${d.vault.missing.length
+            ? ` Missing from the current relics: ${d.vault.missing.map(esc).join(', ')}.`
+            : ''}
+          Trading is the reliable way in — and Varzia's Prime Resurgence
+          rotates a different selection into reach every month, which no drop
+          table lists.
+        </p>
+      </div>
+    ` : ''}
+
     ${d.description ? `
       <div class="im-section">
         <p class="im-desc">${esc(d.description)}</p>
@@ -3337,10 +3831,19 @@ async function loadDucats() {
 
   // Fehlende Preise im Hintergrund automatisch nachladen
   fetchMissingDucatPrices();
+
+  /* Baros Angebot gleich mit - nicht erst beim Umschalten. Sonst stuende am
+     Reiter dauerhaft eine 0, und genau die Zahl ist der Grund hinzusehen:
+     wie viel von dem, was er dabei hat, einem noch fehlt. */
+  loadBaroOffer();
 }
 
 async function fetchMissingDucatPrices(forceAll = false) {
   if (isFetchingDucatPrices || !ducatsData) return;
+  /* Baros Waren tragen keine Marktpreise - sie kosten Dukaten und Credits.
+     Ohne diese Zeile liefe hier der ganze Prime-Katalog durch die
+     Preisabfrage, ohne dass eine einzige Zahl davon angezeigt wuerde. */
+  if (ducatsMode === 'baro') return;
 
   let missingSlugs;
 
@@ -3561,6 +4064,7 @@ function updateDucatsModeTabs() {
   $('tab-ducats-mode-cat')?.classList.toggle('active', ducatsMode === 'catalog');
   $('tab-ducats-mode-sets')?.classList.toggle('active', ducatsMode === 'sets');
   $('tab-ducats-mode-plan')?.classList.toggle('active', ducatsMode === 'plan');
+  $('tab-ducats-mode-baro')?.classList.toggle('active', ducatsMode === 'baro');
 
   if ($('ducats-sets-badge-count')) {
     $('ducats-sets-badge-count').textContent = (ducatsData?.sets || []).length;
@@ -3570,17 +4074,22 @@ function updateDucatsModeTabs() {
   }
 
   /* Seltenheits-Chips und Sortierung beziehen sich auf einzelne Teile. In der
-     Set-Ansicht haetten sie nichts zu filtern und stuenden nur im Weg - die
-     Suche bleibt, die trifft auch Set-Namen. */
+     Set- und der Baro-Ansicht haetten sie nichts zu filtern und stuenden nur
+     im Weg - die Suche bleibt, die trifft auch Set- und Warennamen. */
   const flat = ducatsMode === 'inventory' || ducatsMode === 'catalog';
   const isPlan = ducatsMode === 'plan';
 
-  document.querySelector('.ducats-filter-badges')?.classList.toggle('hidden', !flat);
+  $('ducats-filter-chips')?.classList.toggle('hidden', !flat);
   /* Der erste Treffer ist die Sortierung des Planers - deshalb gezielt ueber
      die Kennung, nicht ueber die Klasse. */
   $('ducats-sort')?.closest('.ducats-sort-wrap')?.classList.toggle('hidden', !flat);
   $('plan-sort-wrap')?.classList.toggle('hidden', !isPlan);
   $('plan-tier-filter')?.classList.toggle('hidden', !isPlan);
+
+  /* "Select all", "Duplicates only" und "Clear" waehlen Teile zum Verkauf
+     aus. Im Planer und bei Baro gibt es nichts auszuwaehlen - dort waeren es
+     drei Knoepfe, die nichts tun. */
+  $('tab-ducats')?.querySelector('.ducats-quick-actions')?.classList.toggle('hidden', !flat);
 }
 
 /**
@@ -3802,8 +4311,319 @@ function updateDucatsPriceButtonState(loading) {
   }
 }
 
+/* ---------------- Baros Einkaufszettel ----------------
+   Baro steht zwei von vierzehn Tagen im Relais und bringt jedes Mal ein gutes
+   Dutzend Posten mit. Welche davon man schon hat, sagt seine Liste im Spiel
+   nicht - dafuer muesste man den Haendler verlassen und im Arsenal suchen.
+   Hier steht es daneben, samt der Frage, ob die Dukaten ueberhaupt reichen.
+   ------------------------------------------------------ */
+
+let baroData = null;
+let baroLoading = false;
+/* Ob ueberhaupt schon einmal versucht wurde. Ohne diese Zeile ruft die
+   Ansicht bei einem fehlgeschlagenen Abruf sofort den naechsten auf, der
+   wieder scheitert, der wieder zeichnet - eine Schleife aus zwei Zeilen. */
+let baroTried = false;
+
+const BARO_KIND_LABEL = {
+  mod: 'Mod', weapon: 'Weapon', warframe: 'Warframe', cosmetic: 'Cosmetic',
+  blueprint: 'Blueprint', resource: 'Item', other: 'Item'
+};
+
+async function loadBaroOffer() {
+  if (baroLoading) return;
+  baroLoading = true;
+  baroTried = true;
+  try {
+    const res = await window.api.getBaroOffer();
+    baroData = res?.ok ? res.data : null;
+  } catch (err) {
+    console.error('Baros Angebot nicht ladbar:', err);
+    baroData = null;
+  } finally {
+    baroLoading = false;
+  }
+  if (ducatsMode === 'baro') renderBaroOffer();
+  if ($('ducats-baro-badge-count')) {
+    $('ducats-baro-badge-count').textContent = baroData?.summary?.missing ?? 0;
+  }
+}
+
+function renderBaroOffer() {
+  const box = $('ducats-catalog');
+  if (!box) return;
+
+  if (!baroData) {
+    box.innerHTML = `
+      <div class="ducats-empty-box">
+        <div class="empty-icon">${Icon.baro(30)}</div>
+        <h3>${baroLoading ? 'Reading Baro&rsquo;s manifest …' : 'No offer to compare'}</h3>
+        <p>Baro&rsquo;s wares are only published while he is standing in a relay. Once he
+           arrives, this page lines his manifest up against your inventory.</p>
+        ${!baroLoading && baroTried
+          ? '<button class="btn btn-sm btn-action" id="btn-baro-retry">Try again</button>'
+          : ''}
+      </div>`;
+    if (!baroLoading && !baroTried) loadBaroOffer();
+    $('btn-baro-retry')?.addEventListener('click', () => { baroTried = false; loadBaroOffer(); });
+    return;
+  }
+
+  const d = baroData;
+  const s = d.summary;
+  const q = ($('ducat-search')?.value || '').toLowerCase().trim();
+
+  const dukat = n => `<img class="currency-ic ducat-ic" src="assets/icons/ducats.png" alt="Ducats"> ${nf(n)}`;
+  const credit = n => `<img class="currency-ic" src="assets/icons/currency/credits.png" alt="Credits"> ${nf(n)}`;
+
+  /* Der Kopf beantwortet zwei Fragen auf einmal: ist er da, und reicht mein
+     Beutel. Beides gehoert zusammen - die zweite ist ohne die erste sinnlos. */
+  const kopf = `
+    <div class="baro-head ${d.active ? 'is-active' : ''}">
+      <span class="baro-mark">${Icon.baro(30)}</span>
+      <div class="baro-when">
+        <b>${d.active ? `${esc(d.character)} is in the relay` : `${esc(d.character)} is travelling`}</b>
+        <span>${d.location ? esc(d.location) : 'Relay unknown'}${
+          d.active
+            ? (d.endString ? ` · leaves in ${esc(d.endString)}` : '')
+            : (d.startString ? ` · arrives in ${esc(d.startString)}` : '')}</span>
+      </div>
+      <div class="baro-purse">
+        <span title="Your ducats">${dukat(d.stock.ducats ?? 0)}</span>
+        <span title="Your credits">${credit(d.stock.credits ?? 0)}</span>
+      </div>
+    </div>`;
+
+  if (!d.items.length) {
+    box.innerHTML = kopf + `
+      <div class="ducats-empty-box">
+        <div class="empty-icon">${Icon.baro(30)}</div>
+        <h3>Nothing on the manifest yet</h3>
+        <p>DE publishes Baro&rsquo;s wares only once he has arrived — there is no list to
+           compare against before that, and a guessed one would be worse than none.
+           Open this page while he is in the relay and Argus keeps a copy of the offer.</p>
+      </div>`;
+    return;
+  }
+
+  /* Ohne Inventar ist es ein Angebot, kein Zettel - und das steht dabei,
+     statt jeden Posten als "fehlt" auszugeben. */
+  const hinweis = !d.matched ? `
+    <div class="chain-note">${Icon.warning(13)}
+      No inventory fetched yet — this is Baro&rsquo;s list without the comparison. Fetch your
+      inventory once and Argus marks what you already own.
+    </div>` : d.stale ? `
+    <div class="chain-note">${Icon.warning(13)}
+      This is the manifest from his <b>last visit</b>${
+        d.savedAt ? `, saved ${new Date(d.savedAt).toLocaleDateString('en-GB')}` : ''} —
+      it is what he brought then, not a promise for the next trip.
+    </div>` : '';
+
+  const zahlen = d.matched ? `
+    <div class="baro-sum">
+      <div><b>${nf(s.missing)}</b><span>you do not own</span></div>
+      <div><b>${nf(d.cost.ducats)}</b><span>ducats for all of them</span></div>
+      <div><b>${nf(d.cost.credits)}</b><span>credits for all of them</span></div>
+      <div class="${s.shortDucats > 0 ? 'is-short' : 'is-ok'}">
+        <b>${s.shortDucats > 0 ? nf(s.shortDucats) : nf(s.missing ? d.stock.ducats - d.cost.ducats : 0)}</b>
+        <span>${s.shortDucats > 0 ? 'ducats short' : 'ducats left over'}</span>
+      </div>
+    </div>` : '';
+
+  const treffer = q
+    ? d.items.filter(i => i.name.toLowerCase().includes(q))
+    : d.items;
+
+  const zeile = i => `
+    <div class="baro-row ${i.owned === false ? 'is-missing' : i.owned ? 'is-owned' : ''}">
+      ${i.image
+        ? `<img class="baro-img" src="${esc(i.image)}" alt="" loading="lazy"
+                onerror="this.style.visibility='hidden'">`
+        : `<span class="baro-img"></span>`}
+      <div class="baro-body">
+        <b>${esc(i.name)}</b>
+        <span class="baro-tags">
+          <span class="baro-kind">${esc(BARO_KIND_LABEL[i.kind] || 'Item')}</span>
+          ${i.newMastery ? '<span class="baro-flag is-mr">new mastery</span>' : ''}
+          ${i.blueprintOnly ? '<span class="baro-flag is-bp">blueprint owned</span>' : ''}
+        </span>
+      </div>
+      <span class="baro-cost">
+        <span class="baro-duc">${dukat(i.ducats)}</span>
+        <span class="baro-cr">${nf(i.credits)} cr</span>
+      </span>
+      <span class="baro-state">${
+        i.owned === true ? `${Icon.check(13)} owned`
+        : i.owned === false ? 'not owned'
+        : '—'}</span>
+    </div>`;
+
+  const fehlt = treffer.filter(i => i.owned === false);
+  const hat = treffer.filter(i => i.owned !== false);
+
+  const gruppe = (titel, zeilen, cls = '') => zeilen.length ? `
+    <div class="baro-group ${cls}">
+      <div class="forge-group-head"><span>${titel}</span><em>${zeilen.length}</em></div>
+      ${zeilen.map(zeile).join('')}
+    </div>` : '';
+
+  /* Ein einziges Kind, das die ganze Breite nimmt: der Behaelter ist ein
+     Raster fuer Kartenlisten, und ohne diese Klammer stuenden Kopf, Zahlen
+     und Gruppen als drei Spalten nebeneinander. */
+  box.innerHTML = `<div class="baro-wrap">` + kopf + hinweis + zahlen +
+    (d.matched
+      ? gruppe('Your shopping list', fehlt, 'is-missing') + gruppe('Already yours', hat)
+      : gruppe('On the manifest', treffer)) +
+    (!treffer.length ? `<div class="inv-more">Nothing on the manifest matches your search.</div>` : '') +
+    `</div>`;
+}
+
+/* ---------------- Das Set hinter einem Teil ----------------
+   Eine Teileliste beantwortet die Frage nicht, die vor dem Einschmelzen
+   steht: WOZU gehoert das hier, und was ist davon noch offen. "Lex Prime
+   Barrel x1" sagt nicht, ob es das letzte fehlende Teil ist oder das dritte
+   Duplikat - und schon gar nicht, was die anderen drei Teile wert sind.
+
+   Deshalb klappt das Set unter der Karte auf, ueber die ganze Breite: alle
+   Teile, auch die, die man NICHT hat, jedes mit seinen eigenen Zahlen.
+   ---------------------------------------------------------- */
+
+/* Der Slug des Teils, dessen Set gerade offen ist. Am TEIL und nicht am Set,
+   weil dieselbe Sammlung mehrfach in der Liste steht - sonst klappte sie
+   unter jedem ihrer Teile gleichzeitig auf. */
+let ducatSetOpen = null;
+
+/** Das Set zu einem Teil - ueber den Slug, nicht ueber den Namen. */
+function setForPart(slug) {
+  return (ducatsData?.sets || []).find(s => (s.parts || []).some(p => p.slug === slug)) || null;
+}
+
+/**
+ * Was das Set als Ganzes bringt, gegen die Summe seiner Teile.
+ *
+ * Die eine Zahl, die man sonst nirgends bekommt: warframe.market handelt das
+ * fertige Set als eigenen Posten, und sein Preis ist regelmaessig ein
+ * anderer als die Teile einzeln. Fehlt einer von beiden Werten, bleibt die
+ * Zeile weg - ein Vergleich mit einer geschaetzten Haelfte waere geraten.
+ */
+function setValueLine(set) {
+  const teile = (set.parts || []).filter(p => p.price?.min != null);
+  if (!set.setPrice?.min || teile.length < (set.parts || []).length) return '';
+
+  const summe = teile.reduce((s, p) => s + p.price.min * (p.required || 1), 0);
+  const diff = set.setPrice.min - summe;
+  if (!summe) return '';
+
+  return `
+    <div class="dset-value ${diff >= 0 ? 'is-set' : 'is-parts'}">
+      <span>Full set <b>${nf(set.setPrice.min)}p</b></span>
+      <i>vs</i>
+      <span>parts <b>${nf(summe)}p</b></span>
+      <em>${diff >= 0
+        ? `+${nf(diff)}p for selling it whole`
+        : `${nf(-diff)}p more if you sell the parts one by one`}</em>
+    </div>`;
+}
+
+function ducatSetPanel(it) {
+  const set = setForPart(it.slug);
+  if (!set) return '';
+
+  const pct = set.totalParts ? Math.min(100, Math.round((set.ownedParts / set.totalParts) * 100)) : 0;
+
+  const zeilen = (set.parts || []).map(p => {
+    const req = p.required || 1;
+    const genug = p.count >= req;
+    const teils = !genug && p.count > 0;
+    const ratio = p.price?.min > 0 ? +(p.ducats / p.price.min).toFixed(1) : null;
+
+    return `
+      <div class="dset-part ${genug ? 'has' : teils ? 'partial' : 'missing'} ${p.slug === it.slug ? 'is-here' : ''}">
+        <img class="dset-img" src="${esc(p.image || '')}" alt="" loading="lazy"
+             onerror="this.style.visibility='hidden'">
+        <span class="dset-name">${esc(p.shortName || p.name)}${
+          req > 1 ? ` <b class="dset-req">${req}×</b>` : ''}</span>
+        <span class="dset-have">${genug ? `×${p.count}` : p.count > 0 ? `${p.count}/${req}` : 'missing'}</span>
+        <span class="dset-duc">
+          <img class="currency-ic ducat-ic" src="assets/icons/ducats.png" alt="Ducats">${p.ducats ?? '–'}
+        </span>
+        <span class="dset-plat">${p.price?.min != null ? p.price.min + 'p' : '–'}</span>
+        <span class="dset-ratio">${ratio != null ? ratio + ' duc/p' : ''}</span>
+        <span class="dset-vault">${p.vaulted === true ? 'vaulted' : ''}</span>
+      </div>`;
+  }).join('');
+
+  /* Was noch fehlt, steht als Satz darunter und nicht nur als Farbe: es ist
+     die Einkaufsliste fuer dieses Set. */
+  const fehlt = (set.parts || []).filter(p => p.count < (p.required || 1));
+
+  return `
+    <div class="dset-panel">
+      <div class="dset-head">
+        ${set.image ? `<img class="dset-art" src="${esc(set.image)}" alt=""
+                            onerror="this.style.visibility='hidden'">` : ''}
+        <div class="dset-title">
+          <b>${esc(set.name)}</b>
+          <span>${set.ownedParts} / ${set.totalParts} parts${set.complete ? ' · complete' : ''}${
+            set.fullSetsCount > 1 ? ` · ${set.fullSetsCount} full sets` : ''}${
+            /* Was der eigene Bestand dieses Sets bei Baro braechte - die Zahl,
+               um die es in diesem Tab ueberhaupt geht. Nur der Besitz, nicht
+               das ganze Set: der Rest liegt nicht bei einem. */
+            set.ownedDucats ? ` · ${nf(set.ownedDucats)} ducats in hand` : ''}</span>
+          <div class="dset-bar"><i style="width:${pct}%"></i></div>
+        </div>
+        <button type="button" class="dset-close" data-setopen="${esc(it.slug)}" title="Close">
+          ${Icon.close(13)}
+        </button>
+      </div>
+
+      ${setValueLine(set)}
+
+      <div class="dset-parts">${zeilen}</div>
+
+      ${fehlt.length ? `
+        <div class="dset-missing">
+          Still missing: <b>${fehlt.map(p => esc(p.shortName || p.name)).join('</b>, <b>')}</b>${
+            fehlt.some(p => p.vaulted === true)
+              ? ' — some of it drops nowhere right now, so the market is the only way in.'
+              : ''}
+        </div>` : ''}
+    </div>`;
+}
+
+/**
+ * Preise fuer ein aufgeklapptes Set nachladen.
+ *
+ * Gezielt und nicht ueber die ganze Liste: hier fehlen genau die Teile, die
+ * man NICHT besitzt - die stehen in keiner Inventarabfrage und haben deshalb
+ * nie einen Preis abbekommen. Es sind hoechstens ein halbes Dutzend Slugs.
+ */
+async function fetchSetPrices(slug) {
+  const set = setForPart(slug);
+  if (!set) return;
+
+  const offen = [
+    ...(set.parts || []).filter(p => !p.price).map(p => p.slug),
+    !set.setPrice && set.setSlug ? set.setSlug : null
+  ].filter(Boolean);
+  if (!offen.length) return;
+
+  try {
+    /* ducats:fetchPrices liefert den Preis DIREKT unter dem Slug - anders als
+       der Cache auf Platte, der ihn in { price, fetchedAt } einwickelt. */
+    const preise = await window.api.fetchDucatPrices(offen);
+    if (!preise) return;
+    for (const p of set.parts || []) if (preise[p.slug]) p.price = preise[p.slug];
+    if (set.setSlug && preise[set.setSlug]) set.setPrice = preise[set.setSlug];
+    if (ducatSetOpen === slug) renderDucatsCatalog();
+  } catch (err) {
+    console.error('Set-Preise nicht ladbar:', err);
+  }
+}
+
 function renderDucatsCatalog() {
   if (!ducatsData) return;
+  if (ducatsMode === 'baro') return renderBaroOffer();
   if (ducatsMode === 'plan') return renderDucatsRelicPlan();
   if (ducatsMode === 'sets') ducatsMode = 'inventory';
 
@@ -3824,6 +4644,11 @@ function renderDucatsCatalog() {
     // Filter-Chips
     if (ducatsFilter === 'advice-junk') return it.tradeAdvice?.advice === 'ducats';
     if (ducatsFilter === 'advice-plat') return it.tradeAdvice?.advice === 'plat';
+    /* Zwei Filter ueber den ZUSAMMENHANG statt ueber das Teil. Beide sagen
+       "ueberleg es dir zweimal", und beide sieht man der Zahl auf der Karte
+       nicht an. */
+    if (ducatsFilter === 'vaulted') return it.vaulted === true;
+    if (ducatsFilter === 'set-one') return it.set?.needsOne === true;
     if (ducatsFilter === '100') return it.ducats >= 100;
     if (ducatsFilter === '45') return it.ducats >= 45 && it.ducats < 100;
     if (ducatsFilter === '15') return it.ducats <= 25;
@@ -3920,10 +4745,37 @@ function renderDucatsCatalog() {
       }
     }
 
+    /* Der Zusammenhang, in dem das Teil steht - und damit der Grund, es NICHT
+       einzuschmelzen. Gevaultet heisst: fuer 15 Dukaten weggeben und fuer
+       Platin zurueckkaufen.
+
+       Der Set-Knopf ist beides in einem: er ZEIGT den Stand (3/4) und er
+       OEFFNET das Set darunter. Fehlt nur noch ein Teil, wird er golden -
+       ein zweiter Chip, der dasselbe noch einmal sagt, waere Rauschen. */
+    const kontextHtml = [
+      it.vaulted === true
+        ? `<span class="trade-chip chip-vault" title="Drops nowhere right now — you would have to buy it back for platinum"><span class="chip-dot"></span>Vaulted</span>`
+        : '',
+      it.set
+        ? `<button type="button" class="trade-chip chip-set ${it.set.needsOne ? 'is-one' : ''} ${ducatSetOpen === it.slug ? 'is-open' : ''}"
+                   data-setopen="${esc(it.slug)}"
+                   title="${esc(it.set.name)}: ${it.set.owned}/${it.set.total} parts${
+                     it.set.missingParts.length ? ` — still missing ${esc(it.set.missingParts.join(', '))}` : ' — complete'}">
+             Set ${it.set.owned}/${it.set.total}
+             <span class="chip-caret">${Icon.chevron(11)}</span>
+           </button>`
+        : ''
+    ].join('');
+
     // Inventar-Besitz-Badge
+    /* KURZ, WEIL DIE ZEILE ENG IST. "Owned: 2x (1 dup.)" stand neben dem
+       Elternnamen in einer Zeile, die bei langen Namen nicht mehr aufging -
+       beide brachen um, und die Karte wuchs gegenueber ihren Nachbarn.
+       Ausgeschrieben steht es jetzt im Tooltip, wo es nichts verdraengt. */
     const ownedHtml = it.count != null ? `
-      <span class="ducat-owned-badge ${it.count > 1 ? 'has-dups' : ''}">
-        Owned: <b>${it.count}x</b> ${it.count > 1 ? `<small>(${it.count - 1} dup.)</small>` : ''}
+      <span class="ducat-owned-badge ${it.count > 1 ? 'has-dups' : ''}"
+            title="You own ${it.count}${it.count > 1 ? ` — ${it.count - 1} of them spare` : ''}">
+        ×${it.count}${it.count > 1 ? ` <small>${it.count - 1} dup</small>` : ''}
       </span>
     ` : '';
 
@@ -3938,7 +4790,7 @@ function renderDucatsCatalog() {
             <b class="ducat-item-name" title="${esc(it.name)}">${esc(it.name)}</b>
           </div>
           <div class="ducat-card-sub">
-            <span>${esc(it.parentItem || 'Prime')}</span>
+            <span class="ducat-parent">${esc(it.parentItem || 'Prime')}</span>
             ${ownedHtml}
           </div>
           <div class="ducat-card-badges">
@@ -3948,6 +4800,7 @@ function renderDucatsCatalog() {
             </span>
             ${priceHtml}
             ${adviceHtml}
+            ${kontextHtml}
           </div>
         </div>
 
@@ -3964,8 +4817,24 @@ function renderDucatsCatalog() {
           ` : ''}
         </div>
       </div>
+      ${ducatSetOpen === it.slug ? ducatSetPanel(it) : ''}
     `;
   }).join('');
+
+  /* Set auf- und zuklappen. Ein zweiter Klick auf denselben Knopf schliesst,
+     ein Klick auf einen anderen schaltet um - es ist immer hoechstens eines
+     offen, sonst zerfaellt das Raster in lauter halbe Zeilen. */
+  container.querySelectorAll('[data-setopen]').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const slug = btn.dataset.setopen;
+      ducatSetOpen = ducatSetOpen === slug ? null : slug;
+      renderDucatsCatalog();
+      /* Erst zeichnen, dann nachladen: die Teile, die man nicht besitzt,
+         haben noch nie einen Preis gesehen - das Set steht aber sofort. */
+      if (ducatSetOpen) fetchSetPrices(ducatSetOpen);
+    };
+  });
 
   // Event-Handler für Zähler
   container.querySelectorAll('[data-inc]').forEach(btn => {
@@ -4046,6 +4915,11 @@ function initDucatsEventListeners() {
     updateDucatsModeTabs();
     renderDucatsCatalog();
   });
+  $('tab-ducats-mode-baro')?.addEventListener('click', () => {
+    ducatsMode = 'baro';
+    updateDucatsModeTabs();
+    renderDucatsCatalog();
+  });
 
   $('plan-sort')?.addEventListener('change', e => {
     planSort = e.target.value;
@@ -4089,10 +4963,13 @@ function initDucatsEventListeners() {
     fetchMissingDucatPrices(true);
   });
 
-  // Filter-Chips
-  document.querySelectorAll('.ducats-filter-badges .filter-chip').forEach(chip => {
+  /* Filter-Chips - AUSDRUECKLICH nur die dieses Tabs. Ueber die Klasse
+     allein traf die Auswahl auch die Chips der Bauketten und des Handels:
+     ein Klick hier loeschte dort die Markierung, und ein Klick dort stellte
+     hier den Filter auf "alle". */
+  $('ducats-filter-chips')?.querySelectorAll('.filter-chip').forEach(chip => {
     chip.addEventListener('click', () => {
-      document.querySelectorAll('.ducats-filter-badges .filter-chip').forEach(c => c.classList.remove('active'));
+      $('ducats-filter-chips').querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
       chip.classList.add('active');
       ducatsFilter = chip.dataset.filter || 'all';
       renderDucatsCatalog();
@@ -5721,6 +6598,11 @@ if ($('btn-inv-refresh')) $('btn-inv-refresh').onclick = async () => {
 if (window.api.onInventoryUpdated) {
   window.api.onInventoryUpdated(data => {
     inventoryData = data;
+    /* Die Ketten haengen am Bestand und am Rang - beides steht in genau
+       diesen Daten. Ohne das Verwerfen zeigten sie bis zum Neustart einen
+       Stand von vor dem Abruf. */
+    chainData = null;
+    if ($('mastery-pane-foundry')?.classList.contains('active')) loadChains();
     const invTab = $('tab-inventory');
     if (invTab && invTab.classList.contains('active')) {
       renderInventory();
@@ -6011,7 +6893,14 @@ $('btn-notif-save')?.addEventListener('click', async () => {
 });
 
 // In-App Toast
-function showInAppToast({ title, body, fissure }) {
+/**
+ * Der Toast in der App.
+ *
+ * `type` entscheidet, wohin der Klick fuehrt. Vorher gab es nur Risse, und
+ * der Sprung auf die Riss-Liste stand fest verdrahtet darin - eine Meldung
+ * ueber einen fertigen Bau haette einen dorthin geschickt.
+ */
+function showInAppToast({ title, body, type }) {
   const container = $('app-toast-container');
   if (!container) return;
 
@@ -6038,8 +6927,13 @@ function showInAppToast({ title, body, fissure }) {
       remove();
       return;
     }
-    showTab('worldstate');
-    showWsPane('fissures');
+    if (type === 'foundry') {
+      showTab('mastery');
+      setMasteryMode('foundry');
+    } else {
+      showTab('worldstate');
+      showWsPane('fissures');
+    }
     remove();
   };
 
@@ -6050,12 +6944,18 @@ function showInAppToast({ title, body, fissure }) {
 // IPC Ereignisse empfangen
 window.api.onNotificationEvent(data => {
   showInAppToast(data);
-  if (worldStateCache) renderFissures(worldStateCache.fissures || []);
+  /* Die Riss-Liste neu zu zeichnen ergibt nur bei einem Riss Sinn - ein
+     fertiger Bau aendert dort nichts. */
+  if (data?.type !== 'foundry' && worldStateCache) renderFissures(worldStateCache.fissures || []);
 });
 
 window.api.onNavigateTab((tab, subpane) => {
   showTab(tab);
   if (tab === 'worldstate' && subpane) showWsPane(subpane);
+  /* Der Mastery-Tab hat drei Modi - ein Sprung dorthin ohne Angabe des
+     Modus landet im Manager, und die Meldung, die ihn ausgeloest hat,
+     bliebe ungezeigt. */
+  if (tab === 'mastery' && MASTERY_MODES.includes(subpane)) setMasteryMode(subpane);
 });
 
 /* ---------------- Handel: Orders, Contracts, Transaktionen ----------------

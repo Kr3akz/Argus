@@ -516,7 +516,10 @@
             <span class="btn-ic" data-icon="upgrade"></span><span>Manager</span>
           </button>
           <button class="ducats-tab-btn" id="tab-mastery-mode-catalog" data-mode="catalog">
-            <span class="btn-ic" data-icon="codex"></span><span>Catalogue</span>
+            <span class="btn-ic" data-icon="qaCodex"></span><span>Catalogue</span>
+          </button>
+          <button class="ducats-tab-btn" id="tab-mastery-mode-foundry" data-mode="foundry">
+            <span class="btn-ic" data-icon="qaFoundry"></span><span>Foundry</span>
           </button>
         </div>
         <span class="meta" id="mastery-mode-hint">Goals, resources & mastery recommendations</span>
@@ -604,6 +607,47 @@
           <span id="checklist-count" class="meta"></span>
         </div>
         <div id="checklist" class="grid"></div>
+      </div>
+
+      <!-- ----- Modus: Schmiede -----
+           Sie steht hier und nicht im Inventar, weil sie dieselbe Frage
+           beantwortet wie der Rest dieses Tabs: was fehlt noch bis zum Ziel.
+           Ein Bau, der in zwei Stunden fertig ist, ist ein erledigtes Ziel
+           mit Wartezeit - kein Bestand. -->
+      <div id="mastery-pane-foundry" class="mastery-pane">
+        <div class="section-head">
+          <h2>Foundry</h2>
+          <p>What is building, when it is done, and what has been finished and is waiting for you</p>
+        </div>
+        <div id="forge-body"></div>
+
+        <!-- ----- Bauketten -----
+             Steht unter der Schmiede, weil es dieselbe Handlung betrifft: was
+             lege ich als Naechstes ein. Der Unterschied ist die Reihenfolge -
+             wer die Akjagara baut, ohne die Bolto darunter vorher auf Rang 30
+             gebracht zu haben, hat sie fuer immer verloren. -->
+        <div class="section-head section-head-row chain-section-head">
+          <div>
+            <h2>Crafting chains</h2>
+            <p>Weapons built from other weapons — every link is its own mastery, and building a stage consumes the one below it</p>
+          </div>
+          <span class="meta" id="chain-summary"></span>
+        </div>
+
+        <div class="ducats-filter-row chain-filter-row">
+          <div class="searchbox flex-search">
+            <span class="ic" data-icon="search"></span>
+            <input id="chain-search" type="text" placeholder="Search a chain … e.g. Akjagara, Bolto, Lesion">
+          </div>
+          <div class="ducats-filter-badges" id="chain-chips">
+            <button class="filter-chip active" data-chainfilter="open">Unfinished</button>
+            <button class="filter-chip" data-chainfilter="risk" title="You own a link that is not yet rank 30 — building the next stage would destroy that mastery">At risk</button>
+            <button class="filter-chip" data-chainfilter="ready" title="Every ingredient for the final build is already in your inventory">Ready to build</button>
+            <button class="filter-chip" data-chainfilter="all">All</button>
+          </div>
+        </div>
+
+        <div id="chains-body"></div>
       </div>
     </section>
 
@@ -730,11 +774,18 @@
               <span class="counter-badge" id="ducats-inv-badge-count">0</span>
             </button>
             <button class="ducats-tab-btn" id="tab-ducats-mode-cat" data-mode="catalog">
-              <span class="btn-ic" data-icon="codex"></span><span>Full prime catalogue</span>
+              <span class="btn-ic" data-icon="qaCodex"></span><span>Full prime catalogue</span>
             </button>
             <button class="ducats-tab-btn" id="tab-ducats-mode-plan" data-mode="plan">
               <span class="btn-ic" data-icon="relic"></span><span>Relic planner</span>
               <span class="counter-badge" id="ducats-plan-badge-count">0</span>
+            </button>
+            <!-- Baros Angebot gehoert hierher und nicht in den Live-Tracker:
+                 dort steht, WANN er kommt, hier, was man bei ihm mitnehmen
+                 sollte - und das haengt am eigenen Bestand, nicht an der Uhr. -->
+            <button class="ducats-tab-btn" id="tab-ducats-mode-baro" data-mode="baro">
+              <span class="btn-ic" data-icon="qaBaro"></span><span>Baro's offer</span>
+              <span class="counter-badge" id="ducats-baro-badge-count">0</span>
             </button>
           </div>
 
@@ -760,13 +811,27 @@
           <!-- Aera-Filter des Planers, gleiche Optik wie im Inventar. -->
           <div class="inv-tier-filter hidden" id="plan-tier-filter"></div>
 
-          <div class="ducats-filter-badges">
+          <!-- Mit Kennung, weil die Klasse .ducats-filter-badges inzwischen an
+               vier Stellen der Anwendung steht (Farmguide, Bauketten, Handel).
+               Ein document.querySelector darauf traf die erste davon - und das
+               war nicht diese hier. -->
+          <div class="ducats-filter-badges" id="ducats-filter-chips">
             <button class="filter-chip active" data-filter="all">All</button>
             <button class="filter-chip chip-junk" data-filter="advice-junk" title="Ducats per platinum >= 10: high melt value">
               <span class="chip-dot"></span>Prime Junk
             </button>
             <button class="filter-chip chip-plat" data-filter="advice-plat" title="Platinum >= 15p or ratio < 7: better sold on the market">
               <span class="chip-dot"></span>Platinum tips
+            </button>
+            <!-- Zwei Filter ueber den ZUSAMMENHANG statt ueber das Teil: was
+                 nicht mehr faellt, und was ein Set fast vollmacht. Beides sind
+                 Gruende, ein Teil NICHT einzuschmelzen - und beides sieht man
+                 der Zahl auf der Karte nicht an. -->
+            <button class="filter-chip chip-vault" data-filter="vaulted" title="Drops nowhere right now — melting it means buying it back for platinum">
+              <span class="chip-dot"></span>Vaulted
+            </button>
+            <button class="filter-chip chip-setneed" data-filter="set-one" title="Its set is one part short — the full set is worth more than the parts">
+              <span class="chip-dot"></span>1 part to a set
             </button>
             <button class="filter-chip chip-gold" data-filter="100">Gold (100)</button>
             <button class="filter-chip chip-silver" data-filter="45">Silver (45/65)</button>

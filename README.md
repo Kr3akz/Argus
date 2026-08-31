@@ -68,11 +68,13 @@ Windows APIs.
 
 | | |
 |---|---|
-| **Mastery planning** | Every item you have not mastered, ranked by what it actually costs you. Set goals and Argus resolves them down to the raw materials — including how long the components take to build. |
+| **Mastery planning** | Every item you have not mastered, ranked by what it actually costs you. Set goals and Argus resolves them down to the raw materials — including how long the build actually takes, and whether the vault is shut on it. |
 | **Live world state** | Open-world cycles, void fissures, sorties, Nightwave, invasions, Steel Path and Baro Ki'Teer, with desktop notifications for the fissures you care about. → [overlay & notifications](docs/controls.md) |
 | **Weekly rotation** | Everything that resets once a week in one place — Archon Hunt, The Circuit, Deep and Temporal Archimedea, Netracells, Kahl's Garrison, and the vendor resets for Teshin, Bird 3, Yonta, Acrithis, Palladino and Nightwave. |
 | **Relic rewards** | The reward screen opens, Argus reads all four parts off the screen and puts the platinum price and ducat value under each card — inside the game. → [details](docs/relics.md) |
 | **Inventory** | Your mods, arcanes and relics as the cards they are in game, with data sheets, drop locations and rank-by-rank values. → [details](docs/inventory.md) |
+| **Foundry** | What is building, when it is done, and what has been finished for weeks without you noticing — plus what the Helminth is digesting, and which weapons are built out of other weapons that you should rank to 30 first. → [details](docs/foundry.md) |
+| **Ducats & Baro** | What every prime part is worth melted against sold, which of them can no longer be farmed, and a shopping list that lines Baro's manifest up against what you already own. → [details](docs/baro.md) |
 | **Trading** | Orders and contracts on warframe.market straight from your inventory, plus a local trade ledger. → [details](docs/trading.md) |
 | **Builds** | Build loadouts against what you actually own, or import from Overframe. → [details](docs/builds.md) |
 | **Farming & mining** | Best nodes per material and the ores and gems of all three landscapes, sorted by vein colour. → [details](docs/farming.md) |
@@ -196,6 +198,8 @@ alone.
 |---|---|
 | [Controls, windows and settings](docs/controls.md) | The two windows, hotkeys, cursor mode, and everything under Settings |
 | [Relic rewards](docs/relics.md) | The overlay on a reward screen and the price tags inside the game |
+| [Foundry, chains, vault & subsume](docs/foundry.md) | What is building, which weapons eat other weapons, which primes are vaulted, and which frames you have subsumed |
+| [Ducats and Baro](docs/baro.md) | Melt or sell, what can no longer be farmed, and Baro's manifest against your inventory |
 | [Inventory](docs/inventory.md) | Mods, arcanes and relics — cards, data sheets and drop locations |
 | [Trading](docs/trading.md) | Orders, contracts and the local trade ledger |
 | [Builds and mods](docs/builds.md) | Loadouts, what you own, and the Overframe import |

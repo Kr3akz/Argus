@@ -440,6 +440,8 @@ body:has(#app:not(.hidden)) .titlebar-brand::after {
 .icon-qa-codex      { -webkit-mask-image: url('assets/icons/quickaccess/codex.png');      mask-image: url('assets/icons/quickaccess/codex.png'); }
 .icon-qa-arsenal    { -webkit-mask-image: url('assets/icons/quickaccess/arsenal.png');    mask-image: url('assets/icons/quickaccess/arsenal.png'); }
 .icon-qa-sumbaat    { -webkit-mask-image: url('assets/icons/quickaccess/sumbaat.png');    mask-image: url('assets/icons/quickaccess/sumbaat.png'); }
+.icon-qa-foundry    { -webkit-mask-image: url('assets/icons/quickaccess/foundry.png');    mask-image: url('assets/icons/quickaccess/foundry.png'); }
+.icon-qa-helminth   { -webkit-mask-image: url('assets/icons/quickaccess/helminth.png');   mask-image: url('assets/icons/quickaccess/helminth.png'); }
 
 .icon-focus-madurai { -webkit-mask-image: url('assets/icons/focus/madurai.png'); mask-image: url('assets/icons/focus/madurai.png'); }
 .icon-focus-vazarin { -webkit-mask-image: url('assets/icons/focus/vazarin.png'); mask-image: url('assets/icons/focus/vazarin.png'); }
@@ -1215,6 +1217,43 @@ select option { background: #161b25; color: var(--text); }
 .dot.done { background: var(--green); }
 .dot.partial { background: var(--gold); }
 .dot.missing { background: var(--surface-3); }
+
+/* Vault und Helminth sitzen UNTEN rechts - oben ist besetzt: links das
+   Zielabzeichen, rechts der Statuspunkt. */
+.tile-marks {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  z-index: 2;
+}
+.tile-mark {
+  height: 16px;
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: 5px;
+  font-size: 9.5px;
+  font-weight: 750;
+  letter-spacing: .3px;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+}
+/* Ganz zu: gedaempftes Rot. Halb offen: Gold - es ist noch etwas zu holen,
+   nur nicht alles, und das ist ein anderer Rat als "vergiss es". */
+.tile-mark.vault {
+  background: rgba(255, 92, 92, 0.16);
+  color: var(--red);
+}
+.tile-mark.vault.partial {
+  background: rgba(240, 184, 73, 0.16);
+  color: var(--gold);
+}
+.tile-mark.subsumed {
+  background: rgba(207, 139, 243, 0.16);
+  color: #cf8bf3;
+}
 
 /* ---------- Notizen ---------- */
 #general-notes { min-height: 250px; resize: vertical; line-height: 1.7; padding: 20px 22px; }
@@ -2244,6 +2283,19 @@ select option { background: #161b25; color: var(--text); }
 .im-badge.status.done { background: rgba(34, 197, 94, 0.15); color: var(--green); }
 .im-badge.status.partial { background: rgba(74, 222, 128, 0.15); color: #86efac; }
 .im-badge.status.missing { background: rgba(255, 255, 255, 0.08); color: var(--text-3); }
+.im-badge.vaulted { background: rgba(255, 92, 92, 0.15); color: var(--red); }
+.im-badge.subsumed { background: rgba(207, 139, 243, 0.15); color: #cf8bf3; }
+
+.im-vault {
+  border-left: 2px solid rgba(255, 92, 92, 0.5);
+  padding-left: 12px;
+}
+.im-vault p {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+.im-vault b { color: var(--text); }
 
 .im-title-group h2 {
   font-size: 22px;
@@ -3534,6 +3586,16 @@ select option { background: #161b25; color: var(--text); }
   color: #79c0ff;
   border-color: rgba(88, 166, 255, 0.4);
 }
+.filter-chip.chip-vault.active {
+  background: rgba(255, 92, 92, 0.18);
+  color: #ff9d9d;
+  border-color: rgba(255, 92, 92, 0.4);
+}
+.filter-chip.chip-setneed.active {
+  background: rgba(240, 184, 73, 0.2);
+  color: var(--gold);
+  border-color: rgba(240, 184, 73, 0.4);
+}
 .filter-chip.chip-gold.active {
   background: rgba(240, 184, 73, 0.2);
   color: var(--gold);
@@ -3643,20 +3705,39 @@ select option { background: #161b25; color: var(--text); }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* EINE ZEILE, DIE EINE ZEILE BLEIBT.
+   Hier standen Elternname und Besitzabzeichen nebeneinander, beide ohne
+   Bremse: bei einem langen Namen ("Caliban Prime Systems Blueprint") brach
+   der Name auf zwei Zeilen um UND das Abzeichen gleich mit, und die Karte
+   wurde hoeher als ihre Nachbarn im Raster. Der Name kuerzt jetzt mit
+   Ellipse - er steht ohnehin noch einmal ausgeschrieben in der Zeile
+   darueber -, das Abzeichen bricht gar nicht mehr um. */
 .ducat-card-sub {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
   font-size: 11px;
   color: var(--text-3);
   margin-top: 1px;
 }
+.ducat-parent {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .ducat-owned-badge {
+  flex: none;
+  white-space: nowrap;
   color: var(--text-2);
   background: rgba(255, 255, 255, 0.06);
   padding: 1px 5px;
   border-radius: 4px;
+  font-variant-numeric: tabular-nums;
 }
+.ducat-owned-badge small { opacity: .8; }
 .ducat-owned-badge.has-dups {
   color: #7ee787;
   background: rgba(46, 160, 67, 0.15);
@@ -3725,6 +3806,18 @@ select option { background: #161b25; color: var(--text); }
 .trade-chip.chip-neutral {
   background: rgba(255, 255, 255, 0.08);
   color: var(--text-2);
+}
+/* Zwei Vermerke ueber den ZUSAMMENHANG, nicht ueber das Teil: es faellt
+   nirgends mehr, oder es macht ein Set fast voll. Beide heissen dasselbe -
+   ueberleg es dir, bevor du es einschmilzt - und tragen deshalb dieselbe
+   Warnfarbe wie ein gevaultetes Set im Katalog. */
+.trade-chip.chip-vault {
+  background: rgba(255, 92, 92, 0.14);
+  color: #ff9d9d;
+}
+.trade-chip.chip-setneed {
+  background: rgba(240, 184, 73, 0.15);
+  color: var(--gold);
 }
 
 /* Card Controls */
@@ -4138,6 +4231,384 @@ select option { background: #161b25; color: var(--text); }
 .inv-currencies.is-stale .inv-cur b { color: var(--text-3); }
 /* Ein Bild laesst sich nicht ueber color daempfen - Graustufen leisten dasselbe. */
 .inv-currencies.is-stale .inv-cur-ic { filter: grayscale(1); opacity: .75; }
+
+/* ---------- Schmiede ----------
+
+   AUSRICHTUNG: Kopfzeile und Zeilen tragen DIESELBE seitliche Polsterung.
+   Vorher hatte nur die Liste eine, und die Zahl oben rechts stand dadurch
+   sichtbar weiter aussen als die Zeiten darunter - ein Versatz, den man
+   nicht messen muss, um ihn zu sehen. Die Polsterung sitzt deshalb hier
+   einmal als Variable und nicht zweimal als Zahl. */
+.forge-card {
+  --forge-pad: 13px;
+  background: var(--surface);
+  border-radius: var(--r-md);
+  padding: 6px 0 8px;
+}
+.forge-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px var(--forge-pad) 10px;
+}
+.forge-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: var(--text-3);
+}
+/* Die einzige Zahl, die man sich merkt: wann muss ich wieder nachsehen. */
+.forge-next {
+  font-size: 12px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.forge-next b { color: var(--text-2); font-weight: 600; }
+
+/* ---------- Zwei Gruppen, zwei Nachrichten ----------
+   "Geh hin" und "warte noch" sind nicht zwei Enden einer Liste, sondern zwei
+   verschiedene Aufforderungen. Mit Ueberschrift muss man den Bruch dazwischen
+   nicht an der Farbe der Zeilen ablesen. */
+.forge-group + .forge-group { margin-top: 6px; }
+.forge-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px var(--forge-pad) 5px;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .8px;
+  color: var(--text-3);
+}
+.forge-group-head em {
+  font-style: normal;
+  letter-spacing: 0;
+  font-size: 10.5px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+.forge-group.is-ready .forge-group-head { color: rgb(var(--t-green)); }
+.forge-group.is-ready .forge-group-head em {
+  background: rgb(var(--t-green) / .14);
+}
+
+.forge-list { display: grid; }
+.forge-row {
+  display: grid;
+  grid-template-columns: 40px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 7px var(--forge-pad);
+  font-size: 13.5px;
+}
+.forge-row:hover { background: var(--surface-2); }
+
+/* Name und Balken stehen uebereinander in derselben Spalte - der Balken
+   gehoert zu dem, was da baut, nicht neben die Uhr. */
+.forge-main { display: grid; gap: 6px; min-width: 0; }
+
+.forge-img {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  display: grid;
+  place-items: center;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, .45));
+}
+/* Der Helminth hat kein Item-Bild - er bekommt sein Zeichen, in derselben
+   Flaeche, damit die Namen daneben auf einer Linie bleiben. */
+.forge-img-helminth {
+  color: #cf8bf3;
+  background: rgba(207, 139, 243, 0.12);
+  border-radius: 10px;
+  filter: none;
+}
+
+.forge-name { color: var(--text-2); }
+.forge-name em {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--text-3);
+  margin-left: 7px;
+}
+.forge-time {
+  font-variant-numeric: tabular-nums;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+
+/* Wie weit ist der Bau. Die Restzeit sagt, WANN es so weit ist; der Balken
+   sagt, ob es sich lohnt zu warten - drei Stunden von vier sehen anders aus
+   als drei von siebzig. Gedeckelt, weil ein gerushter Bau laenger her sein
+   kann als seine eigene Bauzeit. */
+.forge-bar {
+  display: block;
+  height: 3px;
+  max-width: 280px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.forge-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgb(var(--t-accent) / .45), rgb(var(--t-accent)));
+  transition: width .9s linear;
+}
+
+/* ---------- Fertig ----------
+   Es ist die einzige Zeile in dieser Liste, die eine HANDLUNG verlangt, und
+   sie sah aus wie eine Auskunft: "ready to collect" als grauer Fliesstext an
+   der Stelle, an der sonst eine Uhr steht - man las es als stehengebliebenen
+   Zaehler. Jetzt traegt sie ein Abzeichen an der Stelle der Uhr, einen
+   gruenen Rand an der Kante und einen Punkt, der langsam atmet. */
+.forge-row.is-ready {
+  background: linear-gradient(90deg, rgb(var(--t-green) / .10), rgb(var(--t-green) / 0) 45%);
+  box-shadow: inset 2px 0 0 rgb(var(--t-green) / .8);
+}
+.forge-row.is-ready:hover {
+  background: linear-gradient(90deg, rgb(var(--t-green) / .17), rgb(var(--t-green) / .02) 55%);
+}
+.forge-row.is-ready .forge-name { color: var(--text); font-weight: 600; }
+.forge-row.is-ready .forge-img { filter: drop-shadow(0 2px 10px rgb(var(--t-green) / .3)); }
+
+.forge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 11px 4px 9px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .8px;
+  text-transform: uppercase;
+  color: rgb(var(--t-green));
+  background: rgb(var(--t-green) / .12);
+  border: 1px solid rgb(var(--t-green) / .28);
+}
+
+/* Der Punkt atmet, statt zu blinken: es soll auffallen, wenn man hinsieht,
+   und nicht stoeren, wenn man daneben etwas anderes liest. */
+.forge-pip {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: rgb(var(--t-green));
+  animation: forgePip 2.6s var(--ease) infinite;
+}
+@keyframes forgePip {
+  0%   { box-shadow: 0 0 0 0 rgb(var(--t-green) / .5); }
+  70%  { box-shadow: 0 0 0 6px rgb(var(--t-green) / 0); }
+  100% { box-shadow: 0 0 0 0 rgb(var(--t-green) / 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .forge-pip { animation: none; }
+  .forge-bar i { transition: none; }
+}
+
+.forge-empty {
+  background: var(--surface);
+  border-radius: var(--r-md);
+  padding: 22px 20px;
+  color: var(--text-2);
+}
+.forge-empty b { display: block; color: var(--text); margin-bottom: 6px; font-size: 14px; }
+.forge-empty p { font-size: 12.5px; line-height: 1.65; max-width: 62ch; }
+
+/* ---------- Bauketten ----------
+   Eine Kette ist ein Baum, und der wird als Baum gezeigt: die Einrueckung IST
+   die Aussage. Was weiter rechts steht, wird frueher gebaut und vom Ding
+   darueber verbraucht.
+
+   Die Tiefe steckt als Variable in der Zeile und nicht in einer Klasse je
+   Stufe - bei vier vorhandenen Stufen waere die fuenfte nur eine Frage der
+   Zeit, und dann fehlte genau eine Regel. */
+.chain-section-head { margin-top: 30px; }
+.chain-filter-row { margin-bottom: 12px; }
+
+.chain-note {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 13px;
+  margin-bottom: 10px;
+  border-radius: var(--r-sm);
+  background: rgb(var(--t-gold) / .08);
+  color: var(--gold);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.chain-card {
+  background: var(--surface);
+  border-radius: var(--r-md);
+  padding: 12px 14px 11px;
+  margin-bottom: 10px;
+}
+/* Fertige Ketten verschwinden nicht - sie treten zurueck. Dass etwas
+   erledigt ist, will man auch sehen koennen. */
+.chain-card.is-complete { opacity: .62; }
+.chain-card.is-complete:hover { opacity: 1; }
+
+.chain-head {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+.chain-head-img {
+  width: 46px;
+  height: 46px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 10px rgba(0, 0, 0, .5));
+}
+.chain-title b {
+  display: block;
+  font-size: 14.5px;
+  color: var(--text);
+  line-height: 1.3;
+}
+.chain-sub { font-size: 11.5px; color: var(--text-3); }
+
+.chain-stats { text-align: right; display: grid; gap: 1px; }
+.chain-done {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+.chain-done.is-complete { color: rgb(var(--t-green)); }
+.chain-gain { font-size: 11px; color: var(--text-3); }
+
+.chain-tree { margin-top: 10px; display: grid; gap: 1px; }
+.chain-node {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 9px;
+  padding-left: calc(9px + var(--depth) * 21px);
+  border-radius: 9px;
+  font-size: 12.5px;
+}
+.chain-node:hover { background: var(--surface-2); }
+
+/* Der Winkel zur Stufe darueber. Nur an eingerueckten Zeilen - die Wurzel
+   haengt an nichts. */
+.chain-node:not(.d0)::before {
+  content: '';
+  position: absolute;
+  left: calc(var(--depth) * 21px - 8px);
+  top: -1px;
+  bottom: 50%;
+  width: 11px;
+  border-left: 1px solid var(--surface-3);
+  border-bottom: 1px solid var(--surface-3);
+  border-bottom-left-radius: 7px;
+  pointer-events: none;
+}
+
+.chain-mark {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+}
+.chain-node.is-mastered .chain-mark {
+  background: rgb(var(--t-green) / .16);
+  color: rgb(var(--t-green));
+}
+.chain-node.is-leveling .chain-mark { box-shadow: inset 0 0 0 2px rgb(var(--t-gold) / .8); }
+.chain-node.is-missing  .chain-mark { box-shadow: inset 0 0 0 1.5px var(--surface-3); }
+
+.chain-img { width: 26px; height: 26px; object-fit: contain; flex: none; }
+.chain-name {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chain-node.is-mastered .chain-name { color: var(--text); }
+.chain-node.is-missing  .chain-name { color: var(--text-3); }
+/* Zwei Bolto sind nicht dasselbe wie eine - die Zahl gehoert vor den Namen
+   und nicht in eine Nebenspalte. */
+.chain-need { color: var(--accent); font-weight: 700; margin-right: 5px; }
+
+.chain-rank {
+  flex: none;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-3);
+}
+.chain-rank.is-done { color: rgb(var(--t-green)); font-weight: 600; }
+.chain-rank.is-part { color: var(--gold); font-weight: 600; }
+.chain-rank.is-missing { color: var(--text-3); }
+
+.chain-have, .chain-flag {
+  flex: none;
+  font-size: 10.5px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-3);
+}
+.chain-have.is-ok { color: rgb(var(--t-green)); background: rgb(var(--t-green) / .12); }
+.chain-flag.is-building { color: var(--accent); background: var(--accent-sf); }
+
+/* Der eigentliche Grund fuer diese Ansicht: eine Stufe, die man BESITZT und
+   noch nicht gemeistert hat, waehrend die naechste sie fressen wuerde. */
+.chain-warn, .chain-ok {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 9px;
+  padding: 8px 11px;
+  border-radius: var(--r-sm);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+.chain-warn { background: rgb(var(--t-gold) / .09); color: var(--gold); }
+.chain-warn b { color: var(--text); font-weight: 600; }
+.chain-ok { background: rgb(var(--t-green) / .09); color: rgb(var(--t-green)); }
+.chain-warn svg, .chain-ok svg { flex: none; margin-top: 2px; }
+
+/* Der Baum sagt, WAS zusammengehoert. Diese Zeile sagt, in welcher
+   Reihenfolge - und das ist die Antwort auf "und was mache ich jetzt". */
+.chain-order {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--surface);
+  font-size: 11px;
+  color: var(--text-3);
+}
+.chain-order-label {
+  text-transform: uppercase;
+  letter-spacing: .7px;
+  font-weight: 700;
+  font-size: 10px;
+  margin-right: 3px;
+}
+.chain-step {
+  background: var(--surface-2);
+  border-radius: 999px;
+  padding: 2px 9px;
+  color: var(--text-2);
+}
+.chain-arrow { font-style: normal; color: var(--text-3); }
 
 /* ---------- Live-Tracker: Unterseiten ---------- */
 .ws-pane { display: none; animation: fade .25s var(--ease); }
@@ -6348,6 +6819,22 @@ body.tags-window {
   align-items: flex-start;
   gap: 14px;
   flex: 1;
+  /* Luft ueber der Trennlinie des Fusses.
+
+     Solange die Karte nicht voll ist, schiebt margin-top:auto am Fuss ihn
+     nach unten weg und der Abstand entsteht von selbst. Bei einem
+     vierteiligen Warframe-Set ist die Karte aber voll - dann klebte das
+     letzte Plaettchen direkt auf der Linie.
+
+     Die Polsterung sitzt deshalb hier und nicht als margin an .set-parts:
+     der Rumpf hat ZWEI Spalten, Bild und Inhalt, und mal ist die eine
+     hoeher, mal die andere. Nur unter dem Rumpf als Ganzem liegt der
+     Abstand unabhaengig davon, wer gerade laenger ist.
+
+     10px, dieselbe Zahl wie das padding-top des Fusses: die Linie steht
+     damit mittig zwischen dem, was ueber ihr endet, und dem, was unter ihr
+     anfaengt. */
+  padding-bottom: 10px;
 }
 
 .set-art-showcase {
@@ -8707,3 +9194,261 @@ input[type=number]:focus, input[type=email]:focus, input[type=password]:focus {
   border-radius: 50%;
   padding: 1px;
 }
+
+/* ---------- Baros Einkaufszettel ----------
+   Liegt im selben Behaelter wie die Teilelisten, und der ist ein Raster fuer
+   Karten. Deshalb EIN Kind ueber die ganze Breite, das seine Ordnung selbst
+   mitbringt - sonst stuenden Kopf, Zahlen und Gruppen nebeneinander. */
+.baro-wrap { grid-column: 1 / -1; }
+
+.baro-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 15px;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  margin-bottom: 12px;
+}
+/* Anwesend ist ein Zustand, kein Etikett: die Karte traegt ihn als Farbe,
+   damit man ihn sieht, bevor man den Satz liest. */
+.baro-head.is-active {
+  background: linear-gradient(90deg, rgb(var(--t-gold) / .14), var(--surface-2) 55%);
+  box-shadow: inset 2px 0 0 rgb(var(--t-gold) / .8);
+}
+.baro-mark { color: var(--text-3); display: grid; place-items: center; }
+.baro-head.is-active .baro-mark { color: var(--gold); }
+.baro-when b { display: block; font-size: 14px; color: var(--text); }
+.baro-when span { font-size: 12px; color: var(--text-3); }
+.baro-purse {
+  display: grid;
+  gap: 3px;
+  justify-items: end;
+  font-size: 12.5px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.baro-purse span { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Vier Zahlen, die zusammen eine Entscheidung ergeben: wie viel fehlt mir,
+   was kostet es, und reicht mein Beutel. */
+.baro-sum {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.baro-sum > div {
+  background: var(--surface);
+  border-radius: var(--r-sm);
+  padding: 11px 14px;
+  display: grid;
+  gap: 2px;
+}
+.baro-sum b {
+  font-size: 19px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+.baro-sum span { font-size: 11px; color: var(--text-3); }
+.baro-sum > div.is-short b { color: var(--red); }
+.baro-sum > div.is-ok b { color: rgb(var(--t-green)); }
+
+.baro-group + .baro-group { margin-top: 12px; }
+.baro-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto 96px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  margin-bottom: 4px;
+}
+.baro-row:hover { background: var(--surface-2); }
+/* Was fehlt, ist der Zettel - was man hat, ist die Bestaetigung. Der
+   Unterschied gehoert an die Kante und nicht in die Schriftfarbe allein. */
+.baro-row.is-missing { box-shadow: inset 2px 0 0 rgb(var(--t-gold) / .7); }
+.baro-row.is-owned { opacity: .62; }
+.baro-row.is-owned:hover { opacity: 1; }
+
+.baro-img { width: 34px; height: 34px; object-fit: contain; }
+.baro-body b {
+  display: block;
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.baro-tags { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.baro-kind { font-size: 10.5px; color: var(--text-3); }
+.baro-flag {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.baro-flag.is-mr { background: rgb(var(--t-accent) / .16); color: #79c0ff; }
+.baro-flag.is-bp { background: rgba(255, 255, 255, .08); color: var(--text-2); }
+
+.baro-cost {
+  display: grid;
+  justify-items: end;
+  gap: 1px;
+  font-size: 12px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.baro-duc { display: inline-flex; align-items: center; gap: 5px; }
+.baro-cr { font-size: 10.5px; color: var(--text-3); }
+
+.baro-state {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-3);
+}
+.baro-row.is-owned .baro-state { color: rgb(var(--t-green)); }
+.baro-row.is-missing .baro-state { color: var(--gold); font-weight: 600; }
+
+/* ---------- Das Set hinter einem Teil ----------
+   Klappt unter der Karte auf, ueber die volle Breite des Rasters. Die Zeile
+   darunter beginnt danach neu - genau das ist gewollt: das Set gehoert nicht
+   in eine Spalte, es gehoert unter den Strich. */
+.trade-chip.chip-set {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-2);
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 5px 2px 7px;
+  transition: background .15s ease, color .15s ease;
+}
+.trade-chip.chip-set:hover { background: rgba(255, 255, 255, 0.13); color: var(--text); }
+/* Fehlt genau eins, ist derselbe Knopf die Warnung - ein zweiter Chip
+   daneben saegte dieselbe Aussage in zwei Haelften. */
+.trade-chip.chip-set.is-one { background: rgba(240, 184, 73, 0.15); color: var(--gold); }
+.trade-chip.chip-set.is-open { background: rgba(74, 158, 255, 0.2); color: #79c0ff; }
+.chip-caret { display: inline-flex; transition: transform .18s var(--ease); }
+.trade-chip.chip-set.is-open .chip-caret { transform: rotate(90deg); }
+
+.dset-panel {
+  grid-column: 1 / -1;
+  background: var(--surface-2);
+  border-radius: var(--r-sm);
+  padding: 12px 14px;
+  animation: fade .2s var(--ease);
+}
+
+.dset-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+.dset-art {
+  width: 42px; height: 42px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, .5));
+}
+.dset-title b { display: block; font-size: 13.5px; color: var(--text); }
+.dset-title span { font-size: 11px; color: var(--text-3); }
+.dset-bar {
+  height: 3px;
+  margin-top: 5px;
+  max-width: 220px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .08);
+  overflow: hidden;
+}
+.dset-bar i {
+  display: block; height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgb(var(--t-gold) / .5), rgb(var(--t-gold)));
+}
+.dset-close {
+  background: none; border: none; cursor: pointer;
+  color: var(--text-3); padding: 4px; border-radius: 6px;
+  display: grid; place-items: center;
+}
+.dset-close:hover { color: var(--text); background: rgba(255, 255, 255, .08); }
+
+/* Die eine Zahl, die es sonst nirgends gibt: das fertige Set ist ein eigener
+   Posten auf warframe.market, und sein Preis ist regelmaessig ein anderer als
+   die Summe der Teile. */
+.dset-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 7px 11px;
+  border-radius: var(--r-sm);
+  background: rgba(255, 255, 255, .04);
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.dset-value b { color: var(--text); font-variant-numeric: tabular-nums; }
+.dset-value i { font-style: normal; opacity: .6; }
+.dset-value em { font-style: normal; margin-left: auto; font-weight: 600; }
+.dset-value.is-set em { color: rgb(var(--t-green)); }
+.dset-value.is-parts em { color: var(--gold); }
+
+.dset-parts { margin-top: 10px; display: grid; gap: 1px; }
+.dset-part {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 62px 64px 46px 66px 54px;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  font-size: 11.5px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.dset-part:hover { background: rgba(255, 255, 255, .05); }
+/* Das Teil, von dessen Karte man kommt - sonst sucht man sich in einem
+   vierzeiligen Set die eigene Zeile zusammen. */
+.dset-part.is-here {
+  background: rgba(74, 158, 255, .1);
+  box-shadow: inset 2px 0 0 rgb(var(--t-accent) / .8);
+}
+.dset-part.missing { opacity: .55; }
+
+.dset-img { width: 28px; height: 28px; object-fit: contain; }
+.dset-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dset-req { color: var(--accent); font-weight: 700; }
+.dset-have { color: var(--text-3); }
+.dset-part.has .dset-have { color: rgb(var(--t-green)); font-weight: 600; }
+.dset-part.partial .dset-have { color: var(--gold); font-weight: 600; }
+.dset-part.missing .dset-have { color: var(--text-3); }
+.dset-duc { display: inline-flex; align-items: center; gap: 5px; color: var(--gold); }
+.dset-plat { color: var(--text-2); }
+.dset-ratio { color: var(--text-3); font-size: 10.5px; }
+.dset-vault { color: #ff9d9d; font-size: 10.5px; }
+
+.dset-missing {
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, .06);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text-3);
+}
+.dset-missing b { color: var(--gold); font-weight: 600; }
+
+/* KEINE Breitenregel hier, obwohl sie naheliegt: das Fenster kann nicht
+   schmaler als 1020 px werden (WINDOW_MIN in main.js), und bei dieser Breite
+   bleiben dem Namen neben allen sieben Spalten noch ueber 500 px. Eine
+   Umschaltung haette also nur Spalten versteckt, die gepasst haetten. */

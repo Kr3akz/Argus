@@ -6,6 +6,8 @@
 
 ---
 
+*Your builds in progress moved out of here and into the Mastery tab —
+see [foundry, vault status and subsumed frames](foundry.md).*
 
 ## The cards, as they look in game
 

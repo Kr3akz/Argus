@@ -39,6 +39,23 @@ export function isRawMaterial(uniqueName) {
 
 /**
  * Loest ein Ziel in Komponentenbaum + aggregierte Rohstoffliste auf.
+ *
+ * BAUZEIT IST EINE UHRZEIT, KEINE SUMME.
+ *   Hier stand einmal `totalBuildSeconds += buildTime * count` ueber den
+ *   ganzen Baum. Das beantwortet die Frage "wie lange laufen alle Baue
+ *   zusammengerechnet", die niemand stellt. Gefragt ist: wann habe ich es.
+ *
+ *   Die Schmiede baut BELIEBIG VIELES GLEICHZEITIG - es gibt keine Slots und
+ *   keine Warteschlange. Man legt alle drei Komponenten am selben Abend ein
+ *   und geht schlafen. Sie laufen also nebeneinander, und erst wenn die
+ *   LANGSAMSTE fertig ist, kann der Warframe darauf starten.
+ *
+ *   Nachgemessen an DEs ExportRecipes, Octavia:
+ *     Summe            72h (Rahmen) + 3 x 12h + 10s = 108h -> "4d 12h"
+ *     Kritischer Pfad  max(12h, 12h, 12h) + 72h     =  84h -> "3d 12h"
+ *   Bei Mesa, Ivara und Excalibur waren es dieselben 24-25 h zu viel. Ein
+ *   ganzer Tag, und zwar zuverlaessig bei JEDEM Warframe.
+ *
  * @returns {{tree, materials, totalCredits, totalBuildSeconds, buildSteps}}
  */
 export function resolveGoal(uniqueName, catalog, { names = null, maxDepth = 6 } = {}) {
@@ -53,21 +70,36 @@ export function resolveGoal(uniqueName, catalog, { names = null, maxDepth = 6 } 
       const prev = materials.get(type);
       if (prev) prev.count += count;
       else materials.set(type, { name: nameOf.get(type) || shortName(type), count, uniqueName: type });
-      return { type, name: nameOf.get(type) || shortName(type), count, children: [] };
+      return { type, name: nameOf.get(type) || shortName(type), count, children: [], waitSeconds: 0 };
     }
 
-    totalCredits += (recipe.buildPrice || 0) * count;
-    totalBuildSeconds += (recipe.buildTime || 0) * count;
-    buildSteps += count;
+    /* Ein Rezept liefert `num` Stueck. Wer zwanzig Kaltfusionskerne braucht
+       und pro Bau zwanzig bekommt, baut EINMAL - nicht zwanzigmal, und zahlt
+       auch nur einmal. 70 der 1866 Rezepte liefern mehr als eins (10, 20, 3,
+       100, 50, 5, 6); ohne diese Zeile vervielfacht sich bei ihnen alles:
+       Credits, Bauschritte und der ganze Materialbedarf darunter. */
+    const perBuild = recipe.num > 0 ? recipe.num : 1;
+    const builds   = Math.ceil(count / perBuild);
+
+    totalCredits += (recipe.buildPrice || 0) * builds;
+    buildSteps += builds;
 
     const children = (recipe.ingredients || []).map(ing =>
-      walk(ing.ItemType, (ing.ItemCount || 1) * count, depth + 1));
+      walk(ing.ItemType, (ing.ItemCount || 1) * builds, depth + 1));
+
+    /* Der kritische Pfad: erst wenn die langsamste Zutat aus der Schmiede
+       kommt, kann dieses Rezept starten. Mehrere Exemplare DESSELBEN Rezepts
+       verlaengern nichts - auch die laufen nebeneinander. */
+    const waitSeconds = (recipe.buildTime || 0) +
+      Math.max(0, ...children.map(c => c.waitSeconds || 0));
 
     return { type, name: nameOf.get(type) || shortName(type), count,
-             buildPrice: recipe.buildPrice || 0, buildTime: recipe.buildTime || 0, children };
+             buildPrice: recipe.buildPrice || 0, buildTime: recipe.buildTime || 0,
+             waitSeconds, children };
   }
 
   const tree = walk(uniqueName, 1, 0);
+  totalBuildSeconds = tree.waitSeconds || 0;
   const components = (tree.children || []).map(c => ({
     uniqueName: c.type,
     name: c.name,
@@ -75,6 +107,7 @@ export function resolveGoal(uniqueName, catalog, { names = null, maxDepth = 6 } 
     isSubRecipe: Array.isArray(c.children) && c.children.length > 0,
     buildPrice: c.buildPrice || 0,
     buildTime: c.buildTime || 0,
+    waitSeconds: c.waitSeconds || 0,
     ingredients: (c.children || []).map(ch => ({
       uniqueName: ch.type,
       name: ch.name,
@@ -101,7 +134,10 @@ export function combineGoals(uniqueNames, catalog) {
     const r = resolveGoal(u, catalog, { names });
     perGoal.push({ uniqueName: u, name: r.tree.name, ...r });
     credits += r.totalCredits;
-    seconds += r.totalBuildSeconds;
+    /* Auch mehrere Ziele stehen gleichzeitig in der Schmiede. Die
+       Einkaufsliste ist nach der LAENGSTEN Wartezeit fertig, nicht nach der
+       Summe aller - Credits dagegen zahlt man fuer jedes Ziel einzeln. */
+    seconds = Math.max(seconds, r.totalBuildSeconds);
     for (const m of r.materials) {
       const prev = combined.get(m.uniqueName);
       if (prev) prev.count += m.count;

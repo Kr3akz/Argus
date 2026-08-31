@@ -7,6 +7,7 @@
 import { imageUrl } from './catalog.js';
 import { findMarketItem } from './market.js';
 import { classify } from './classify.js';
+import { partDropsNow } from './vault.js';
 
 export const DUCAT_VALUES = {
   COMMON: 15,
@@ -373,4 +374,80 @@ export function buildDucatsCatalog(catalog, market, priceCache = {}) {
   }
 
   return list.sort((a, b) => b.ducats - a.ducats || a.name.localeCompare(b.name, 'en'));
+}
+
+/**
+ * Was ein Teil wert ist, BEVOR man es einschmilzt.
+ *
+ * Der Dukatenwert steht auf jeder Karte, der Platinpreis daneben - beides
+ * sind Zahlen ueber DIESES Teil. Was dabei fehlt, ist der Zusammenhang, in
+ * dem es steht, und genau der entscheidet:
+ *
+ *   GEVAULTET  Das Teil faellt nirgendwo mehr. Eingeschmolzen ist es nicht
+ *              "wieder farmbar", sondern nur noch kaufbar - fuer Platin, das
+ *              regelmaessig ein Vielfaches der 15 Dukaten wert ist, die man
+ *              dafuer bekommen hat.
+ *
+ *   EIN TEIL   Vom Set fehlt genau noch eines. Das komplette Set bringt auf
+ *   FEHLT      dem Markt spuerbar mehr als die Summe seiner Teile, und wer
+ *              hier das falsche einschmilzt, faengt von vorne an.
+ *
+ * Beides sind BEMERKUNGEN, keine Sperren: die Entscheidung trifft weiter der
+ * Spieler, er trifft sie nur nicht mehr blind.
+ *
+ * @param items     die Teile aus buildInventoryDucats
+ * @param sets      die Sets aus buildPrimeSets - liefert den Zusammenhang
+ * @param vaultIdx  Vault-Index; fehlt er, bleibt `vaulted` ueberall null
+ */
+export function annotateInventoryContext(items, sets = [], vaultIdx = null) {
+  /* Ueber den Slug, nicht ueber den Namen: beide Listen stammen aus derselben
+     Marktliste, und der Slug ist dort der Schluessel. Namen muessten
+     normalisiert werden und gingen bei jedem Sonderzeichen schief. */
+  const partOfSet = new Map();
+  for (const set of sets) {
+    const missing = (set.parts || []).filter(p => p.count < (p.required || 1));
+    const info = {
+      setName: set.name,
+      ownedParts: set.ownedParts,
+      totalParts: set.totalParts,
+      complete: !!set.complete,
+      /* Nur die NAMEN der fehlenden Teile - was man farmen muesste. */
+      missingParts: missing.map(p => p.shortName || p.name),
+      /* Genau eins fehlt: der Moment, in dem sich das Warten lohnt. */
+      needsOne: !set.complete && (set.totalParts - set.ownedParts) === 1
+    };
+    for (const p of set.parts || []) {
+      partOfSet.set(p.slug, { ...info, required: p.required || 1 });
+      /* Der Vermerk auch am Teil IM Set, nicht nur an dem im Bestand: die
+         Set-Ansicht zeigt gerade das, was man NICHT hat, und dort ist
+         "faellt das ueberhaupt noch" die entscheidende Frage - ein fehlendes
+         Teil aus einem geschlossenen Vault farmt man nicht nach. */
+      p.vaulted = partDropsNow(vaultIdx, p.name);
+    }
+  }
+
+  for (const it of items) {
+    const ctx = partOfSet.get(it.slug) || null;
+
+    it.vaulted = partDropsNow(vaultIdx, it.name) === false ? true
+               : partDropsNow(vaultIdx, it.name) === true ? false
+               : null;
+
+    it.set = ctx ? {
+      name: ctx.setName,
+      owned: ctx.ownedParts,
+      total: ctx.totalParts,
+      complete: ctx.complete,
+      needsOne: ctx.needsOne,
+      missingParts: ctx.missingParts
+    } : null;
+
+    /* Wie viele Exemplare man abgeben KANN, ohne die eigene Sammlung
+       anzugreifen: alles ueber dem, was das Set von diesem Teil braucht.
+       Im Gesamtkatalog gibt es keinen Bestand - dort bleibt es null statt 0,
+       weil "keine Reserve" und "kein Besitz" nicht dasselbe sind. */
+    it.spare = it.count == null ? null : Math.max(0, it.count - (ctx?.required || 1));
+  }
+
+  return items;
 }

@@ -348,6 +348,11 @@ function formatVoidTrader(vt) {
     endString: vt.endString || '',
     inventory: (vt.inventory || []).map(item => ({
       item: item.item || item.uniqueName || 'Item',
+      /* Der Pfad ist die einzige belastbare Kupplung zum Inventar - im Laden
+         heisst dieselbe Ware anders als im Schrank ("Prime Revenant Cape"
+         gegen "Revenant Prime Cape"). Ohne ihn kann der Einkaufszettel in
+         core/baro.js nicht sagen, was man schon hat. */
+      uniqueName: item.uniqueName || null,
       ducats: item.ducats || 0,
       credits: item.credits || 0
     }))

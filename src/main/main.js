@@ -17,7 +17,7 @@
 import { app, BrowserWindow, ipcMain, globalShortcut, shell, Notification, screen, clipboard } from 'electron';
 import path from 'node:path';
 import { existsSync, mkdirSync, renameSync, cpSync, createWriteStream } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -37,7 +37,8 @@ import { fetchWorldState } from '../core/worldstate.js';
 import { annotateProgress } from '../core/weekly.js';
 import { searchResourceGuides, RESOURCE_CATEGORIES } from '../core/farming.js';
 import { getMiningGuide } from '../core/mining.js';
-import { getDucatsReferenceList, buildPrimeSets, buildDucatsCatalog, buildInventoryDucats } from '../core/ducats.js';
+import { getDucatsReferenceList, buildPrimeSets, buildDucatsCatalog, buildInventoryDucats,
+         annotateInventoryContext } from '../core/ducats.js';
 import { loadInventory } from '../core/inventory.js';
 import { scanCredentials, findGameProcessIds } from '../core/gamecreds.js';
 import { buildInventory, SECTIONS, ownedUpgradeRanks, miscItemCount, ownedStock, recipeRow } from '../core/inventory-items.js';
@@ -63,6 +64,11 @@ import {
   rewardsFor, relicExpectation, indexByReward, relicsForReward, RELIC_STATES
 } from '../core/relics.js';
 import { buildBaseSets } from '../core/basesets.js';
+import { foundryQueue } from '../core/foundry.js';
+import { buildCraftChains, inventoryXP, mergeXP } from '../core/craftchains.js';
+import { buildBaroOffer } from '../core/baro.js';
+import { subsumedSuits } from '../core/helminth.js';
+import { buildVaultIndex, vaultStatus } from '../core/vault.js';
 import {
   scanRewardScreen, buildRewardIndex, mergeRewards, warmUpOcr, stopOcrWorker, rewardScreenVisible,
   panelGeometrie, panelGeometrieGemessen, ocrScreen
@@ -185,7 +191,8 @@ let interacting = false;
 /* Fenster, das vor dem Zeigermodus den Fokus hatte - im Spielbetrieb also
    Warframe. Nur eine Kennung, kein Zugriff auf den fremden Prozess. */
 let interactReturnTo = null;
-const cache = { catalog: null, profile: null, analysis: null, mods: null, arcanes: null, dropTables: null, cards: null };
+const cache = { catalog: null, profile: null, analysis: null, mods: null, arcanes: null, dropTables: null, cards: null,
+                vault: null, subsumed: null };
 
 /* Wohin geschrieben wird - siehe core/paths.js.
    Im gepackten Build liegt der Programmordner unter Programme und gehoert
@@ -1070,13 +1077,56 @@ async function ensureData({ refresh = false, force = false } = {}) {
   return { ...res, cfg };
 }
 
+/**
+ * Der Vault-Index, einmal je Programmlauf.
+ *
+ * Er kostet zwei Tabellen, die beide ohnehin auf Platte liegen, und wird von
+ * jeder Katalogkachel gebraucht - deshalb hier gecacht und nicht je Aufruf
+ * neu gebaut. Faellt eine der Tabellen aus, bleibt er unbrauchbar (usable:
+ * false), und die Oberflaeche zeigt gar keinen Vault-Hinweis statt eines
+ * falschen.
+ */
+async function vaultIndex() {
+  if (cache.vault) return cache.vault;
+  try {
+    if (!cache.dropTables) cache.dropTables = await loadDropTables({});
+    cache.vault = buildVaultIndex(cache.dropTables, await loadRelicTables());
+  } catch {
+    cache.vault = { liveRelics: new Set(), obtainable: new Set(), usable: false };
+  }
+  return cache.vault;
+}
+
+/**
+ * Welche Warframes sind subsumiert.
+ *
+ * NUR aus der bereits vorliegenden Inventardatei - `refresh: false` liest
+ * ausschliesslich, was da ist. Es wird NIE ein Abruf angestossen und NIE zum
+ * Einschalten der Speicherberechtigung aufgefordert; ohne Abruf bleibt die
+ * Menge leer und der Katalog sieht aus wie vorher.
+ */
+async function subsumedSet() {
+  if (cache.subsumed) return cache.subsumed;
+  try {
+    const { inventory } = await loadInventory({ refresh: false });
+    cache.subsumed = subsumedSuits(inventory);
+  } catch {
+    cache.subsumed = new Set();
+  }
+  return cache.subsumed;
+}
+
 function decorate(entry) {
   const item = cache.catalog.byUniqueName.get(entry.uniqueName) || {};
   return {
     ...entry,
     label: CATEGORY_LABELS[entry.category] || entry.category,
     image: imageUrl(entry.uniqueName, 128),
-    description: item.description || ''
+    description: item.description || '',
+    /* Beide bewusst als null, wenn die Frage sich nicht stellt: die Kachel
+       unterscheidet "nicht gevaultet" von "wissen wir nicht". */
+    vault: cache.vault ? vaultStatus(entry.uniqueName, cache.catalog, cache.vault) : null,
+    subsumed: cache.subsumed ? cache.subsumed.has(entry.uniqueName) : null
   };
 }
 
@@ -1714,6 +1764,7 @@ ipcMain.handle('item:details', async (_e, uniqueName) => {
 
     const entry = cache.analysis.entries.find(e => e.uniqueName === uniqueName);
     const cls = classify(item);
+    const [vaultIdx, subsumed] = await Promise.all([vaultIndex(), subsumedSet()]);
     const acq = acquisitionOf(item);
     const st = await store.load();
     const isGoal = st.goals.some(g => g.uniqueName === uniqueName && !g.done);
@@ -1779,6 +1830,9 @@ ipcMain.handle('item:details', async (_e, uniqueName) => {
         materials,
         credits: recipe.totalCredits,
         buildTime: formatDuration(recipe.totalBuildSeconds),
+        vault: vaultStatus(uniqueName, cache.catalog, vaultIdx),
+        /* Nur bei Warframes eine Aussage - bei allem anderen gar keine. */
+        subsumed: cls.category === 'warframes' ? subsumed.has(uniqueName) : null,
         hasRecipe: recipe.materials.length > 0 || recipe.totalCredits > 0 || components.length > 0
       }
     };
@@ -1788,6 +1842,9 @@ ipcMain.handle('item:details', async (_e, uniqueName) => {
 });
 
 ipcMain.handle('checklist:get', async (_e, category) => {
+  /* Vor dem Dekorieren, nicht darin: decorate() laeuft je Eintrag - bei 800
+     Items waeren das 800 Ladeversuche. */
+  await Promise.all([vaultIndex(), subsumedSet()]);
   return cache.analysis.entries
     .filter(e => !category || e.category === category)
     .sort((x, y) => (x.name || '').localeCompare(y.name || ''))
@@ -1905,6 +1962,39 @@ async function readPriceCache() {
     console.error('[Dukaten] Preis-Cache nicht lesbar:', err.message);
   }
   return {};
+}
+
+/* ------------------------------------------------------------------
+   Baros letztes Angebot.
+
+   Baro steht zwei von vierzehn Tagen im Relais. Die restlichen zwoelf Tage
+   liefert DE eine LEERE Liste - nicht die naechste, sondern gar keine. Ohne
+   diesen Zwischenspeicher waere der Einkaufszettel deshalb die meiste Zeit
+   ein leeres Blatt, obwohl der Abgleich mit dem Inventar auch nachtraeglich
+   etwas wert ist: was man beim letzten Mal haette mitnehmen sollen, steht
+   beim naechsten Mal oft wieder da.
+
+   Eigene Datei und nicht goals.json: das hier ist ein Cache fremder Daten,
+   kein Besitz des Nutzers - er darf jederzeit geloescht werden, ohne dass
+   etwas verloren geht.
+   ------------------------------------------------------------------ */
+const BARO_CACHE = () => dataFile('baro-offer.json');
+
+async function readBaroCache() {
+  try {
+    if (existsSync(BARO_CACHE())) return JSON.parse(await readFile(BARO_CACHE(), 'utf8'));
+  } catch (err) {
+    console.warn('[Baro] Zwischenspeicher nicht lesbar:', err.message);
+  }
+  return null;
+}
+
+async function writeBaroCache(trader) {
+  try {
+    await writeFile(BARO_CACHE(), JSON.stringify({ savedAt: Date.now(), trader }, null, 2));
+  } catch (err) {
+    console.warn('[Baro] Zwischenspeicher nicht schreibbar:', err.message);
+  }
 }
 
 /** Basispfad + Zustand -> Bild-URL. Ohne Pfad kein Bild, statt einer Ausnahme. */
@@ -2245,6 +2335,19 @@ ipcMain.handle('ducats:get', async () => {
     mastered: masteredDucats
   });
 
+  /* Der Zusammenhang, in dem ein einzelnes Teil steht: faellt es noch, und
+     wie weit ist das Set. Erst NACH den Sets, weil genau die den
+     Zusammenhang liefern - und vor der Antwort, weil die Oberflaeche sonst
+     dieselbe Rechnung noch einmal machen muesste.
+
+     Der Gesamtkatalog bekommt denselben Vault-Vermerk, aber keinen
+     Set-Zusammenhang: der haengt am Besitz, und im Katalog steht auch, was
+     man nicht hat. Der Filter "gevaultet" soll trotzdem in beiden Listen
+     dasselbe bedeuten. */
+  const vaultIdx = await vaultIndex();
+  annotateInventoryContext(inventoryData.items, sets, vaultIdx);
+  annotateInventoryContext(catalogData, [], vaultIdx);
+
   /* Relikt-Planer: was bringt das Oeffnen im Schnitt. Faellt er aus, laeuft
      der Rest des Tabs weiter - er ist eine Zugabe, keine Voraussetzung. */
   let relicPlan = [];
@@ -2276,6 +2379,63 @@ ipcMain.handle('ducats:get', async () => {
     pricesFetchedAt: Object.values(priceCache)[0]?.fetchedAt || null,
     hasPrices: Object.keys(priceCache).length > 0
   };
+});
+
+/**
+ * Baros Einkaufszettel.
+ *
+ * Der Abgleich selbst steckt in core/baro.js; hier werden nur die drei
+ * Quellen zusammengetragen - Angebot, Inventar, Katalog - und der
+ * Zwischenspeicher gepflegt.
+ *
+ * DER ZWISCHENSPEICHER WIRD NUR GEFUELLT, WENN ETWAS DRINSTEHT: eine leere
+ * Liste ist keine Nachricht ueber Baro, sondern die Abwesenheit einer. Wuerde
+ * sie den letzten Besuch ueberschreiben, loeschte sich der Zettel jedes Mal
+ * selbst, sobald Baro abreist.
+ */
+ipcMain.handle('baro:get', async () => {
+  try {
+    if (!cache.catalog) await ensureData({ refresh: false });
+
+    const ws = await fetchWorldState().catch(() => null);
+    const live = ws?.voidTrader || null;
+
+    if (live?.inventory?.length) await writeBaroCache(live);
+
+    /* Live, wenn er da ist - sonst der letzte Besuch, sauber als solcher
+       ausgewiesen. Die Zeiten kommen in beiden Faellen aus dem LIVE-Stand:
+       wann er wiederkommt, weiss der alte Abzug nicht. */
+    const cached = live?.inventory?.length ? null : await readBaroCache();
+    const trader = live?.inventory?.length ? live : {
+      ...(live || {}),
+      inventory: cached?.trader?.inventory || []
+    };
+
+    const inventory = await loadInventory({ refresh: false })
+      .then(r => r.inventory).catch(() => null);
+
+    const xpMap = mergeXP(
+      new Map((cache.profile?.LoadOutInventory?.XPInfo || []).map(e => [e.ItemType, e.XP])),
+      inventoryXP(inventory)
+    );
+
+    const offer = buildBaroOffer(trader, { inventory, catalog: cache.catalog, xpMap });
+
+    return {
+      ok: true,
+      data: {
+        ...offer,
+        /* Woher die Liste stammt. Ohne diese Angabe stuende ein Angebot von
+           vor zwei Wochen als das aktuelle da. */
+        stale: !live?.inventory?.length && !!cached?.trader?.inventory?.length,
+        savedAt: cached?.savedAt || null,
+        startString: live?.startString || '',
+        endString: live?.endString || ''
+      }
+    };
+  } catch (err) {
+    return { ok: false, code: err.code || 'empty', error: err.message };
+  }
 });
 
 ipcMain.handle('ducats:fetchPrices', async (_e, slugs = []) => {
@@ -2765,6 +2925,16 @@ async function inventoryPayload({ refresh }) {
     complete: sets.filter(s => s.complete).length
   };
 
+  /* Der Wecker haengt am Eintreffen neuer Daten, nicht an ihrer Anzeige -
+     deshalb steht er hier und nicht im Aufruf der Schmiedeseite. Wer das
+     Inventar abruft, hat damit auch die Weckzeiten aktualisiert, ohne die
+     Seite je geoeffnet zu haben. */
+  scheduleFoundryAlarms(foundryQueue(res.inventory, cache.catalog));
+
+  /* Ein frischer Abruf kann neue subsumierte Warframes bringen - der Katalog
+     soll sie sehen, ohne dass jemand das Programm neu startet. */
+  if (!res.fromCache) cache.subsumed = null;
+
   return {
     ok: true,
     data: {
@@ -2784,6 +2954,97 @@ async function inventoryPayload({ refresh }) {
     }
   };
 }
+
+/**
+ * Die Schmiede fuer ihre eigene Seite.
+ *
+ * EIGENER AUFRUF, WEIL SIE EINEN EIGENEN PLATZ HAT: Sie sitzt im
+ * Mastery-Tab, das Inventar liegt woanders. Haetten beide denselben Aufruf,
+ * muesste jemand erst das Inventar aufmachen, damit die Schmiede etwas
+ * anzeigt - und genau das ist der Klick, den diese Seite ersparen soll.
+ *
+ * `refresh: false` - es wird ausschliesslich gelesen, was schon dasteht.
+ * Kein Netz, kein Speicherzugriff, keine Nachfrage nach der Berechtigung.
+ */
+ipcMain.handle('foundry:get', async () => {
+  try {
+    if (!cache.catalog) await ensureData({ refresh: false });
+    const { inventory, fetchedAt } = await loadInventory({ refresh: false });
+    const queue = foundryQueue(inventory, cache.catalog);
+
+    return {
+      ok: true,
+      data: {
+        ...queue,
+        /* Das Bild haengt am ERGEBNIS des Rezepts, nicht an der Blaupause -
+           imageUrl kennt nur echte Items. Wo der Katalog den Ergebnistyp
+           nicht kennt, bleibt es null und die Zeile zeigt ihren Platzhalter. */
+        items: queue.items.map(i => ({
+          ...i,
+          image: i.uniqueName ? imageUrl(i.uniqueName, 128) : null
+        })),
+        fetchedAt
+      }
+    };
+  } catch (err) {
+    /* "Noch nie abgerufen" ist auch hier ein Zustand, kein Fehler. */
+    return { ok: false, code: err.code || 'empty', error: err.message };
+  }
+});
+
+/**
+ * Die Bauketten - Waffen, die andere Waffen verschlucken.
+ *
+ * EIGENER KANAL, NICHT TEIL VON foundry:get: die Schmiedeliste braucht ein
+ * abgerufenes Inventar und ist ohne es leer. Die Ketten stehen auch ohne -
+ * sie kommen aus dem Katalog, und ihren Mastery-Stand liefert schon das
+ * oeffentliche Profil. Haengte man beides an einen Aufruf, waere die eine
+ * Haelfte immer so blind wie die andere.
+ *
+ * XP AUS BEIDEN QUELLEN: das Profil kann aelter sein als der letzte
+ * Inventarabruf und umgekehrt. Der hoehere Wert gewinnt - Affinity faellt
+ * nie, ein Rang kann also nicht durch die Wahl der Quelle verschwinden.
+ */
+ipcMain.handle('foundry:chains', async () => {
+  try {
+    if (!cache.catalog) await ensureData({ refresh: false });
+
+    /* `refresh: false` - nur lesen, was schon dasteht. Kein Abruf, keine
+       Nachfrage nach der Speicherberechtigung. */
+    const inventory = await loadInventory({ refresh: false })
+      .then(r => r.inventory).catch(() => null);
+
+    const xpMap = mergeXP(
+      new Map((cache.profile?.LoadOutInventory?.XPInfo || []).map(e => [e.ItemType, e.XP])),
+      inventoryXP(inventory)
+    );
+
+    const chains = buildCraftChains(cache.catalog, { xpMap, inventory });
+
+    /* Bilder erst hier: core/ kennt die Bild-URL zwar, aber die Ketten sind
+       ein Datenmodell und kein Bildschirm - und rekursiv anzuhaengen ist
+       hier eine Zeile. */
+    const withImages = node => ({
+      ...node,
+      image: imageUrl(node.uniqueName, 128),
+      steps: (node.steps || []).map(withImages)
+    });
+
+    return {
+      ok: true,
+      data: {
+        chains: chains.map(withImages),
+        /* Ohne diese beiden weiss die Oberflaeche nicht, wovon sie schweigen
+           muss: ohne XP ist jedes Glied "missing", ohne Inventar ist kein
+           Bestand bekannt. */
+        hasMastery: xpMap.size > 0,
+        hasInventory: !!inventory
+      }
+    };
+  } catch (err) {
+    return { ok: false, code: err.code || 'empty', error: err.message };
+  }
+});
 
 ipcMain.handle('inventory:get', async () => {
   try {
@@ -3005,9 +3266,14 @@ ipcMain.handle('relic:details', async (_e, uniqueName) => {
       };
     });
 
-    /* Steht das Relikt nicht mehr in den Droptabellen, ist es vaulted - dann
-       gibt es keine Belohnungsliste und auch keinen Fundort. */
-    const vaulted = !relicIdx?.byKey?.has(resolved.key);
+    /* Gevaultet heisst: FAELLT NIRGENDWO MEHR.
+       Hier stand `!relicIdx.byKey.has(key)` - die Belohnungstabelle als
+       Pruefung. Die fuehrt aber JEDES Relikt, das es je gab (773 von 774, die
+       warframe.market kennt), weil sie beschreibt, was drin ist, und nicht,
+       wo es herkommt. Die Pruefung schlug damit fuer genau ein Relikt an und
+       war ansonsten wirkungslos. Was faellt, sagen die Missionstabellen -
+       am selben Abzug 35 statt 773. */
+    const vaulted = !(await vaultIndex()).liveRelics.has(resolved.key);
 
     let sources = { groups: [], origin: null };
     if (!vaulted) {
@@ -5339,6 +5605,87 @@ ipcMain.handle('settings:hotkeys', async (_e, patch) => {
 });
 ipcMain.handle('window:minimize', () => win && win.minimize());
 ipcMain.handle('window:close',    () => win && win.close());
+
+/* -------------------- Schmiede: Wecker fuer fertige Baue -------------------- */
+
+/**
+ * Ein Zeitgeber je laufendem Bau.
+ *
+ * WARUM KEIN POLLER:
+ *   Der Fertigstellungszeitpunkt steht im Inventar - er ist BEKANNT, sobald
+ *   einmal abgerufen wurde. Regelmaessig nachzusehen hiesse, den Speicher des
+ *   Spiels immer wieder anzufassen und gegen DEs Drosselung zu laufen, um
+ *   eine Zahl zu erfahren, die man schon hat.
+ *
+ * WAS DAS KOSTET, WENN ARGUS NICHT LAEUFT:
+ *   Nichts geht verloren - beim naechsten Abruf steht der Bau schlicht als
+ *   fertig da. Der Wecker ist die Bequemlichkeit obendrauf, nicht die
+ *   Buchfuehrung.
+ */
+let foundryAlarms = [];
+
+function clearFoundryAlarms() {
+  for (const t of foundryAlarms) clearTimeout(t);
+  foundryAlarms = [];
+}
+
+function scheduleFoundryAlarms(queue) {
+  clearFoundryAlarms();
+  if (!queue) return;
+
+  const now = Date.now();
+  /* setTimeout rechnet in einem 32-Bit-Wert: alles ueber ~24,8 Tagen laeuft
+     ueber und feuert SOFORT. Zwei Wochen decken jede Bauzeit im Spiel ab
+     (das laengste Rezept sind drei Tage) und bleiben klar darunter. */
+  const HORIZONT = 14 * 24 * 3600 * 1000;
+
+  const wecker = [
+    ...queue.building.map(i => ({ at: i.completionAt, title: i.name, kind: 'build' })),
+    queue.helminth?.busy
+      ? { at: queue.helminth.readyAt, title: queue.helminth.ability, kind: 'helminth' }
+      : null
+  ].filter(x => x?.at != null && x.at > now && x.at - now < HORIZONT);
+
+  for (const w of wecker) {
+    foundryAlarms.push(setTimeout(() => notifyFoundryDone(w), w.at - now));
+  }
+}
+
+async function notifyFoundryDone(w) {
+  const title = w.kind === 'helminth'
+    ? 'Helminth is done'
+    : 'Ready in the foundry';
+  const body = w.kind === 'helminth'
+    ? `${w.title} can be subsumed now.`
+    : `${w.title} has finished building.`;
+
+  try {
+    const st = await store.load();
+    /* Dieselbe Schalterreihe wie bei den Rissen: wer Toasts abgestellt hat,
+       will auch hier keine. */
+    if (st.notifications?.desktopToast !== false && Notification.isSupported()) {
+      const n = new Notification({
+        title,
+        body,
+        silent: !st.notifications?.sound
+      });
+      n.on('click', () => {
+        if (!win) return;
+        if (win.isMinimized()) win.restore();
+        win.show();
+        win.focus();
+        win.webContents.send('navigate:tab', 'mastery', 'foundry');
+      });
+      n.show();
+    }
+  } catch (err) {
+    console.error('[Schmiede] Benachrichtigung fehlgeschlagen:', err.message);
+  }
+
+  if (win && win.webContents) {
+    win.webContents.send('notification:event', { type: 'foundry', title, body });
+  }
+}
 
 /* -------------------- Void-Riss Benachrichtigungen -------------------- */
 

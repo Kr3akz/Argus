@@ -38,10 +38,17 @@ contextBridge.exposeInMainWorld('api', {
   getMiningGuide:  (q)         => ipcRenderer.invoke('mining:get', q),
   getDucatsData:   ()          => ipcRenderer.invoke('ducats:get'),
   fetchDucatPrices:(slugs)     => ipcRenderer.invoke('ducats:fetchPrices', slugs),
+  /* Baros Angebot gegen das eigene Inventar. Steht im Dukaten-Tab, weil es
+     dieselbe Waehrung ausgibt, die dort eingenommen wird. */
+  getBaroOffer:    ()          => ipcRenderer.invoke('baro:get'),
   /* Inventar: get liest nur die lokale Datei, refresh geht als einziger Weg
      ins Netz. Zugangsdaten bleiben im Hauptprozess - hier kommt nie ein
      accountId oder nonce an. */
   getInventory:    ()          => ipcRenderer.invoke('inventory:get'),
+  getFoundry:      ()          => ipcRenderer.invoke('foundry:get'),
+  /* Die Bauketten haengen am Katalog, nicht am Inventar - deshalb ein
+     eigener Kanal: sie stehen auch, bevor je etwas abgerufen wurde. */
+  getCraftChains:  ()          => ipcRenderer.invoke('foundry:chains'),
   refreshInventory:()          => ipcRenderer.invoke('inventory:refresh'),
   /* Auto-Sync: der Hauptprozess meldet, wenn im Hintergrund frische Daten
      eingetroffen sind (updated) oder ein Abruf am Rate-Limit gescheitert

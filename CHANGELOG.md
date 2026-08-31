@@ -21,6 +21,144 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-01
+
+### Added
+
+- **The foundry is a third mode in the Mastery tab, beside Manager and
+  Catalogue, with the clock running.** Every blueprint you have building —
+  with the item's own artwork — when it will be done, and what is already
+  finished and waiting to be collected. It sits there rather than under
+  Inventory because it answers the same question as the rest of that tab:
+  what is still between you and the item. A build finishing in two hours is
+  a goal with a waiting time, not a holding of stock. Warframe tells you about a finished
+  build only in the orbiter, at the foundry itself — go straight into a
+  mission and you never see it. On the account this was built against, two
+  items had been sitting there **finished for three weeks**. The times are not
+  estimates: the completion timestamp comes from your account, so a build you
+  rushed with platinum shows its new time, not the old one. Argus also sets a
+  desktop notification for each build that is due while it is running.
+- **The Helminth stands in the same list.** What it is digesting and when it
+  will let you subsume the next thing.
+- **Subsumed warframes are marked in the catalogue.** Every frame you have
+  already fed to the Helminth carries its mark, so "have I done this one" is
+  answered where you browse rather than in the game, two menus deep.
+- **Vaulted prime gear is marked as what it is.** A prime item now shows how
+  many of its parts still drop — `0/4` in red when the vault is shut, `2/4`
+  in gold when it is half open and worth knowing which half. The item window
+  names the parts you can no longer farm.
+- **The mode switch wears the game's own icons.** Catalogue takes the Codex
+  mark and Foundry the foundry mark, both from the orbiter quick access —
+  the same set the app already carried. Subsumed frames are marked with the
+  Helminth's own sign.
+- **Crafting chains: the weapons that eat other weapons.** The Akjagara wants
+  an Akbolto, the Akbolto wants two Bolto, and a Bolto wants a Lato — four
+  weapons and 12,000 mastery points in a row, and **every stage is destroyed
+  when you build the next one.** Feed an unranked Bolto to the Akbolto and
+  those 3,000 points are gone; getting them back means farming, building and
+  levelling the whole thing again. The game never says this: a recipe shows
+  the next ingredient, never the chain beneath it. Under the Foundry there is
+  now every chain in the game with **every link carrying its own rank**, not
+  just the weapon at the end — and a warning on any link you own that has not
+  reached 30 yet: *"Rank Tipedo to 30 first — the next build consumes it, and
+  the mastery goes with it."* Beside each link stands what you have in stock,
+  so a chain can also say that everything for the final build is already
+  sitting in your inventory, and long chains carry their build order in one
+  line: `Lato → 2× Bolto → Akbolto + Dual Skana → Akjagara`. The chains come
+  out of DE's own recipes, so a new weapon built from two old ones appears
+  without anything being maintained.
+- **Baro's manifest against your own inventory.** His list in the game shows
+  prices and names and never whether you already own the thing — checking
+  means leaving the vendor and searching the arsenal by hand, item by item.
+  The ducat tab now has a fourth mode that splits his offer in two: what you
+  do not own, and what is already yours. Above it, the numbers that decide
+  the visit — how many you are missing, what they cost in ducats and credits
+  together, and whether your purse covers it or how far short you are.
+  Anything that would be **new mastery** is marked as such. Since DE
+  publishes the manifest only while Baro is standing in the relay, Argus
+  keeps a copy of it: open the tab once during his visit and the list is
+  still there for the fortnight after, labelled as his last offer rather
+  than a promise about the next one.
+- **Two remarks on every prime part you own: vaulted, and one part to a
+  set.** The ducat value and the platinum price say what a part is worth; they
+  say nothing about what it costs *you* to give it up. A **vaulted** part
+  drops nowhere — melting it for 15 ducats does not mean farming another one,
+  it means buying it back for platinum. And a part whose set is a single
+  piece short is worth more inside that set than out of it; the mark names
+  what is still missing, so it doubles as a farming target. On a
+  long-standing account, half of the prime parts held turned out to be
+  vaulted. Both are chips on the card and filters in the bar — the set state
+  sits on the chip that opens the set, rather than repeating itself beside it.
+
+- **The set behind a part, unfolded under its card.** A flat list of prime
+  parts never answered the question you are holding one for: *what does this
+  belong to, and what is still open there.* Every card now carries a `Set 3/4`
+  chip, and clicking it opens the whole set across the full width — **every
+  part, including the ones you do not own**, each with its own ducats,
+  platinum price, ratio, how many you hold against how many the recipe wants,
+  and its own vault mark. The part you came from is highlighted so you find
+  your row in a five-part set. Above them stands the number nobody has
+  anywhere else: what the **full set** trades for against **the sum of its
+  parts** — a Dual Zoren Prime set goes for 30p while its parts add up to
+  44p, which is 14 platinum for the trouble of selling them one at a time.
+  Prices for parts you do not own are fetched the moment you open the set;
+  they are in no inventory, so nothing had ever asked for them.
+
+### Changed
+
+- **"Ready to collect" is an instruction now, not a stopped clock.** It sat
+  in grey body text exactly where every other row shows a countdown, which is
+  precisely what it read as. Finished builds now stand in their own group
+  under a green heading, each with a collect badge where the clock would be,
+  a green edge on the row and a dot that breathes slowly. Running builds
+  gained a progress bar under the name: the time says *when*, the bar says
+  *how far* — three hours of four looks nothing like three of seventy — and
+  its length comes from the recipe's own build time.
+
+### Fixed
+
+- **Build times were a day too long, on every single warframe.** The numbers
+  themselves come from DE's own export and were never wrong. The addition was:
+  Argus summed the whole recipe tree, as though you had to build the
+  components one after another. The foundry builds everything at once — you
+  put all three components in on the same evening, and the frame starts when
+  the slowest of them is done. Measured against DE's recipes: Octavia read
+  **4d 12h** and is **3d 12h**; Mesa, Ivara and Excalibur were each 24–25 h
+  over. The shopping list for several goals had the same fault and added them
+  up as well; it now shows the longest wait, not the sum.
+- **Recipes that yield more than one no longer multiply everything.** Needing
+  twenty cold fusion cores, when one build gives you twenty, is one build —
+  not twenty. Seventy of DE's 1866 recipes yield more than one item, and for
+  those the credits, the build steps and the entire material list underneath
+  were multiplied by the amount.
+- **The last part of a set sat on the dividing line.** On a four-part
+  warframe set under *My sets* the card is exactly full, and the fourth chip
+  ended up touching the rule above the ducat row - measured, a gap of 0 px
+  where the row below the line keeps 10. Shorter sets never showed it,
+  because there the footer is pushed away by the space left over. There is
+  now the same 10 px above the line as below it.
+- **The "vaulted" note on a relic never appeared.** It tested the reward table
+  — the list of what is *inside* a relic. That table carries every relic that
+  ever existed (773 of the 774 warframe.market knows), because they live on in
+  players' inventories. What actually drops is a different table, and at the
+  same reading it holds 35.
+- **A long part name pushed its own card out of shape.** On "Caliban Prime
+  Systems Blueprint" the line under the title — the set name and how many you
+  own — had no brake on either half: the name broke across two lines and the
+  ownership badge came apart with it, leaving that card taller than every
+  neighbour in the row. The name is cut with an ellipsis now (it stands
+  spelled out one line above anyway) and the badge no longer wraps at all;
+  it also got shorter, with the long form moved into its tooltip where it
+  displaces nothing. Measured afterwards: every card in the grid the same
+  114 px, every one of those lines a single line.
+- **The filter chips in the ducat tab reached across the whole app.** They
+  were addressed by their shape rather than by name, and that shape is now
+  worn by four rows in three different tabs. A click here cleared the
+  selection over in the farming guide; a click there set the ducat filter
+  back to "all". They only talk to their own row now. The rarity chips and
+  the sell buttons also stay out of the way in the modes that have nothing
+  for them to do — the relic planner never had anything to select.
+
 ## [1.4.3] - 2026-08-31
 
 ### Fixed

@@ -323,7 +323,45 @@ function build({ de, wf, fetchedAt }) {
     if (m.uniqueName) wfByPath.set(m.uniqueName, entries);
   }
 
-  return { byName, wfByName, wfByPath, fetchedAt, stale: null };
+  return { byName, wfByName, wfByPath, liveRelics: liveRelics(de), fetchedAt, stale: null };
+}
+
+/**
+ * Welche Relikte FALLEN GERADE - die Grundlage jeder Vault-Aussage.
+ *
+ * WARUM NICHT AUS DER BELOHNUNGSTABELLE:
+ *   `de.relics` fuehrt JEDES Relikt, das es je gab - nachgezaehlt 773 von 774,
+ *   die warframe.market kennt. DE laesst die Tabelle stehen, weil die Relikte
+ *   in den Inventaren der Spieler weiterleben. Wer daraus "steht drin, also
+ *   farmbar" schliesst, bekommt fuer alles ausser einem einzigen Relikt ein
+ *   Ja. Genau darauf beruhte die Vault-Pruefung im Reliktfenster, und deshalb
+ *   hat sie nie angeschlagen.
+ *
+ *   Erhaeltlich ist ein Relikt dagegen nur, wenn es als BELOHNUNG irgendwo
+ *   auftaucht - auf einem Knoten, in einem Kopfgeld, bei einem Haendler.
+ *   Dieselbe Datei, andere Frage. Am selben Abzug: 35 statt 773.
+ *
+ * `de.relics` bleibt hier bewusst aussen vor. Dort steht der Reliktname unter
+ * `relicName`, der Inhalt unter `rewards[].itemName` - der Abschnitt wuerde
+ * also gar nichts beitragen. Ausgeschlossen wird er trotzdem: sollte DE das
+ * Feld je umbenennen, faellt lieber ein Relikt aus der Liste, als dass
+ * stillschweigend wieder alle 773 als farmbar gelten.
+ */
+function liveRelics(de) {
+  const out = new Set();
+  const walk = (node) => {
+    if (Array.isArray(node)) { for (const n of node) walk(n); return; }
+    if (!node || typeof node !== 'object') return;
+    if (typeof node.itemName === 'string' && /\sRelic$/.test(node.itemName)) {
+      out.add(node.itemName.replace(/\s*Relic$/, '').trim());
+    }
+    for (const [k, v] of Object.entries(node)) if (k !== 'relics') walk(v);
+  };
+  for (const [section, value] of Object.entries(de || {})) {
+    if (section === 'relics') continue;
+    walk(value);
+  }
+  return out;
 }
 
 const fmtPct = v => `${Number(v ?? 0).toLocaleString('en-GB', { maximumFractionDigits: 2 })} %`;

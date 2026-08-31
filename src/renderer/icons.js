@@ -172,6 +172,8 @@ const Icon = {
   qaCodex:      s => `<span class="nav-icon-mask icon-qa-codex" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
   qaArsenal:    s => `<span class="nav-icon-mask icon-qa-arsenal" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
   qaSumbaat:    s => `<span class="nav-icon-mask icon-qa-sumbaat" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
+  qaFoundry:    s => `<span class="nav-icon-mask icon-qa-foundry" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
+  qaHelminth:   s => `<span class="nav-icon-mask icon-qa-helminth" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
 
   /* Wappen der fuenf Fokus-Schulen. Bewusst die Schulzeichen des Wikis
      (IconFocusClean*) und nicht die gleichnamigen Polaritaeten - die
