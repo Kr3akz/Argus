@@ -9452,3 +9452,12 @@ input[type=number]:focus, input[type=email]:focus, input[type=password]:focus {
    schmaler als 1020 px werden (WINDOW_MIN in main.js), und bei dieser Breite
    bleiben dem Namen neben allen sieben Spalten noch ueber 500 px. Eine
    Umschaltung haette also nur Spalten versteckt, die gepasst haetten. */
+
+/* Baros Uhr laeuft mit den Zyklen mit - dieselbe Mechanik, deshalb dieselbe
+   Ziffernbreite: eine Zahl, die jede Sekunde springt, darf die Zeile daneben
+   nicht mitverschieben. */
+.ws-trader-clock, .baro-clock { font-variant-numeric: tabular-nums; }
+.baro-clock { color: var(--text-2); }
+/* Das Datum zur Zahl: "in 3d 4h" sagt, wie lange - nicht, welcher Tag. Bei
+   zwei Wochen Abstand ist das die haeufigere Frage. */
+.ws-trader-date { color: var(--text-3); font-size: .92em; }

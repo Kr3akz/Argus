@@ -2972,9 +2972,14 @@ function cycleLeftText(expiry, fallback) {
   if (ms <= 0) return 'now';
 
   const total = Math.floor(ms / 1000);
-  const h = Math.floor(total / 3600);
+  const d = Math.floor(total / 86400);
+  const h = Math.floor((total % 86400) / 3600);
   const m = Math.floor((total % 3600) / 60);
   const s = total % 60;
+  /* Tage kommen bei den drei Zyklen nie vor - der laengste dauert zweieinhalb
+     Stunden. Baro haengt an derselben Uhr und ist bis zu zwei Wochen weg;
+     ohne diese Zeile stuende dort "319h 12m". */
+  if (d) return `${d}d ${h}h`;
   return h ? `${h}h ${m}m` : `${m}m ${s}s`;
 }
 
@@ -3039,13 +3044,25 @@ function renderWorldState(d) {
   `;
 
   // 2. Baro Ki'Teer
+  /* SEINE UHR TICKT MIT DEN ZYKLEN. Hier stand die Textfassung aus der
+     Quelle - nur schickt warframestat.us zu Baro weder `startString` noch
+     `endString`, und der Notnagel "in a few days" stand deshalb zwei Wochen
+     lang unveraendert da. Aus `activation`/`expiry` gerechnet stimmt die Zahl
+     in jeder Sekunde, und derselbe Sekundentakt, der die drei Zyklen zaehlt,
+     zaehlt sie mit - ohne einen zweiten Zeitgeber. */
   const vt = d.voidTrader || {};
+  const traderClock = (until, fallback) =>
+    `<b class="ws-trader-clock" data-cycle-until="${esc(until || '')}"
+        data-cycle-fallback="${esc(fallback || '')}">${
+      esc(cycleLeftText(until, fallback))}</b>`;
+
   if (vt.active) {
     $('ws-voidtrader').innerHTML = `
       <div class="ws-trader-head">
         <div class="ws-trader-info">
           <h3>${esc(vt.character)} ist anwesend!</h3>
-          <p>Location: <b>${esc(vt.location)}</b> · leaves the relay in <b>${esc(vt.endString || '2 days')}</b></p>
+          <p>Location: <b>${esc(vt.location)}</b> · leaves the relay in
+             ${traderClock(vt.expiry, vt.endString)}</p>
         </div>
         <span class="ws-trader-status active">In the relay now</span>
       </div>
@@ -3068,7 +3085,16 @@ function renderWorldState(d) {
       <div class="ws-trader-head">
         <div class="ws-trader-info">
           <h3>${esc(vt.character || "Baro Ki'Teer")} is travelling</h3>
-          <p>Next arrival: <b>${esc(vt.location || 'a relay')}</b> in <b>${esc(vt.startString || 'a few days')}</b></p>
+          <p>Next arrival: <b>${esc(vt.location || 'a relay')}</b> in
+             ${traderClock(vt.activation, vt.startString)}${
+               /* Das Datum dazu: eine Zahl, die herunterlaeuft, beantwortet
+                  "wie lange noch" - aber nicht "welcher Tag ist das". Bei
+                  zwei Wochen Abstand ist das die haeufigere Frage. */
+               vt.activation
+                 ? ` <span class="ws-trader-date">(${esc(new Date(vt.activation)
+                     .toLocaleString('en-GB', { weekday: 'short', day: 'numeric',
+                                                month: 'short', hour: '2-digit', minute: '2-digit' }))})</span>`
+                 : ''}</p>
         </div>
         <span class="ws-trader-status inactive">Counting down</span>
       </div>
@@ -4384,9 +4410,16 @@ function renderBaroOffer() {
       <div class="baro-when">
         <b>${d.active ? `${esc(d.character)} is in the relay` : `${esc(d.character)} is travelling`}</b>
         <span>${d.location ? esc(d.location) : 'Relay unknown'}${
-          d.active
-            ? (d.endString ? ` · leaves in ${esc(d.endString)}` : '')
-            : (d.startString ? ` · arrives in ${esc(d.startString)}` : '')}</span>
+          /* Dieselbe tickende Uhr wie im Live-Tracker: die Quelle liefert zu
+             Baro keine fertigen Zeittexte, und ein Stand vom letzten Abruf
+             waere hier eine Zahl, die sich nie aendert. */
+          d.active && d.expiry
+            ? ` · leaves in <b class="baro-clock" data-cycle-until="${esc(d.expiry)}">${
+                esc(cycleLeftText(d.expiry, d.endString))}</b>`
+            : !d.active && d.activation
+              ? ` · arrives in <b class="baro-clock" data-cycle-until="${esc(d.activation)}">${
+                  esc(cycleLeftText(d.activation, d.startString))}</b>`
+              : ''}</span>
       </div>
       <div class="baro-purse">
         <span title="Your ducats">${dukat(d.stock.ducats ?? 0)}</span>

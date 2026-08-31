@@ -21,6 +21,7 @@ import { loadCatalog } from '../core/catalog.js';
 import { loadInventory } from '../core/inventory.js';
 import { buildBaroOffer, normalizeStorePath, ownedIndex } from '../core/baro.js';
 import { inventoryXP } from '../core/craftchains.js';
+import { formatVoidTrader } from '../core/worldstate.js';
 
 const ok = (label, cond, extra = '') =>
   console.log(`  ${cond ? 'ok    ' : 'FEHLER'} ${label}${extra ? '  -> ' + extra : ''}`);
@@ -34,7 +35,35 @@ try {
   console.log('Kein Inventarabzug vorhanden - der Abgleich wird uebersprungen.\n');
 }
 
-console.log('=== Pfade: Laden gegen Schrank ===');
+console.log('=== Anwesend oder unterwegs ===');
+{
+  /* DIE QUELLE SCHICKT KEIN `active`. Nachgemessen am Vollabruf von
+     warframestat.us fuehrt das voidTrader-Objekt genau id, activation,
+     expiry, character, location, inventory, psId, initialStart und schedule -
+     sonst nichts. Wer `active` liest, bekommt immer false, und Baro steht
+     auch im Relais als "unterwegs" da. Deshalb wird es aus den beiden
+     Zeitpunkten gerechnet, und deshalb steht das hier fest. */
+  const iso = ms => new Date(Date.now() + ms).toISOString();
+  const std = 3600e3;
+
+  const drin = formatVoidTrader({ activation: iso(-5 * std), expiry: iso(40 * std) });
+  ok('im Relais ist anwesend', drin.active === true);
+  ok('dann keine Ankunftsfrist', drin.startString === '', '"expired" waere die falsche Antwort');
+  ok('dafuer eine Abreisefrist', /\d/.test(drin.endString), drin.endString);
+
+  const weg = formatVoidTrader({ activation: iso(72 * std), expiry: iso(120 * std) });
+  ok('vor der Ankunft ist unterwegs', weg.active === false);
+  ok('mit Frist statt "a few days"', /^\d+d \d+h$/.test(weg.startString), weg.startString);
+
+  const vorbei = formatVoidTrader({ activation: iso(-120 * std), expiry: iso(-72 * std) });
+  ok('nach der Abreise ist unterwegs', vorbei.active === false);
+
+  /* Ohne Zeitpunkte bleibt nur das Feld - der Rueckfall ueber tenno.tools
+     fuehrt es tatsaechlich. */
+  ok('ohne Zeiten zaehlt das Feld', formatVoidTrader({ active: true }).active === true);
+}
+
+console.log('\n=== Pfade: Laden gegen Schrank ===');
 {
   /* Die eine Stelle, an der ein Abgleich ueber Pfade scheitern kann. Das
      Segment steckt je nach Warengruppe an anderer Stelle. */

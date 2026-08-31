@@ -142,6 +142,19 @@ follow [semantic versioning](https://semver.org/lang/en/).
   ever existed (773 of the 774 warframe.market knows), because they live on in
   players' inventories. What actually drops is a different table, and at the
   same reading it holds 35.
+- **Baro was never shown as present, and his countdown said "in a few days"
+  for a fortnight.** Both came from the same place: the world-state source
+  sends nine fields for the void trader, and neither `active` nor a ready-made
+  countdown text is among them — measured against the full response, it
+  carries only id, activation, expiry, character, location, inventory, psId,
+  initialStart and schedule. Reading `active` therefore always returned false,
+  so even while Baro stood in the relay the app said he was travelling, and
+  the missing time string fell through to a fixed sentence that never changed.
+  Both are worked out from the two timestamps now, which the source always
+  sends: **"Next arrival: Strata Relay (Earth) in 3d 13h (Fri 4 Sept,
+  15:00)"** — the day beside the count, because a number that runs down says
+  how long but not which evening. The clock ticks on the same second beat as
+  the three open-world cycles rather than bringing its own.
 - **A long part name pushed its own card out of shape.** On "Caliban Prime
   Systems Blueprint" the line under the title — the set name and how many you
   own — had no brake on either half: the name broke across two lines and the

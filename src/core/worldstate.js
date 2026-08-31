@@ -336,16 +336,50 @@ async function fetchTennoToolsFullWorldState() {
 }
 
 
-function formatVoidTrader(vt) {
+/**
+ * Baro.
+ *
+ * ANWESEND WIRD GERECHNET, NICHT ABGESCHRIEBEN.
+ *   warframestat.us schickt im voidTrader-Objekt genau neun Felder, und
+ *   `active` ist keines davon - nachgemessen am Vollabruf: id, activation,
+ *   expiry, character, location, inventory, psId, initialStart, schedule.
+ *   `!!vt.active` war damit IMMER false. Baro stand auch dann als "unterwegs"
+ *   da, wenn er im Relais stand, und weil `startString` ebenso fehlt, stand
+ *   daneben der Notnagel "in a few days" - zwei Wochen lang derselbe Satz.
+ *
+ *   Die beiden Zeitpunkte hat die Quelle dagegen immer. Aus ihnen ergibt sich
+ *   beides von selbst, und zwar ohne dass jemand ein Feld pflegen muesste,
+ *   das es nie gab.
+ *
+ * DIE TEXTE SIND EIN RUECKFALL, KEINE ANZEIGE.
+ *   Sie entstehen beim Abruf und altern ab der naechsten Sekunde. Wer sie
+ *   dem Nutzer zeigt, rechnet aus activation/expiry selbst - siehe die
+ *   tickenden Uhren im Renderer. Hier stehen sie fuer alles, was nur einen
+ *   Satz braucht und keinen Zaehler.
+ */
+export function formatVoidTrader(vt) {
   if (!vt) return null;
+
+  const jetzt = Date.now();
+  const start = vt.activation ? new Date(vt.activation).getTime() : NaN;
+  const ende  = vt.expiry     ? new Date(vt.expiry).getTime()     : NaN;
+
+  const aktiv = Number.isFinite(start) || Number.isFinite(ende)
+    ? (!Number.isFinite(start) || start <= jetzt) && (!Number.isFinite(ende) || ende > jetzt)
+    /* Ohne beide Zeitpunkte bleibt nur das Feld, das es vielleicht doch gibt -
+       der Rueckfall ueber tenno.tools fuehrt es tatsaechlich. */
+    : !!vt.active;
+
   return {
     character: vt.character || "Baro Ki'Teer",
-    active: !!vt.active,
+    active: aktiv,
     location: vt.location || 'Relay',
     activation: vt.activation || null,
     expiry: vt.expiry || null,
-    startString: vt.startString || '',
-    endString: vt.endString || '',
+    /* Nur die Frist ausweisen, die noch laeuft: waehrend er dasteht, liegt
+       seine Ankunft hinter uns, und etaFrom antwortete darauf "expired". */
+    startString: vt.startString || (aktiv ? '' : etaFrom(vt.activation)),
+    endString: vt.endString || etaFrom(vt.expiry),
     inventory: (vt.inventory || []).map(item => ({
       item: item.item || item.uniqueName || 'Item',
       /* Der Pfad ist die einzige belastbare Kupplung zum Inventar - im Laden
