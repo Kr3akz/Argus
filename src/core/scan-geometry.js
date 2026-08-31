@@ -77,7 +77,14 @@ const MAX_BAND_HEIGHT = 0.45;
 /* Luft ueber und unter den gemessenen Namen, als Anteil der Rahmenhoehe.
    Die Messung stammt aus EINEM Durchgang, und im naechsten kann ein laengerer
    Name eine Zeile tiefer reichen. Ein Zehntel Rahmenhoehe waere Verschwendung,
-   nichts waere leichtsinnig. */
+   nichts waere leichtsinnig.
+
+   ACHTUNG, DIESE LUFT REICHT NUR FUER EINE ZUSAETZLICHE ZEILE. Ein Name darf
+   ueber drei umbrechen (MAX_LINES_PER_NAME in rewardscan.js), und zwei
+   zusaetzliche Zeilen sind bei 1440p rund 106 px - mehr als die 72 px, die
+   0,05 hergeben. Den Rest traegt nicht diese Zahl, sondern die Untergrenze in
+   recallGeometry; dort steht auch, warum das Band ohne sie nicht mehr
+   nachwachsen kann. */
 const BAND_PAD_TOP = 0.02;
 const BAND_PAD_BOTTOM = 0.05;
 
@@ -229,6 +236,33 @@ export async function recallGeometry(frame) {
   if (valid(treffer)) {
     return {
       ...treffer,
+      /* DAS GEMERKTE BAND DARF DEN STANDARD NACH UNTEN VERLAENGERN, NIE
+         VERKUERZEN.
+
+         WARUM: Gemessen wird nur, was gelesen wurde - und gelesen wird nur,
+         was im Band stand. Ein Band, das die dritte Zeile eines umgebrochenen
+         Namens abschneidet, bekommt deshalb nie einen dreizeiligen Namen zu
+         sehen und leitet aus seinen einzeiligen Lesungen dieselbe kurze
+         Unterkante wieder ab. Es kann sich nicht mehr aufweiten.
+
+         Nachgemessen an 2560x1440: acht Auffrischungen hintereinander,
+         band.top wandert zwischen 0,350 und 0,383, band.bottom steht jedes
+         Mal auf 0,4743 - der Unterkante EINER Zeile plus BAND_PAD_BOTTOM.
+         Der Kopf dieser Datei nennt 0,514 fuer einen dreizeiligen Namen; das
+         Band lag also 57 px darueber und schnitt die letzte Zeile ab.
+
+         Schlimmer als ein fehlender Name ist dabei der beschnittene: faellt
+         ein Wort weg, ergibt das bei 154 der 596 Belohnungsnamen einen
+         anderen, ebenfalls echten Namen mit Bewertung 1,00 - der Durchgang
+         gilt als vollstaendig und zementiert das kurze Band erneut.
+
+         Die Schranke steht auf der LESE-Seite, damit ein bereits verkuerzter
+         Eintrag sich beim naechsten Belohnungsbildschirm von selbst heilt und
+         nicht erst geloescht werden muss. */
+      band: {
+        top:    treffer.band.top,
+        bottom: Math.max(treffer.band.bottom, DEFAULT_BAND.bottom)
+      },
       /* Eintraege aus einer aelteren Fassung kennen die rohe Namenskante noch
          nicht. Statt sie zu verwerfen - die Kartenbreite darin ist ja gut -
          wird die Luft wieder abgezogen, die der Streifen dazubekommen hat. */
@@ -303,7 +337,10 @@ export async function rememberGeometry(frame, rewards, expected) {
       cardWidth: clamp(cardWidth, MIN_CARD_WIDTH, MAX_CARD_WIDTH),
       band: {
         top:    clamp(oben - BAND_PAD_TOP, 0, 1),
-        bottom: clamp(unten + BAND_PAD_BOTTOM, 0, 1)
+        /* Dieselbe Untergrenze wie beim Lesen - die Begruendung steht an
+           recallGeometry. Sie steht auch hier, damit die Datei und die
+           Protokollzeile das Band nennen, das wirklich benutzt wird. */
+        bottom: clamp(Math.max(unten + BAND_PAD_BOTTOM, DEFAULT_BAND.bottom), 0, 1)
       },
       /* Die Namenskante OHNE die Luft, die der Streifen oben dazuschlaegt.
          Der Streifen ist zum Lesen da und darf grosszuegig sein; die

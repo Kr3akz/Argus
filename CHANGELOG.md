@@ -21,6 +21,32 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.4.3] - 2026-08-31
+
+### Fixed
+
+- **A reward name that wraps onto three lines is read in full again, instead of
+  losing its last line.** The app measures where the names sit on your screen
+  and remembers that strip per resolution. But a measurement can only ever
+  describe what was actually read, and what gets read is bounded by the strip
+  itself — so a strip that ends too high never sees a wrapped name, and derives
+  the same short bottom edge again from its own single-line readings. It cannot
+  grow back. Measured at 2560x1440 across eight refreshes in a row: the top
+  edge wandered between 0.350 and 0.383, while the bottom edge landed on
+  **0.4743 every single time** — the underside of exactly one line of text. A
+  name broken over three lines reaches 0.514, so its final line sat 57 pixels
+  outside the strip. A measured strip may now extend the default downward, but
+  never cut it short.
+
+  A clipped name is worse than a missing one. Drop a word off the end and what
+  remains is usually not nonsense but *another real item* — 154 of the 596
+  possible rewards — matched with full confidence, so the run counted as
+  complete and wrote the too-short strip straight back. A resolution the app
+  has not measured yet runs on the generous default, which covers all three
+  lines; those screens behaved correctly and go on behaving exactly as before.
+  The fix is what stops them picking up the same fault the first time a reward
+  screen is measured there.
+
 ## [1.4.2] - 2026-08-30
 
 ### Fixed

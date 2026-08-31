@@ -336,6 +336,28 @@ assert(Math.abs(gemerkt.cardWidth * 2560 - 323.5) < 2,
 assert(Math.abs(gemerkt.band.top * 1440 - (581 - 0.02 * 1440)) < 2,
        'Streifen beginnt eine Handbreit ueber dem obersten Namen');
 
+/* DIE UNTERKANTE DARF NICHT AUF DIE GELESENEN NAMEN ZUSAMMENFALLEN.
+   Die vier Rahmen oben sind alle EINZEILIG - und genau so sah jede echte
+   Messung aus: nachgemessen acht Auffrischungen bei 2560x1440, band.top
+   wandert, band.bottom steht jedes Mal auf 0,4743. Ein Band, das dort endet,
+   schneidet die dritte Zeile eines umgebrochenen Namens ab; dann wird nie ein
+   dreizeiliger Name gelesen, und aus den einzeiligen Lesungen entsteht wieder
+   dieselbe kurze Kante. Test 8 prueft das fuer den Standard - fuer die
+   Messung fehlte es, und dort faellt es auch nicht von selbst auf. */
+assert(gemerkt.band.bottom * 1440 >= 740,
+       `Der gemerkte Streifen deckt drei Zeilen Umbruch (740) ab (${Math.round(gemerkt.band.bottom * 1440)})`);
+
+/* Und die Schranke ist ein BODEN, kein Deckel: reicht die Messung selbst
+   tiefer, gilt sie. Eigener Rahmen, damit der Eintrag oben stehen bleibt. */
+const tief = await rememberGeometry({ x: 0, y: 0, w: 2561, h: 1440 }, [
+  { box: { x: 678,  y: 581, w: 234, h: 30  } },
+  { box: { x: 977,  y: 581, w: 283, h: 30  } },
+  { box: { x: 1295, y: 581, w: 294, h: 159 } },   // bricht ueber drei Zeilen um
+  { box: { x: 1642, y: 581, w: 247, h: 30  } }
+], 4);
+assert(tief && tief.band.bottom * 1440 > 792,
+       `Eine tiefer reichende Messung schlaegt den Boden (${Math.round((tief?.band.bottom ?? 0) * 1440)} > 792)`);
+
 assert(await rememberGeometry(rahmen1440, [{ box: { x: 678, y: 581, w: 234, h: 30 } }], 4) === null,
        'Ein unvollstaendiger Durchgang wird NICHT gemerkt');
 
