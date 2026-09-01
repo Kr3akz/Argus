@@ -12,7 +12,8 @@
  * `arcanes` darf fehlen - aeltere Builds und jeder Overframe-Import kennen das
  * Feld nicht, und ein Item ohne Arcane-Plaetze braucht es nie.
  */
-import { modDrain, endoCost, itemCapacity, POLARITIES, isAuraMod, isExilusMod, auraBonus } from './mods.js';
+import { modDrain, endoCost, itemCapacity, POLARITIES, isAuraMod, isExilusMod, auraBonus,
+         maxRankOf } from './mods.js';
 import { arcaneSlotCount, maxArcaneRank, arcaneCopies } from './arcanes.js';
 import { cleanGameText } from './catalog.js';
 
@@ -65,7 +66,7 @@ export function evaluateBuild(build, modIndex, ownedMods = new Set(), item = nul
       continue;
     }
 
-    const rank = slot.rank ?? mod.fusionLimit ?? 0;
+    const rank = slot.rank ?? maxRankOf(mod);
     const ownedRank = ownedRankOf(ownedMods, mod.uniqueName);
 
     // Aura- und Stance-Mods kosten keine Kapazitaet, sie geben welche dazu.
@@ -98,7 +99,7 @@ export function evaluateBuild(build, modIndex, ownedMods = new Set(), item = nul
       uniqueName: mod.uniqueName,
       name: mod.name,
       rank,
-      maxRank: mod.fusionLimit ?? 0,
+      maxRank: maxRankOf(mod),
       baseDrain: mod.baseDrain ?? 0,
       drain,
       isAura,
@@ -121,7 +122,7 @@ export function evaluateBuild(build, modIndex, ownedMods = new Set(), item = nul
       /* Ab hier nur fuer die GEZEICHNETE Karte im Build-Brett: Rangpunkte,
          Kompatibilitaetsbalken und der Hinweis, ob die Mod in den Exilus-Platz
          darf. Das steht hier und nicht im Renderer - der hat keinen Katalog. */
-      pips: mod.fusionLimit ?? 0,
+      pips: maxRankOf(mod),
       compat: mod.compatName ? String(mod.compatName).toUpperCase() : null,
       isExilus: isExilusMod(mod)
     });

@@ -3060,7 +3060,7 @@ function renderWorldState(d) {
     $('ws-voidtrader').innerHTML = `
       <div class="ws-trader-head">
         <div class="ws-trader-info">
-          <h3>${esc(vt.character)} ist anwesend!</h3>
+          <h3>${esc(vt.character)} is here!</h3>
           <p>Location: <b>${esc(vt.location)}</b> · leaves the relay in
              ${traderClock(vt.expiry, vt.endString)}</p>
         </div>
@@ -3240,7 +3240,7 @@ function renderWsSource(d) {
   let art = null, text = '';
   if (d.error) {
     art = 'down';
-    text = `Die Datenquelle (warframestat.us) antwortet nicht: ${d.error}. `
+    text = `The data source (warframestat.us) is not answering: ${d.error}. `
          + 'What you see is the last thing that loaded — or nothing.';
   } else if (alterMin !== null && alterMin > 15) {
     art = 'stale';
@@ -4738,7 +4738,7 @@ function renderDucatsCatalog() {
       <div class="ducats-empty-box">
         <div class="empty-icon">${Icon.search(30)}</div>
         <h3>No matches</h3>
-        <p>Zu deinen Filter- und Suchkriterien wurden keine Prime-Teile gefunden.</p>
+        <p>No prime parts match your filters and search.</p>
       </div>
     `;
     return;
@@ -6099,23 +6099,27 @@ function renderUpgradeModal() {
   const rankCost = d.kind === 'arcane'
     ? `<span>Needs <b>${nf(row.copies)}</b> copies</span>`
     : [
-        `<span>${d.isAura ? 'Grants' : 'Costs'} <b>${nf(row.drain)}</b> capacity</span>`,
-        row.endo ? `<span><b>${nf(row.endo)}</b> Endo bis hierher</span>` : ''
+        /* Ein Riven liefert hier bewusst keine Zahl - siehe rankLadder in
+           upgrade-details.js. Die Zeile faellt dann weg statt auf 0. */
+        row.drain != null
+          ? `<span>${d.isAura ? 'Grants' : 'Costs'} <b>${nf(row.drain)}</b> capacity</span>`
+          : '<span>Capacity depends on the individual riven</span>',
+        row.endo ? `<span><b>${nf(row.endo)}</b> Endo to this rank</span>` : ''
       ].join('');
 
   const tiles = [
     ['Max rank', d.maxRank],
     d.kind === 'arcane'
       ? ['Copies to max', nf(d.copiesToMax)]
-      : [d.isAura ? 'Capacity at max' : 'Drain at max', nf(d.maxDrain)],
-    d.kind === 'arcane' ? null : ['Endo bis Max', nf(d.endoToMax)],
+      : (d.maxDrain != null ? [d.isAura ? 'Capacity at max' : 'Drain at max', nf(d.maxDrain)] : null),
+    d.kind === 'arcane' ? null : ['Endo to max', nf(d.endoToMax)],
     /* Dritter Eintrag ist fertiges Markup - nur die Polaritaet braucht es,
        weil ihr Zeichen eine Vektorgrafik ist und kein Buchstabe. */
     d.polarity
       ? ['Polarity', d.polarity.label,
          `<span class="up-pol">${Icon.polarity(d.polarity.glyph, 13)}${esc(d.polarity.label)}</span>`]
       : null,
-    d.rarityLabel ? ['Seltenheit', d.rarityLabel] : null,
+    d.rarityLabel ? ['Rarity', d.rarityLabel] : null,
     d.compat ? ['Compatible with', d.compat] : null
   ].filter(Boolean);
 
@@ -6176,7 +6180,9 @@ function renderUpgradeModal() {
                Einzelne Kaesten je Zeile reissen zusammengehoerige Angaben
                auseinander ("On Energy Pickup:" stuende dann allein). */
             ? `<div class="up-stat">${row.stats.map(esc).join('<br>')}</div>`
-            : '<div class="up-empty">The export lists no values for this rank.</div>'}
+            : `<div class="up-empty">${d.isRiven
+                ? 'A riven carries its own stats — the ones on your card are rolled, not listed here.'
+                : 'The export lists no values for this rank.'}</div>`}
         </div>
         <div class="up-rank-cost">${rankCost}</div>
         ${d.description.length ? `
@@ -6184,7 +6190,7 @@ function renderUpgradeModal() {
       </div>
 
       <div class="im-section">
-        <div class="im-section-title">Werte</div>
+        <div class="im-section-title">Stats</div>
         <div class="im-stats-grid">
           ${tiles.map(([label, val, html]) => `
             <div class="im-stat-tile">
@@ -8992,9 +8998,9 @@ let hotkeyState = null;
 let capturingHotkey = null;
 
 const HOTKEY_LABELS = {
-  overlay:  'Overlay ein-/ausblenden',
-  interact: 'Mauszeiger ins Overlay holen',
-  main:     'Hauptfenster nach vorn holen'
+  overlay:  'Show or hide the overlay',
+  interact: 'Bring the cursor into the overlay',
+  main:     'Bring the main window to the front'
 };
 
 /* Sondertasten fuer Electron-Accelerators */

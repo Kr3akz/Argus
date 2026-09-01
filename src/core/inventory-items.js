@@ -10,7 +10,7 @@
  * MiscItems, und Arcanes stecken zwischen den Mods in RawUpgrades/Upgrades.
  */
 import { imageUrl, cleanGameText } from './catalog.js';
-import { POLARITIES, modDrain, auraBonus, isAuraMod } from './mods.js';
+import { POLARITIES, modDrain, auraBonus, isAuraMod, maxRankOf, isRivenMod } from './mods.js';
 import { isInternalArcane } from './arcanes.js';
 
 export const SECTIONS = [
@@ -173,15 +173,21 @@ function decorateUpgrade(entry, catalog) {
 
   const pol = POLARITIES[mod.polarity];
   const aura = isAuraMod(mod);
-  const pips = mod.fusionLimit ?? Math.max(0, (mod.levelStats?.length || 1) - 1);
+  /* maxRankOf statt fusionLimit: eine Riven-Vorlage traegt dort 689, und das
+     waeren 689 Rangpunkte auf einer Karte, die acht hat. */
+  const pips = maxRankOf(mod);
 
   entry.rarity = mod.rarity || null;
   entry.polarity = pol ? { glyph: pol.glyph, label: pol.label } : null;
   entry.pips = pips;
   entry.isAura = aura;
   /* Kosten bei vollem Rang - dieselbe Zahl, die auch im Spiel auf der voll
-     aufgewerteten Karte steht. Auras GEBEN Kapazitaet, dort ist es der Bonus. */
-  entry.drain = aura ? auraBonus(mod, pips) : modDrain(mod, pips);
+     aufgewerteten Karte steht. Auras GEBEN Kapazitaet, dort ist es der Bonus.
+
+     Bei einem Riven bleibt sie leer: die Vorlage traegt 0 bzw. 2, das Stueck
+     im Inventar liegt bei 9 bis 18, und welches davon gilt, steht nur am
+     einzelnen Riven. Der Renderer laesst die Zahl dann weg. */
+  entry.drain = isRivenMod(mod) ? null : (aura ? auraBonus(mod, pips) : modDrain(mod, pips));
 
   /* Die Illustration in Kartenbreite. 128 px reichen fuer eine Zeile, aber
      nicht fuer eine Karte, die beim Aufklappen auf 200 px waechst. */

@@ -37,13 +37,83 @@ export const RARITY_LABELS = {
 /**
  * Endo-Grundkosten je Seltenheit.
  *
- * Die Kosten VERDOPPELN sich mit jedem Rang - eine lineare Rechnung unterschaetzt
- * teure Mods dramatisch (gemessen an Overframe: 16.740 statt 217.520 fuer denselben
- * Build). Gesamtkosten bis Rang r sind daher base * (2^r - 1).
+ * Die Kosten VERDOPPELN sich mit jedem Rang, die Gesamtkosten bis Rang r sind
+ * daher base * (2^r - 1). Eine lineare Rechnung unterschaetzt teure Mods
+ * dramatisch (gemessen an Overframe: 16.740 statt 217.520 fuer denselben Build).
  *
- * Bleibt eine Naeherung: liegt ein echter Wert der Quelle vor, hat der Vorrang.
+ * DIE ZAHLEN SIND KEINE SCHAETZUNG. Es sind DEs eigene Grundkosten, und die
+ * Formel ist die des Spiels - Gegenprobe unten. Hier standen vorher 4/6/10/20,
+ * also durchweg ein Drittel bis die Haelfte des Richtigen. Bei Legendary faellt
+ * es am meisten auf, weil sich der Fehler ueber zehn Raenge mitverdoppelt: eine
+ * halbierte Basis ist rechnerisch dasselbe wie ein fehlender Rang, und genau so
+ * sah es auch aus - Primed Continuity stand auf 20.460 statt auf 40.920.
+ *
+ * Gegenprobe gegen die Fusionstabelle des Wikis, Spalte "From Rank 0":
+ *   Common    Rang 10 -> 10 * 1023 = 10.230
+ *   Uncommon  Rang 10 -> 20 * 1023 = 20.460
+ *   Rare      Rang 10 -> 30 * 1023 = 30.690
+ *   Legendary Rang 10 -> 40 * 1023 = 40.920   (Primed Continuity)
+ *
+ * NICHT ERFASST: Antique-Mods (die Zid-An-Karten) haben eine eigene, weit
+ * hoehere Basis - 160/320/480 nach Common/Uncommon/Rare. Sie laufen derzeit
+ * ohnehin durch den Arcane-Zweig, siehe isArcane() in upgrade-details.js.
  */
-const ENDO_BASE = { COMMON: 4, UNCOMMON: 6, RARE: 10, LEGENDARY: 20 };
+const ENDO_BASE = { COMMON: 10, UNCOMMON: 20, RARE: 30, LEGENDARY: 40 };
+
+/**
+ * Rivens, und warum sie eine Sonderbehandlung brauchen.
+ *
+ * DEs Export fuehrt sie als VORLAGEN unter /Mods/Randomized/, und die tragen
+ * Platzhalter statt Werten: fusionLimit 689 und rarity COMMON. Ungebremst wird
+ * daraus eine Rangleiter mit 690 Stufen und ein Endo-Betrag von 2,5e+208 -
+ * gesehen an "Melee Riven Mod", von dem 13 Stueck im Inventar liegen.
+ *
+ * Die echten Zahlen stehen nicht im Export, sie sind Spielregeln:
+ *   Hoechstrang 8, und fuer die Fusion zaehlt ein Riven als Rare.
+ *   30 * (2^8 - 1) = 7.650 Endo bis Rang 8 - so steht es auch im Wiki.
+ *
+ * Es gibt zwei Vorlagenfamilien, und BEIDE fallen hierunter: Raw*RandomMod
+ * sind die verhuellten (liegen als blosse Stueckzahl in RawUpgrades),
+ * Lotus*RandomModRare die enthuellten (mit eigenem Fingerprint in Upgrades).
+ * Nur die zweite traegt die 689 - der Pfad fasst trotzdem beide, weil ein
+ * Riven so oder so Rang 8 und Rare ist.
+ */
+const RIVEN_PATH = '/Upgrades/Mods/Randomized/';
+export const RIVEN_MAX_RANK = 8;
+const RIVEN_RARITY = 'RARE';
+
+/** Ist das eine Riven-Vorlage aus dem Export? */
+export function isRivenMod(mod) {
+  return String(mod?.uniqueName || '').includes(RIVEN_PATH);
+}
+
+/**
+ * Der Hoechstrang einer Karte - die EINE Stelle, die fusionLimit auslegt.
+ *
+ * Ohne levelStats und ohne fusionLimit bleibt 0 uebrig, und das ist richtig so:
+ * eine Karte ohne Rangstufen hat genau eine.
+ */
+export function maxRankOf(mod) {
+  if (isRivenMod(mod)) return RIVEN_MAX_RANK;
+  return mod?.fusionLimit ?? Math.max(0, (mod?.levelStats?.length || 1) - 1);
+}
+
+/**
+ * Der Rang, mit dem gerechnet wird.
+ *
+ * NUR bei Rivens gedeckelt, und das mit Absicht. Eine allgemeine Deckelung auf
+ * maxRankOf() sieht harmlos aus und ist es nicht: builds.js reicht Teil-Objekte
+ * herein ({ rarity, fusionLimit }), und wo fusionLimit fehlt, faellt maxRankOf
+ * auf 0 zurueck. Aus Math.min(10, 0) wird dann still eine Null - ein ganzer
+ * Build stand damit auf 0 Endo, ohne dass irgendwo etwas schiefging.
+ *
+ * Ein ausdruecklich uebergebener Rang gilt also. Nur die 689 der Riven-Vorlage
+ * wird eingefangen, denn die ist kein Rang, sondern ein Platzhalter.
+ */
+function rangFuer(mod, rank) {
+  if (isRivenMod(mod)) return Math.min(rank ?? RIVEN_MAX_RANK, RIVEN_MAX_RANK);
+  return rank ?? mod?.fusionLimit ?? 0;
+}
 
 function flatten(json) {
   const out = [];
@@ -97,7 +167,7 @@ function index(mods) {
  * eine falsche Polaritaet im Slot verteuert um 25 % (aufgerundet).
  */
 export function modDrain(mod, rank = null, slotPolarity = null) {
-  const r = rank ?? mod.fusionLimit ?? 0;
+  const r = rangFuer(mod, rank);
   const base = (mod.baseDrain || 0) + r;
 
   if (!slotPolarity) return base;
@@ -107,11 +177,12 @@ export function modDrain(mod, rank = null, slotPolarity = null) {
   return Math.ceil(base * 1.25);
 }
 
-/** Endo-Kosten (geschaetzt), um einen Mod von Rang 0 auf `rank` zu bringen. */
+/** Endo-Kosten, um einen Mod von Rang 0 auf `rank` zu bringen. */
 export function endoCost(mod, rank = null) {
-  const r = rank ?? mod.fusionLimit ?? 0;
+  const r = rangFuer(mod, rank);
   if (r <= 0) return 0;
-  const base = ENDO_BASE[mod.rarity] || 4;
+  /* Die COMMON-Vorlage eines Rivens waere hier die falsche Spalte. */
+  const base = ENDO_BASE[isRivenMod(mod) ? RIVEN_RARITY : mod.rarity] || ENDO_BASE.COMMON;
   return base * (Math.pow(2, r) - 1);
 }
 
@@ -145,7 +216,7 @@ export function isExilusMod(mod) {
  * exakt der Wert, den Overframe meldet.
  */
 export function auraBonus(mod, rank = null, slotPolarity = null) {
-  const r = rank ?? mod.fusionLimit ?? 0;
+  const r = rangFuer(mod, rank);
   const base = Math.abs(mod.baseDrain || 0) + r;
   const matches = slotPolarity && (slotPolarity === mod.polarity || slotPolarity === 'AP_UNIVERSAL');
   return matches ? base * 2 : base;

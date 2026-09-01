@@ -73,7 +73,7 @@ async function requestInventory(creds) {
     });
   } catch (e) {
     // Netzwerkfehler koennen die URL enthalten - Meldung nicht durchreichen.
-    throw new Error('Netzwerkfehler beim Inventar-Abruf (keine Verbindung?).');
+    throw new Error('Network error while fetching the inventory (no connection?).');
   }
 
   if (res.status === 403 || res.status === 429) {
@@ -106,7 +106,7 @@ async function requestInventory(creds) {
   } catch {
     /* Kein JSON heisst in aller Regel: die Sitzung ist abgelaufen und wir haben eine
        Fehlerseite bekommen. Nur ein knapper, gesaeuberter Anfang in die Meldung. */
-    throw staleError('Antwort war kein JSON (' + text.length + ' Zeichen): '
+    throw staleError('The response was not JSON (' + text.length + ' characters): '
                    + scrub(text.slice(0, 120)));
   }
 

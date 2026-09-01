@@ -44,8 +44,8 @@ export async function fetchBuild(buildId) {
   const res = await fetch(`https://overframe.gg/api/v1/builds/${buildId}/`, {
     headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' }
   });
-  if (res.status === 404) throw new Error('Build nicht gefunden.');
-  if (!res.ok) throw new Error(`Overframe antwortete mit HTTP ${res.status}.`);
+  if (res.status === 404) throw new Error('Build not found.');
+  if (!res.ok) throw new Error(`Overframe answered with HTTP ${res.status}.`);
   return res.json();
 }
 

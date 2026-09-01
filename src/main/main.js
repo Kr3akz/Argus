@@ -30,7 +30,8 @@ import { acquisitionOf } from '../core/acquisition.js';
 import { resolveGoal, combineGoals, formatDuration, isRawMaterial } from '../core/recipes.js';
 import { loadConfig, saveConfig, DEFAULT_HOTKEYS } from '../core/config.js';
 import * as store from '../core/store.js';
-import { loadMods, POLARITIES, RARITY_LABELS, searchMods, isAuraMod, isExilusMod } from '../core/mods.js';
+import { loadMods, POLARITIES, RARITY_LABELS, searchMods, isAuraMod, isExilusMod,
+         maxRankOf } from '../core/mods.js';
 import { evaluateBuild, combineBuilds, orokinTypeFor } from '../core/builds.js';
 import { indexArcanes, searchArcanes, arcaneSlotCount, maxArcaneRank, isArcaneName } from '../core/arcanes.js';
 import { fetchWorldState } from '../core/worldstate.js';
@@ -1289,7 +1290,7 @@ async function buildDashboard(meta) {
         }
       }
 
-      const maxLvl = catItem?.fusionLimit ?? Math.max(0, (catItem?.levelStats?.length || 1) - 1);
+      const maxLvl = maxRankOf(catItem);
       const owned = ownedCount > 0;
       const rank = owned ? maxRankOwned : 0;
       const ranksLeft = Math.max(0, maxLvl - rank);
@@ -1504,13 +1505,13 @@ async function importOverframeBuild(input) {
     const url = raw.url?.startsWith('http') ? raw.url : `https://overframe.gg/build/${id}/`;
     const scraped = await scrapeModNames(url);
     if (!scraped || !scraped.length) {
-      throw new Error('Die Mod-Namen liessen sich nicht auslesen - Overframe hat vermutlich '
-                    + 'the page structure has changed.');
+      throw new Error('The mod names could not be read \u2014 Overframe has probably '
+                    + 'changed the page structure.');
     }
     const check = verifyAlignment(raw, scraped);
     if (!check.reliable) {
       throw new Error(`Match is unreliable (${check.ok}/${check.checked} check values agree) — `
-                    + 'Import abgebrochen, damit keine falschen Mods gespeichert werden.');
+                    + 'import stopped so that no wrong mods get saved.');
     }
     const merged = mergeNames(raw, scraped.map(s => s.name), modMap);
     modMap = merged.map;
@@ -1765,7 +1766,7 @@ ipcMain.handle('item:details', async (_e, uniqueName) => {
     const entry = cache.analysis.entries.find(e => e.uniqueName === uniqueName);
     const cls = classify(item);
     const [vaultIdx, subsumed] = await Promise.all([vaultIndex(), subsumedSet()]);
-    const acq = acquisitionOf(item);
+    const acq = acquisitionOf(item, cache.catalog, cache.dropTables);
     const st = await store.load();
     const isGoal = st.goals.some(g => g.uniqueName === uniqueName && !g.done);
     const isGoalDone = st.goals.some(g => g.uniqueName === uniqueName && g.done);
@@ -2822,7 +2823,7 @@ const INVENTORY_ERRORS = {
   not_found:     'No credentials were found in the game\u2019s memory. That happens while you are '
                + 'still on the login screen — go to your orbiter once and try again.',
   open_failed:   'The Warframe process could not be opened. If the game runs as administrator, '
-               + 'muss dieses Fenster ebenfalls als Administrator laufen.',
+               + 'this window has to run as administrator too.',
   timeout:       'Searching the game memory took too long. Please try again.',
   unsupported:   'Fetching the inventory only works on Windows (64-bit).',
   koffi_missing: 'The memory module is missing. Run "npm install" in the project folder once.',
@@ -3583,7 +3584,7 @@ ipcMain.handle('mods:search', async (_e, query, itemUniqueName) => {
     name: m.name,
     compatName: m.compatName || null,
     baseDrain: m.baseDrain ?? 0,
-    maxRank: m.fusionLimit ?? 0,
+    maxRank: maxRankOf(m),
     polarity: m.polarity || null,
     polaritySymbol: m.polarity ? POLARITIES[m.polarity]?.symbol : null,
     rarity: m.rarity,

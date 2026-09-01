@@ -741,8 +741,8 @@ function updateClickButton() {
   const btn = $('ov-click');
   btn.classList.toggle('on', clickThrough);
   btn.title = clickThrough
-    ? 'Klicks gehen ans Spiel - nur die Kopfleiste bleibt bedienbar'
-    : 'Klicks ans Spiel durchreichen';
+    ? 'Clicks go to the game \u2014 only the title bar stays usable'
+    : 'Pass clicks through to the game';
 }
 
 /**
@@ -928,9 +928,9 @@ function renderRelic() {
   /* Noch keine Bildschirmerkennung: wenigstens der eigene Fund steht fest. */
   const own = relicState.own;
   const note = relicState.scanError
-    ? `<div class="ov-relic-note">Bildschirm nicht lesbar: ${esc(relicState.scanError)}</div>`
+    ? `<div class="ov-relic-note">Could not read the screen: ${esc(relicState.scanError)}</div>`
     : relicState.scanning
-      ? '<div class="ov-relic-note">Lese die anderen vom Bildschirm …</div>'
+      ? '<div class="ov-relic-note">Reading the others off the screen …</div>'
       : '';
 
   body.innerHTML = (own

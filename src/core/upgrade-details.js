@@ -10,7 +10,8 @@
  * Die Fundorte kommen aus droptables.js und werden hier nur angehaengt.
  */
 import { imageUrl, cleanGameText } from './catalog.js';
-import { POLARITIES, RARITY_LABELS, modDrain, endoCost, auraBonus, isAuraMod, isExilusMod } from './mods.js';
+import { POLARITIES, RARITY_LABELS, modDrain, endoCost, auraBonus, isAuraMod, isExilusMod,
+         isRivenMod, maxRankOf } from './mods.js';
 import { sourcesFor } from './droptables.js';
 
 /**
@@ -87,10 +88,11 @@ function setName(modSet) {
  */
 function rankLadder(mod, arcane) {
   const levels = mod.levelStats || [];
-  /* Arcanes fuehren gar kein fusionLimit - ihre Rangzahl steht nur in der
-     Laenge der Liste. */
-  const max = mod.fusionLimit ?? Math.max(0, levels.length - 1);
+  /* Arcanes fuehren gar kein fusionLimit, Rivens einen Platzhalter - beides
+     legt maxRankOf aus, siehe dort. */
+  const max = maxRankOf(mod);
   const aura = isAuraMod(mod);
+  const riven = isRivenMod(mod);
 
   const rows = [];
   for (let rank = 0; rank <= max; rank++) {
@@ -102,7 +104,11 @@ function rankLadder(mod, arcane) {
       /* Auras GEBEN Kapazitaet, statt sie zu kosten - im Export steht deshalb
          ein negativer baseDrain. Ohne Fallunterscheidung stuende hier ein
          Minuswert als "Kosten". */
-      row.drain = aura ? auraBonus(mod, rank) : modDrain(mod, rank);
+      /* Bei einem Riven bewusst null: die Kapazitaet steht am einzelnen
+         Riven, nicht an der Vorlage - die traegt eine 2, das Stueck im
+         Inventar liegt eher bei 9 bis 18. Lieber keine Zahl als eine
+         erfundene; die Oberflaeche laesst die Zeile dann weg. */
+      row.drain = riven ? null : (aura ? auraBonus(mod, rank) : modDrain(mod, rank));
       row.endo = endoCost(mod, rank);
     }
     rows.push(row);
@@ -162,6 +168,7 @@ export function upgradeDetails(uniqueName, catalog, dropIndex, owned = null) {
   const arcane = isArcane(uniqueName);
   const { rows, max } = rankLadder(mod, arcane);
   const aura = isAuraMod(mod);
+  const riven = isRivenMod(mod);
 
   const set = mod.modSet ? {
     name: setName(mod.modSet),
@@ -179,16 +186,24 @@ export function upgradeDetails(uniqueName, catalog, dropIndex, owned = null) {
     kind: arcane ? 'arcane' : 'mod',
     kindLabel: arcane ? 'Arcane' : 'Mod',
     typeLabel: TYPE_LABELS[mod.type] || (mod.type && mod.type !== '---' ? mod.type : null),
-    rarity: mod.rarity || null,
-    rarityLabel: RARITY_LABELS[mod.rarity] || null,
+    /* Die Vorlage eines Rivens steht im Export auf COMMON. Das ist keine
+       Aussage ueber die Karte, sondern ein unausgefuelltes Feld - und ein
+       goldenes Riven mit einem grauen Abzeichen daneben waere schlicht
+       falsch. Fuer die Fusion zaehlt es als Rare, siehe endoCost. */
+    rarity: riven ? 'RARE' : (mod.rarity || null),
+    rarityLabel: RARITY_LABELS[riven ? 'RARE' : mod.rarity] || null,
     polarity: pol ? { glyph: pol.glyph, symbol: pol.symbol, label: pol.label } : null,
     compat: COMPAT_LABELS[mod.compatName] || mod.compatName || null,
     isAura: aura,
     isExilus: isExilusMod(mod),
+    /* Eine Riven-Vorlage sagt ueber die Karte im Inventar wenig: keine
+       levelStats, keine Kapazitaet, kein fester Wert. Was sie sagen KANN,
+       ist der Hoechstrang und was es kostet, dorthin zu kommen. */
+    isRiven: riven,
     maxRank: max,
     /* Voll aufgewertet - die Zahlen, die man beim Bauen braucht. Arcanes
        kosten keine Kapazitaet und kein Endo, dort bleiben beide leer. */
-    maxDrain: arcane ? null : (rows.at(-1)?.drain ?? 0),
+    maxDrain: (arcane || riven) ? null : (rows.at(-1)?.drain ?? 0),
     endoToMax: arcane ? null : endoCost(mod, max),
     copiesToMax: arcane ? arcaneCopies(max) : null,
     description: textList(mod.description),

@@ -21,6 +21,75 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-09-02
+
+### Fixed
+
+- **Every Endo figure in the app was too low — on a Primed mod by exactly
+  half.** Ranking Primed Continuity to 10 costs **40,920** Endo. Argus said
+  20,460. The formula underneath was right; the four base costs feeding it were
+  not — 4, 6, 10 and 20, where the game uses 10, 20, 30 and 40. Because the
+  cost doubles with every rank, a halved base is arithmetically the same thing
+  as a missing rank, which is exactly what it looked like: the old Legendary
+  column was, figure for figure, the correct Uncommon one. This was never
+  specific to Primed mods. A common mod to rank 10 is 10,230 rather than 4,092,
+  an uncommon one 20,460, a rare one 30,690. The Endo total in the Builds tab
+  rises with it — roughly two to three and a half times, depending on what is
+  on the board. That is the correction arriving, not a new fault. Builds
+  imported from Overframe carry their own figure and are untouched.
+
+- **Opening a Riven no longer produces a ladder with 690 rungs on it.** DE's
+  export carries Rivens as templates, and the templates hold placeholders where
+  the numbers should be: a maximum rank of 689 and a rarity of Common. Nothing
+  caught that, so the data sheet drew 690 rank buttons, put an Endo cost of
+  2.6 × 10²⁰⁸ underneath them, and the card in your inventory grew 689 rank
+  pips. A Riven has **eight** ranks and counts as Rare when you fuse it, so
+  taking one to the top costs 7,650 Endo. Capacity is left blank rather than
+  guessed at: the template claims 0 or 2, a real Riven sits somewhere between 9
+  and 18, and the only thing that knows which is the card itself.
+
+- **Nearly half the catalogue said "Unclear" about where an item comes from —
+  388 of 832 entries, with Braton, Hek and Soma among them.** Three separate
+  causes, none of them a gap in what is knowable.
+
+  Two rules were simply broken. Kuva and Tenet weapons do not sit under
+  `/KuvaLich/` or `/BoardExec/` in the game files — they sit with every other
+  Grineer and Corpus weapon, and can only be told apart by name. The rules
+  looked for a slash that a name never contains, so all eleven fell through
+  and were scored at **effort 40 instead of 110–120**. A Kuva Bramma looked as
+  cheap to get as a market blueprint, and the recommendations ranked it that
+  way.
+
+  Two sections of DE's drop tables were downloaded, cached and never read.
+  `blueprintLocations` (206 entries) and `enemyBlueprintTables` (107) are the
+  two that answer *where does the blueprint come from*, and they were the two
+  the index skipped. Despair, Dread and Hate are listed there against the
+  Stalker, plainly, and Argus showed nothing. Reading them also fills in the
+  "where do I get this" box everywhere else it appears.
+
+  What was left over are market blueprints, which stand in no drop table
+  because they do not drop anywhere. An item with a build recipe that matches
+  no rule and appears in no table is now named as what it almost certainly is.
+  That last step is an inference rather than a source, and it is marked as one
+  in the code; it is right for the great majority and wrong for a handful DE
+  lists nowhere at all. Two more routes were added along the way: **The Hex**
+  for the Höllvania weapons, and **Son in the Necralisk** for Vulpaphyla and
+  Predasites. The drop tables are consulted before the inference, so the tile
+  can no longer claim "market blueprint" while the box beneath it says
+  "Stalker".
+
+- **Two dozen strings that were still in German are English.** Three of them
+  were half-translated and changed language mid-sentence — the Overframe import
+  error, the unreliable-match warning, and the note about running as
+  administrator. The rest were whole: Baro's arrival banner, the warning when
+  the data source stops answering, the empty-state under the ducat filters, the
+  three hotkey labels in Settings, the overlay's click-through button, what the
+  overlay says while it is reading the reward screen, four labels in the mod
+  data sheet, four source descriptions in the drop locations, and the error
+  messages from text recognition, the inventory fetch, the Overframe import and
+  the memory reader.
+
+
 ## [1.5.0] - 2026-09-01
 
 ### Added

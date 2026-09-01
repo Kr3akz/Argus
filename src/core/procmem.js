@@ -55,7 +55,7 @@ function kernel32() {
   try {
     koffi = require('koffi');
   } catch {
-    throw fail('koffi_missing', 'koffi ist nicht installiert (npm install koffi).');
+    throw fail('koffi_missing', 'koffi is not installed (npm install koffi).');
   }
 
   /* Layout von MEMORY_BASIC_INFORMATION unter x64: 48 Byte inklusive der beiden
@@ -104,7 +104,7 @@ export function isSupported() {
  * Wirft mit code 'open_failed'; detail traegt den Win32-Fehlercode (5 = Zugriff verweigert).
  */
 export function openProcess(pid) {
-  if (!isSupported()) throw fail('unsupported', 'Speicherzugriff gibt es nur unter Windows x64.');
+  if (!isSupported()) throw fail('unsupported', 'Memory access only works on Windows x64.');
   const k = kernel32();
   const handle = k.OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, false, pid);
   if (!handle) {

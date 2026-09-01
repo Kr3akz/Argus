@@ -227,6 +227,47 @@ function build({ de, wf, fetchedAt }) {
     }
   }
 
+  /* --- Wo ein BAUPLAN faellt ---
+     Der wichtigste Abschnitt fuer die Frage "woher bekomme ich die Waffe",
+     und er lag lange ungenutzt in der Datei: ohne ihn stand bei Despair, Dread
+     und Hate nichts, obwohl DE sauber "Stalker" dazu schreibt. 206 Eintraege.
+
+     Wieder zwei Chancen hintereinander, wie bei den Mods: erst laesst der
+     Gegner ueberhaupt einen Bauplan fallen (enemyBlueprintDropChance), dann
+     muss es dieser sein (chance). */
+  for (const b of de?.blueprintLocations || []) {
+    for (const e of b.enemies || []) {
+      const table = e.enemyBlueprintDropChance ?? 100;
+      const eintrag = {
+        kind: 'enemy',
+        place: e.enemyName,
+        detail: `Blueprint ${fmtPct(table)} × table ${fmtPct(e.chance)}`,
+        chance: (e.chance ?? 0) * table / 100,
+        rarity: e.rarity || null
+      };
+      /* Unter BEIDEN Namen ablegen: gesucht wird mal nach der Waffe
+         ("Despair"), mal nach dem Bauplan ("Despair Blueprint"). DE fuehrt
+         sie getrennt, und meistens sind sie gleich. */
+      add(b.itemName, eintrag);
+      if (b.blueprintName && b.blueprintName !== b.itemName) add(b.blueprintName, eintrag);
+    }
+  }
+
+  /* --- Was ein bestimmter Gegner sonst noch hergibt ---
+     `mods` bleibt aussen vor: dieselben Karten stehen schon in modLocations,
+     und zwar mit der Gegner-Chance daneben. */
+  for (const t of de?.enemyBlueprintTables || []) {
+    for (const i of t.items || []) {
+      add(i.itemName, {
+        kind: 'enemy',
+        place: t.enemyName,
+        detail: null,
+        chance: i.chance ?? null,
+        rarity: i.rarity || null
+      });
+    }
+  }
+
   /* --- Gegner, die das Item direkt fallen lassen (Eidolons, Void-Engel) --- */
   for (const field of ['resourceByAvatar', 'additionalItemByAvatar']) {
     for (const s of de?.[field] || []) {
@@ -287,7 +328,7 @@ function build({ de, wf, fetchedAt }) {
       add(x.itemName, {
         kind: 'relic',
         place: `${r.tier} ${r.relicName}`,
-        detail: 'intakt',
+        detail: 'Intact',
         chance: x.chance ?? null,
         rarity: x.rarity || null
       });
@@ -298,7 +339,7 @@ function build({ de, wf, fetchedAt }) {
     add(s.itemName, {
       kind: 'sortie',
       place: 'Sortie',
-      detail: 'Tagesbelohnung',
+      detail: 'Daily reward',
       chance: s.chance ?? null,
       rarity: s.rarity || null
     });
@@ -405,12 +446,12 @@ const VENDOR_RULES = [
   },
   {
     test: u => /AugmentCard$/i.test(u) || /\/Augment/i.test(u),
-    place: 'Syndikats-Augment',
+    place: 'Syndicate augment',
     detail: 'For standing at the syndicates that carry the warframe · or by trading'
   },
   {
     test: u => /SentinelPrecepts|PetPrecept|\/BeastWeapons\//i.test(u),
-    place: 'Kommt mit dem Begleiter',
+    place: 'Comes with the companion',
     detail: 'Precept card · comes with the sentinel or pet blueprint'
   },
   {

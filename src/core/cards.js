@@ -74,7 +74,7 @@ export async function loadCardImages({ dataDir = defaultDataDir(), refresh = fal
          Item-API - der erste Treffer gewinnt. */
       if (it.name && !byName[it.name.toLowerCase()]) byName[it.name.toLowerCase()] = file;
     }
-    if (!Object.keys(files).length) throw new Error('keine Kartenbilder');
+    if (!Object.keys(files).length) throw new Error('no card images');
 
     const payload = { version: CACHE_VERSION, fetchedAt: Date.now(), files, byName };
     await mkdir(dataDir, { recursive: true });

@@ -153,8 +153,8 @@ function start() {
     child.stdout.setEncoding('utf8');
 
     const timer = setTimeout(() => {
-      teardown('Texterkennung startet nicht');
-      done({ ok: false, error: 'Texterkennung startet nicht' });
+      teardown('Text recognition does not start');
+      done({ ok: false, error: 'Text recognition does not start' });
     }, START_TIMEOUT_MS);
     timer.unref?.();
 
@@ -218,7 +218,7 @@ function usableRect(r) {
 export async function recognise({ top, bottom, left, right, rect, source, png, scale } = {}) {
   const started = await start();
   if (!started.ok) return started;
-  if (!proc) return { ok: false, error: 'Texterkennung nicht erreichbar' };
+  if (!proc) return { ok: false, error: 'Text recognition is not reachable' };
 
   clearIdle();
 
@@ -245,8 +245,8 @@ export async function recognise({ top, bottom, left, right, rect, source, png, s
     const timer = setTimeout(() => {
       pending.delete(id);
       /* Ein haengender Prozess antwortet auch beim naechsten Mal nicht. */
-      teardown('Texterkennung antwortet nicht');
-      resolve({ ok: false, error: 'Texterkennung antwortet nicht' });
+      teardown('Text recognition is not answering');
+      resolve({ ok: false, error: 'Text recognition is not answering' });
     }, REQUEST_TIMEOUT_MS);
     timer.unref?.();
     pending.set(id, { resolve, timer });

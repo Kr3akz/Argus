@@ -120,7 +120,7 @@ export function analyze(profile, catalog) {
  * Beschaffung (entfaellt bei Besitz) + Leveln.
  */
 function scoreEntry(entry, catalog, item, playerMR) {
-  const acq = acquisitionOf(item);
+  const acq = acquisitionOf(item, catalog);
   const ranksLeft = entry.maxLvl - entry.rank;
   const levelCost = levelingEffort(ranksLeft, entry.maxLvl);
 
