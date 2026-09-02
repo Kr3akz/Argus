@@ -43,15 +43,32 @@ import { findGameProcessIds, runInWorker } from './accountid.js';
 /* Der Anker. Siehe Kopf - Anfuehrungszeichen sind Teil des Musters. */
 const ANCHOR = '"InfestedFoundry"';
 
-/* Die Felder, die Argus aus dem Inventar liest. Zugleich der Vollstaendigkeits-
-   nachweis: eine Scheibe mit allen 24 ist das ganze Dokument. Quelle ist die
-   Feldliste aus inventory-items.js und den Verbrauchern drumherum. */
+/* PFLICHT: ohne diese Felder ist es kein ganzes Dokument. Bewusst nur solche,
+   die JEDES Konto hat - eine strengere Liste wuerde Konten aussperren, die
+   Railjack, Necramechs oder Deimos noch nicht gesehen haben.
+   XPInfo steht hier, weil die gesamte Mastery-Rechnung daran haengt. */
 export const REQUIRED_FIELDS = [
   'Suits', 'LongGuns', 'Pistols', 'Melee', 'Sentinels', 'SentinelWeapons',
-  'SpaceSuits', 'SpaceGuns', 'SpecialItems', 'MechSuits', 'Hoverboards',
-  'OperatorAmps', 'Recipes', 'MiscItems', 'RawUpgrades', 'Upgrades',
-  'PendingRecipes', 'RegularCredits', 'PremiumCredits', 'FusionPoints',
-  'QuestKeys', 'InfestedFoundry', 'Boosters', 'PlayerLevel'
+  'Recipes', 'MiscItems', 'RawUpgrades', 'Upgrades', 'PendingRecipes',
+  'RegularCredits', 'PremiumCredits', 'FusionPoints', 'InfestedFoundry',
+  'XPInfo', 'PlayerLevel'
+];
+
+/* GELESEN: alles, was irgendein Teil der Anwendung aus dem Inventar holt.
+   Nicht als Pflicht gedacht - viele davon fehlen auf jungen Konten voellig.
+   Der Zweck ist ein anderer, und er ist scharf:
+     Steht ein Name im Rohtext der Scheibe, fehlt aber im geparsten Objekt,
+     dann hat die Reparatur ihn gefressen.
+   Genau das ist der stille Fehler, gegen den hier geprueft wird - eine
+   angeschnittene Scheibe verliert ihr erstes und letztes Feld, und welche das
+   sind, haengt vom Schnittpunkt ab. Ohne diese Probe koennte XPInfo
+   verschwinden und die Mastery-Anzeige waere lautlos falsch. */
+export const READ_FIELDS = [
+  ...REQUIRED_FIELDS,
+  'SpaceSuits', 'SpaceGuns', 'SpaceMelee', 'SpaceWeapons', 'Weapons',
+  'SpecialItems', 'MechSuits', 'Hoverboards', 'OperatorAmps', 'QuestKeys',
+  'Boosters', 'PrimeTokens', 'RawParts', 'PeriodicMissionCompletions',
+  'EntratiVaultCountLastPeriod', 'EntratiVaultCountResetDate'
 ];
 
 /* Haeppchengroesse beim Abschreiten des Textlaufs. KLEIN, und zwar mit Grund:
@@ -184,11 +201,28 @@ function analyseDepth(text, fields) {
     }
   }
 
-  let topDepth = null, best = 0;
+  /* Die oberste Ebene ist die NIEDRIGSTE Tiefe, auf der Feldnamen stehen -
+     nicht die haeufigste.
+     Der Unterschied ist der ganze Unterschied: "Suits", "LongGuns", "Pistols"
+     und "Melee" stehen in JEDEM Loadout-Preset noch einmal, verschachtelt und
+     damit vielfach oefter als das eine Vorkommen auf oberster Ebene. Die
+     Haeufigkeit zeigt also auf die Presets, nicht auf das Dokument. Gemessen
+     an einer vorn angeschnittenen Scheibe schnitt die Reparatur dadurch ein
+     Stueck heraus, das nach 682 Zeichen zu Ende war.
+     Verlangt werden zwei Vorkommen, damit ein einzelner Ausreisser die Ebene
+     nicht nach unten zieht; gibt es die nicht, zaehlt die niedrigste Tiefe
+     ueberhaupt. */
+  let topDepth = null, fieldsAtTop = 0;
   for (const [d, n] of depthCount) {
-    if (n > best) { best = n; topDepth = d; }
+    if (n < 2) continue;
+    if (topDepth === null || d < topDepth) { topDepth = d; fieldsAtTop = n; }
   }
-  return { topDepth, fieldsAtTop: best, commas };
+  if (topDepth === null) {
+    for (const [d, n] of depthCount) {
+      if (topDepth === null || d < topDepth) { topDepth = d; fieldsAtTop = n; }
+    }
+  }
+  return { topDepth, fieldsAtTop, commas };
 }
 
 /**
@@ -241,6 +275,18 @@ function countFields(text, fields) {
 }
 
 /**
+ * Was die Reparatur unterwegs verloren hat.
+ *
+ * Steht ein Name im Rohtext, fehlt aber im geparsten Objekt, dann lag er in
+ * dem angeschnittenen Stueck, das vorn oder hinten weggeschnitten wurde. Das
+ * ist der einzige Weg, diesen Verlust zu bemerken - die Pflichtliste faengt
+ * ihn nicht, weil sie absichtlich kurz ist.
+ */
+function lostInRepair(text, data) {
+  return READ_FIELDS.filter(f => text.includes(`"${f}":`) && !(f in data));
+}
+
+/**
  * Wie scanInventory(), aber in einem Worker-Thread.
  *
  * Der Scan laeuft rund zehn Sekunden am Stueck und wuerde das Fenster genauso
@@ -278,14 +324,20 @@ export async function scanInventory({ maxSeconds = 120, keepText = false } = {})
 
       /* Jede Fundstelle wird SOFORT ausgemessen und bewertet, nicht erst nach
          dem Scan. Zusammen mit descending bricht der Durchgang ab, sobald eine
-         Scheibe alle Felder traegt - der Rest des Heaps wird gar nicht mehr
+         Scheibe wirklich taugt - der Rest des Heaps wird gar nicht mehr
          gelesen. Ohne das kostet ein Lauf rund eine halbe Minute, und er laeuft
          bei jeder Rueckkehr aufs Schiff an.
 
-         Groesse allein taugt uebrigens nicht als Mass: eine lange Scheibe kann
-         mitten im Dokument liegen und die Haelfte der Felder verfehlen. */
+         ABGEBROCHEN WIRD ERST NACH DEM PARSEN, nicht schon bei 24 Feldnamen im
+         Text. Der Unterschied ist gemessen: eine vorn angeschnittene Scheibe
+         trug alle 24 Namen, liess sich aber nicht zusammensetzen - und weil der
+         Scan da schon gestanden hatte, gab es keinen zweiten Kandidaten mehr,
+         obwohl weiter unten eine heile Kopie lag.
+
+         Groesse allein taugt uebrigens auch nicht als Mass: eine lange Scheibe
+         kann mitten im Dokument liegen und die Haelfte der Felder verfehlen. */
       const candidates = [];
-      let complete = null;
+      let winner = null;
 
       const scan = procmem.findAllPattern(handle, ANCHOR, {
         limit: 64, maxSeconds, descending: true,
@@ -301,11 +353,18 @@ export async function scanInventory({ maxSeconds = 120, keepText = false } = {})
             text: span.text
           };
           candidates.push(candidate);
-          if (fields.length === REQUIRED_FIELDS.length) {
-            complete = candidate;
-            return true;                   // gefunden - Suche beenden
-          }
-          return false;
+
+          /* Nur bei voller Namensabdeckung ueberhaupt parsen - bei 1,1 MB ist
+             das kein Aufwand, den man an aussichtslosen Resten verschwendet. */
+          if (fields.length !== REQUIRED_FIELDS.length) return false;
+
+          const parsed = parseSpan(span.text, READ_FIELDS);
+          if (!parsed.data) return false;
+          if (REQUIRED_FIELDS.some(f => !(f in parsed.data))) return false;
+          if (lostInRepair(span.text, parsed.data).length) return false;
+
+          winner = { candidate, parsed };
+          return true;                     // heile Kopie in der Hand - fertig
         }
       });
 
@@ -323,52 +382,100 @@ export async function scanInventory({ maxSeconds = 120, keepText = false } = {})
 
       candidates.sort((a, b) =>
         b.fields.length - a.fields.length || b.bytes - a.bytes);
-      const best = complete || candidates[0];
 
-      const parsed = parseSpan(best.text, REQUIRED_FIELDS);
-      const stats = {
+      const attempted = [];
+
+      const baseStats = () => ({
         candidates: candidates.map(c => ({
           address: '0x' + c.address.toString(16).toUpperCase(),
           kilobytes: Math.round(c.bytes / 1024),
           fields: c.fields.length
         })),
-        chosen: {
-          address: '0x' + best.address.toString(16).toUpperCase(),
-          kilobytes: Math.round(best.bytes / 1024),
-          backward: best.backward,
-          forward: best.forward,
-          startsWithBrace: best.text.startsWith('{')
-        },
-        fieldsInSpan: best.fields.length,
-        repaired: parsed.repaired,
-        note: parsed.note,
         stoppedEarly: Boolean(scan.stopped),
         regions: scan.regions,
         megabytes: Math.round(scan.bytes / 1048576),
         seconds: Number(((Date.now() - started) / 1000).toFixed(1))
-      };
+      });
 
-      if (!parsed.data) {
-        lastError = fail('unparsable', 'The inventory span could not be parsed.',
-                         { stats, text: keepText ? best.text : undefined });
-        continue;
+      const describe = (cand, parsed, missing) => ({
+        ...baseStats(),
+        chosen: {
+          address: '0x' + cand.address.toString(16).toUpperCase(),
+          kilobytes: Math.round(cand.bytes / 1024),
+          backward: cand.backward,
+          forward: cand.forward,
+          startsWithBrace: cand.text.startsWith('{')
+        },
+        fieldsInSpan: cand.fields.length,
+        repaired: parsed.repaired,
+        note: parsed.note,
+        attempts: attempted,
+        ...(missing ? { missing } : {})
+      });
+
+      /* Der Scan hat schon eine heile Kopie geparst und deshalb abgebrochen -
+         dann ist hier nichts mehr zu tun. */
+      if (winner) {
+        attempted.push({ address: '0x' + winner.candidate.address.toString(16).toUpperCase(),
+                         result: 'ok' });
+        return {
+          ok: true, inventory: winner.parsed.data,
+          stats: describe(winner.candidate, winner.parsed, []),
+          text: keepText ? winner.candidate.text : undefined
+        };
       }
 
-      /* Vollstaendigkeit gegen die geparsten Schluessel pruefen, nicht gegen den
-         Rohtext: ein Feldname kann im Text stehen und beim Reparieren trotzdem
-         weggefallen sein. Ein halbes Inventar ist schlechter als keins - der
-         Aufrufer soll dann den Zwischenspeicher behalten. */
-      const missing = REQUIRED_FIELDS.filter(f => !(f in parsed.data));
-      stats.missing = missing;
+      /* Sonst JEDE Fundstelle durchprobieren, nicht nur die beste - und dabei
+         die Gruende sammeln, damit im Fehlerfall dasteht, woran es lag. */
+      let lastAttemptError = null;
 
-      if (missing.length) {
-        lastError = fail('incomplete',
-          `Inventory is missing ${missing.length} field(s): ${missing.join(', ')}`,
-          { stats, inventory: parsed.data });
-        continue;
+      for (const cand of candidates) {
+        const parsed = parseSpan(cand.text, READ_FIELDS);
+        const address = '0x' + cand.address.toString(16).toUpperCase();
+
+        if (!parsed.data) {
+          attempted.push({ address, result: parsed.note });
+          lastAttemptError = fail('unparsable', 'The inventory span could not be parsed.',
+                                  { stats: describe(cand, parsed), text: keepText ? cand.text : undefined });
+          continue;
+        }
+
+        /* Vollstaendigkeit gegen die geparsten Schluessel pruefen, nicht gegen
+           den Rohtext: ein Feldname kann im Text stehen und beim Reparieren
+           trotzdem weggefallen sein. Ein halbes Inventar ist schlechter als
+           keins - der Aufrufer soll dann den Zwischenspeicher behalten. */
+        const missing = REQUIRED_FIELDS.filter(f => !(f in parsed.data));
+        if (missing.length) {
+          attempted.push({ address, result: `missing ${missing.length}: ${missing.join(', ')}` });
+          lastAttemptError = fail('incomplete',
+            `Inventory is missing ${missing.length} field(s): ${missing.join(', ')}`,
+            { stats: describe(cand, parsed, missing), inventory: parsed.data });
+          continue;
+        }
+
+        /* Und die zweite Probe: hat die Reparatur ein Feld gefressen, das im
+           Rohtext noch stand? Dann ist die Scheibe unbrauchbar, auch wenn alle
+           Pflichtfelder ueberlebt haben. */
+        const lost = lostInRepair(cand.text, parsed.data);
+        if (lost.length) {
+          attempted.push({ address, result: `repair dropped: ${lost.join(', ')}` });
+          lastAttemptError = fail('incomplete',
+            `The repair dropped ${lost.length} field(s) that were present: ${lost.join(', ')}`,
+            { stats: describe(cand, parsed, lost) });
+          continue;
+        }
+
+        attempted.push({ address, result: 'ok' });
+        return {
+          ok: true, inventory: parsed.data,
+          stats: describe(cand, parsed, []),
+          text: keepText ? cand.text : undefined
+        };
       }
 
-      return { ok: true, inventory: parsed.data, stats, text: keepText ? best.text : undefined };
+      lastError = lastAttemptError
+              || fail('unparsable', 'No usable inventory among the candidates.', { stats: baseStats() });
+      continue;
     } catch (e) {
       lastError = fail(e.code || 'scan_failed', e.message, { detail: e.detail });
     } finally {

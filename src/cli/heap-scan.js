@@ -14,7 +14,7 @@
  */
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { scanInventory, REQUIRED_FIELDS } from '../core/inventory-scan.js';
+import { scanInventory, REQUIRED_FIELDS, READ_FIELDS } from '../core/inventory-scan.js';
 import { findGameProcessIds } from '../core/accountid.js';
 import { isSupported } from '../core/procmem.js';
 import { dataDir } from '../core/paths.js';
@@ -71,7 +71,16 @@ if (!res.ok) {
 
 const inv = res.inventory;
 console.log('\n=== Ergebnis ===');
-console.log(`  Felder         ${REQUIRED_FIELDS.length}/${REQUIRED_FIELDS.length} vollstaendig`);
+console.log(`  Pflichtfelder  ${REQUIRED_FIELDS.length}/${REQUIRED_FIELDS.length} vorhanden`);
+
+/* Die zweite Probe sichtbar machen: von allem, was die Anwendung ueberhaupt
+   liest, darf nichts fehlen, das im Rohtext noch stand. Fehlende Felder, die
+   das Konto schlicht nicht hat (Railjack, Necramechs, Deimos), sind kein
+   Fehler - deshalb steht hier "gelesen", nicht "vermisst". */
+const gelesen = READ_FIELDS.filter(f => f in inv);
+console.log(`  Gelesene Felder ${gelesen.length}/${READ_FIELDS.length} im Dokument`
+          + (gelesen.length < READ_FIELDS.length
+              ? `  (ohne: ${READ_FIELDS.filter(f => !(f in inv)).join(', ')})` : ''));
 console.log(`  Schluessel     ${Object.keys(inv).length} insgesamt im Dokument`);
 
 const size = key => Array.isArray(inv[key]) ? inv[key].length : null;
