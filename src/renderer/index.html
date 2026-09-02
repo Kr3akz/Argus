@@ -1216,9 +1216,10 @@
       <div class="settings-group">
         <div class="settings-group-head">
           <h3>Inventory access</h3>
-          <p>Your public Warframe profile contains no inventory. Reading one means looking
-             up the temporary session credentials of the running game in its process
-             memory — read-only, never writing, and only when you press the button.</p>
+          <p>Your public Warframe profile contains no inventory. Reading one means reading
+             the inventory the running game already holds in its process memory —
+             read-only, never writing, and it never leaves this machine. Nothing is
+             requested from Warframe's servers.</p>
         </div>
 
         <label class="setting-row">
@@ -1233,7 +1234,7 @@
         <label class="setting-row" id="row-inventory-autosync">
           <div class="setting-info">
             <b>Auto-sync after missions &amp; trades</b>
-            <span>Automatically fetches updated inventory via the Warframe API after missions, zone changes, and trades (respecting the 10-minute rate limit).</span>
+            <span>Reads your inventory again by itself after missions, zone changes and trades — at most once every 3 minutes. With this off, use the Fetch inventory button.</span>
           </div>
           <input type="checkbox" id="set-inventory-autosync" class="toggle-checkbox">
           <span class="toggle-switch"></span>
