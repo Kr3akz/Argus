@@ -21,6 +21,8 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-09-02
+
 ### Changed
 
 - **Your inventory no longer travels over the network.** Until now Argus read the
