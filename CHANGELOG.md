@@ -21,6 +21,32 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Your inventory no longer travels over the network.** Until now Argus read the
+  running game's session key out of memory and used it to ask Warframe's own API
+  for your inventory — one authenticated request, on your behalf, that DE could
+  see on their side. It doesn't do that any more. The running game already holds
+  your complete inventory in memory as plain JSON; Argus now reads it there and
+  stops. Nothing is requested, nothing is sent, nothing leaves your PC.
+
+  What you notice: **the inventory only refreshes after the game loads a zone.**
+  Travel to a relay or your dojo and back to your ship, then fetch. In return, the
+  fetch cooldown is gone — there is no longer anything to be polite about, so the
+  button always works, and the "too many logins" IP block can no longer be
+  triggered by fetching your inventory.
+
+  If only a partial copy is found in memory, Argus keeps the last known state
+  rather than showing you an inventory that is quietly missing half your mods.
+
+### Removed
+
+- **Argus no longer reads your session key at all.** It reads your account ID —
+  the same 24 characters you could copy off warframe.com by hand, needed for the
+  *public* profile page — and nothing else. The session key, the address cache
+  (`scan-hint.json`) and the inventory's share of the request budget are gone
+  along with the API call that needed them.
+
 ## [1.5.1] - 2026-09-02
 
 ### Fixed

@@ -8,6 +8,14 @@
 #
 # Das Skript gibt gefundene Zugangsdaten NICHT aus - nur ob und wo das Muster liegt.
 #
+# ACHTUNG, EIN NICHTFUND BEWEIST HIER NICHTS:
+#   Am Ende der Schleife steht ein Frueh-Abbruch, sobald EIN A-Marker und die
+#   Credentials gefunden sind. Der zweite A-Marker hat dann gar keine Chance
+#   mehr - real gesehen: "SuitBin" traf, "RawUpgrades" wurde als fehlend
+#   gemeldet, obwohl es sehr wohl im Heap lag. Wer eine Aussage ueber ein
+#   bestimmtes Feld braucht, nimmt memgaps.ps1 (sucht heap-weit, ohne Abbruch)
+#   oder gleich src/cli/heap-scan.js.
+#
 #   powershell -NoProfile -ExecutionPolicy Bypass -File memscan.ps1
 
 Add-Type @"

@@ -22,8 +22,13 @@ export const COOLDOWN_MS     = 3 * 60 * 60 * 1000;   // 3 h Sperre nach Drosselu
 export const USER_AGENT      = 'Argus/1.0 (personal mastery planner)';
 
 /* Der Zaehler ist absichtlich EIN Topf fuer alle Endpunkte. DE drosselt pro IP,
-   nicht pro Endpunkt - Profil- und Inventarabruf teilen sich also dasselbe
-   Budget, sonst umgeht man die Sperre einfach ueber den zweiten Weg. */
+   nicht pro Endpunkt - wer je einen zweiten Weg zu DE hinzufuegt, haengt ihn an
+   dasselbe Budget, sonst umgeht er die Sperre ueber den neuen Weg.
+
+   Uebrig ist derzeit nur das Profil. Der Inventar-Abruf hing frueher mit drin;
+   er geht inzwischen in den Speicher des laufenden Spiels statt an DEs API
+   (siehe inventory-scan.js) und braucht deshalb kein Budget mehr - das ganze
+   Kontingent steht damit dem Profil zur Verfuegung. */
 
 /* Die Texte hier landen unveraendert in der Oberflaeche - deshalb echte Umlaute,
    anders als in den Kommentaren. */

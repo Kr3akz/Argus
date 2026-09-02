@@ -650,8 +650,9 @@ async function submitSetup() {
   const id = $('setup-id').value.trim().toLowerCase();
 
   /* Vorpruefung im Fenster, nicht erst im Hauptprozess. Nicht aus Bequemlich-
-     keit: jeder Abruf zaehlt gegen die Drosselung von DE, ein erkennbarer
-     Vertipper darf gar nicht erst ins Netz gehen. */
+     keit: mit dieser Kennung wird das oeffentliche Profil abgerufen, und jeder
+     Abruf zaehlt gegen die Drosselung von DE - ein erkennbarer Vertipper darf
+     gar nicht erst ins Netz gehen. */
   if (!ACCOUNT_ID_RE.test(id)) {
     /* Laenge und Zeichenvorrat getrennt melden. Ein gemeinsamer Satz ergibt
        bei 24 falschen Zeichen "that is 24 characters, an ID has 24" - eine
@@ -5060,9 +5061,9 @@ function showInventoryState(code, text) {
   box.classList.remove('hidden');
 
   const erklaerung = code === 'empty'
-    ? 'There is no inventory data yet. Start Warframe, log in and '
-    + 'press "Fetch inventory" — the credentials are only read from the '
-    + 'running game and are never stored.'
+    ? 'There is no inventory data yet. Start Warframe, log in, travel to a relay '
+    + 'or your dojo and back to your ship, then press "Fetch inventory" — the '
+    + 'inventory is read from the running game and never leaves this machine.'
     : text;
 
   box.innerHTML = `

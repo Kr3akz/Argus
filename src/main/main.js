@@ -2,17 +2,17 @@
  * Electron-Hauptprozess.
  *
  * SICHERHEIT:
- *   - Lesender Zugriff auf den Warframe-Prozess NUR fuer den Inventar-Abruf und
- *     nur auf Knopfdruck: procmem.js oeffnet den Prozess mit PROCESS_VM_READ und
- *     PROCESS_QUERY_INFORMATION, um die temporaeren API-Zugangsdaten zu lesen.
- *     Kein Schreibzugriff, keine Injektion, keine Veraenderung am Spiel.
+ *   - Lesender Zugriff auf den Warframe-Prozess nur fuer Inventar und
+ *     Account-ID: procmem.js oeffnet den Prozess mit PROCESS_VM_READ und
+ *     PROCESS_QUERY_INFORMATION. Kein Schreibzugriff, keine Injektion, keine
+ *     Veraenderung am Spiel.
  *     (Frueher galt hier "kein Kontakt zum Spielprozess" - das stimmt seit dem
  *     Inventar-Tab nicht mehr und waere ein irrefuehrender Kommentar.)
- *   - accountId und nonce bleiben im Hauptprozess: nicht geloggt, nicht
- *     gespeichert, nicht ueber preload.cjs erreichbar.
- *   - Netzwerkabruf von Profil und Inventar NUR auf Knopfdruck und nur durch
- *     dieselbe Drosselung (siehe ratelimit.js) - DE sperrt pro IP.
- *   - Renderer laeuft ohne Node-Zugriff (contextIsolation an).
+ *   - Die Account-ID bleibt im Hauptprozess: nicht geloggt, nicht ueber
+ *     preload.cjs erreichbar. Einen Session-nonce liest Argus nicht mehr.
+ *   - Das Inventar kommt aus dem Speicher des laufenden Spiels, nicht aus dem
+ *     Netz. Nur das oeffentliche Profil wird abgerufen, gedrosselt ueber
+ *     ratelimit.js - DE sperrt pro IP.
  */
 import { app, BrowserWindow, ipcMain, globalShortcut, shell, Notification, screen, clipboard } from 'electron';
 import path from 'node:path';
@@ -41,12 +41,11 @@ import { getMiningGuide } from '../core/mining.js';
 import { getDucatsReferenceList, buildPrimeSets, buildDucatsCatalog, buildInventoryDucats,
          annotateInventoryContext } from '../core/ducats.js';
 import { loadInventory } from '../core/inventory.js';
-import { scanCredentials, findGameProcessIds } from '../core/gamecreds.js';
+import { scanAccountId, findGameProcessIds } from '../core/accountid.js';
 import { buildInventory, SECTIONS, ownedUpgradeRanks, miscItemCount, ownedStock, recipeRow } from '../core/inventory-items.js';
 import { loadDropTables, sourcesFor } from '../core/droptables.js';
 import { loadCardImages, cardUrl } from '../core/cards.js';
 import { upgradeDetails } from '../core/upgrade-details.js';
-import { checkAllowed, formatWait } from '../core/ratelimit.js';
 import { matchesFissureFilter } from '../core/fissure-filter.js';
 import { captureForeground, restoreForeground, bringToForeground, moveCursorIntoWindow, foregroundPid, gameWindowRect } from '../core/foreground.js';
 import { LogWatcher } from '../core/logwatch.js';
@@ -108,6 +107,15 @@ let overlayEnabled = true;
 /* Relikt-Beobachtung: liest Warframes EE.log mit. Siehe core/logwatch.js. */
 let logWatcher = null;
 let relicAutoShow = true;
+
+/* Mindestabstand zwischen zwei automatischen Inventar-Scans.
+   Nicht als Ruecksicht auf DE - der Scan geht in den Speicher des eigenen
+   Spiels, nicht ins Netz -, sondern auf die eigene Maschine: ein Durchgang
+   kostet rund zehn Sekunden Rechenzeit, und game-activity feuert bei jedem
+   Missionsende. Aktualitaet kostet das nichts, weil das Spiel das Inventar
+   ohnehin nur beim Laden einer Zone in den Speicher legt. */
+const AUTO_SYNC_MIN_MS = 3 * 60 * 1000;
+let lastAutoSyncAt = 0;
 /* Bildschirmerkennung der vier Belohnungen. Abschaltbar, weil dafuer ein
    Bildschirmfoto entsteht - auch wenn es den Rechner nie verlaesst. */
 let relicScan = true;
@@ -1616,24 +1624,28 @@ async function firstFetch({ withInventory }) {
  * WARUM DAS DIE VORDERE TUER IST:
  *   Die Kennung von Hand einzutragen hiess: auf warframe.com einloggen, eine
  *   API-URL aufrufen, 24 Hex-Zeichen abschreiben. Das ist eine Huerde, die
- *   nach Bastelei aussieht - und sie ist unnoetig, denn derselbe Scan, der
- *   das Inventar holt, liest die Kennung ohnehin mit. Aus zwei Fragen
- *   (Kennung eintippen + Haken fuer Speicherzugriff) wird so eine einzige.
+ *   nach Bastelei aussieht - und sie ist unnoetig, denn der Speicher des
+ *   laufenden Spiels traegt sie ohnehin. Aus zwei Fragen (Kennung eintippen +
+ *   Haken fuer Speicherzugriff) wird so eine einzige.
+ *
+ *   Gesucht wird NUR die Kennung. Der Session-nonce, der frueher mitgelesen
+ *   wurde, wird nirgends mehr gebraucht - das Inventar kommt direkt aus dem
+ *   Heap statt ueber einen API-Aufruf.
  *
  * Die Kennung geht dabei NICHT an den Renderer - sie wird hier gelesen,
  * hier gespeichert und hier benutzt.
  */
 ipcMain.handle('setup:detect', async () => {
-  const creds = await scanCredentials();
-  if (!creds.ok) {
-    return { ok: false, code: creds.code,
-             error: INVENTORY_ERRORS[creds.code] || creds.message };
+  const found = await scanAccountId();
+  if (!found.ok) {
+    return { ok: false, code: found.code,
+             error: INVENTORY_ERRORS[found.code] || found.message };
   }
 
   /* Wer im Speicher des laufenden Spiels gefunden wurde, spielt auf dem PC -
      eine Plattformabfrage waere hier eine Frage ohne Zweck. */
   const cfg = await loadConfig();
-  await saveConfig({ ...cfg, accountId: creds.accountId, platform: 'pc', inventoryScan: true });
+  await saveConfig({ ...cfg, accountId: found.accountId, platform: 'pc', inventoryScan: true });
 
   try {
     const { data, inventoryNote } = await firstFetch({ withInventory: true });
@@ -2012,10 +2024,10 @@ function relicImage(base, state) {
  * Was seit dem letzten Inventarabruf geoeffnet wurde.
  *
  * WARUM DIESES BUCH UEBERHAUPT:
- *   Das Inventar liegt als Datei da und wird NUR auf Knopfdruck neu geholt -
- *   automatisch abzufragen ist hier verboten, und zwar aus gutem Grund: DE
- *   drosselt pro IP, und die Drosselung schlaegt auf den Spiel-Login durch
- *   (siehe core/ratelimit.js). Wer eine Rissmission nach der anderen laeuft,
+ *   Das Inventar wird nicht nach jeder Mission neu gelesen. Frueher lag der
+ *   Grund bei DEs Drosselung; heute liegt er im Spiel selbst: den Bestand legt
+ *   der Client nur beim Laden einer Zone in den Speicher (siehe
+ *   core/inventory-scan.js). Wer eine Rissmission nach der anderen laeuft,
  *   sieht im Overlay also weiter Relikte stehen, die er gerade verbraucht hat.
  *
  *   Also wird mitgezaehlt statt nachgefragt: das Log nennt beim Einlegen den
@@ -2820,17 +2832,22 @@ ipcMain.handle('trade:transactionsByItem', (_e, opts = {}) =>
  */
 const INVENTORY_ERRORS = {
   no_process:    'Warframe is not running. Start the game, log in, and try again.',
-  not_found:     'No credentials were found in the game\u2019s memory. That happens while you are '
-               + 'still on the login screen — go to your orbiter once and try again.',
+  not_found:     'No inventory was found in the game\u2019s memory. The game only puts it there '
+               + 'when it loads a zone — travel to a relay or your dojo and back to your '
+               + 'ship, then try again.',
+  incomplete:    'Only part of the inventory could be read, so it was not used. Travel to '
+               + 'a relay or your dojo and back to your ship, then try again.',
+  unparsable:    'The inventory was found but could not be read. Travel to a relay or your '
+               + 'dojo and back to your ship, then try again.',
   open_failed:   'The Warframe process could not be opened. If the game runs as administrator, '
                + 'this window has to run as administrator too.',
   timeout:       'Searching the game memory took too long. Please try again.',
   unsupported:   'Fetching the inventory only works on Windows (64-bit).',
   koffi_missing: 'The memory module is missing. Run "npm install" in the project folder once.',
   scan_failed:   'Searching the game memory failed.',
-  scan_disabled: 'Fetching the inventory is switched off. It reads the current session\u2019s '
-               + 'credentials from the game process memory — read-only. You can turn it on '
-               + 'under Settings → Inventory access.'
+  scan_disabled: 'Fetching the inventory is switched off. It reads what the running game '
+               + 'already holds in memory — read-only, and nothing is sent anywhere. You can '
+               + 'turn it on under Settings → Inventory access.'
 };
 
 /**
@@ -2867,7 +2884,6 @@ async function inventoryPayload({ refresh }) {
 
   const view = buildInventory(res.inventory, cache.catalog);
   await attachCards(view);
-  const gate = await checkAllowed({});
 
   const mastered = new Set([
     ...(res.inventory?.XPInfo || []).map(e => e.ItemType),
@@ -2943,14 +2959,13 @@ async function inventoryPayload({ refresh }) {
       sectionMeta: SECTIONS,
       source: res.source || 'api',
       fetchedAt: res.fetchedAt,
-      /* Wartezeit gehoert in die Oberflaeche, damit der Knopf erklaeren kann,
-         warum er gerade nichts tut. */
-      gate: {
-        allowed: gate.allowed,
-        reason: gate.reason || null,
-        message: gate.message || null,
-        waitText: gate.allowed ? null : formatWait(gate.waitMs)
-      },
+      /* Das Feld trug frueher die Wartezeit aus DEs Drosselung, damit der Knopf
+         erklaeren konnte, warum er gerade nichts tut. Der Abruf geht nicht mehr
+         ins Netz, also gibt es keine Wartezeit mehr - der Knopf ist immer
+         bedienbar. Die Form bleibt, damit die Oberflaeche unveraendert bleibt;
+         eine Absage kommt jetzt ueber res.message, wenn kein Inventar im
+         Speicher lag. */
+      gate: { allowed: true, reason: null, message: null, waitText: null },
       message: res.message || null
     }
   };
@@ -5159,18 +5174,24 @@ function startLogWatcher() {
       if (cfg.inventoryScan !== true) return;
       if (cfg.inventoryAutoSync === false) return;
 
-      const gate = await checkAllowed({});
-      if (!gate.allowed) {
-        console.log('[AutoSync] Übersprungen:', gate.reason,
-                    `(nächster Abruf in ${formatWait(gate.waitMs)})`);
-        sendToMain('inventory:stale', {
-          trigger: ev.trigger,
-          gate: { allowed: false, waitText: formatWait(gate.waitMs) }
-        });
+      /* FRUEHER stand hier die Drosselungspruefung von DE. Die ist weg: der
+         Abruf geht nicht mehr an DEs API, sondern in den Speicher des eigenen
+         Spiels - es gibt niemanden mehr zu schonen.
+         Was BLEIBT, ist eine Ruecksicht auf die eigene Maschine. Ein Scan
+         kostet rund zehn Sekunden Rechenzeit; bei jedem Missionsende einen zu
+         starten waere waehrend einer Farmrunde spuerbar. Der Mindestabstand
+         unten deckelt das - und er kostet nichts an Aktualitaet, weil das
+         Spiel das Inventar ohnehin nur beim Laden einer Zone in den Speicher
+         legt. */
+      const since = Date.now() - lastAutoSyncAt;
+      if (since < AUTO_SYNC_MIN_MS) {
+        console.log('[AutoSync] Übersprungen:', ev.trigger,
+                    `(letzter Scan vor ${Math.round(since / 1000)}s)`);
         return;
       }
+      lastAutoSyncAt = Date.now();
 
-      console.log('[AutoSync] Inventar-Abruf ausgelöst durch:', ev.trigger);
+      console.log('[AutoSync] Inventar-Scan ausgelöst durch:', ev.trigger);
       const payload = await inventoryPayload({ refresh: true });
       sendToMain('inventory:updated', payload.data);
     } catch (err) {

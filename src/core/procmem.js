@@ -2,9 +2,9 @@
  * Lesender Zugriff auf den Speicher eines fremden Prozesses (Windows x64).
  *
  * Duenner Wrapper um vier kernel32-Funktionen - alles Warframe-Spezifische steht
- * in gamecreds.js. Der Zugriff ist ausschliesslich lesend: das Handle wird mit
- * PROCESS_VM_READ | PROCESS_QUERY_INFORMATION geoeffnet, WriteProcessMemory ist
- * nicht eingebunden. Es gibt keinen Schreibpfad in diesem Modul.
+ * in accountid.js und inventory-scan.js. Der Zugriff ist ausschliesslich lesend:
+ * das Handle wird mit PROCESS_VM_READ | PROCESS_QUERY_INFORMATION geoeffnet,
+ * WriteProcessMemory ist nicht eingebunden. Es gibt keinen Schreibpfad hier.
  *
  * Adressen laufen als BigInt. Windows-Nutzeradressen bleiben zwar unter 2^47 und
  * damit im sicheren Number-Bereich, aber sobald man sie mit Regionsgroessen
@@ -192,14 +192,24 @@ export function* heapRegions(handle, { minSize = MIN_REGION, maxSize = MAX_REGIO
  * Zwischen zwei Haeppchen und zwei aneinandergrenzenden Regionen wird die Naht
  * mitgesucht, damit ein Treffer genau auf der Grenze nicht verlorengeht.
  */
-function scanRegions(handle, pattern, source, limit, deadline) {
+function scanRegions(handle, pattern, source, limit, deadline, onHit) {
   const overlap = pattern.length - 1;
   const buffer = Buffer.allocUnsafe(CHUNK);
   const carry = Buffer.alloc(overlap);
 
   const addresses = [];
   let regions = 0, bytes = 0, timedOut = false;
+  let stopped = false;
   let carryEnd = -1n;                       // Adresse direkt hinter dem letzten Haeppchen
+
+  /* Jeder Fund geht durch diese Stelle. onHit darf true liefern und die Suche
+     damit beenden - so kann der Aufrufer abbrechen, sobald ein Treffer taugt,
+     statt den ganzen Heap zu Ende zu lesen. Rueckgabe true heisst "aufhoeren". */
+  const record = address => {
+    addresses.push(address);
+    if (onHit && onHit(address)) { stopped = true; return true; }
+    return addresses.length >= limit;
+  };
 
   outer:
   for (const region of source) {
@@ -221,8 +231,7 @@ function scanRegions(handle, pattern, source, limit, deadline) {
         const seam = Buffer.concat([carry, view.subarray(0, Math.min(overlap, got))]);
         let p = seam.indexOf(pattern);
         while (p >= 0 && p < overlap) {
-          addresses.push(start - BigInt(overlap - p));
-          if (addresses.length >= limit) break outer;
+          if (record(start - BigInt(overlap - p))) { seam.fill(0); break outer; }
           p = seam.indexOf(pattern, p + 1);
         }
         seam.fill(0);
@@ -230,8 +239,7 @@ function scanRegions(handle, pattern, source, limit, deadline) {
 
       let p = view.indexOf(pattern);
       while (p >= 0) {
-        addresses.push(start + BigInt(p));
-        if (addresses.length >= limit) break outer;
+        if (record(start + BigInt(p))) break outer;
         p = view.indexOf(pattern, p + 1);
       }
 
@@ -251,7 +259,7 @@ function scanRegions(handle, pattern, source, limit, deadline) {
   buffer.fill(0);
   carry.fill(0);
 
-  return { addresses, regions, bytes, timedOut };
+  return { addresses, regions, bytes, timedOut, stopped };
 }
 
 /**
@@ -270,6 +278,41 @@ function scanRegions(handle, pattern, source, limit, deadline) {
  * Sie zu lesen holt sie aus der Auslagerungsdatei zurueck und drueckt dem
  * laufenden Spiel Speicher rein, den es gerade nicht braucht.
  */
+/**
+ * Sucht ein Muster in EINEM Durchgang ueber alle Heap-Regionen und liefert
+ * ALLE Fundstellen.
+ *
+ * Abgrenzung zu findPattern(): das dort eingebaute Zweiphasenverfahren hoert
+ * auf, sobald die kleinen Regionen etwas hergeben. Fuer Zugangsdaten ist das
+ * richtig - es gibt nur einen gueltigen nonce, und der hoechste gewinnt.
+ *
+ * Fuer das Inventar ist es falsch. Im Heap liegen mehrere Ausschnitte desselben
+ * Dokuments: viele kleine, an beiden Enden mitten im Token abgeschnittene, und
+ * eine vollstaendige Kopie. Gemessen lag die vollstaendige an der HOECHSTEN
+ * Adresse; wer beim ersten Treffer aufhoert oder den Adressraum begrenzt,
+ * erwischt systematisch die Reste. Deshalb: ein Durchgang, alles einsammeln,
+ * die Auswahl trifft der Aufrufer.
+ */
+export function findAllPattern(handle, needle,
+                               { limit = 64, maxSeconds = 120, descending = false, onHit } = {}) {
+  const pattern = Buffer.from(needle, 'latin1');
+  const started = Date.now();
+
+  /* descending: von den hoechsten Adressen abwaerts. Die vollstaendige
+     Inventarkopie lag in jeder Messung weit oben, die angeschnittenen Reste
+     weiter unten - zusammen mit einem onHit, das beim ersten brauchbaren Fund
+     abbricht, spart das den Grossteil des Heaps.
+     Der Preis: die Naht zwischen zwei ANEINANDERGRENZENDEN Regionen wird nicht
+     mehr geprueft (carryEnd passt nur bei aufsteigender Reihenfolge). Innerhalb
+     einer Region bleiben die Naehte intakt; ein Muster, das genau auf einer
+     Regionsgrenze liegt, kann verlorengehen. */
+  const source = descending ? [...heapRegions(handle)].reverse() : heapRegions(handle);
+
+  const result = scanRegions(handle, pattern, source,
+                             limit, started + maxSeconds * 1000, onHit);
+  return { ...result, seconds: (Date.now() - started) / 1000 };
+}
+
 export function findPattern(handle, needle, { limit = 16, maxSeconds = 60 } = {}) {
   const pattern = Buffer.from(needle, 'latin1');
   const started = Date.now();

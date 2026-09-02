@@ -2,12 +2,15 @@
 /**
  * Prueft den Speicherzugriff ohne Electron - das Node-Gegenstueck zu tools/memscan.ps1.
  *
- * Gibt bewusst KEINE Zugangsdaten aus, nur ob und wie schnell sie gefunden wurden.
+ * Gesucht wird die Account-ID fuer das oeffentliche Profil. Einen Session-nonce
+ * liest Argus nicht mehr: das Inventar kommt aus dem Heap statt ueber einen
+ * API-Aufruf, siehe src/cli/heap-scan.js.
  *
- *   node src/cli/scan-test.js          gemerkte Adresse zuerst probieren
- *   node src/cli/scan-test.js --full   Schnellpfad ueberspringen, immer scannen
+ * Die Kennung selbst wird NICHT ausgegeben, nur ob und wie schnell sie gefunden wurde.
+ *
+ *   node src/cli/scan-test.js
  */
-import { findGameProcessIds, scanCredentials } from '../core/gamecreds.js';
+import { findGameProcessIds, scanAccountId } from '../core/accountid.js';
 import { isSupported } from '../core/procmem.js';
 
 console.log('=== Speicherzugriff ===');
@@ -22,11 +25,9 @@ if (!pids.length) {
   process.exit(1);
 }
 
-const skipHint = process.argv.includes('--full');
 console.log('\n=== Suche (im Worker, blockiert die App also nicht) ===');
-if (skipHint) console.log('  Schnellpfad uebersprungen (--full)');
 const started = Date.now();
-const res = await scanCredentials({ skipHint });
+const res = await scanAccountId();
 const took = ((Date.now() - started) / 1000).toFixed(1);
 
 if (!res.ok) {
@@ -35,19 +36,17 @@ if (!res.ok) {
 }
 
 const s = res.stats || {};
-if (s.fromHint) {
-  console.log('  Treffer ueber die gemerkte Adresse - kein Vollscan noetig.');
-} else {
-  console.log(`  Durchgang      ${s.pass}`);
-  console.log(`  Regionen       ${s.regions}`);
-  console.log(`  Gelesen        ${s.megabytes} MB`);
-  console.log(`  Fundstellen    ${s.candidates}`);
-  console.log(`  Scandauer      ${s.seconds}s`);
-}
+console.log(`  Durchgang      ${s.pass}`);
+console.log(`  Regionen       ${s.regions}`);
+console.log(`  Gelesen        ${s.megabytes} MB`);
+console.log(`  Fundstellen    ${s.candidates}`);
+console.log(`  Verschiedene   ${s.distinct} Kennung(en)`);
+console.log(`  Scandauer      ${s.seconds}s`);
 console.log(`  Gesamt         ${took}s (inkl. Worker-Start)`);
 
-/* Nur Formmerkmale, nie die Werte selbst. Das ct ist die Plattform, kein Geheimnis. */
 console.log('\n=== Ergebnis ===');
-console.log(`  ok    Zugangsdaten gefunden (accountId ${res.accountId.length} Zeichen, ` +
-            `nonce ${res.nonce.length} Stellen, ct ${res.ct || 'nicht gefunden'})`);
-console.log('  accountId und nonce werden absichtlich nicht ausgegeben.');
+console.log(`  ok    Account-ID gefunden (${res.accountId.length} Zeichen)`);
+console.log('  Die Kennung wird absichtlich nicht ausgegeben.');
+if (s.distinct > 1) {
+  console.log(`  Hinweis: ${s.distinct} verschiedene Kennungen gefunden - genommen wurde die haeufigste.`);
+}

@@ -72,7 +72,12 @@ src/core/     logic, entirely independent of the interface
   acquisition.js  acquisition routes + realistic effort
   analyze.js      target/actual comparison + recommendations
   recipes.js      recursive material resolution
-  ratelimit.js    protects against the login lockout
+  ratelimit.js    protects against the login lockout (profile fetch only)
+  procmem.js      read-only access to the game process, Windows x64
+  inventory-scan.js  reads the inventory out of the running game's memory
+  accountid.js    reads the account ID for the public profile lookup
+  inventory.js    local inventory state on top of that scan
+  scan-worker.js  runs both memory scans off the main thread
   store.js        goals and notes
   foreground.js   hands input focus back to the game
   logwatch.js     reads Warframe's EE.log (relic rewards)

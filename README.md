@@ -89,8 +89,11 @@ The quick breakdown:
 
 - **Argus changes nothing about the game.** No DLL injection, no hooks, no memory writes, and no input automation or macros.
 - **No network interception.** It never sniffs or intercepts the game's encrypted network traffic (which would violate Warframe's EULA).
-- **Read-only and opt-in.** Memory reading is strictly read-only (`PROCESS_VM_READ`) to retrieve temporary session credentials for your inventory, happens only when you click refresh, and remains completely disabled unless you turn it on.
-- **Built-in rate limiting.** Queries have mandatory cooldowns to protect you from DE's IP login throttles.
+- **It never talks to Warframe's servers as if it were you.** No sign-in, no borrowed session, no API calls on your behalf. Your inventory is read from the memory of the game already running on your PC and never leaves the machine.
+- **Read-only and opt-in.** Memory reading is strictly read-only (`PROCESS_VM_READ`), happens only when you ask for it or after a zone load, and remains completely disabled unless you turn it on.
+- **Built-in rate limiting.** The one thing still fetched from DE — your *public* profile — has mandatory cooldowns to protect you from their IP login throttles.
+
+One caveat worth stating plainly, because DE states it themselves: their policy on third-party software has **no list of approved tools** and one rule — *use it at your own risk*. Nothing here is approved; it is tolerated, as tools of this kind have been for years. That is a position DE could revise at any time, and it would not be announced in this repository.
 
 Every single mechanism, permission, and endpoint is explained in detail:  
 **→ [Read the full security & safety breakdown](docs/security.md)**
@@ -161,13 +164,17 @@ What you are agreeing to, in plain terms:
 
 - **Reading only.** Argus never changes anything in the game, never plays for you, and
   never touches the game's network traffic.
-- **Your password is never involved.** Argus cannot see it. It borrows the temporary
-  session key the running game already holds — the same one the game uses itself. That
-  key stops working when you close Warframe.
-- **It goes to Warframe's servers, nowhere else** — the same address the game itself
-  talks to.
-- **What stays on your PC:** your account ID and a copy of your inventory, so Argus need
-  not ask again. The session key is used once and never written to disk.
+- **Your password is never involved**, and neither is your session. Argus does not sign
+  in anywhere and does not ask Warframe's servers for anything on your behalf.
+- **Your inventory never leaves this PC.** The running game already holds it in memory;
+  Argus reads it there and stops. Nothing is uploaded, nothing is fetched.
+- **What stays on your PC:** your account ID — needed for the *public* profile page,
+  the same 24 characters you could copy off warframe.com yourself — and a copy of your
+  inventory, so Argus need not look again.
+
+One practical detail: the game only puts your inventory in memory **when it loads a
+zone**. If nothing shows up, travel to a relay or your dojo and back to your ship, then
+fetch again.
 
 The mechanics behind that are spelled out under [Is this safe?](docs/security.md), and you
 can switch it off again at any time under Settings.

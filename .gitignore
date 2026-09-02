@@ -16,8 +16,9 @@ node_modules/
 #   profile-*.json   Profildaten, Dateiname enthaelt die accountId
 #   inventory*.json  vollstaendiges Inventar des Kontos
 #   goals.json       Ziele, Notizen, Builds
-#   scan-hint.json   Speicheradresse des Spielprozesses
-#   ratelimit.json   lokaler Drosselungsstand
+#   scan-hint.json   Altlast: Speicheradresse aus der Zeit des API-Abrufs.
+#                    Wird nicht mehr geschrieben, darf weg.
+#   ratelimit.json   lokaler Drosselungsstand (nur noch fuer das Profil)
 #   catalog.json     9 MB oeffentlicher Cache, wird neu geladen
 #   mods.json        2,5 MB oeffentlicher Cache, wird neu geladen
 # ---------------------------------------------------------------------------
