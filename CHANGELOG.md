@@ -21,6 +21,8 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-09-04
+
 ### Added
 
 - **My sets can be sorted by platinum and by ducats.** The cards always carried
