@@ -21,6 +21,32 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-09-02
+
+### Fixed
+
+- **"The inventory was found but could not be read."** Depending on where in the
+  game's memory the copy happened to begin, Argus found your complete inventory
+  and then failed to assemble it — leaving you with the previous state and an
+  error, in 1.6.0. It now works out the structure correctly, and if one copy
+  cannot be used it tries the others instead of giving up on the first.
+
+- **A silent risk in the same place.** When a copy starts mid-document, its first
+  and last entry are necessarily incomplete and get dropped. Argus now checks
+  that nothing it actually uses was among them — before this, your mastery data
+  could in principle have gone missing without any error at all.
+
+- **The message you got was the one meant for debugging.** "The inventory span
+  could not be parsed" told you nothing you could act on. When a previous
+  inventory is already loaded, the explanation now says what it says everywhere
+  else: travel to a relay or your dojo and back, then try again.
+
+- **Two settings texts still described the old behaviour**, promising a fetch
+  "via the Warframe API" and a ten-minute rate limit. Neither applies since
+  1.6.0: the inventory is read from the running game, and auto-sync waits three
+  minutes between reads out of consideration for your CPU, not for anyone's
+  servers.
+
 ## [1.6.0] - 2026-09-02
 
 ### Changed
