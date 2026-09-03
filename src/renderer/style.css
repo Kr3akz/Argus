@@ -4169,7 +4169,19 @@ select option { background: #161b25; color: var(--text); }
 }
 .inv-tab.active span { color: var(--accent); }
 
-.inv-meta { font-size: 11.5px; color: var(--text-3); margin: 12px 0 12px; }
+/* Zahl und Sortierung teilen sich eine Reihe. Der Abstand sass frueher an
+   .inv-meta selbst; jetzt traegt ihn die Reihe, sonst haengt das Auswahlfeld
+   an der Oberkante statt neben der Zahl zu sitzen. */
+.inv-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 12px 0 12px;
+}
+.inv-meta { font-size: 11.5px; color: var(--text-3); }
+.inv-meta-row .ducats-sort-wrap { flex-shrink: 0; }
 
 .inv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
 .inv-item {

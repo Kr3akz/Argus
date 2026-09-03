@@ -5025,6 +5025,7 @@ let invTier = 'all';            // Aera-Filter, nur im Relikt-Bereich
 let invSetOwnership = 'all';    // All, Owned, Not owned
 let invSetOrigin = 'all';       // Prime oder Basis, nur im Sets-Bereich
 let invSetKind = 'all';         // Gattung, nur im Sets-Bereich
+let invSetSort = 'progress';    // Reihenfolge der Set-Karten, siehe INV_SET_SORTS
 let invModOwnership = 'all';    // All, Owned, Not owned
 let invModKind = 'all';         // Gattung (Warframe, Primary, Secondary, Melee, Companion, Archwing, etc.)
 let invArcaneOwnership = 'all'; // All, Owned, Not owned
@@ -5292,6 +5293,50 @@ const filterArcanes = list => list
   .filter(invArcaneOwnership === 'all' ? () => true : matchOf(ARCANE_OWNERSHIP, invArcaneOwnership))
   .filter(invArcaneKind      === 'all' ? () => true : matchOf(ARCANE_KINDS,     invArcaneKind));
 
+/* ---------------- Reihenfolge der Set-Karten ----------------
+
+   buildPrimeSets liefert die Liste so, wie man sie beim Farmen lesen will:
+   fast fertige Sets zuerst, weil dort der naechste Riss am meisten bringt.
+   Das ist eine Antwort auf die Frage "was fehlt mir noch" - und die einzige,
+   die es hier bisher gab.
+
+   Auf derselben Karte stehen aber zwei Zahlen, die eine ANDERE Frage
+   beantworten: was ist das meiste wert. Wer Dukaten fuer Baro sammelt, sucht
+   den groessten Stapel im eigenen Bestand; wer verkauft, das teuerste Set.
+   Beide Zahlen standen schon da, sortiert wurde nach keiner von beiden.
+
+   EIN UNBEKANNTER PREIS IST KEINE NULL. Das Platin eines Sets trifft erst
+   nach und nach ein (siehe fetchMissingSetPrices), und manches Set fuehrt
+   warframe.market gar nicht - auf der Karte steht dann ein Strich. Diese
+   Karten zwischen die billigen zu stellen waere eine Behauptung ueber einen
+   Preis, den niemand kennt. Sie rutschen deshalb ans Ende, statt eine
+   Rangfolge zu erfinden.
+
+   Dukaten dagegen sind IMMER bekannt: sie stehen im Katalog, nicht auf einem
+   Markt. Eine Null ist dort eine echte Null - das Set liegt nicht im
+   Bestand.                                                                 */
+
+const bySetName = (a, b) => a.name.localeCompare(b.name, 'en');
+
+const INV_SET_SORTS = {
+  /* KEIN VERGLEICH, und das mit Absicht: die Liste kommt bereits geordnet aus
+     dem Hauptprozess - erst die Prime-Sets nach Fortschritt, dahinter die
+     Basis-Bausaetze, gebaute ganz zuletzt (siehe buildPrimeSets und
+     buildBaseSets). Die beiden Gruppen bleiben dabei getrennt. Diese Ordnung
+     hier als Vergleich nachzubauen hiesse, sie ineinanderzuschieben - die
+     Voreinstellung saehe danach anders aus als vorher, ohne dass jemand
+     etwas umgestellt haette. */
+  progress: null,
+  'plat-desc': (a, b) => {
+    const pa = a.setPrice?.min ?? null;
+    const pb = b.setPrice?.min ?? null;
+    if (pa === null || pb === null) return (pa === null) - (pb === null) || bySetName(a, b);
+    return pb - pa || bySetName(a, b);
+  },
+  'ducats-desc': (a, b) => (b.ownedDucats || 0) - (a.ownedDucats || 0) || bySetName(a, b),
+  'name-asc': bySetName
+};
+
 /* ---------------- Die Filterleiste ----------------
 
    Sets, Mods und Arcanes hatten bis hierher drei fast wortgleiche Zeichner.
@@ -5545,7 +5590,32 @@ async function fetchMissingSetPrices() {
     console.error('Could not load set prices:', err);
   } finally {
     isFetchingSetPrices = false;
+    resortAfterPrices();
   }
+}
+
+/**
+ * Nach dem letzten Preis noch einmal ordnen - aber nur, wenn die Reihenfolge
+ * ueberhaupt am Preis haengt.
+ *
+ * Beim Sortieren nach Platin stehen die Karten ohne Preis hinten (siehe
+ * INV_SET_SORTS). Waehrend die Preise eintrudeln, ist das genau richtig -
+ * hinterher aber falsch, denn dort stehen jetzt Sets mit einer Zahl. Ohne
+ * diesen Durchgang bliebe die Liste bis zur naechsten Eingabe verkehrt.
+ *
+ * DER BLICK BLEIBT, WO ER WAR: dieselben Karten in anderer Reihenfolge sind
+ * dieselbe Seitenhoehe. Also merken, wie viele Karten standen, ebenso viele
+ * neu zeichnen und den Rollbalken zuruecksetzen. Was unter dem Cursor liegt,
+ * aendert sich - das ist der Sinn der Sache -, die Seite springt aber nicht.
+ */
+function resortAfterPrices() {
+  if (invSection !== 'sets' || invSetSort !== 'plat-desc') return;
+  if (!currentInvList?.length) return;
+
+  const scroller = document.querySelector('.main-content');
+  const top = scroller?.scrollTop ?? 0;
+  renderInventoryGrid({ keepRendered: invRenderedCount });
+  if (scroller) scroller.scrollTop = top;
 }
 
 /**
@@ -5730,7 +5800,7 @@ function loadNextInvChunk() {
   }
 }
 
-function renderInventoryGrid() {
+function renderInventoryGrid({ keepRendered = 0 } = {}) {
   const d = inventoryData;
   if (!d || !d.sections) return;
   const query = ($('inv-search')?.value || '').toLowerCase().trim();
@@ -5755,6 +5825,11 @@ function renderInventoryGrid() {
 
   renderInvTierFilter(all);
 
+  /* Sortiert wird nur bei den Sets: dort tragen die Karten Zahlen, nach denen
+     sich eine Reihenfolge lohnt. Relikte, Mods und Materialien stehen
+     alphabetisch, und das ist bei ihnen die einzige sinnvolle Ordnung. */
+  $('inv-sort-wrap')?.classList.toggle('hidden', invSection !== 'sets');
+
   let list = all;
   if (invSection === 'sets') {
     const hasQuery = Boolean(query);
@@ -5776,6 +5851,12 @@ function renderInventoryGrid() {
       }
       return true;
     });
+
+    /* An Ort und Stelle sortiert, weil .filter oben ohnehin eine neue Liste
+       gebaut hat. Die Reihenfolge in inventoryData bleibt so unberuehrt - sie
+       gehoert auch dem Dukaten-Tab, und der ordnet anders. */
+    const cmp = INV_SET_SORTS[invSetSort];
+    if (cmp) list.sort(cmp);
   } else if (invSection === 'mods') {
     list = query ? all.filter(e => e.name.toLowerCase().includes(query) || (e.compat && e.compat.toLowerCase().includes(query))) : all;
     list = filterMods(list);
@@ -5823,7 +5904,18 @@ function renderInventoryGrid() {
   } else {
     metaText = `${nf(total.arten)} kinds · ${nf(total.stueck)} items in total`;
   }
-  $('inv-meta').innerHTML = esc(metaText) + esc(alt);
+
+  /* Nach Platin sortiert, aber noch nicht jeder Preis da: dann stehen unten
+     Karten mit einem Strich, und ohne ein Wort dazu sieht die Liste kaputt
+     aus statt unfertig. Die Zahl zaehlt, worauf die Reihenfolge noch wartet. */
+  let pendingNote = '';
+  if (invSection === 'sets' && invSetSort === 'plat-desc') {
+    const pending = list.filter(s =>
+      s.setSlug && s.setPrice?.min == null && !setPriceTried.has(s.setSlug)).length;
+    if (pending) pendingNote = ` · ${nf(pending)} set price${pending === 1 ? '' : 's'} still loading`;
+  }
+
+  $('inv-meta').innerHTML = esc(metaText) + esc(pendingNote) + esc(alt);
 
   if (!list.length) {
     currentInvList = [];
@@ -5837,7 +5929,10 @@ function renderInventoryGrid() {
   /* Progressives Rendern in Chunks: die ersten 36-60 Karten erscheinen sofort (<5ms),
      weitere werden beim Scrollen über einen IntersectionObserver nachgeladen. */
   currentInvList = list;
-  const chunkSize = invSection === 'sets' ? 36 : INV_CHUNK_SIZE;
+  /* keepRendered haelt beim Neuordnen so viele Karten wie vorher schon standen.
+     Ohne das schrumpfte das Raster auf den ersten Chunk zusammen, und wer weit
+     unten las, saesse ploetzlich am Ende einer viel kuerzeren Seite. */
+  const chunkSize = Math.max(invSection === 'sets' ? 36 : INV_CHUNK_SIZE, keepRendered);
   const initial = list.slice(0, chunkSize);
   invRenderedCount = initial.length;
 
@@ -6620,6 +6715,22 @@ if ($('inv-search')) {
   $('inv-search').oninput = () => {
     clearTimeout(invSearchDebounce);
     invSearchDebounce = setTimeout(() => renderInventoryGrid(), 60);
+  };
+}
+
+/* Eine neue Reihenfolge faengt oben an: sonst steht man nach dem Umschalten
+   mitten in einer Liste, die es so nicht mehr gibt.
+
+   ABER NUR, WER SCHON UNTEN WAR. Wer oben steht, sieht die erste Karte
+   ohnehin - ihn nach unten zu ziehen, damit die Sortierzeile am oberen Rand
+   klebt, waere ein Sprung ohne Anlass. */
+if ($('inv-sort')) {
+  $('inv-sort').onchange = e => {
+    invSetSort = e.target.value;
+    renderInventoryGrid();
+    if (($('inv-grid')?.getBoundingClientRect().top ?? 0) < 0) {
+      document.querySelector('.inv-meta-row')?.scrollIntoView({ block: 'start' });
+    }
   };
 }
 

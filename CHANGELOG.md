@@ -21,6 +21,20 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+### Added
+
+- **My sets can be sorted by platinum and by ducats.** The cards always carried
+  both numbers — what the full set goes for on warframe.market, and what the
+  parts you own are worth in ducats — but the list only ever answered one
+  question: which set are you closest to finishing. A **Sort** box now sits
+  beside the count and answers the other one: **the most valuable set first**,
+  or **the biggest pile of ducats in hand**, with **Name (A–Z)** and the
+  original order alongside. Sets whose price is still on its way, or that
+  warframe.market does not carry at all, go to the end rather than being
+  treated as worth nothing — and while the prices are still arriving, the line
+  above says how many the order is still waiting for. Once the last one lands,
+  the list puts itself in order without moving what you were reading.
+
 ## [1.6.1] - 2026-09-02
 
 ### Fixed

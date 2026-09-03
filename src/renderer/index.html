@@ -1031,7 +1031,31 @@
         <!-- Nur fuer Relikte sichtbar: die anderen Bereiche haben keine Aera. -->
         <div class="inv-tier-filter hidden" id="inv-tier-filter"></div>
 
-        <div class="inv-meta" id="inv-meta"></div>
+        <!--
+          Zahlenzeile links, Sortierung rechts.
+
+          Die Sortierung steht hier und NICHT in der Chipleiste darueber: die
+          haelt in jedem Bereich zwei feste Zeilen, damit das Kachelraster beim
+          Wechsel zwischen Relikten, Sets und Mods nicht hoch und runter
+          springt. Eine dritte Zeile nur fuer die Sets waere genau dieser
+          Sprung - und sortiert wird ohnehin nicht ausgewaehlt, sondern
+          geordnet: das gehoert neben die Zahl, nicht zwischen die Filter.
+        -->
+        <div class="inv-meta-row">
+          <div class="inv-meta" id="inv-meta"></div>
+
+          <!-- Nur im Sets-Bereich: die anderen Listen stehen alphabetisch. -->
+          <div class="ducats-sort-wrap hidden" id="inv-sort-wrap">
+            <label for="inv-sort">Sort:</label>
+            <select id="inv-sort" class="select-sm">
+              <option value="progress">Set progress (default)</option>
+              <option value="plat-desc">Platinum, full set (highest)</option>
+              <option value="ducats-desc">Ducats in hand (highest)</option>
+              <option value="name-asc">Name (A–Z)</option>
+            </select>
+          </div>
+        </div>
+
         <div class="inv-grid" id="inv-grid"></div>
       </div>
     </section>
