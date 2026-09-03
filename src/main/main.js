@@ -2966,7 +2966,16 @@ async function inventoryPayload({ refresh }) {
          eine Absage kommt jetzt ueber res.message, wenn kein Inventar im
          Speicher lag. */
       gate: { allowed: true, reason: null, message: null, waitText: null },
-      message: res.message || null
+      /* Durch INVENTORY_ERRORS uebersetzen, nicht roh durchreichen.
+         Sonst steht im Fenster "The inventory span could not be parsed" - der
+         Satz aus inventory-scan.js, der fuer die Fehlersuche gedacht ist und
+         dem Leser nicht sagt, was zu tun ist. Die Uebersetzung tut das ("ins
+         Relais und zurueck"). Bisher griff sie nur, wenn GAR KEIN Stand
+         vorlag: liegt einer da, ist es kein Fehler, sondern eine Notiz - und
+         die nahm den Rohtext. */
+      message: res.skipped
+        ? (INVENTORY_ERRORS[res.skipped] || res.message || null)
+        : (res.message || null)
     }
   };
 }

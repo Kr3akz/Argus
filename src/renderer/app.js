@@ -5097,9 +5097,12 @@ function renderInventory() {
 
   /* Ein Abruf, der wegen der Drosselung nicht stattgefunden hat, darf nicht
      wortlos ins Leere laufen - sonst wirkt der Knopf kaputt. */
+  /* Warnsymbol, nicht Uhr: die Uhr passte, solange die Notiz "warte die
+     Drosselung ab" hiess. Jetzt heisst sie "es lag nichts im Speicher, lade
+     eine Zone" - da wartet niemand auf Ablauf einer Frist. */
   const notice = $('inv-notice');
   notice.classList.toggle('hidden', !d.message);
-  if (d.message) notice.innerHTML = `${Icon.clock(14)}<span>${esc(d.message)}</span>`;
+  if (d.message) notice.innerHTML = `${Icon.warning(14)}<span>${esc(d.message)}</span>`;
 
   /* Waehrungen aendern sich staendig. Eine acht Tage alte Zahl gross und in Gold
      zu setzen laedt dazu ein, sie fuer den aktuellen Kontostand zu halten -
