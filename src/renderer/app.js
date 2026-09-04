@@ -5314,7 +5314,15 @@ const filterArcanes = list => list
 
    Dukaten dagegen sind IMMER bekannt: sie stehen im Katalog, nicht auf einem
    Markt. Eine Null ist dort eine echte Null - das Set liegt nicht im
-   Bestand.                                                                 */
+   Bestand.
+
+   UND DIE UMGEKEHRTE FRAGE: "Fortschritt" zeigt, was fast beisammen ist. Wer
+   aufraeumt, sucht das Gegenteil - die Sets, von denen genau ein Teil
+   herumliegt. Bei denen ist der Weg zum vollen Set am weitesten, und damit
+   sind sie die ersten Kandidaten fuers Einschmelzen oder den Einzelverkauf.
+   Das ist NICHT dieselbe Liste rueckwaerts: der Fortschritt vergleicht
+   Anteile, hier zaehlen Stueck. Ein Teil von vieren und eines von achten
+   stehen beim Anteil weit auseinander, in der Hand ist beides ein Teil.    */
 
 const bySetName = (a, b) => a.name.localeCompare(b.name, 'en');
 
@@ -5332,6 +5340,20 @@ const INV_SET_SORTS = {
     const pb = b.setPrice?.min ?? null;
     if (pa === null || pb === null) return (pa === null) - (pb === null) || bySetName(a, b);
     return pb - pa || bySetName(a, b);
+  },
+  /* NULL TEILE IST KEIN ANFANG. Der Sets-Bereich zeigt auch, was man gar nicht
+     hat (onlyOwned: false) - bei 308 Karten sind das die meisten. Streng
+     aufsteigend stuenden die alle vorne, und die Sets mit dem EINEN Teil, um
+     die es hier geht, faenden sich hinter zweihundert leeren Karten wieder.
+     Ein Set ohne Teile ist aber kein knapp begonnenes, sondern ein nicht
+     begonnenes: nichts zum Einschmelzen, nichts zum Verkaufen. Es rutscht
+     deshalb ans Ende - wie die Karten ohne Preis eine Zeile weiter oben.
+     Wie viele das sind, steht im Chip "Not owned". */
+  'parts-asc': (a, b) => {
+    const oa = a.ownedParts || 0;
+    const ob = b.ownedParts || 0;
+    if (!oa || !ob) return (oa === 0) - (ob === 0) || bySetName(a, b);
+    return oa - ob || bySetName(a, b);
   },
   'ducats-desc': (a, b) => (b.ownedDucats || 0) - (a.ownedDucats || 0) || bySetName(a, b),
   'name-asc': bySetName

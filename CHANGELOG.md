@@ -21,6 +21,17 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+### Added
+
+- **My sets can be sorted by the fewest parts owned.** The list has always led
+  with what is nearly finished — the question you ask while farming. **Parts
+  owned (fewest first)** asks the opposite one: which sets is there a single
+  part of lying around. Those are the parts furthest from ever becoming a set,
+  and the first candidates for the ducat kiosk or a single sale. Sets you own
+  no part of are not "the fewest": there is nothing there to melt or to sell,
+  so they go to the end rather than filling the first two hundred cards. How
+  many that is stands in the **Not owned** chip, as before.
+
 ## [1.7.0] - 2026-09-04
 
 ### Added
