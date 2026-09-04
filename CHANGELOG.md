@@ -21,6 +21,27 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-09-04
+
+### Added
+
+- **My sets can be sorted by the fewest parts owned.** The list has always led
+  with what is nearly finished — the question you ask while farming. **Parts
+  owned (fewest first)** asks the opposite one: which sets is there a single
+  part of lying around. Those are the parts furthest from ever becoming a set,
+  and the first candidates for the ducat kiosk or a single sale. Sets you own
+  no part of are not "the fewest": there is nothing there to melt or to sell,
+  so they go to the end rather than filling the first two hundred cards. How
+  many that is stands in the **Not owned** chip, as before.
+
+### Changed
+
+- **Fetching the inventory got faster and looks at more.** The scan used to
+  stop at the first usable copy after reading a gigabyte; it now covers the
+  whole heap except the large asset regions, which is 2.9 GB instead of 8.4 GB
+  and finishes in about 2 seconds instead of 6. Skipping those regions also
+  stops Argus from pulling the game's paged-out textures back into memory.
+
 ### Fixed
 
 - **The inventory tab now says how old the inventory actually is.** Fetching
@@ -35,25 +56,6 @@ follow [semantic versioning](https://semver.org/lang/en/).
   and the scan took whichever complete one it met first while walking down from
   the top — an order that says nothing about age. It now dates each one by the
   sync stamp inside the document and takes the newest.
-
-### Changed
-
-- **Fetching the inventory got faster and looks at more.** The scan used to
-  stop at the first usable copy after reading a gigabyte; it now covers the
-  whole heap except the large asset regions, which is 2.9 GB instead of 8.4 GB
-  and finishes in about 2 seconds instead of 6. Skipping those regions also
-  stops Argus from pulling the game's paged-out textures back into memory.
-
-### Added
-
-- **My sets can be sorted by the fewest parts owned.** The list has always led
-  with what is nearly finished — the question you ask while farming. **Parts
-  owned (fewest first)** asks the opposite one: which sets is there a single
-  part of lying around. Those are the parts furthest from ever becoming a set,
-  and the first candidates for the ducat kiosk or a single sale. Sets you own
-  no part of are not "the fewest": there is nothing there to melt or to sell,
-  so they go to the end rather than filling the first two hundred cards. How
-  many that is stands in the **Not owned** chip, as before.
 
 ## [1.7.0] - 2026-09-04
 
