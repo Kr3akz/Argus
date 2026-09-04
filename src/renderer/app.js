@@ -5096,6 +5096,30 @@ function renderInventory() {
       : `Next fetch in ${d.gate.waitText}`;
   }
 
+  /* ZWEI ZEITEN, UND DIE ZWEITE IST DIE, DIE ZAEHLT.
+
+     "Gelesen vor 2 Minuten" hat schon gestimmt, als das Gelesene zwei Stunden
+     alt war: Argus liest die Abschrift, die der Client beim letzten Sync vom
+     Server bekam - beim Login und bei Zonenwechseln, nicht beim Verkaufen.
+     Wer in der Zwischenzeit Teile losgeworden ist, sieht sie hier noch und
+     haelt die Anzeige fuer kaputt.
+
+     Deshalb steht der Stand des DOKUMENTS daneben, sobald er nennenswert
+     hinter dem Lesen zurueckliegt. Die Grenze ist grosszuegig: bei wenigen
+     Minuten ist die Zahl nur Rauschen, und zwei Zeitangaben nebeneinander
+     kosten mehr Aufmerksamkeit, als sie dann wert sind. */
+  const syncNote = $('inv-sync-note');
+  if (syncNote) {
+    const lag = d.syncedAt ? (d.fetchedAt || Date.now()) - d.syncedAt : 0;
+    const show = Boolean(d.syncedAt) && lag > 10 * 60000;
+    syncNote.classList.toggle('hidden', !show);
+    if (show) {
+      syncNote.innerHTML = `${Icon.clock(13)}<span>The game last synced this inventory `
+        + `${esc(relativeAge(d.syncedAt))} — anything traded or sold since then still `
+        + `shows here. Travel to a relay or your dojo and back to your ship to refresh it.</span>`;
+    }
+  }
+
   /* Ein Abruf, der wegen der Drosselung nicht stattgefunden hat, darf nicht
      wortlos ins Leere laufen - sonst wirkt der Knopf kaputt. */
   /* Warnsymbol, nicht Uhr: die Uhr passte, solange die Notiz "warte die

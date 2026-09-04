@@ -294,19 +294,29 @@ function scanRegions(handle, pattern, source, limit, deadline, onHit) {
  * die Auswahl trifft der Aufrufer.
  */
 export function findAllPattern(handle, needle,
-                               { limit = 64, maxSeconds = 120, descending = false, onHit } = {}) {
+                               { limit = 64, maxSeconds = 120, descending = false,
+                                 maxRegion, onHit } = {}) {
   const pattern = Buffer.from(needle, 'latin1');
   const started = Date.now();
 
-  /* descending: von den hoechsten Adressen abwaerts. Die vollstaendige
-     Inventarkopie lag in jeder Messung weit oben, die angeschnittenen Reste
-     weiter unten - zusammen mit einem onHit, das beim ersten brauchbaren Fund
-     abbricht, spart das den Grossteil des Heaps.
+  /* maxRegion schneidet die grossen Regionen weg. Gemessen an einem laufenden
+     Client (2026-09-04): von 8054 MB Heap stecken 4310 MB in 90 Regionen ueber
+     16 MB und weitere 881 MB in 107 ueber 4 MB - dort liegen Assets. Alle
+     gefundenen Inventarkopien lagen dagegen in Bloecken von 64 bis 128 KB.
+     Die grossen auszulassen halbiert nicht nur die Zeit; sie sind meist
+     ausgelagert, und sie zu lesen holt sie in den Arbeitsspeicher zurueck -
+     auf Kosten des laufenden Spiels. */
+  const regions = maxRegion ? heapRegions(handle, { maxSize: maxRegion })
+                            : heapRegions(handle);
+
+  /* descending: von den hoechsten Adressen abwaerts - fuer Aufrufer, die beim
+     ersten brauchbaren Fund abbrechen.
      Der Preis: die Naht zwischen zwei ANEINANDERGRENZENDEN Regionen wird nicht
      mehr geprueft (carryEnd passt nur bei aufsteigender Reihenfolge). Innerhalb
      einer Region bleiben die Naehte intakt; ein Muster, das genau auf einer
-     Regionsgrenze liegt, kann verlorengehen. */
-  const source = descending ? [...heapRegions(handle)].reverse() : heapRegions(handle);
+     Regionsgrenze liegt, kann verlorengehen. Wer alles einsammelt, laesst das
+     Flag deshalb besser weg. */
+  const source = descending ? [...regions].reverse() : regions;
 
   const result = scanRegions(handle, pattern, source,
                              limit, started + maxSeconds * 1000, onHit);

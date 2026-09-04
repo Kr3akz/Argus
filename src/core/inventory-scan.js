@@ -22,6 +22,32 @@
  *       findAllPattern alles ein und die Auswahl faellt hier.
  *     - Ein Scan mit Adressobergrenze schneidet sie weg. Kein Bereichsfilter.
  *
+ * DIE DRITTE FALLE, gemessen am 2026-09-04 und der Grund fuer LastInventorySync:
+ *   "Vollstaendig" und "aktuell" sind ZWEI Eigenschaften, und die Adresslage
+ *   sagt nichts ueber die zweite. Im Heap lagen gleichzeitig fuenf Kopien mit
+ *   fuenf verschiedenen Staenden; zwei davon vollstaendig, und die AELTERE der
+ *   beiden lag hoeher. Der Scan brach dort ab und lieferte ein Dokument, das
+ *   2 Stunden alt war, waehrend 3 GB tiefer eine 20 Minuten alte Kopie lag.
+ *   Fuer den Leser sah das aus, als zeige Argus verkaufte Teile weiter an -
+ *   und kein noch so oft gedruecktes "Fetch inventory" half dagegen.
+ *
+ *   Der Stand steht IM Dokument: LastInventorySync ist eine MongoDB-ObjectId,
+ *   deren erste vier Bytes ein Unix-Zeitstempel sind. Danach wird sortiert.
+ *
+ *   ES WIRD DESHALB NICHT MEHR FRUEH ABGEBROCHEN - wer die neueste Kopie will,
+ *   muss alle gesehen haben. Bezahlt wird das mit dem Regionsfilter statt mit
+ *   Zeit: ohne die Asset-Regionen ueber 4 MB sind es 2893 statt 8437 MB, und
+ *   der VOLLSTAENDIGE Durchgang lief in 3,3 s - schneller als die 5,8 s, die
+ *   der abbrechende Scan vorher ueber den ganzen Heap brauchte.
+ *
+ * WAS DER SCAN NICHT KANN:
+ *   Die Kopie im Heap ist die Abschrift, die der Client zuletzt vom Server
+ *   geholt hat - beim Login und bei Zonenwechseln. Wer etwas verkauft, sieht
+ *   das erst nach dem naechsten Sync. Die neueste Kopie zu nehmen ist alles,
+ *   was von hier aus geht; deshalb reicht der Scan syncedAt nach oben durch,
+ *   damit die Oberflaeche das Alter des Dokuments nennen kann statt nur den
+ *   Zeitpunkt des Lesens.
+ *
  * ANKER:
  *   '"InfestedFoundry"' mit Anfuehrungszeichen. Rund zehn Treffer im ganzen
  *   Heap - "RawUpgrades" hat Dutzende, "ItemCount" ueber 2500, und die kosten
@@ -42,6 +68,33 @@ import { findGameProcessIds, runInWorker } from './accountid.js';
 
 /* Der Anker. Siehe Kopf - Anfuehrungszeichen sind Teil des Musters. */
 const ANCHOR = '"InfestedFoundry"';
+
+/* Regionen darueber werden gar nicht erst gelesen: dort liegen Assets, und die
+   Inventarkopien lagen ausnahmslos in Bloecken von 64 bis 128 KB. Siehe Kopf -
+   das ist es, was den vollstaendigen Durchgang bezahlt. */
+const ASSET_REGION = 4n * 1024n * 1024n;
+
+/* Der Stand des Dokuments, nicht der des Lesens.
+
+   LastInventorySync ist eine MongoDB-ObjectId: die ersten acht Hexziffern sind
+   ein Unix-Zeitstempel in Sekunden. Das Feld steht genau einmal je Kopie und
+   ist damit der einzige Weg, zwei Fundstellen nach Alter zu ordnen.
+
+   ES IST KEINE ANMELDEDATEN-KENNUNG: die ObjectId benennt den Sync-Vorgang im
+   Dokument, das Argus ohnehin ganz liest. Die Zusage im Kopf bleibt gueltig. */
+function readSyncStamp(text) {
+  /* Grosszuegig mit Leerraum: DEs Dokument kommt kompakt, aber eine Regel, die
+     an einem Leerzeichen zerbricht, faellt still aus - und der Ausfall saehe
+     aus wie "kein Stand vorhanden", nicht wie ein Fehler. */
+  const m = /"LastInventorySync"\s*:\s*\{\s*"\$oid"\s*:\s*"([0-9a-f]{24})"/.exec(text);
+  if (!m) return null;
+  const seconds = parseInt(m[1].slice(0, 8), 16);
+  /* Grobe Plausibilitaet: vor 2015 oder in der Zukunft ist es kein Sync,
+     sondern ein zufaellig passender Textschnipsel. */
+  if (!Number.isFinite(seconds) || seconds < 1420070400) return null;
+  const ms = seconds * 1000;
+  return ms > Date.now() + 86400000 ? null : ms;
+}
 
 /* PFLICHT: ohne diese Felder ist es kein ganzes Dokument. Bewusst nur solche,
    die JEDES Konto hat - eine strengere Liste wuerde Konten aussperren, die
@@ -322,49 +375,38 @@ export async function scanInventory({ maxSeconds = 120, keepText = false } = {})
     try {
       handle = procmem.openProcess(pid);
 
-      /* Jede Fundstelle wird SOFORT ausgemessen und bewertet, nicht erst nach
-         dem Scan. Zusammen mit descending bricht der Durchgang ab, sobald eine
-         Scheibe wirklich taugt - der Rest des Heaps wird gar nicht mehr
-         gelesen. Ohne das kostet ein Lauf rund eine halbe Minute, und er laeuft
-         bei jeder Rueckkehr aufs Schiff an.
+      /* Jede Fundstelle wird sofort ausgemessen, geparst wird sie erst spaeter.
 
-         ABGEBROCHEN WIRD ERST NACH DEM PARSEN, nicht schon bei 24 Feldnamen im
-         Text. Der Unterschied ist gemessen: eine vorn angeschnittene Scheibe
-         trug alle 24 Namen, liess sich aber nicht zusammensetzen - und weil der
-         Scan da schon gestanden hatte, gab es keinen zweiten Kandidaten mehr,
-         obwohl weiter unten eine heile Kopie lag.
+         KEIN FRUEHER ABBRUCH MEHR - siehe Kopf, dritte Falle. Wer die neueste
+         Kopie will, muss alle gesehen haben; ein Durchgang, der beim ersten
+         heilen Fund aufhoert, nimmt die erstbeste statt der aktuellsten.
+         Bezahlt wird das nicht mit Zeit, sondern mit ASSET_REGION: ohne die
+         grossen Regionen ist der volle Durchgang schneller als der abbrechende
+         ueber den ganzen Heap.
 
-         Groesse allein taugt uebrigens auch nicht als Mass: eine lange Scheibe
-         kann mitten im Dokument liegen und die Haelfte der Felder verfehlen. */
+         Ohne Abbruch braucht es auch kein descending mehr - aufsteigend
+         geprueft findAllPattern zusaetzlich die Naht zwischen zwei
+         aneinandergrenzenden Regionen.
+
+         Groesse taugt uebrigens nicht als Mass: eine lange Scheibe kann mitten
+         im Dokument liegen und die Haelfte der Felder verfehlen. */
       const candidates = [];
-      let winner = null;
 
       const scan = procmem.findAllPattern(handle, ANCHOR, {
-        limit: 64, maxSeconds, descending: true,
+        limit: 64, maxSeconds, maxRegion: ASSET_REGION,
         onHit: address => {
           const span = readSpan(procmem, handle, address);
           if (!span.text.length) return false;
-          const fields = countFields(span.text, REQUIRED_FIELDS);
-          const candidate = {
-            address, fields,
+          candidates.push({
+            address,
+            fields: countFields(span.text, REQUIRED_FIELDS),
+            syncedAt: readSyncStamp(span.text),
             bytes: span.text.length,
             backward: span.backward,
             forward: span.forward,
             text: span.text
-          };
-          candidates.push(candidate);
-
-          /* Nur bei voller Namensabdeckung ueberhaupt parsen - bei 1,1 MB ist
-             das kein Aufwand, den man an aussichtslosen Resten verschwendet. */
-          if (fields.length !== REQUIRED_FIELDS.length) return false;
-
-          const parsed = parseSpan(span.text, READ_FIELDS);
-          if (!parsed.data) return false;
-          if (REQUIRED_FIELDS.some(f => !(f in parsed.data))) return false;
-          if (lostInRepair(span.text, parsed.data).length) return false;
-
-          winner = { candidate, parsed };
-          return true;                     // heile Kopie in der Hand - fertig
+          });
+          return false;                    // weitersuchen, es kann Neueres kommen
         }
       });
 
@@ -380,8 +422,20 @@ export async function scanInventory({ maxSeconds = 120, keepText = false } = {})
         continue;
       }
 
+      /* DIE REIHENFOLGE IST DER FIX.
+
+         Erst die Feldabdeckung: eine Scheibe ohne Pflichtfelder ist unbrauchbar,
+         wie frisch sie auch sei. Dann der Stand - das ist die Achse, die vorher
+         ganz fehlte und die Adresslage als Ersatz hatte. Groesse bleibt als
+         letzte Entscheidungshilfe.
+
+         Eine Scheibe OHNE lesbaren Stempel steht hinter jeder mit: sie ist
+         angeschnitten oder alt genug, dass das Feld fehlt - in beiden Faellen
+         ist sie die schlechtere Wahl, wenn es eine datierte Alternative gibt. */
       candidates.sort((a, b) =>
-        b.fields.length - a.fields.length || b.bytes - a.bytes);
+        b.fields.length - a.fields.length
+        || (b.syncedAt || 0) - (a.syncedAt || 0)
+        || b.bytes - a.bytes);
 
       const attempted = [];
 
@@ -389,7 +443,8 @@ export async function scanInventory({ maxSeconds = 120, keepText = false } = {})
         candidates: candidates.map(c => ({
           address: '0x' + c.address.toString(16).toUpperCase(),
           kilobytes: Math.round(c.bytes / 1024),
-          fields: c.fields.length
+          fields: c.fields.length,
+          syncedAt: c.syncedAt || null
         })),
         stoppedEarly: Boolean(scan.stopped),
         regions: scan.regions,
@@ -404,7 +459,8 @@ export async function scanInventory({ maxSeconds = 120, keepText = false } = {})
           kilobytes: Math.round(cand.bytes / 1024),
           backward: cand.backward,
           forward: cand.forward,
-          startsWithBrace: cand.text.startsWith('{')
+          startsWithBrace: cand.text.startsWith('{'),
+          syncedAt: cand.syncedAt || null
         },
         fieldsInSpan: cand.fields.length,
         repaired: parsed.repaired,
@@ -413,20 +469,14 @@ export async function scanInventory({ maxSeconds = 120, keepText = false } = {})
         ...(missing ? { missing } : {})
       });
 
-      /* Der Scan hat schon eine heile Kopie geparst und deshalb abgebrochen -
-         dann ist hier nichts mehr zu tun. */
-      if (winner) {
-        attempted.push({ address: '0x' + winner.candidate.address.toString(16).toUpperCase(),
-                         result: 'ok' });
-        return {
-          ok: true, inventory: winner.parsed.data,
-          stats: describe(winner.candidate, winner.parsed, []),
-          text: keepText ? winner.candidate.text : undefined
-        };
-      }
+      /* JEDE Fundstelle der Reihe nach durchprobieren - die erste, die alle
+         Proben besteht, gewinnt. Weil die Liste nach Stand sortiert ist, ist
+         das die neueste brauchbare Kopie und nicht die erstbeste.
 
-      /* Sonst JEDE Fundstelle durchprobieren, nicht nur die beste - und dabei
-         die Gruende sammeln, damit im Fehlerfall dasteht, woran es lag. */
+         Geparst wird also erst hier und nicht schon im Scan: eine Scheibe kann
+         alle Feldnamen tragen und sich trotzdem nicht zusammensetzen lassen -
+         gemessen an einer vorn angeschnittenen Kopie. Die Gruende werden dabei
+         gesammelt, damit im Fehlerfall dasteht, woran es lag. */
       let lastAttemptError = null;
 
       for (const cand of candidates) {
@@ -468,6 +518,9 @@ export async function scanInventory({ maxSeconds = 120, keepText = false } = {})
         attempted.push({ address, result: 'ok' });
         return {
           ok: true, inventory: parsed.data,
+          /* Der Stand des Dokuments, nicht der des Lesens - die Oberflaeche
+             kann damit sagen, wie alt das Inventar wirklich ist. */
+          syncedAt: cand.syncedAt || null,
           stats: describe(cand, parsed, []),
           text: keepText ? cand.text : undefined
         };

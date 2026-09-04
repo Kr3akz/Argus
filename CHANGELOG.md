@@ -21,6 +21,29 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The inventory tab now says how old the inventory actually is.** Fetching
+  reads the copy the game last received from the server — which happens at
+  login and when you change zones, not when you sell something. So "read just
+  now" could be perfectly true of a document two hours old, and parts you had
+  long since traded away kept showing up with no explanation. A line above the
+  currencies now names the real age whenever it is more than ten minutes
+  behind, and says what to do about it: relay or dojo and back to your ship.
+- **Fetching picks the newest copy in memory, not the first one it trips
+  over.** Several snapshots of the inventory sit in the game's memory at once,
+  and the scan took whichever complete one it met first while walking down from
+  the top — an order that says nothing about age. It now dates each one by the
+  sync stamp inside the document and takes the newest.
+
+### Changed
+
+- **Fetching the inventory got faster and looks at more.** The scan used to
+  stop at the first usable copy after reading a gigabyte; it now covers the
+  whole heap except the large asset regions, which is 2.9 GB instead of 8.4 GB
+  and finishes in about 2 seconds instead of 6. Skipping those regions also
+  stops Argus from pulling the game's paged-out textures back into memory.
+
 ### Added
 
 - **My sets can be sorted by the fewest parts owned.** The list has always led

@@ -44,9 +44,13 @@ if (s.regions !== undefined) {
 if (s.candidates) {
   console.log(`  Fundstellen    ${s.candidates.length}`);
   const list = showAll ? s.candidates : s.candidates.slice(0, 5);
+  /* Der Stand gehoert in diese Zeile: die Liste steht in der Reihenfolge, in
+     der probiert wird, und genau danach wird sortiert. Wer wissen will, warum
+     eine bestimmte Kopie gewonnen hat, liest es hier ab. */
   for (const c of list) {
     console.log(`     ${c.address.padEnd(16)} ${String(c.kilobytes).padStart(6)} KB   `
-              + `${String(c.fields).padStart(2)}/${REQUIRED_FIELDS.length} Felder`);
+              + `${String(c.fields).padStart(2)}/${REQUIRED_FIELDS.length} Felder   `
+              + `Stand ${c.syncedAt ? new Date(c.syncedAt).toLocaleString('de-DE') : 'unbekannt'}`);
   }
   if (!showAll && s.candidates.length > list.length) {
     console.log(`     ... ${s.candidates.length - list.length} weitere (--all)`);
@@ -59,6 +63,19 @@ if (s.chosen) {
             + `(${s.chosen.backward} rueckwaerts, ${s.chosen.forward} vorwaerts)`);
   console.log(`     Anfang      ${s.chosen.startsWithBrace ? "'{' - Dokumentanfang" : 'angeschnitten'}`);
   console.log(`     Aufbereitet ${s.repaired ? 'ja' : 'nein'} - ${s.note}`);
+
+  /* Die Zahl, die den Unterschied zwischen "Argus zeigt Mist" und "das Spiel
+     hat laenger nicht synchronisiert" ausmacht. */
+  if (s.chosen.syncedAt) {
+    const min = Math.round((Date.now() - s.chosen.syncedAt) / 60000);
+    console.log(`     Stand       ${new Date(s.chosen.syncedAt).toLocaleString('de-DE')} `
+              + `(vor ${min} min)`);
+    if (min > 30) {
+      console.log('                 Das Dokument ist der letzte Sync des Clients, nicht der');
+      console.log('                 Augenblick des Lesens. Ins Relais und zurueck aufs Schiff,');
+      console.log('                 dann liegt ein frischer Stand im Heap.');
+    }
+  }
 }
 
 if (!res.ok) {

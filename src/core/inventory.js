@@ -77,7 +77,8 @@ export async function loadInventory({ dataDir = defaultDataDir(), refresh = fals
 
   if (!refresh) {
     if (cached) return { inventory: cached.inventory, fromCache: true,
-                         fetchedAt: cached.fetchedAt, source: cached.source };
+                         fetchedAt: cached.fetchedAt, syncedAt: cached.syncedAt || null,
+                         source: cached.source };
     throw new Error('No inventory data yet. Start Warframe, log in, travel to a relay '
                   + 'and back to your ship, then press "Fetch inventory" once.');
   }
@@ -90,16 +91,22 @@ export async function loadInventory({ dataDir = defaultDataDir(), refresh = fals
        frueher die Drosselung benutzt hat. */
     if (cached) {
       return { inventory: cached.inventory, fromCache: true, fetchedAt: cached.fetchedAt,
+               syncedAt: cached.syncedAt || null,
                source: cached.source, skipped: res.code, message: res.message };
     }
     throw Object.assign(new Error(res.message), { code: res.code, stats: res.stats });
   }
 
+  /* ZWEI ZEITEN, UND SIE SIND NICHT DIESELBE. fetchedAt ist, wann Argus
+     gelesen hat; syncedAt, wann der Client das Dokument vom Server bekam.
+     Dazwischen liegt alles, was man seither verkauft oder gebaut hat - das ist
+     der Abstand, den die Oberflaeche nennen koennen muss. */
   const fetchedAt = Date.now();
-  await writeFile(cacheFile, JSON.stringify({ fetchedAt, inventory: res.inventory,
+  await writeFile(cacheFile, JSON.stringify({ fetchedAt, syncedAt: res.syncedAt || null,
+                                              inventory: res.inventory,
                                               source: 'memory' }));
   return { inventory: res.inventory, fromCache: false, fetchedAt,
-           source: 'memory', stats: res.stats };
+           syncedAt: res.syncedAt || null, source: 'memory', stats: res.stats };
 }
 
 /** Stand der lokalen Daten: wann geholt und woher. null, wenn nichts da ist. */

@@ -1014,6 +1014,15 @@
       <!-- Antwort auf einen Abruf, der nicht stattgefunden hat -->
       <div class="inv-notice hidden" id="inv-notice"></div>
 
+      <!--
+        Der Stand des Dokuments, nicht der des Lesens. Steht nur da, wenn beide
+        nennenswert auseinanderliegen - sonst waeren es zwei Zeitangaben, die
+        dasselbe sagen. Eigene Zeile und nicht im Warnband, weil es kein Fehler
+        ist: der Abruf hat funktioniert, das Spiel hat nur laenger nicht
+        synchronisiert.
+      -->
+      <div class="inv-notice is-info hidden" id="inv-sync-note"></div>
+
       <!-- Fehler- und Leerzustaende (kein Abruf, Drosselung, Spiel laeuft nicht) -->
       <div class="inv-state hidden" id="inv-state"></div>
 

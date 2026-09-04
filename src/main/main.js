@@ -2959,6 +2959,11 @@ async function inventoryPayload({ refresh }) {
       sectionMeta: SECTIONS,
       source: res.source || 'api',
       fetchedAt: res.fetchedAt,
+      /* Wann der CLIENT das Dokument vom Server hatte - nicht, wann Argus es
+         gelesen hat. Der Unterschied ist der Grund, aus dem verkaufte Teile
+         nach einem Abruf noch dastehen koennen: gelesen wurde gerade eben,
+         das Dokument selbst ist der Stand des letzten Syncs. */
+      syncedAt: res.syncedAt || null,
       /* Das Feld trug frueher die Wartezeit aus DEs Drosselung, damit der Knopf
          erklaeren konnte, warum er gerade nichts tut. Der Abruf geht nicht mehr
          ins Netz, also gibt es keine Wartezeit mehr - der Knopf ist immer

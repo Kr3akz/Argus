@@ -4233,6 +4233,16 @@ select option { background: #161b25; color: var(--text); }
 }
 .inv-notice svg { color: var(--accent); flex-shrink: 0; }
 
+/* Die Sync-Notiz ist KEIN Fehler - der Abruf hat ja geklappt. Sie sagt nur,
+   wie alt das Gelesene ist. Deshalb leiser als das Warnband darueber: ohne
+   Farbflaeche, damit zwei gestapelte Baender nicht wie zwei Probleme wirken. */
+.inv-notice.is-info {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--text-3);
+}
+.inv-notice.is-info svg { color: var(--text-3); }
+
 /* Veraltete Waehrungen: gedaempft und gestrichelt, damit die Zahl nicht wie
    der aktuelle Kontostand aussieht. */
 .inv-currencies.is-stale .inv-cur {
