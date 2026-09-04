@@ -2658,7 +2658,13 @@ function drawChecklist() {
         <span class="dot ${esc(i.status)}"></span>
         ${isGoal ? `<span class="tile-goal-badge" title="Active farming goal">${Icon.target(12)}</span>` : ''}
         ${tileMarks(i)}
-        <img src="${esc(i.image)}" alt="" onerror="this.style.visibility='hidden'">
+        <!-- loading="lazy": ohne das fordern bis zu 600 Kacheln ihre Bilder
+             gleichzeitig an. Gemessen: 86 Sekunden bis zur letzten, und ein
+             Dutzend faellt unterwegs durch, obwohl es die Dateien gibt. Mit
+             lazy laedt nur, was jemand tatsaechlich ansieht.
+             Der Fehlerfall haengt am Auffangnetz in hideFailedImage - ein
+             onerror-Attribut liefe hier nicht, siehe dort. -->
+        <img src="${esc(i.image)}" alt="" loading="lazy">
         <div class="tile-name">${esc(i.name)}</div>
         <div class="tile-rank">${i.status === 'missing' ? 'Missing' : 'Rank ' + i.rank + ' / ' + i.maxLvl}</div>
       </div>`;
@@ -4816,7 +4822,8 @@ function renderDucatsCatalog() {
     return `
       <div class="ducat-card ${isSelected ? 'selected' : ''} ${rarityClass}">
         <div class="ducat-card-left">
-          <img class="mat-icon" src="${esc(it.image || 'assets/icons/relic.png')}" alt="" onerror="this.src='assets/icons/relic.png'">
+          <img class="mat-icon" src="${esc(it.image || 'assets/icons/relic.png')}" alt=""
+               data-fail-src="assets/icons/relic.png">
         </div>
 
         <div class="ducat-card-body">
@@ -6032,6 +6039,12 @@ function onImageFail(root, selector, fix) {
   });
 }
 
+/* Das Auffangnetz fuer ALLE ausgefallenen Bilder steht in imagefail.js - es
+   gilt fuer diese Seite und das Overlay gleichermassen. onImageFail() bleibt
+   daneben bestehen: es haengt an einzelnen Stellen zusaetzliche Wirkungen an
+   (eine Buehne ausblenden, eine Kachel als leer markieren), die ueber das
+   blosse Verstecken des Bildes hinausgehen. */
+
 /**
  * Die Mod-Karte selbst - ohne den Platz, in dem sie liegt.
  *
@@ -6526,7 +6539,8 @@ function partModalShell(d, body) {
     <div class="im-header">
       <div class="im-header-left">
         <div class="im-art-wrap part-art-wrap">
-          <img class="im-art" src="${esc(image || 'assets/icons/relic.png')}" alt="" onerror="this.src='assets/icons/relic.png'">
+          <img class="im-art" src="${esc(image || 'assets/icons/relic.png')}" alt=""
+               data-fail-src="assets/icons/relic.png">
         </div>
         <div class="im-title-group">
           <div class="im-tags">${badges}</div>

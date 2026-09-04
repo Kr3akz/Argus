@@ -56,6 +56,19 @@ follow [semantic versioning](https://semver.org/lang/en/).
   and the scan took whichever complete one it met first while walking down from
   the top — an order that says nothing about age. It now dates each one by the
   sync stamp inside the document and takes the newest.
+- **Broken item pictures in the catalogue.** Opening the item catalogue asked
+  the image host for up to 600 pictures at the same instant. The last of them
+  arrived a minute and a half later, and a dozen fell over on the way — the
+  same files load without complaint when asked for on their own. Tiles now
+  fetch their picture when you actually scroll to them, which is around fifty
+  at a time instead of six hundred.
+- **A picture that cannot be shown no longer leaves a torn-page icon.** Every
+  view had a rule for this, and none of them ever ran: the page's security
+  policy silently drops handlers written into the markup, so the failure that
+  was meant to hide the image did nothing at all. Failed pictures are now
+  caught for the whole window and the overlay at once, given one second try —
+  which is all a picture lost to a traffic jam needs — and quietly dropped if
+  they really are missing.
 
 ## [1.7.0] - 2026-09-04
 
