@@ -21,6 +21,8 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-09-07
+
 ### Added
 
 - **Update vendors, as their own mode in the mastery tab.** Since Citrine, a new
