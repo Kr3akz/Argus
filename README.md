@@ -258,3 +258,7 @@ Argus is a fan project and is **not affiliated with, endorsed by or sponsored
 by Digital Extremes**. Warframe and all related assets are the property of Digital
 Extremes Ltd. Game assets used in the interface belong to them and are used here under
 their content usage policy.
+
+The mod cards are set in [Roboto](https://fonts.google.com/specimen/Roboto)
+(`src/renderer/assets/fonts/`), bundled under the Apache License 2.0 so the cards
+read the same offline as they do in the game.

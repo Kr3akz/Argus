@@ -32,6 +32,7 @@
 *.ico   binary
 *.exe   binary
 *.node  binary
+*.woff2 binary
 
 # SVG ist Text (und soll auch als Diff lesbar sein), zaehlt aber nicht als
 # Programmiersprache in der Sprachstatistik von GitHub.

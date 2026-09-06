@@ -2,6 +2,26 @@
    Gestaltung nach PS5-Home-Vorbild: Flaechen trennen sich durch Helligkeit,
    nicht durch Linien. Tiefe entsteht durch Schatten und sanftes Anheben. */
 
+/* Roboto - AUSSCHLIESSLICH fuer die Mod-Karten.
+ *
+ * Die Karte ist ein Zitat der Spieloberflaeche, und darin sitzt der Name in
+ * Roboto. Overframe zeigt dieselbe Karte; dessen "WarframeIcons" traegt nur
+ * neunzehn Polaritaets-Glyphen, alle Buchstaben fallen dort auf Roboto
+ * zurueck. Bahnschrift - sonst die Schrift des Programms - ist ein schmaler
+ * DIN-Schnitt und liest sich neben den Original-Texturen fremd.
+ *
+ * Warum mitgeliefert und nicht nachgeladen: Roboto liegt auf keinem Windows,
+ * und die CSP der Seite (default-src 'self') laesst keine fremde Herkunft zu.
+ * Nur der Latin-Teil, 21 KB - Mod-Namen und Wirkungstexte kommen ohne ein
+ * Zeichen ausserhalb davon aus. Apache-2.0, vertraegt sich mit GPL-3. */
+@font-face {
+  font-family: Roboto;
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url(assets/fonts/roboto-latin.woff2) format('woff2');
+}
+
 :root {
   --bg-0:      #0a0d12;
   --bg-1:      #10141c;
@@ -7512,8 +7532,9 @@ body.tags-window {
 
    Zugeklappt (90 px) liegt der Mod-Name mittig über der abgedunkelten Illustration.
    Beim Aufklappen wächst die Karte flüssig auf 260 px an, der Name gleitet nach
-   unten und gibt den Wirkungstext frei, während Artwork, Kompatibilitätsbalken,
-   Lichtleisten und Rangsterne sichtbar werden.
+   unten und gibt den Wirkungstext frei, während Artwork, Kompatibilitätsbalken
+   und Lichtleisten sichtbar werden. Die Rangsterne bleiben in beiden Zuständen
+   stehen - sie sitzen auf der unteren Rahmenleiste, nicht im Kartenkörper.
    -------------------------------------------------------------------- */
 
 .inv-grid.is-cards {
@@ -7550,12 +7571,16 @@ body:not(:has(.modal:not(.hidden))) .mod-slot:hover {
   transition: z-index 80ms step-start;
 }
 
+/* Roboto gilt fuer ALLES auf der Karte - Name, Wirkung, Kompatibilitaet und
+   Kapazitaetskosten. Im Spiel steht auf einer Mod nur eine Schrift, und das
+   Programm aussenherum bleibt bei Bahnschrift. */
 .mod-card {
   position: relative;
   display: flex;
   justify-content: center;
   width: 184px;
   height: 90px;
+  font-family: Roboto, 'Segoe UI', sans-serif;
   transform: scale(1);
   transition: .14s var(--ease);
   transition-property: transform, height;
@@ -7748,7 +7773,7 @@ body:not(:has(.modal:not(.hidden))) .mod-slot:hover .mod-art img,
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 0 24px;
+  padding: 0 12px;
   text-align: center;
   text-shadow: #000 1px 1px 0;
   word-break: break-word;
@@ -7757,9 +7782,9 @@ body:not(:has(.modal:not(.hidden))) .mod-slot:hover .mod-art img,
 }
 .mod-stat {
   display: none;
-  margin: 1.5px 0 0;
+  margin: 0;
   font-size: 10px;
-  line-height: 1.2;
+  line-height: 1.1;
 }
 body:not(:has(.modal:not(.hidden))) .mod-slot:hover .mod-text,
 .mod-slot.is-open .mod-text {
@@ -7775,30 +7800,35 @@ body:not(:has(.modal:not(.hidden))) .mod-slot:hover .mod-stat,
   display: block;
 }
 
-/* Mod-Name */
+/* Mod-Name.
+ *
+ * Nicht in Versalien, nicht fett und nicht weiss - so steht er weder im Spiel
+ * noch bei Overframe. Dort ist es Roboto in normaler Staerke auf 17px, in der
+ * Farbe der Seltenheit (die `.mod-inner` ohnehin schon vererbt), mit einem
+ * harten schwarzen Schatten um einen Pixel versetzt. Die Groesse bleibt in
+ * BEIDEN Zustaenden gleich: der Name ist das eine, was die zugeklappte Karte
+ * zu sagen hat, und darf beim Aufklappen nicht springen. */
 .mod-name {
-  margin: 0;
-  font-size: 11.5px !important;
-  font-weight: 700 !important;
-  text-transform: uppercase;
-  letter-spacing: .25px;
-  color: #fff !important;
-  text-shadow: 0 1px 3px #000, 0 0 6px rgba(0, 0, 0, 0.95) !important;
-  line-height: 1.15;
+  margin: 0 0 2.5px;
+  font-size: 17px;
+  font-weight: 400;
+  letter-spacing: normal;
+  color: inherit;
+  text-shadow: #000 1px 1px 0;
+  line-height: 1.1;
   text-align: center;
 }
-body:not(:has(.modal:not(.hidden))) .mod-slot:hover .mod-name,
-.mod-slot.is-open .mod-name {
-  margin: 0 0 1px;
-  font-size: 12px !important;
-}
 
-/* Kompatibilitätsbalken */
+/* Kompatibilitätsbalken.
+   Er sitzt tiefer, als die Rechnung nahelegt: die Lasche gehoert optisch zum
+   unteren Rahmen, nicht zum Textbereich darueber. Zwischen ihr und der
+   letzten Wirkungszeile bleibt dadurch Luft, statt dass beide aneinander
+   kleben. Sichtbar wird sie ohnehin erst aufgeklappt. */
 .mod-compat {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  bottom: 20px;
+  bottom: 14px;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -7824,23 +7854,37 @@ body:not(:has(.modal:not(.hidden))) .mod-slot:hover .mod-name,
 body:not(:has(.modal:not(.hidden))) .mod-slot:hover .mod-compat,
 .mod-slot.is-open .mod-compat { opacity: 1; }
 
-/* Rangsterne */
+/* Rangsterne.
+ *
+ * Sie liegen NEBEN `.mod-inner` (siehe modCardHtml) und damit auf derselben
+ * Ebene wie die Rahmenteile - Ebene 25 stellt sie ueber den unteren Rahmen
+ * auf 20. Drinnen waren sie unsichtbar: `.mod-inner` oeffnet auf Ebene 5
+ * einen eigenen Stapelkontext, in dem jede noch so hohe Zahl unter der
+ * Rahmentextur bleibt.
+ *
+ * Sie stehen IMMER da, auch an der zugeklappten Karte. Der Rang ist das
+ * Zweite, was man einer Mod ansieht, ohne sie aufzuschlagen - im Spiel wie
+ * bei Overframe steht er auf der unteren Leiste des Rahmens.
+ *
+ * Die Breite richtet sich nach den Sternen, NICHT nach der Leiste darunter.
+ * Overframe gibt dem Kasten feste 117 px und stellt die Sterne mittig hinein;
+ * der Strich fuer den Hoechstrang ist dort genauso breit wie der Kasten und
+ * ragt bei einer dreirangigen Mod links und rechts an den Sternen vorbei ins
+ * Leere. Hier endet er an den Sternen. */
 .mod-pips {
   position: absolute;
   bottom: 2px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 20;
+  z-index: 25;
   display: flex;
   justify-content: center;
   min-height: 10px;
-  opacity: 0;
-  transition: opacity .12s var(--ease);
+  pointer-events: none;
 }
-body:not(:has(.modal:not(.hidden))) .mod-slot:hover .mod-pips,
-.mod-slot.is-open .mod-pips { opacity: 1; }
 .mod-pips i {
-  font-size: 7.5px;
+  font-size: 8px;
+  line-height: 8px;
   font-style: normal;
   color: #525252;
 }
@@ -7852,7 +7896,7 @@ body:not(:has(.modal:not(.hidden))) .mod-slot:hover .mod-pips,
   content: '';
   position: absolute;
   left: 0;
-  top: 3px;
+  top: 3.5px;
   width: 100%;
   height: 1px;
   background: #a6e6ff;

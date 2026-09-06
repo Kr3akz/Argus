@@ -21,10 +21,28 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
-## [1.8.1] - 2026-09-04
+## [1.8.1] - 2026-09-06
+
+### Changed
+
+- **Mod names are set the way the game sets them.** They stood in small bold
+  capitals in the app's own typeface — a narrow DIN cut that reads nothing
+  like a mod card. They are now in Roboto at the size the game uses, in
+  ordinary weight and ordinary capitalisation, tinted to the rarity of the
+  card instead of white. The typeface ships with Argus, 21 KB of it, so the
+  cards look the same with no connection.
+- **The compatibility tab sits a little lower on an open card.** It belongs to
+  the frame along the bottom, not to the text above it. There is room between
+  it and the last line of the effect now, instead of the two pixels it had.
 
 ### Fixed
 
+- **The rank stars are visible again.** They were drawn inside the card body,
+  and the card's lower frame is painted on top of that — the stars were there
+  the whole time, underneath the metal. They now sit on the frame's bottom
+  rail where the game puts them, and they stay there on a closed card too:
+  the rank is the second thing you want to know about a mod without opening
+  it.
 - **Broken item pictures in the catalogue.** Opening the item catalogue asked
   the image host for up to 600 pictures at the same instant. The last of them
   arrived a minute and a half later, and a dozen fell over on the way — the

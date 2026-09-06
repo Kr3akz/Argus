@@ -6057,6 +6057,13 @@ function onImageFail(root, selector, fix) {
  *     rarity, pips, rank }
  * `pips` ist die Rangzahl der KARTE, `rank` der tatsaechliche Rang - im
  * Inventar der hoechste besessene, im Build der eingestellte.
+ *
+ * DIE RANGSTERNE STEHEN NEBEN `.mod-inner`, NICHT DARIN. Der untere Rahmen
+ * der Karte ist `.mod-card::after` und liegt auf Ebene 20; `.mod-inner` liegt
+ * auf 5 und spannt damit einen eigenen Stapelkontext auf. Ein z-index an den
+ * Sternen zaehlt drinnen nur gegen ihre Geschwister - die Rahmentextur malt
+ * anschliessend darueber, und die Sterne waren weg. Draussen konkurrieren sie
+ * direkt mit dem Rahmen und gewinnen.
  */
 function modCardHtml(c) {
   const rank = c.rank ?? 0;
@@ -6079,12 +6086,12 @@ function modCardHtml(c) {
           ${(c.stats || []).map(s => `<p class="mod-stat">${esc(s)}</p>`).join('')}
         </div>
         ${c.compat ? `<div class="mod-compat"><p>${esc(c.compat)}</p></div>` : ''}
-        ${c.pips ? `
-          <div class="mod-pips ${rank >= c.pips ? 'is-max' : ''}">
-            ${Array.from({ length: c.pips }, (_, p) =>
-              `<i class="${p < rank ? 'on' : ''}">★</i>`).join('')}
-          </div>` : ''}
       </div>
+      ${c.pips ? `
+        <div class="mod-pips ${rank >= c.pips ? 'is-max' : ''}">
+          ${Array.from({ length: c.pips }, (_, p) =>
+            `<i class="${p < rank ? 'on' : ''}">★</i>`).join('')}
+        </div>` : ''}
     </div>`;
 }
 
