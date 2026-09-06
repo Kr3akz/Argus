@@ -126,13 +126,14 @@ document.querySelectorAll('.nav-item').forEach(tab => {
 });
 
 /* ---------------- Mastery: Manager <-> Katalog <-> Schmiede ---------------- */
-const MASTERY_MODES = ['manager', 'catalog', 'foundry'];
+const MASTERY_MODES = ['manager', 'catalog', 'foundry', 'vendors'];
 let masteryMode = 'manager';
 
 const MASTERY_HINTS = {
   manager: 'Goals, resources & mastery recommendations',
   catalog: 'Search every item and set it as a goal',
-  foundry: 'What is building and what is finished'
+  foundry: 'What is building and what is finished',
+  vendors: 'Warframes you buy from a vendor, and what of it you own'
 };
 
 function applyMasteryMode() {
@@ -154,6 +155,12 @@ function applyMasteryMode() {
      ein Rang erreicht ist - und dann kommt ein neuer Inventarabruf, der sie
      verwirft. */
   if (masteryMode === 'foundry') { loadForge(); initChainEvents(); loadChains(); }
+
+  /* Die Haendler stehen fest - ihr Angebot wechselt nur zu einem Update, nicht
+     im Betrieb. Einmal laden reicht deshalb; was sich aendern KANN, ist der
+     eigene Besitz, und der wird beim Inventarabruf verworfen (siehe
+     onInventoryUpdated). */
+  if (masteryMode === 'vendors') { initVendorEvents(); loadVendors(); }
 }
 
 function setMasteryMode(mode) {
@@ -589,6 +596,413 @@ function initChainEvents() {
       document.querySelectorAll('[data-chainfilter]').forEach(b =>
         b.classList.toggle('active', b === btn));
       renderChains();
+    });
+  });
+}
+
+/* ------------------------- Update-Haendler -------------------------
+   Otak, Zorba, der Schrein: Warframes, die man kauft statt farmt. Das Angebot
+   steht im Spiel, der eigene Besitzstand nicht - hier steht beides
+   nebeneinander. Die Tabelle selbst liegt in core/vendors.js.
+   ------------------------------------------------------------------ */
+
+let vendorData = null;
+let vendorFilter = 'all';     // 'all' | 'open' | 'mastery'
+let vendorOpen = null;        // Schluessel des aufgeschlagenen Ladens
+
+async function loadVendors() {
+  const box = $('vendor-body');
+  if (!box) return;
+
+  if (!vendorData) {
+    box.innerHTML = '<div class="empty">Reading the vendor lists …</div>';
+    const res = await window.api.getVendorOffers();
+    vendorData = res?.ok ? res.data : [];
+    if (!res?.ok) {
+      box.innerHTML = `<div class="empty">The vendor lists could not be built.${
+        res?.error ? `<br><small>${esc(res.error)}</small>` : ''}</div>`;
+      return;
+    }
+  }
+  renderVendors();
+}
+
+/** Das Symbol einer Waehrung - Item-Bild oder Syndikatsflagge, siehe core/vendors.js. */
+function vendorCoin(v, i) {
+  const src = v.currencyImages?.[i];
+  const name = v.currencies[i] || '';
+  return src
+    ? `<img class="vend-coin" src="${esc(src)}" alt="${esc(name)}" title="${esc(name)}" loading="lazy">`
+    : '';
+}
+
+/**
+ * Preis als Text - eine Waehrung, zwei zusammen, oder eine von zweien.
+ *
+ * MIT SYMBOL STATT NAME, wo der Platz knapp ist: "500 Belric Crystal Fragment
+ * + 500 Rania Crystal Fragment" fuellt eine ganze Zeile, waehrend die Zahl das
+ * Einzige ist, was sich von Posten zu Posten aendert. Ausgeschrieben stehen die
+ * Waehrungen im Kopf des Ladens, wo sie einmal genannt gehoeren.
+ *
+ * Liefert FERTIGES HTML - die Aufrufer duerfen es nicht noch einmal durch
+ * esc() schicken.
+ */
+function vendorPrice(costs, v, { icons = false } = {}) {
+  if (!costs?.length) return '';
+  const label = i => (icons ? vendorCoin(v, i) : esc(v.currencies[i] || ''));
+
+  if (v.currencies.length === 1) return `${nf(costs[0])} ${label(0)}`;
+
+  /* "either" heisst: eine Seite genuegt, beide Preise sind gleich. Sie
+     zweimal zu addieren waere doppelt so teuer wie die Wahrheit. */
+  if (v.pay === 'either') {
+    return icons
+      ? `${nf(costs[0])} ${label(0)}<span class="vend-or">or</span>${label(1)}`
+      : `${nf(costs[0])} ${esc(v.currencies[0])} or ${esc(v.currencies[1])}`;
+  }
+  return costs.map((c, i) => `${nf(c)} ${label(i)}`).join(icons ? ' + ' : ' + ');
+}
+
+/**
+ * Der eigene Beutel.
+ *
+ * Zwei Sorten Waehrung sehen hier gleich aus, obwohl sie an verschiedenen
+ * Stellen im Inventar stehen: Sonderwaehrungen als Stueckzahl, Ansehen als
+ * Guthaben. Beides beantwortet dieselbe Frage - reicht es.
+ *
+ * null heisst "nicht bekannt" (kein Inventarabruf) und ergibt gar keine
+ * Zeile; eine Null waere eine Behauptung ueber ein Konto, in das wir nie
+ * geschaut haben.
+ */
+/**
+ * Der Bestand, je Waehrung eine Zahl.
+ *
+ * NICHT ueber vendorPrice: bei "either" sind zwei PREISE gleich, zwei
+ * BESTAENDE aber nicht - sechs Emerald und acht Crimson sind zwei Zahlen, und
+ * die Kurzform haette die zweite verschluckt.
+ */
+function vendorHave(v) {
+  return (v.summary.stock || [])
+    .map((s, i) => `${vendorCoin(v, i)}${nf(s ?? 0)}`)
+    .join(v.pay === 'either' ? '<span class="vend-or">/</span>' : ' + ');
+}
+
+/**
+ * Der eigene Bestand als eigener Kasten, oben rechts im Kopf des Ladens.
+ *
+ * WARUM GROSS UND FUER SICH: Es ist die einzige Zahl auf der Seite, die vom
+ * Konto kommt und nicht vom Laden. Zwischen "items still open" und "for all of
+ * it" stand sie als vierte gleich grosse Spalte - und damit als eine Zahl unter
+ * lauter Zahlen, die etwas ganz anderes meinen.
+ *
+ * Je Waehrung eine Zelle. Bei Otak sind das zwei Splitter, bei Hunhow zwei
+ * Seiten desselben Kaufs - in beiden Faellen sind es ZWEI Bestaende, und eine
+ * zusammengezogene Zahl waere in beiden Faellen falsch.
+ */
+function vendorPurseBox(v) {
+  const stock = v.summary.stock || [];
+  if (!stock.length || stock.every(s => s === null)) return '';
+
+  const kurz = (v.summary.short || []).filter(s => s !== null);
+  const luecke = !kurz.length ? 0
+    : v.pay === 'either' ? Math.min(...kurz)
+    : Math.max(...kurz);
+  const offen = v.summary.openLines > 0;
+
+  const zellen = stock.map((s, i) => `
+    <div class="vend-purse-cell">
+      ${v.currencyImages?.[i]
+        ? `<img class="vend-purse-ic" src="${esc(v.currencyImages[i])}" alt="" loading="lazy">`
+        : ''}
+      <div>
+        <b>${nf(s ?? 0)}</b>
+        <span>${esc(v.currencies[i] || '')}</span>
+      </div>
+    </div>`).join('');
+
+  return `
+    <div class="vendor-purse-box ${offen ? (luecke > 0 ? 'is-short' : 'is-ok') : ''}">
+      <div class="vend-side-label">In your inventory</div>
+      <div class="vend-purse-cells">${zellen}</div>
+      ${offen ? `<div class="vend-purse-state">${luecke > 0
+        ? `${nf(luecke)} short for the rest`
+        : `${Icon.check(11)} enough for what is missing`}</div>` : ''}
+    </div>`;
+}
+
+function vendorPurse(v) {
+  const stock = v.summary.stock || [];
+  if (!stock.length || stock.every(s => s === null)) return '';
+
+  /* Mit Symbol, weil daneben schon die Kurzform der Waehrung steht - und weil
+     bei Otak sonst zweimal derselbe lange Name unter derselben Kachel haengt. */
+  const habe = vendorHave(v);
+
+  const fehlt = (v.summary.short || []).filter(s => s !== null);
+  /* Bei "either" genuegt EINE Seite - dann zaehlt die kleinere Luecke. */
+  const luecke = !fehlt.length ? null
+    : v.pay === 'either' ? Math.min(...fehlt)
+    : Math.max(...fehlt);
+
+  /* habe traegt fertige Bildmarken - hier NICHT noch einmal escapen. */
+  if (!v.summary.openLines) return `<span class="vend-purse">${habe} in stock</span>`;
+  return luecke > 0
+    ? `<span class="vend-purse is-short">${habe} in stock · ${nf(luecke)} short</span>`
+    : `<span class="vend-purse is-ok">${Icon.check(11)} ${habe} in stock — enough</span>`;
+}
+
+/** Der Mastery-Stand eines Postens - oder gar nichts, wo es keinen gibt. */
+function vendorStatusChip(g) {
+  if (!g.status) return '';
+  if (g.status === 'done') return `<span class="vend-rank is-done">${Icon.check(11)} mastered</span>`;
+  if (g.status === 'partial') return `<span class="vend-rank is-part">rank ${g.rank}/${g.maxLvl}</span>`;
+  return '<span class="vend-rank is-missing">new mastery</span>';
+}
+
+function vendorCard(v) {
+  const offen = v.summary.goods - v.summary.done;
+  /* Ohne Inventar keine Bilanz, sondern nur der Umfang des Angebots - sonst
+     stuende auf jeder Kachel "alles offen", und das waere geraten. */
+  const stand = !v.matched
+    ? `<span class="vend-open">${nf(v.summary.goods)} items on offer</span>`
+    : offen === 0
+      ? `<span class="vend-open is-done">${Icon.check(12)} nothing left to buy</span>`
+      : `<span class="vend-open">${nf(offen)} of ${nf(v.summary.goods)} still open</span>`;
+
+  return `
+    <button class="vendor-card" data-vendor="${esc(v.key)}">
+      <img class="vendor-art" src="${esc(v.heroImage || '')}" alt="" loading="lazy">
+      <span class="vendor-card-body">
+        <b>${esc(v.title)}</b>
+        <span class="vend-who">${esc(v.vendor)} · ${esc(v.location)}</span>
+        <span class="vend-cur">${v.currencies.map((c, i) => `${vendorCoin(v, i)}${esc(c)}`)
+          .join(v.pay === 'either' ? ' / ' : ' + ')}</span>
+        ${vendorPurse(v)}
+      </span>
+      <span class="vendor-card-foot">
+        ${stand}
+        ${v.matched && v.summary.newMastery
+          ? `<span class="vend-mr">${nf(v.summary.newMastery)} new mastery</span>` : ''}
+      </span>
+    </button>`;
+}
+
+/**
+ * Der Zustand eines Postens.
+ *
+ * "blueprint bought" und "part built" stehen bewusst getrennt neben dem
+ * schlichten "owned": beide heissen "nicht noch einmal kaufen", aber aus
+ * verschiedenen Gruenden - und beide stehen neben einem Item, das man noch
+ * NICHT hat. Genau da ist die Auskunft etwas wert.
+ */
+function vendorLineState(l) {
+  if (l.owned === null) return '<span class="vend-state">—</span>';
+  if (l.owned === false) return '<span class="vend-state is-missing">not owned</span>';
+  if (l.via === 'blueprint') return `<span class="vend-state is-ok">${Icon.check(11)} blueprint bought</span>`;
+  if (l.via === 'built') return `<span class="vend-state is-ok">${Icon.check(11)} part built</span>`;
+  return `<span class="vend-state is-ok">${Icon.check(11)} owned</span>`;
+}
+
+function vendorLineRow(l, v) {
+  const zustand = vendorLineState(l);
+
+  return `
+    <div class="vend-line ${l.owned === false ? 'is-missing' : l.owned ? 'is-owned' : ''}">
+      <span class="vend-line-name">${esc(l.part || 'Blueprint')}</span>
+      ${l.rank ? `<span class="vend-gate">${esc(l.rank)}</span>` : ''}
+      <span class="vend-cost">${vendorPrice(l.cost, v, { icons: true })}</span>
+      ${zustand}
+    </div>`;
+}
+
+function vendorGood(g, v) {
+  const offen = g.openCount > 0;
+
+  /* Waffen, die als EIN Bauplan ueber den Tresen gehen (Afentis, Laetum,
+     Grimoire), brauchen keine Zeilenliste darunter: sie stuende dort mit
+     demselben Preis noch einmal. Rangschranke und Zustand wandern dafuer in
+     den Kopf. */
+  const einzeln = g.lines.length === 1 && !g.lines[0].part;
+  const zeile = einzeln ? g.lines[0] : null;
+
+  return `
+    <div class="vend-good ${offen ? 'is-open' : 'is-clear'} ${einzeln ? 'is-single' : ''}">
+      <div class="vend-good-head">
+        <img class="vend-good-img" src="${esc(g.image || '')}" alt="" loading="lazy">
+        <div class="vend-good-title">
+          <b>${esc(g.item)}</b>
+          <span>${vendorStatusChip(g)}${
+            zeile?.rank ? `<span class="vend-gate">${esc(zeile.rank)}</span>` : ''}${
+            /* Der Zustand nur, wo er etwas HINZUFUEGT: neben "new mastery"
+               waere ein "not owned" dieselbe Auskunft zweimal - "blueprint
+               bought" dagegen ist die halbe Miete und muss dastehen. */
+            zeile && (!g.status || zeile.owned === true) ? vendorLineState(zeile) : ''}</span>
+        </div>
+        <div class="vend-good-cost">
+          ${offen
+            ? `<b>${vendorPrice(g.cost, v, { icons: true })}</b><span>${
+                einzeln ? 'for the blueprint' : 'for what is missing'}</span>`
+            : v.matched
+              ? `<b class="is-done">${Icon.check(13)}</b><span>nothing to buy</span>`
+              : `<b>${vendorPrice(
+                    g.lines.reduce((s, l) => l.cost.map((c, i) => (s[i] || 0) + c), []),
+                    v, { icons: true })}</b><span>for the full set</span>`}
+        </div>
+      </div>
+      ${einzeln ? '' : `<div class="vend-lines">${g.lines.map(l => vendorLineRow(l, v)).join('')}</div>`}
+      ${vendorMaterials(g)}
+    </div>`;
+}
+
+/**
+ * Was nach dem Kauf noch fehlt.
+ *
+ * DER PREIS BEIM HAENDLER IST NICHT DER PREIS DES ITEMS: dort liegen
+ * Bauplaene, gebaut wird daraus mit Ressourcen und Credits. Wer 120 Husks
+ * zusammenspart und dann an drei Orokin-Zellen haengenbleibt, hat die falsche
+ * Zahl angesehen.
+ *
+ * Dieselben Kaesten und dieselbe Regel wie in den Zielkarten und der
+ * Einkaufsliste (siehe renderer/stock.js) - eine Zeile, die hier gruen ist,
+ * muss dort auch gruen sein.
+ */
+function vendorMaterials(g) {
+  if (!g.materials?.length) return '';
+
+  /* Dasselbe Credits-Bild wie im Inventar und bei Baro - Credits erkennt man
+     im Spiel an diesem Symbol, eine Vektormuenze waere austauschbar. */
+  const credits = g.credits
+    ? `<div class="mat vend-mat-credits" title="Credits for the whole build">
+         <img class="mat-icon" src="assets/icons/currency/credits.png" alt="">
+         <span>Credits</span><b>${nf(g.credits)}</b>
+       </div>`
+    : '';
+
+  return `
+    <div class="vend-mats">
+      <div class="goal-section-label">Then you still need to build it</div>
+      <div class="matgrid">
+        ${credits}
+        ${g.materials.map(m => `
+          <div class="mat ${Stock.cls(m)}" title="${esc(Stock.hint(m, m.name, nf))}">
+            ${m.image ? `<img class="mat-icon" src="${esc(m.image)}" alt="" loading="lazy">` : ''}
+            <span>${esc(m.name)}</span>
+            ${Stock.forge(m)}
+            <b>${Stock.num(m, nf)}</b>
+          </div>`).join('')}
+      </div>
+    </div>`;
+}
+
+function vendorDetail(v) {
+  const hinweis = !v.matched ? `
+    <div class="chain-note">${Icon.warning(13)}
+      No inventory fetched yet — this is the price list without the comparison. Fetch your
+      inventory once and Argus marks what you already own.
+    </div>` : '';
+
+  return `
+    <div class="vendor-detail">
+      <button class="btn-sm vendor-back" id="vendor-back">${Icon.chevron(13)} All vendors</button>
+
+      <div class="vendor-head">
+        <img class="vendor-head-art" src="${esc(v.heroImage || '')}" alt="" loading="lazy">
+        <div class="vendor-head-body">
+          <h3>${esc(v.title)}</h3>
+          <p class="vend-who">${esc(v.vendor)} · ${esc(v.location)}</p>
+          <p class="vend-earn">
+            ${/* Einmal ausgeschrieben, mit Bild davor - ueberall sonst im Laden
+                  steht nur noch das Bild. */
+              v.currencies.map((c, i) => `${vendorCoin(v, i)}<b>${esc(c)}</b>`)
+                .join(v.pay === 'either' ? ' or ' : ' + ')}
+            ${v.earnedFrom ? ` — ${esc(v.earnedFrom)}` : ''}
+          </p>
+          ${v.gate ? `<p class="vend-gate-line">${Icon.warning(12)} Needs ${esc(v.gate)}</p>` : ''}
+          ${v.note ? `<p class="vend-note">${esc(v.note)}</p>` : ''}
+        </div>
+        ${/* Ein Kasten, zwei Haelften: links was der Laden noch will, rechts
+              was man hat. Sie stehen nebeneinander, weil keine der beiden
+              Zahlen ohne die andere eine Entscheidung ergibt. */
+          v.matched ? `
+        <div class="vendor-head-side">
+          <div class="vendor-head-sum">
+            <div class="vend-side-label">Still open here</div>
+            <div class="vend-sum-cells">
+              <div><b>${nf(v.summary.goods - v.summary.done)}</b><span>items</span></div>
+              <div><b>${nf(v.summary.openLines)}</b><span>things to buy</span></div>
+              <div><b>${vendorPrice(v.summary.cost, v, { icons: true }) || '0'}</b><span>for all of it</span></div>
+            </div>
+          </div>
+          ${vendorPurseBox(v)}
+        </div>` : ''}
+        <!-- Der Wiki-Verweis ist eine Fussnote, keine Angabe zum Laden: er
+             sitzt deshalb unten rechts in der Ecke und nicht im Fliesstext,
+             wo er zwischen Ort und Waehrung wie eine dritte Eigenschaft
+             ausgesehen hat. -->
+        <a class="up-wiki vendor-wiki" target="_blank" rel="noreferrer" href="${esc(wikiLink(v.wiki))}">
+          ${Icon.link(12)} ${esc(v.wiki)} on the wiki</a>
+      </div>
+
+      ${hinweis}
+      <div class="vend-goods">${v.goods.map(g => vendorGood(g, v)).join('')}</div>
+    </div>`;
+}
+
+function renderVendors() {
+  const box = $('vendor-body');
+  if (!box || !vendorData) return;
+
+  const q = ($('vendor-search')?.value || '').toLowerCase().trim();
+
+  if (vendorOpen) {
+    const v = vendorData.find(x => x.key === vendorOpen);
+    if (v) {
+      box.innerHTML = vendorDetail(v);
+      $('vendor-back')?.addEventListener('click', () => { vendorOpen = null; renderVendors(); });
+      return;
+    }
+    vendorOpen = null;
+  }
+
+  const treffer = vendorData.filter(v => {
+    if (vendorFilter === 'open' && v.matched && v.summary.openLines === 0) return false;
+    if (vendorFilter === 'mastery' && !v.summary.newMastery) return false;
+    if (!q) return true;
+    /* Gesucht wird auch nach der Ware: wer "Steflos" tippt, sucht Otak. */
+    return [v.title, v.vendor, v.location, ...v.currencies, ...v.goods.map(g => g.item)]
+      .join(' ').toLowerCase().includes(q);
+  });
+
+  box.innerHTML = treffer.length
+    ? `<div class="vendor-grid">${treffer.map(vendorCard).join('')}</div>`
+    : '<div class="empty">No vendor matches that.</div>';
+
+  box.querySelectorAll('.vendor-card').forEach(card => {
+    card.addEventListener('click', () => {
+      vendorOpen = card.dataset.vendor;
+      renderVendors();
+      $('vendor-body')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  });
+}
+
+let vendorEventsReady = false;
+function initVendorEvents() {
+  if (vendorEventsReady) return;
+  vendorEventsReady = true;
+
+  $('vendor-search')?.addEventListener('input', () => {
+    /* Wer sucht, will die Liste sehen - nicht den Laden, der gerade offen war. */
+    if (vendorOpen) vendorOpen = null;
+    renderVendors();
+  });
+  document.querySelectorAll('[data-vendorfilter]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      vendorFilter = btn.dataset.vendorfilter;
+      vendorOpen = null;
+      document.querySelectorAll('[data-vendorfilter]').forEach(b =>
+        b.classList.toggle('active', b === btn));
+      renderVendors();
     });
   });
 }
@@ -1102,7 +1516,13 @@ function renderCards(target, list) {
           <b>${esc(r.name)}</b>
           <span class="gain">+${nf(r.gain)}</span>
         </div>
-        <div class="card-cat">${esc(r.label)}</div>
+        <div class="card-cat">${esc(r.label)}${
+          /* Dasselbe Abzeichen wie auf den Katalogkacheln, und aus demselben
+             Grund: nur dort, wo tatsaechlich Forma im Bauplan steht. */
+          r.forma > 0
+            ? `<span class="tile-mark forma" title="Building it costs ${r.forma} Forma — the blueprint asks for ${
+                 r.forma === 1 ? 'one' : r.forma}, before you polarise anything">${Icon.bolt(10)}${r.forma}</span>`
+            : ''}</div>
         <div class="card-reason">${esc(r.reason)}</div>
         <div class="card-actions">
           <button class="btn-sm ${already ? 'on' : ''}" data-add="${esc(r.uniqueName)}" data-name="${esc(r.name)}">
@@ -1135,6 +1555,19 @@ function renderCards(target, list) {
    dabei zuruecksetzen, saesse man nach jedem Klick wieder vor acht Karten
    und muesste sich die Stelle neu suchen, an der man war. */
 let easyGainsOpen = false;
+let noFormaOnly = false;
+
+/* Der Knopf sitzt im Kopf von "Cheap to pick up" und faerbt sich wie die
+   Chips im Katalog. Neu gezeichnet wird nur diese eine Liste - der Rest des
+   Dashboards hat mit Forma nichts zu tun. */
+$('filter-noforma')?.addEventListener('click', e => {
+  noFormaOnly = !noFormaOnly;
+  e.currentTarget.classList.toggle('active', noFormaOnly);
+  /* Beim Filtern wieder einklappen: die Liste ist danach kuerzer, und ein
+     "Show 12 more" ueber acht Karten waere eine Zahl von vorhin. */
+  easyGainsOpen = false;
+  if (state) renderEasyGains(state);
+});
 
 /**
  * "Cheap to pick up" mit Aufklapper.
@@ -1145,7 +1578,14 @@ let easyGainsOpen = false;
  * haengt an, es sortiert nicht um.
  */
 function renderEasyGains(data) {
-  const alle = data.easyGains || [];
+  /* Forma als BAUZUTAT: 75 Eintraege im Katalog verlangen eines, bevor
+     ueberhaupt gebaut werden kann - drei davon nur ueber eine Waffe weiter
+     unten in der Kette. Ein Item, das "billig zu holen" ist und dann ein
+     Forma kostet, ist genau das nicht.
+     forma === null heisst "keine Aussage" (kein Katalog geladen); dann
+     filtert der Knopf nichts weg, statt alles. */
+  const alleRoh = data.easyGains || [];
+  const alle = noFormaOnly ? alleRoh.filter(r => !r.forma) : alleRoh;
   const oben = data.easyGainsTop || 8;
   const rest = Math.max(0, alle.length - oben);
 
@@ -2631,6 +3071,14 @@ function tileMarks(i) {
 
   if (i.subsumed === true) {
     out.push(`<span class="tile-mark subsumed" title="Subsumed — its ability is available from the Helminth">${Icon.qaHelminth(11)}</span>`);
+  }
+
+  /* Nur wo Forma tatsaechlich im Bauplan steht - 75 von 956 Eintraegen. Ein
+     Abzeichen "0 Forma" auf den anderen 881 waere Rauschen. */
+  if (i.forma > 0) {
+    out.push(`<span class="tile-mark forma"
+      title="Building it costs ${i.forma} Forma — the blueprint asks for ${
+        i.forma === 1 ? 'one' : i.forma}, before you polarise anything">${Icon.bolt(10)}${i.forma}</span>`);
   }
 
   return out.length ? `<span class="tile-marks">${out.join('')}</span>` : '';
@@ -6823,7 +7271,11 @@ if (window.api.onInventoryUpdated) {
        diesen Daten. Ohne das Verwerfen zeigten sie bis zum Neustart einen
        Stand von vor dem Abruf. */
     chainData = null;
+    /* Dasselbe fuer die Haendler: ihre Preise stehen fest, der Besitzstand
+       daneben nicht - und genau der ist gerade neu geworden. */
+    vendorData = null;
     if ($('mastery-pane-foundry')?.classList.contains('active')) loadChains();
+    if ($('mastery-pane-vendors')?.classList.contains('active')) loadVendors();
     const invTab = $('tab-inventory');
     if (invTab && invTab.classList.contains('active')) {
       renderInventory();

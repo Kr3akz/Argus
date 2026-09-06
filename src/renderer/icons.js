@@ -45,6 +45,9 @@ const Icon = {
      damit die beiden sich in der Seitenleiste nicht aehnlich sehen. */
   crate:    s => svg('<path d="M4 7.5h16L18.4 3.9a1 1 0 0 0-.9-.6h-11a1 1 0 0 0-.9.6L4 7.5Z"/><path d="M4 7.5h16v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-12Z"/><path d="M10 12h4"/>', s),
   link:     s => svg('<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>', s),
+  /* Marktstand: Markise, Korpus, Durchgang. Steht fuer die Update-Haendler -
+     bewusst nicht die Muenze, die im Dukaten-Reiter die Waehrung meint. */
+  shop:     s => svg('<path d="M3 8h18l-1.6-4.1a1 1 0 0 0-.9-.6H5.5a1 1 0 0 0-.9.6L3 8Z"/><path d="M4.6 8v11a1 1 0 0 0 1 1h12.8a1 1 0 0 0 1-1V8"/><path d="M9.8 20v-5.2h4.4V20"/>', s),
   /* Pfeil auf eine Ablagelinie - dasselbe Zeichen im Update-Abzeichen, im
      Kopf des Update-Fensters und auf dem Knopf darin. Ein Vorgang, ein
      Symbol; sonst sucht man beim zweiten Klick nach dem ersten. */

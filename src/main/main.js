@@ -27,7 +27,7 @@ import { analyze, recommend, diversify, STATUS } from '../core/analyze.js';
 import { masteryRankName, progressForMR } from '../core/mastery.js';
 import { classify, CATEGORY_LABELS } from '../core/classify.js';
 import { acquisitionOf } from '../core/acquisition.js';
-import { resolveGoal, combineGoals, formatDuration, isRawMaterial } from '../core/recipes.js';
+import { resolveGoal, combineGoals, formatDuration, isRawMaterial, buildNameIndex, formaCost } from '../core/recipes.js';
 import { loadConfig, saveConfig, DEFAULT_HOTKEYS } from '../core/config.js';
 import * as store from '../core/store.js';
 import { loadMods, POLARITIES, RARITY_LABELS, searchMods, isAuraMod, isExilusMod,
@@ -43,6 +43,7 @@ import { getDucatsReferenceList, buildPrimeSets, buildDucatsCatalog, buildInvent
 import { loadInventory } from '../core/inventory.js';
 import { scanAccountId, findGameProcessIds } from '../core/accountid.js';
 import { buildInventory, SECTIONS, ownedUpgradeRanks, miscItemCount, ownedStock, recipeRow } from '../core/inventory-items.js';
+import { buildVendorOffers } from '../core/vendors.js';
 import { loadDropTables, sourcesFor } from '../core/droptables.js';
 import { loadCardImages, cardUrl } from '../core/cards.js';
 import { upgradeDetails } from '../core/upgrade-details.js';
@@ -201,7 +202,7 @@ let interacting = false;
    Warframe. Nur eine Kennung, kein Zugriff auf den fremden Prozess. */
 let interactReturnTo = null;
 const cache = { catalog: null, profile: null, analysis: null, mods: null, arcanes: null, dropTables: null, cards: null,
-                vault: null, subsumed: null };
+                vault: null, subsumed: null, forma: null };
 
 /* Wohin geschrieben wird - siehe core/paths.js.
    Im gepackten Build liegt der Programmordner unter Programme und gehoert
@@ -1125,6 +1126,24 @@ async function subsumedSet() {
   return cache.subsumed;
 }
 
+/**
+ * Forma-Bedarf des ganzen Katalogs - einmal gebaut, dann nachgeschlagen.
+ *
+ * Je Eintrag laeuft resolveGoal ueber den kompletten Bauplanbaum. Einzeln in
+ * decorate() gerufen waere das 800-mal derselbe Namensindex; gemeinsam sind es
+ * gemessene 10 ms fuer den ganzen Katalog.
+ */
+function formaIndex() {
+  if (cache.forma) return cache.forma;
+  const names = buildNameIndex(cache.catalog);
+  const map = new Map();
+  for (const e of cache.analysis?.entries || []) {
+    map.set(e.uniqueName, formaCost(e.uniqueName, cache.catalog, { names }));
+  }
+  cache.forma = map;
+  return map;
+}
+
 function decorate(entry) {
   const item = cache.catalog.byUniqueName.get(entry.uniqueName) || {};
   return {
@@ -1135,7 +1154,9 @@ function decorate(entry) {
     /* Beide bewusst als null, wenn die Frage sich nicht stellt: die Kachel
        unterscheidet "nicht gevaultet" von "wissen wir nicht". */
     vault: cache.vault ? vaultStatus(entry.uniqueName, cache.catalog, cache.vault) : null,
-    subsumed: cache.subsumed ? cache.subsumed.has(entry.uniqueName) : null
+    subsumed: cache.subsumed ? cache.subsumed.has(entry.uniqueName) : null,
+    /* Forma als Bauzutat, nicht als Polarisierung - siehe core/recipes.js. */
+    forma: cache.forma ? (cache.forma.get(entry.uniqueName) ?? 0) : null
   };
 }
 
@@ -1255,6 +1276,11 @@ async function buildDashboard(meta) {
   /* Einmal pro Aufbau, nicht einmal pro Zeile: die Karten wandern durch jedes
      Ziel, jedes Bauteil und die Einkaufsliste. */
   const asRecipeRow = recipeRow(inv ? ownedStock(inv, cache.catalog) : null);
+
+  /* decorate() traegt den Forma-Bedarf mit - der Filter unter "Cheap to pick
+     up" haengt daran. Ohne diesen Aufruf stuende dort ueberall null, und der
+     Knopf filterte nichts. */
+  formaIndex();
 
   if (!cache.dropTables) {
     try {
@@ -1858,10 +1884,40 @@ ipcMain.handle('checklist:get', async (_e, category) => {
   /* Vor dem Dekorieren, nicht darin: decorate() laeuft je Eintrag - bei 800
      Items waeren das 800 Ladeversuche. */
   await Promise.all([vaultIndex(), subsumedSet()]);
+  formaIndex();
   return cache.analysis.entries
     .filter(e => !category || e.category === category)
     .sort((x, y) => (x.name || '').localeCompare(y.name || ''))
     .map(decorate);
+});
+
+/**
+ * Die Update-Haendler mit ihrem Angebot.
+ *
+ * Wie bei Baro traegt der Hauptprozess nur die drei Quellen zusammen - Tabelle,
+ * Inventar, Mastery-Stand; der Abgleich steckt in core/vendors.js.
+ *
+ * `refresh: false` beim Inventar ist Absicht: es wird gelesen, was daliegt,
+ * und NIE ein Abruf angestossen. Ohne Abzug bleibt es beim reinen Angebot -
+ * dann steht ueberall ein Strich statt eines erfundenen "fehlt".
+ */
+ipcMain.handle('vendors:get', async () => {
+  try {
+    if (!cache.catalog || !cache.analysis) await ensureData({ refresh: false });
+    const inventory = await loadInventory({ refresh: false })
+      .then(r => r.inventory).catch(() => null);
+
+    return {
+      ok: true,
+      data: buildVendorOffers({
+        inventory,
+        catalog: cache.catalog,
+        entries: cache.analysis?.entries || []
+      })
+    };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
 });
 
 ipcMain.handle('worldstate:get', async (_e, force) => {

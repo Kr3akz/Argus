@@ -68,7 +68,8 @@ Windows APIs.
 
 | | |
 |---|---|
-| **Mastery planning** | Every item you have not mastered, ranked by what it actually costs you. Set goals and Argus resolves them down to the raw materials — including how long the build actually takes, and whether the vault is shut on it. |
+| **Mastery planning** | Every item you have not mastered, ranked by what it actually costs you. Set goals and Argus resolves them down to the raw materials — including how long the build actually takes, whether the vault is shut on it, and which blueprints want a Forma before you can even start. |
+| **Update vendors** | The eighteen shops that sell a Warframe instead of dropping it — Otak, Zorba, Acrithis, the shrine at Cetus — each with its price list lined up against what you already own, down to the blueprints you bought months ago and forgot. → [details](docs/vendors.md) |
 | **Live world state** | Open-world cycles, void fissures, sorties, Nightwave, invasions, Steel Path and Baro Ki'Teer, with desktop notifications for the fissures you care about. → [overlay & notifications](docs/controls.md) |
 | **Weekly rotation** | Everything that resets once a week in one place — Archon Hunt, The Circuit, Deep and Temporal Archimedea, Netracells, Kahl's Garrison, and the vendor resets for Teshin, Bird 3, Yonta, Acrithis, Palladino and Nightwave. |
 | **Relic rewards** | The reward screen opens, Argus reads all four parts off the screen and puts the platinum price and ducat value under each card — inside the game. → [details](docs/relics.md) |
@@ -207,6 +208,7 @@ alone.
 | [Relic rewards](docs/relics.md) | The overlay on a reward screen and the price tags inside the game |
 | [Foundry, chains, vault & subsume](docs/foundry.md) | What is building, which weapons eat other weapons, which primes are vaulted, and which frames you have subsumed |
 | [Ducats and Baro](docs/baro.md) | Melt or sell, what can no longer be farmed, and Baro's manifest against your inventory |
+| [Update vendors](docs/vendors.md) | The shops that sell a Warframe — their prices, what of it you own, and where the numbers come from |
 | [Inventory](docs/inventory.md) | Mods, arcanes and relics — cards, data sheets and drop locations |
 | [Trading](docs/trading.md) | Orders, contracts and the local trade ledger |
 | [Builds and mods](docs/builds.md) | Loadouts, what you own, and the Overframe import |

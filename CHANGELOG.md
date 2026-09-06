@@ -21,6 +21,40 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+### Added
+
+- **Update vendors, as their own mode in the mastery tab.** Since Citrine, a new
+  Warframe is usually not farmed but bought: one vendor, one currency, one wall
+  of prices that says nothing about what you already have. Eighteen of those
+  shops are in here now — Otak, Acrithis for Kullervo and again for Oraxia,
+  Zorba, Ordis, the shrine at the gates of Cetus, Bird 3, Chipper, Flare, Amir,
+  Roathe, Nightcap, Hunhow, Father, Little Duck, Loid, Cavalero and Minerva —
+  each with its offer lined up against your arsenal. A tile per offer rather
+  than per vendor, because Acrithis' two stocks have nothing in common but her.
+- **The vendor list separates three ways of already having something.** "Owned"
+  is the finished item; "blueprint bought" is the one you paid for months ago
+  and forgot, and buying it twice is money gone; "part built" is the component
+  sitting in foundry stock. The price on each item is the sum for what is still
+  missing, not for the full set — and once nothing is missing, the card says so
+  instead of vanishing.
+- **The vendor list counts your purse, and what is left to build.** Beside the
+  shop's own figures stands what you actually hold of its currency — Scuttler
+  Husks and Fate Pearls sit in your inventory, syndicate standing sits somewhere
+  else entirely, and both now say the same thing: enough, or short by this much.
+  Every price wears
+  the currency's own symbol, so a line reads *500 + 350* with two crystals next
+  to it instead of spelling out "Belric Crystal Fragment" on every row; the
+  names are written out once, in the header. And because the price at the
+  counter buys a blueprint rather than the weapon, every item you do not own yet
+  carries the resources and credits the build still wants, marked against your
+  stock in the same colours the goal cards use.
+- **A "No Forma" filter under Cheap to pick up.** Seventy-five items in the game
+  want a Forma in their blueprint before you can build them at all — three of
+  them only through a weapon further down the chain, like War through Broken
+  War. An item that is "cheap to pick up" and then costs a Forma is precisely
+  not that, so one chip in the section heading hides them. The number shows on
+  the cards and on the catalogue tiles either way.
+
 ## [1.8.1] - 2026-09-06
 
 ### Changed

@@ -22,6 +22,7 @@
     "start": "electron .",
     "icon": "node tools/make-icon.mjs",
     "check-farm": "node tools/check-farm-nodes.mjs",
+    "check-vendors": "node tools/check-vendor-wares.mjs",
     "dist": "electron-builder --publish never",
     "dist:dir": "electron-builder --dir",
     "report": "node src/cli/report.js",
@@ -32,6 +33,7 @@
     "relic-test": "node src/cli/relic-test.js",
     "foundry-test": "node src/cli/foundry-test.js",
     "baro-test": "node src/cli/baro-test.js",
+    "vendor-test": "node src/cli/vendor-test.js",
     "ocr-test": "node src/cli/ocr-test.js",
     "ocr-probe": "node src/cli/ocr-probe.js"
   },

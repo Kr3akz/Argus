@@ -521,6 +521,9 @@
           <button class="ducats-tab-btn" id="tab-mastery-mode-foundry" data-mode="foundry">
             <span class="btn-ic" data-icon="qaFoundry"></span><span>Foundry</span>
           </button>
+          <button class="ducats-tab-btn" id="tab-mastery-mode-vendors" data-mode="vendors">
+            <span class="btn-ic" data-icon="shop"></span><span>Vendors</span>
+          </button>
         </div>
         <span class="meta" id="mastery-mode-hint">Goals, resources & mastery recommendations</span>
       </div>
@@ -563,9 +566,17 @@
         </div>
         <div id="quick-wins" class="cards"></div>
 
-        <div class="section-head">
-          <h2>Cheap to pick up</h2>
-          <p>Straight from the market or a dojo lab — no long farming prerequisites</p>
+        <!-- Der Forma-Filter steht hier und nicht im Katalog: "billig zu holen"
+             ist die Frage, bei der ein Forma im Bauplan den Unterschied macht.
+             Gemeint ist die BAUZUTAT, nicht das Polarisieren danach. -->
+        <div class="section-head section-head-row">
+          <div>
+            <h2>Cheap to pick up</h2>
+            <p>Straight from the market or a dojo lab — no long farming prerequisites</p>
+          </div>
+          <button class="filter-chip" id="filter-noforma"
+                  title="Hide everything whose blueprint asks for a Forma before you can build it">
+            No Forma</button>
         </div>
         <div id="easy-gains" class="cards"></div>
         <!-- Erscheint nur, wenn es hinter den acht sichtbaren noch etwas gibt.
@@ -648,6 +659,33 @@
         </div>
 
         <div id="chains-body"></div>
+      </div>
+
+      <!-- ----- Modus: Haendler -----
+           Seit Citrine haengt jeder Warframe an einem eigenen Haendler mit
+           eigener Waehrung. Die Liste steht im Spiel, der Besitzstand nicht -
+           deshalb hier beides nebeneinander. Aufgeteilt wird nach ANGEBOT,
+           nicht nach Person: Acrithis fuehrt zwei Sortimente, und die haben
+           nichts miteinander zu tun ausser dem Verkaeufer. -->
+      <div id="mastery-pane-vendors" class="mastery-pane">
+        <div class="section-head">
+          <h2>Update vendors</h2>
+          <p>Every Warframe that is bought rather than farmed — the offer, its price, and what of it you already own</p>
+        </div>
+
+        <div class="ducats-filter-row vendor-filter-row">
+          <div class="searchbox flex-search">
+            <span class="ic" data-icon="search"></span>
+            <input id="vendor-search" type="text" placeholder="Search a vendor or frame … e.g. Oraxia, Otak, Koumei">
+          </div>
+          <div class="ducats-filter-badges" id="vendor-chips">
+            <button class="filter-chip active" data-vendorfilter="all">All</button>
+            <button class="filter-chip" data-vendorfilter="open" title="Vendors that still have something you do not own">Something left</button>
+            <button class="filter-chip" data-vendorfilter="mastery" title="Vendors selling an item that would be new mastery">New mastery</button>
+          </div>
+        </div>
+
+        <div id="vendor-body"></div>
       </div>
     </section>
 

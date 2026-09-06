@@ -148,6 +148,26 @@ export function combineGoals(uniqueNames, catalog) {
            totalCredits: credits, totalBuildSeconds: seconds };
 }
 
+/** Forma im Materialbaum. Ein einziger Pfad - geprueft am ganzen Katalog. */
+export const FORMA_PATH = '/Lotus/Types/Items/MiscItems/Forma';
+
+/**
+ * Wie viele Forma der Bau eines Items verschlingt, Komponenten eingerechnet.
+ *
+ * NICHT die Forma fuers Polarisieren - das ist eine Entscheidung des Spielers.
+ * Hier geht es um die Zutat, die im Bauplan steht und die man vorher besorgt
+ * haben muss: 72 der 956 Mastery-Items verlangen sie direkt, drei weitere nur
+ * ueber eine Zwischenwaffe (War ueber Broken War, Sarpa, Aksomati).
+ *
+ * Ueber resolveGoal und nicht ueber einen eigenen Durchlauf, damit die Zahl
+ * dieselbe ist, die auch im Fenster zum Item unter den Materialien steht -
+ * inklusive der Rezepte, die mehr als ein Stueck liefern.
+ */
+export function formaCost(uniqueName, catalog, { names = null } = {}) {
+  const { materials } = resolveGoal(uniqueName, catalog, { names });
+  return materials.find(m => m.uniqueName === FORMA_PATH)?.count || 0;
+}
+
 export function formatDuration(seconds) {
   const h = Math.round(seconds / 3600);
   if (h < 24) return `${h}h`;

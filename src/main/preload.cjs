@@ -41,6 +41,10 @@ contextBridge.exposeInMainWorld('api', {
   /* Baros Angebot gegen das eigene Inventar. Steht im Dukaten-Tab, weil es
      dieselbe Waehrung ausgibt, die dort eingenommen wird. */
   getBaroOffer:    ()          => ipcRenderer.invoke('baro:get'),
+  /* Die Update-Haendler (Otak, Zorba, der Schrein ...). Anders als Baro haengt
+     ihr Angebot an keiner Uhr - deshalb kein Weltzustand, nur Tabelle,
+     Inventar und Mastery-Stand. */
+  getVendorOffers: ()          => ipcRenderer.invoke('vendors:get'),
   /* Inventar: get liest nur die lokale Datei, refresh geht als einziger Weg
      ins Netz. Zugangsdaten bleiben im Hauptprozess - hier kommt nie ein
      accountId oder nonce an. */
