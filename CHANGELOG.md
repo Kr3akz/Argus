@@ -44,16 +44,16 @@ follow [semantic versioning](https://semver.org/lang/en/).
   it uses has no known starting point. So Argus watches for it to move, once,
   and from then on knows the answer for good. Until that happens Kahl keeps the
   manual switch; a week of ticking beats a week of being told the wrong thing.
-- **Open first, done underneath — on one screen.** What you still owe is
-  answered at the top of the page rather than by reading seven cards: finished
-  weeklies shrink to a single strip below the rest, mission details sit on one
-  line each, and the whole tab fits without scrolling. The three columns line
-  up top and bottom the way the vendor list always has, and which card goes
-  where is worked out by measuring every card and trying every arrangement —
-  seven cards over three columns is a small enough question to answer exactly
-  rather than approximately. Whatever height is left over in a short column is
-  shared out in proportion to what each card carries, so the one-line cards
-  stop ending in a handspan of nothing.
+- **The whole tab on one screen, and what's done is green.** A finished weekly
+  keeps its place in the grid and turns green at the edge rather than being
+  moved to a list of its own, so nothing jumps around when you tick something
+  off. Mission details sit on one line each, and the three columns line up top
+  and bottom the way the vendor list always has: which card goes where is
+  worked out by measuring every card and trying every arrangement — seven cards
+  over three columns is a small enough question to answer exactly rather than
+  approximately. Whatever height is left over in a short column is shared out
+  in proportion to what each card carries, so the one-line cards stop ending in
+  a handspan of nothing.
 - **Every card shows what the week is actually worth.** The Archon Hunt carries
   the shard its archon drops — Amar crimson, Nira amber, Boreal azure — Deep
   Archimedea its three colours and the Melee Arcane Adapter, Temporal all six

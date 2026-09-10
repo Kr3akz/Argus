@@ -10505,20 +10505,6 @@ function renderWeeklyContentCard(e) {
     </div>`;
 }
 
-/* Erledigtes braucht seine Einzelheiten nicht mehr - die Frage dazu ist
-   beantwortet. Ein Streifen je Karte statt einer ganzen: das ist der Platz,
-   der sonst zum Scrollen zwingt. */
-function renderWeeklyDoneCard(e) {
-  return `
-    <div class="wk-done" data-weekly-card="${esc(e.key)}" title="${esc(e.name)}">
-      <span class="wk-icon">${weeklyIcon(e.key, 15)}</span>
-      <b>${esc(e.name)}</b>
-      ${e.progress ? `<span class="wk-done-num">${e.progress.erledigt}/${e.progress.von}</span>` : ''}
-      <span class="wk-done-tick">${Icon.checkmark ? Icon.checkmark(13) : '✓'}</span>
-      ${e.nachweis !== 'auto' ? renderManualToggle(e) : ''}
-    </div>`;
-}
-
 function renderWeeklyVendorCard(e) {
   /* Mit Ueberschrift, sonst liest sich jede Chipreihe als "das gibt es
      diese Woche" - bei Teshins Dauersortiment waere das schlicht falsch. */
@@ -10707,36 +10693,23 @@ function besteVerteilung(hoehen, anzahl) {
   return beste || new Array(n).fill(0);
 }
 
-/* Offen zuerst als volle Karten, Erledigtes darunter als Streifen - die
-   Frage lautet "was fehlt mir noch", und die Antwort soll ganz oben stehen
-   und ohne Scrollen dastehen. */
+/* Alle Karten in einem Raster, erledigte gruen umrandet an ihrem Platz.
+   Frueher wanderten sie in eine eigene Zeile darunter - das kostete eine
+   Ueberschrift, eine Zeile Hoehe und liess die Karten beim Abhaken quer
+   ueber die Seite springen. Die Farbe sagt dasselbe, ohne etwas davon. */
 function renderWeeklyContentPane(w) {
-  const offen  = w.content.filter(c => c.status !== 'done');
-  const fertig = w.content.filter(c => c.status === 'done');
 
   const teile = [];
-  if (offen.length) {
+  if (w.content.length) {
     const n = weeklySpaltenAnzahl();
     /* Erste Verteilung reihum - sie wird gleich durch die gemessene
        ersetzt, muss aber schon die richtige Spaltenbreite haben. */
     const spalten = Array.from({ length: n }, () => []);
-    offen.forEach((c, i) => spalten[i % n].push(c));
+    w.content.forEach((c, i) => spalten[i % n].push(c));
     teile.push(`<div class="weekly-cols">${spalten
       .map(sp => `<div class="wk-col">${sp.map(renderWeeklyContentCard).join('')}</div>`)
       .join('')}</div>`);
-  }
-  if (fertig.length) {
-    /* Die Beschriftung steht IN der Zeile, nicht darueber. Als eigene
-       Ueberschrift kostete sie 31px - und genau die fehlten, sobald
-       ueberhaupt etwas erledigt war. Ueber den offenen Karten braucht es
-       gar keine mehr: was oben steht, ist offen, und die Zahl steht in der
-       Pille an der Seitenleiste. */
-    teile.push(`<div class="weekly-done-row">
-      <span class="weekly-done-label">Done this week</span>
-      ${fertig.map(renderWeeklyDoneCard).join('')}
-    </div>`);
-  }
-  if (!offen.length && !fertig.length) {
+  } else {
     teile.push('<p class="meta">Nothing to show — the world state came back empty.</p>');
   }
 
