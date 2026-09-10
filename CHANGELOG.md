@@ -47,7 +47,11 @@ follow [semantic versioning](https://semver.org/lang/en/).
 - **The whole tab on one screen, and what's done is green.** A finished weekly
   keeps its place in the grid and turns green at the edge rather than being
   moved to a list of its own, so nothing jumps around when you tick something
-  off. Mission details sit on one line each, and the three columns line up top
+  off; its badge reads *done* instead of saying where the number came from,
+  because by then nobody is asking. The tab has also lost its "work in
+  progress" label — with the last three weeklies tracking themselves, it does
+  what it set out to do.
+  Mission details sit on one line each, and the three columns line up top
   and bottom the way the vendor list always has: which card goes where is
   worked out by measuring every card and trying every arrangement — seven cards
   over three columns is a small enough question to answer exactly rather than

@@ -10430,8 +10430,13 @@ function renderWeeklyRewards(liste) {
   return `<div class="wk-rewards">${bilder}</div>`;
 }
 
-/* Das Schild rechts oben: woher die Zahl auf dieser Karte kommt. */
+/* Das Schild rechts oben: woher die Zahl auf dieser Karte kommt - oder,
+   wenn nichts mehr offen ist, schlicht dass es das war. Woher der Stand
+   kam, ist dann keine Frage mehr, die jemand stellt. */
 function weeklyNachweisTag(e) {
+  if (e.status === 'done') {
+    return '<span class="weekly-src weekly-src-done" title="Nothing left this week">done</span>';
+  }
   if (e.nachweis === 'auto') {
     return '<span class="weekly-src weekly-src-auto" title="Read from your own game data">tracked</span>';
   }

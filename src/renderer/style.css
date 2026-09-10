@@ -8923,6 +8923,9 @@ input[type=number]:focus, input[type=email]:focus, input[type=password]:focus {
 /* "unread": gerechnet, aber seit der letzten Lesung des Inventars ist nichts
    dazugekommen - die Null darunter ist kein Messwert dieser Woche. */
 .weekly-src-old   { background: rgba(255, 255, 255, .05); color: var(--text-3); font-style: italic; }
+/* "done" tritt an die Stelle aller anderen: ist nichts mehr offen, fragt
+   niemand mehr, woher die Zahl kam. */
+.weekly-src-done  { background: rgba(var(--t-green) / .18); color: var(--green); }
 
 /* ---------- Fortschritt: Punkte (Archon 3, Netracells 5) ---------- */
 .wk-pips { display: flex; align-items: center; gap: 5px; }
