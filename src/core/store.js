@@ -31,7 +31,8 @@ const empty = () => ({
   ownedMods: [],
   trackedRelics: [],
   notifications: DEFAULT_NOTIFICATIONS(),
-  weeklyDone: {}
+  weeklyDone: {},
+  kahlAnker: null
 });
 
 export async function load() {
@@ -48,6 +49,7 @@ export async function load() {
       ownedMods: Array.isArray(parsed.ownedMods) ? parsed.ownedMods : [],
       trackedRelics: Array.isArray(parsed.trackedRelics) ? parsed.trackedRelics : [],
       weeklyDone: parsed.weeklyDone && typeof parsed.weeklyDone === 'object' ? parsed.weeklyDone : {},
+      kahlAnker: parsed.kahlAnker && typeof parsed.kahlAnker === 'object' ? parsed.kahlAnker : null,
       notifications: {
         ...defNotif,
         ...rawNotif,
@@ -92,8 +94,8 @@ export async function toggleGoal(uniqueName) {
 /* ---------------------------- Wochenrotation ---------------------------- */
 
 /**
- * Haken fuer Inhalte ohne nachweisbaren Fortschritt (Archimedea, Kahl - siehe
- * AUTO_ERKENNBAR in core/weekly.js). Der Schluessel traegt den Reset-
+ * Haken fuer Inhalte, deren Fortschritt sich gerade nicht nachweisen laesst -
+ * siehe annotateWeekly in core/weekly.js. Der Schluessel traegt den Reset-
  * Zeitpunkt mit ("kahl:1786924800000"): damit gilt ein Haken automatisch nur
  * fuer die Woche, in der er gesetzt wurde - kein Aufraeumjob noetig, ein
  * abgelaufener Eintrag wird beim naechsten Reset einfach nie wieder
@@ -104,6 +106,17 @@ export async function setWeeklyDone(key, resetAt, done) {
   const feld = `${key}:${resetAt}`;
   if (done) s.weeklyDone[feld] = true;
   else delete s.weeklyDone[feld];
+  return save(s);
+}
+
+/**
+ * Der Wochenanker fuer Kahl - was WeekCount 650 fuer ein Datum ist, laesst
+ * sich nur durch Beobachtung lernen; siehe kahlAnker in core/weekly.js.
+ * Ein paar Bytes, die einmal geschrieben und danach nur noch gelesen werden.
+ */
+export async function setKahlAnker(anker) {
+  const s = await load();
+  s.kahlAnker = anker || null;
   return save(s);
 }
 

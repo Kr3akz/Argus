@@ -35,7 +35,7 @@ import { loadMods, POLARITIES, RARITY_LABELS, searchMods, isAuraMod, isExilusMod
 import { evaluateBuild, combineBuilds, orokinTypeFor } from '../core/builds.js';
 import { indexArcanes, searchArcanes, arcaneSlotCount, maxArcaneRank, isArcaneName } from '../core/arcanes.js';
 import { fetchWorldState } from '../core/worldstate.js';
-import { annotateProgress } from '../core/weekly.js';
+import { annotateWeekly, kahlAnker } from '../core/weekly.js';
 import { searchResourceGuides, RESOURCE_CATEGORIES } from '../core/farming.js';
 import { getMiningGuide } from '../core/mining.js';
 import { getDucatsReferenceList, buildPrimeSets, buildDucatsCatalog, buildInventoryDucats,
@@ -1941,11 +1941,34 @@ ipcMain.handle('weekly:get', async (_e, force) => {
        NIE ein Abruf angestossen und NIE zum Einschalten der
        Speicherberechtigung aufgefordert. Ohne Inventar bleibt die
        Wochenansicht so vollstaendig, wie sie vorher war: jeder Inhalt faellt
-       dann auf den manuellen Schalter zurueck (siehe unten). */
+       dann auf den manuellen Schalter zurueck. */
+    let inventory = null;
     try {
-      const { inventory } = await loadInventory({ refresh: false });
-      weekly = annotateProgress(weekly, inventory);
+      ({ inventory } = await loadInventory({ refresh: false }));
     } catch { /* kein Abruf vorhanden - unveraendert weiter */ }
+
+    const st = await store.load();
+    const wochenEnde = weekly.resetAt ? new Date(weekly.resetAt).getTime() : null;
+
+    /* Kahls Wochenzaehler traegt kein Datum. Der Anker lernt die Zuordnung
+       durch Beobachtung - siehe kahlAnker in core/weekly.js. Geschrieben
+       wird nur, wenn sich tatsaechlich etwas geaendert hat. */
+    let anker = st.kahlAnker;
+    if (inventory) {
+      const neu = kahlAnker(anker, inventory, wochenEnde);
+      if (JSON.stringify(neu) !== JSON.stringify(anker)) {
+        anker = neu;
+        await store.setKahlAnker(neu);
+      }
+    }
+
+    /* Handhaken, Fortschritt und Zustand in einem Zug - der Zustand haengt
+       von beidem ab und wird deshalb nicht mehr an zwei Stellen gerechnet. */
+    const manuell = {};
+    for (const c of weekly.content) {
+      if (st.weeklyDone[`${c.key}:${weekly.resetAt}`]) manuell[c.key] = true;
+    }
+    weekly = annotateWeekly(weekly, inventory, Date.now(), { manuell, kahlAnker: anker });
 
     /* Bilder fuer die Circuit-Auswahl. Nur HIER moeglich und nicht in
        core/weekly.js: der Katalog ist eine Electron-freie, aber grosse
@@ -1972,26 +1995,14 @@ ipcMain.handle('weekly:get', async (_e, force) => {
       };
     } catch { /* ohne Katalog eben ohne Bilder */ }
 
-    /* Manuelle Haken fuer alles ohne Nachweis (Archimedea, Kahl). Ueberlebt
-       die Fortschrittsauswertung, weil beide unterschiedliche Inhalte
-       betreffen - keine Ueberschneidung. */
-    const st = await store.load();
-    weekly = {
-      ...weekly,
-      content: weekly.content.map(c => ({
-        ...c,
-        manuellErledigt: !!st.weeklyDone[`${c.key}:${weekly.resetAt}`]
-      }))
-    };
-
     return { ok: true, data: weekly };
   } catch (err) {
     return { ok: false, error: err.message };
   }
 });
 
-/* Haken fuer Inhalte, die sich nicht aus dem Inventar ablesen lassen -
-   siehe AUTO_ERKENNBAR in core/weekly.js. resetAt kommt vom Renderer mit,
+/* Haken fuer Inhalte, die sich gerade nicht aus dem Inventar ablesen lassen -
+   siehe annotateWeekly in core/weekly.js. resetAt kommt vom Renderer mit,
    der ihn aus derselben Antwort hat wie dieser Handler ihn baut - beide
    muessen denselben Wochenanfang meinen, sonst faellt der Haken beim
    naechsten Laden unter einen falschen Schluessel. */

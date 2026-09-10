@@ -459,6 +459,12 @@
 
       <div id="weekly-error" class="settings-note warn hidden"></div>
 
+      <!-- Steht ueber beiden Ansichten, weil es die Aussagekraft der ganzen
+           Seite betrifft: ohne Inventar aus DIESER Woche wird nichts
+           automatisch verfolgt, und das soll dranstehen statt still zu
+           passieren. -->
+      <div id="weekly-inv-note" class="weekly-inv-note hidden"></div>
+
       <div class="weekly-mode-row">
         <div class="ducats-tabs">
           <button class="ducats-tab-btn active" id="tab-weekly-mode-content" data-mode="content">
@@ -472,7 +478,12 @@
       </div>
 
       <div class="weekly-pane active" id="weekly-pane-content">
-        <div class="weekly-grid" id="weekly-content"></div>
+        <!-- Ohne .weekly-grid: der Behaelter traegt jetzt je Gruppe eine
+             Ueberschrift UND ein eigenes Raster (siehe
+             renderWeeklyContentPane). Blieb die Spaltenklasse hier stehen,
+             lagen zwei column-counts ineinander und die Ueberschrift
+             besetzte die erste Spalte allein. -->
+        <div id="weekly-content"></div>
       </div>
 
       <div class="weekly-pane" id="weekly-pane-vendors">
@@ -489,7 +500,8 @@
           <span class="weekly-src weekly-src-reset">reset</span> has none in the API and
           follows the common weekly reset, taken from the Archon Hunt.
           <span class="weekly-src weekly-src-auto">tracked</span> is read from your own
-          game data — nothing is guessed; where that isn't possible, tick it off yourself.
+          game data — and only from an inventory that belongs to the current week.
+          Nothing is guessed; where that isn't possible, tick it off yourself.
         </p>
       </div>
     </section>

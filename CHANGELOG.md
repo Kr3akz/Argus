@@ -21,6 +21,52 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-09-10
+
+### Added
+
+- **The Descendia joins the weekly rotation.** It was missing from the tab
+  altogether, which was odd for the one weekly your own save file describes
+  best. Normal and Steel Path get a bar each, because they are separate reward
+  tracks and you play them separately — ten reward floors apiece, filled up to
+  the last Infernum you claimed. Nothing here is estimated: the record in your
+  save carries its own week, so if it belongs to an older one the bar reads
+  zero rather than pretending.
+- **Deep and Temporal Archimedea show Research Points instead of a checkbox.**
+  The same bar the game shows you, with the reward tiers marked on it at 5, 10,
+  15, 20 and 25 — and up to 37 once you go Elite. "16 of 27" says what a tick
+  never could: two missions down with every parameter switched on, one to go.
+  The week is proven by the four Personal Modifiers, which appear both in the
+  world state and in your save; if they disagree, the score belongs to another
+  week and is not shown.
+- **Kahl's Garrison can tick itself off.** Your save records whether the weekly
+  mission was completed, but not which week the entry belongs to — the counter
+  it uses has no known starting point. So Argus watches for it to move, once,
+  and from then on knows the answer for good. Until that happens Kahl keeps the
+  manual switch; a week of ticking beats a week of being told the wrong thing.
+- **Open first, done underneath.** The content list is split in two now, with a
+  count on each heading, so "what do I still owe this week" is answered at the
+  top of the page rather than by reading seven cards.
+
+### Fixed
+
+- **The Archon Hunt counted nothing at all.** It looked for runs completed
+  *after* the end of the current week and before right now — a window that can
+  never contain anything, so the count sat at zero however many missions you
+  had done. It now looks at the week that is actually running.
+- **Netracells showed last week's runs as this week's.** The check meant to
+  catch stale data was a week out of step, so it only accepted a figure once it
+  had expired and rejected it while it was current. Four of five runs stayed on
+  screen with all five search pulses back in hand.
+- **Progress is only read from a save file that belongs to this week.** Both
+  bugs above shared a cause: nothing asked how old the data was. Every weekly
+  now goes through that question first, and when the answer is "older than this
+  week" the tab says so in a line at the top instead of quietly showing figures
+  from the last one.
+- **Kahl's remaining time was a few hours instead of a few days.** The world
+  state lists his garrison with a daily window, and the tab took it at face
+  value and labelled it live. It follows the weekly reset now, like the rest.
+
 ## [1.9.0] - 2026-09-07
 
 ### Added

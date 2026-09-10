@@ -10,14 +10,24 @@
  *
  * WOHER DIE ZEITEN KOMMEN - UND WO NICHT:
  *   Alles mit `quelle: 'api'` traegt ein echtes Ablaufdatum aus der
- *   Antwort. Fuer die uebrigen (Netracells, die meisten Haendler) liefert
- *   die API keins. Die haengen aber alle am selben woechentlichen Reset,
- *   und DEN kennen wir aus einer echten Quelle: dem Ablauf der Archon-Jagd.
- *   Sie tragen `quelle: 'reset'` - die Oberflaeche kennzeichnet das, damit
- *   niemand eine abgeleitete Zeit fuer eine gemessene haelt.
+ *   Antwort. Fuer die uebrigen (Netracells, Descendia, Kahl, die meisten
+ *   Haendler) liefert die API keins - oder ein falsches, siehe den
+ *   Kommentar bei kahl(). Die haengen aber alle am selben woechentlichen
+ *   Reset, und DEN kennen wir aus einer echten Quelle: dem Ablauf der
+ *   Archon-Jagd. Sie tragen `quelle: 'reset'` - die Oberflaeche
+ *   kennzeichnet das, damit niemand eine abgeleitete Zeit fuer eine
+ *   gemessene haelt.
  *
  *   Erfunden wird nichts. Fehlt die Archon-Jagd, fehlt auch der Reset, und
  *   die betroffenen Eintraege stehen ohne Restzeit da.
+ *
+ * WOHER DER FORTSCHRITT KOMMT:
+ *   Der zweite Teil dieser Datei (ab "Echter Spielfortschritt") liest aus
+ *   dem eigenen Inventar, was diese Woche schon gelaufen ist. Jede Quelle
+ *   traegt dort ihren Beleg im Kommentar - und jede muss zuerst durch
+ *   dieselbe Frage: stammt dieses Inventar ueberhaupt aus DIESER Woche?
+ *   Siehe inventarWoche(). Wo sich nichts belegen laesst, steht ein
+ *   Handhaken statt einer erfundenen Zahl.
  */
 
 /* Die Typkennungen aus der API kommen zerschossen an ("C T_ L A B"). Der
@@ -26,12 +36,17 @@ const ARCHIMEDEA_ARTEN = {
   CTLAB: {
     key: 'deep-archimedea',
     name: 'Deep Archimedea',
-    ort: 'Sanctum Anatomica (Deimos)'
+    ort: 'Sanctum Anatomica (Deimos)',
+    /* Praefix der Inventarfelder: ...CacheScoreMission traegt die Research
+       Points, ...ActiveFrameVariants die vier Personal Modifiers der Woche.
+       Siehe archimedeaFortschritt weiter unten. */
+    feld: 'EntratiLabConquest'
   },
   CTHEX: {
     key: 'temporal-archimedea',
     name: 'Temporal Archimedea',
-    ort: 'Höllvania (1999)'
+    ort: 'Höllvania (1999)',
+    feld: 'EchoesHexConquest'
   }
 };
 
@@ -111,6 +126,12 @@ function archimedea(a) {
     ort: art.ort,
     expiry: a.expiry || null,
     quelle: 'api',
+    feld: art.feld,
+    /* Die vier Personal Modifiers dieser Woche. Sie stehen hier nicht zum
+       Anzeigen, sondern als Wochenbeweis: dasselbe Quartett taucht im
+       Inventar unter ...ActiveFrameVariants auf, und nur wenn beide Mengen
+       gleich sind, gehoert der gespeicherte Punktestand zu DIESER Woche. */
+    modifiers: (a.personalModifiers || []).map(m => m.key).filter(Boolean),
     eintraege: (a.missions || []).map(m => ({
       titel: m.missionType || m.missionTypeKey || '',
       /* Abweichung und Risiken sind das, was die Woche ausmacht - ohne sie
@@ -128,8 +149,13 @@ function kahl(syndikate) {
     name: "Kahl's Garrison",
     detail: 'Break Narmer',
     ort: null,
-    expiry: k.expiry || null,
-    quelle: 'api',
+    /* NICHT k.expiry: der Eintrag in syndicateMissions traegt ein
+       TAEGLICHES Fenster (beobachtet: activation 09.09. 15:59 -> expiry
+       10.09. 15:59), waehrend Kahls Auftrag woechentlich zurueckgesetzt
+       wird. Als "live" ausgezeichnet stand dort ein paar Stunden Restzeit,
+       wo dreieinhalb Tage richtig waren. */
+    expiry: null,
+    quelle: 'reset',
     eintraege: [{ titel: 'Weekly mission for Stock and Archon Shards', unter: '' }]
   };
 }
@@ -143,6 +169,29 @@ const netracells = () => ({
   expiry: null,
   quelle: 'reset',
   eintraege: [{ titel: 'Archon Shards and Arcanes from the Cavia', unter: '' }]
+});
+
+/**
+ * Ebenfalls kein Eintrag in der API - warframestat.us kennt Descendia in
+ * keinem seiner Felder. Was diese Woche an Challenges ansteht, laesst sich
+ * deshalb nicht anzeigen; der Fortschritt dafuer umso genauer, der steht
+ * naemlich im Inventar (siehe descendiaFortschritt).
+ *
+ * Zahlen am Wiki gegengelesen (wiki.warframe.com/w/The_Descendia): 21
+ * Infernums, Belohnungen auf 2/4/6/9/11/13/16/18/20/21, jede genau einmal
+ * pro Woche, Reset Montag 00:00 UTC - derselbe wie hier ueberall.
+ */
+const descendia = () => ({
+  key: 'descendia',
+  name: 'The Descendia',
+  detail: '21 Infernums',
+  ort: 'Dark Refractory (Navigation)',
+  expiry: null,
+  quelle: 'reset',
+  eintraege: [{
+    titel: 'Ignia, Maphica and Arcanes along the way',
+    unter: 'Roathe on Infernum 21 drops Uriel and Vinquibus parts'
+  }]
 });
 
 /* ------------------------------ Haendler ------------------------------ */
@@ -243,6 +292,7 @@ export function buildWeekly(data, jetzt = Date.now()) {
     circuit(data.duviriCycle),
     ...(data.archimedeas || []).map(archimedea),
     netracells(),
+    descendia(),
     kahl(data.syndicateMissions)
   ].filter(Boolean);
 
@@ -269,106 +319,333 @@ export function buildWeekly(data, jetzt = Date.now()) {
 
 /* -------------------------- Echter Spielfortschritt -------------------------- */
 
-/**
- * Welche Wochen-Inhalte sich automatisch erkennen lassen - und woraus.
- *
- * NICHT in dieser Liste: Kahl's Garrison und beide Archimedea. Fuer keinen
- * von beiden liefert das Inventar ein Feld, das eindeutig "diese Woche
- * erledigt" bedeutet - Missions[] zaehlt Lebenszeit-Abschluesse ohne
- * Zeitstempel, DailyAffiliationKahl ist gesammelter Ruf, kein Haken. Wo
- * sich das nicht nachweisen laesst, wird nichts geschaetzt: die
- * Oberflaeche zeigt dort einen Schalter zum selbst Abhaken statt eines
- * erfundenen Fortschritts.
- *
- * Die drei anderen sind belegt:
- *   archon      PeriodicMissionCompletions traegt "EliteAlert", "EliteAlertB", ...
- *               - im echten EE.log heisst die Archon-Jagd intern genauso
- *               ("Background.lua: EliteAlertMission at ..."). Gezaehlt wird
- *               nur, wie viele solcher Eintraege in diese Woche fallen -
- *               NICHT welcher Buchstabe zu welchem der drei Knoten gehoert,
- *               das waere schon wieder geraten.
- *   netracells  EntratiVaultCountLastPeriod, gedeckelt bei 5 - Name und
- *               Deckel passen zum bekannten Wochenlimit der Netracells.
- *               EntratiVaultCountResetDate liegt am selben Wochenanfang wie
- *               archonHunt.expiry - die beiden Felder beschreiben denselben
- *               Zeitraum.
- *   circuit     EndlessXP fuehrt Earn (gesammelte XP) gegen
- *               PendingRewards[].RequiredTotalXp - derselbe Vergleich, den
- *               das Spiel selbst fuer die Balkenanzeige im Circuit macht.
- */
-export const AUTO_ERKENNBAR = new Set(['archon', 'netracells', 'circuit']);
-
 /** {"$date":{"$numberLong":"..."}} -> Millisekunden. Alles andere -> null. */
 function ejsonMillis(v) {
   const n = v?.$date?.$numberLong;
   return n != null ? Number(n) : null;
 }
 
-/** Faellt ein EJSON-Datum in [von, bis)? */
-function inFenster(v, von, bis) {
-  const t = ejsonMillis(v);
-  return t != null && t >= von && (bis == null || t < bis);
+/**
+ * Aus welcher Woche stammt dieses Inventar?
+ *
+ * DIE WICHTIGSTE PRUEFUNG IM GANZEN MODUL. Ohne sie stand hier letzte Woche
+ * neben dieser: ein Abzug vom Sonntagabend trug vier gelaufene Netracells
+ * und zwei Archon-Missionen, und beides wurde am Montag als "diese Woche"
+ * ausgegeben, obwohl der Reset dazwischen lag.
+ *
+ * EndlessXP traegt das Ende seiner Woche mit sich, und der Server schreibt
+ * es auch dann fort, wenn gar nicht gespielt wurde - belegt an zwei
+ * Abzuegen: am 12.08. stand dort der 17.08., waehrend DescentRewards
+ * daneben noch beim 06.07. haengengeblieben war. Genau diese Eigenschaft
+ * macht es zum Massstab; die anderen Felder sind faul, dieses nicht.
+ */
+export function inventarWoche(inv) {
+  const enden = (inv?.EndlessXP || []).map(e => ejsonMillis(e.Expiry)).filter(t => t != null);
+  return enden.length ? Math.max(...enden) : null;
 }
 
-function archonFortschritt(inv, resetAt, jetzt) {
-  if (!resetAt) return null;
-  const von = new Date(resetAt).getTime();
+/* Eine Woche in Millisekunden. */
+const WOCHE_MS = 7 * 86400000;
+
+/* Punktreihe: n von m, fertig bei m. */
+const punkte = (erledigt, von) => ({ art: 'pips', erledigt, von, fertigAb: von });
+
+/**
+ * Zwei unabhaengige Reihen (normal / Steel Path) zu einem Fortschritt.
+ * erledigt/von ist die Summe - nur dafuer da, dass die Uebersicht zaehlen
+ * kann, ohne die Bauart der einzelnen Karte zu kennen.
+ */
+function balken(reihen) {
+  const gefiltert = reihen.filter(Boolean);
+  if (!gefiltert.length) return null;
+  const summe = f => gefiltert.reduce((s, r) => s + r[f], 0);
+  return { art: 'bars', reihen: gefiltert, erledigt: summe('erledigt'), von: summe('von'), fertigAb: summe('von') };
+}
+
+/* ---- Archon-Jagd ---- */
+
+function archonFortschritt(inv, wochenStart, jetzt) {
   const treffer = (inv.PeriodicMissionCompletions || [])
-    .filter(x => /^EliteAlert/.test(x.tag) && inFenster(x.date, von, jetzt));
+    .filter(x => /^EliteAlert/.test(x.tag))
+    .filter(x => {
+      const t = ejsonMillis(x.date);
+      /* [Wochenanfang, jetzt). Hier stand frueher der Wochenanfang gar
+         nicht, sondern das Wochenende - die Bedingung lautete damit
+         "nach Montag naechster Woche und vor heute" und war nie erfuellbar,
+         der Zaehler blieb zwangslaeufig bei 0. */
+      return t != null && t >= wochenStart && t < jetzt;
+    });
   /* Ohne Doppelzaehlung, falls ein Nachladen dieselbe Zeile zweimal liefert. */
-  const anzahl = new Set(treffer.map(x => x.tag)).size;
-  return { erledigt: anzahl, von: 3 };
+  return punkte(Math.min(new Set(treffer.map(x => x.tag)).size, 3), 3);
 }
 
-function netracellFortschritt(inv, resetAt) {
+/* ---- Netracells ---- */
+
+function netracellFortschritt(inv, wochenEnde) {
   const reset = ejsonMillis(inv.EntratiVaultCountResetDate);
   const zahl = inv.EntratiVaultCountLastPeriod;
-  if (reset == null || typeof zahl !== 'number' || !resetAt) return null;
-  /* Der Feldname klingt nach "letzte" Periode, faellt aber auf denselben
-     Wochenanfang wie der Archon-Reset - siehe Kommentar oben an
-     AUTO_ERKENNBAR. Weicht er ab, ist das Feld aus einer anderen Woche und
-     wird nicht verwendet, statt eine falsche Zahl zu zeigen. */
-  const woche = new Date(resetAt).getTime() - 7 * 86400000;
-  if (Math.abs(reset - woche) > 2 * 86400000) return null;
-  return { erledigt: Math.min(zahl, 5), von: 5 };
+  if (reset == null || typeof zahl !== 'number') return null;
+  /* EntratiVaultCountResetDate ist das ENDE der Zaehlperiode, nicht ihr
+     Anfang. Frueher wurde es gegen den Wochenanfang geprueft, also gegen
+     einen Wert, der genau eine Woche daneben liegt - die Pruefung ging
+     dadurch nur bei VERALTETEN Daten durch und lehnte frische ab. Sie tat
+     das Gegenteil dessen, wofuer sie dastand.
+     Passt das Ende nicht, gehoert die Zahl zu einer vergangenen Woche -
+     und diese hier steht dann belegbar bei 0, nicht bei "unbekannt". */
+  return punkte(reset === wochenEnde ? Math.min(zahl, 5) : 0, 5);
 }
 
-/** Schwelle, bis zu der Earn reicht: "Rang 4 von 10", plus ob noch Belohnung offen ist. */
-function circuitRang(eintrag) {
+/* ---- The Circuit ---- */
+
+function circuitReihe(label, eintrag) {
   if (!eintrag) return null;
   const schwellen = (eintrag.PendingRewards || []).map(r => r.RequiredTotalXp);
-  const erreicht = schwellen.filter(s => (eintrag.Earn || 0) >= s).length;
-  return { erledigt: erreicht, von: schwellen.length, unclaimed: (eintrag.Earn || 0) > (eintrag.Claim || 0) };
+  if (!schwellen.length) return null;
+  return {
+    label,
+    erledigt: schwellen.filter(s => (eintrag.Earn || 0) >= s).length,
+    von: schwellen.length,
+    hinweis: (eintrag.Earn || 0) > (eintrag.Claim || 0) ? 'Unclaimed rewards waiting' : null
+  };
+}
+
+function circuitFortschritt(inv) {
+  const xp = inv.EndlessXP || [];
+  return balken([
+    circuitReihe('Normal',     xp.find(c => c.Category === 'EXC_NORMAL')),
+    circuitReihe('Steel Path', xp.find(c => c.Category === 'EXC_HARD'))
+  ]);
+}
+
+/* ---- The Descendia ---- */
+
+/* Zwei Kategorien, feste Reihenfolge - die Reihenfolge im Inventar ist
+   nicht zugesichert, die Anzeige soll aber nicht springen. */
+const DESCENDIA_REIHEN = [
+  ['DM_COH_NORMAL', 'Normal'],
+  ['DM_COH_HARD',   'Steel Path']
+];
+
+function descendiaReihe(eintrag, label, wochenEnde) {
+  if (!eintrag) return null;
+  const stufen = (eintrag.PendingRewards || [])
+    .map(r => r.FloorCheckpoint)
+    .filter(n => typeof n === 'number')
+    .sort((a, b) => a - b);
+  if (!stufen.length) return null;
+
+  /* Der Eintrag traegt sein eigenes Wochenende - und ein aktuelles nur
+     dann, wenn diese Woche gespielt wurde. Steht dort ein altes Datum, ist
+     diese Woche nichts geholt worden; 0 ist damit belegt und nicht
+     geraten. Descendia ist deshalb der einzige Wochen-Inhalt, der seine
+     eigene Gueltigkeit mitbringt. */
+  const boden = ejsonMillis(eintrag.Expiry) === wochenEnde ? (eintrag.FloorClaimed || 0) : 0;
+  const tiefe = stufen[stufen.length - 1];
+  return {
+    label,
+    erledigt: stufen.filter(s => s <= boden).length,
+    von: stufen.length,
+    hinweis: boden > 0 && boden < tiefe ? `Infernum ${boden} of ${tiefe}` : null
+  };
+}
+
+function descendiaFortschritt(inv, wochenEnde) {
+  const eintraege = inv.DescentRewards || [];
+  return balken(DESCENDIA_REIHEN.map(([kat, label]) =>
+    descendiaReihe(eintraege.find(e => e.Category === kat), label, wochenEnde)));
+}
+
+/* ---- Deep und Temporal Archimedea ---- */
+
+/* Am Wiki gegengelesen; beide Archimedea sind identisch aufgebaut:
+     3 Punkte fuers Durchspielen aller drei Missionen
+     1 Punkt je Individual Parameter und Mission - vier Loadout-Vorgaben
+       und vier Personal Modifiers, ueber drei Missionen also 24
+   macht 27 als Maximum. Elite legt 10 obendrauf, macht 37. Die
+   Belohnungsstufen liegen auf diesen Punktzahlen: */
+const ARCHIMEDEA_STUFEN       = [5, 10, 15, 20, 25];
+const ARCHIMEDEA_STUFEN_ELITE = [28, 31, 34, 37];
+const ARCHIMEDEA_MAX = 27;
+
+/* /Lotus/.../PersonalModifiers/WitheringVariableItem -> "Withering", und
+   genau so heisst der Schluessel in der API unter personalModifiers. */
+const variantenSchluessel = p => String(p).split('/').pop().replace(/VariableItem$/, '');
+
+function archimedeaFortschritt(inv, eintrag) {
+  const roh = inv[`${eintrag.feld}CacheScoreMission`];
+  if (typeof roh !== 'number') return null;
+
+  /* Der Punktestand traegt kein Datum. Bewiesen wird die Woche ueber die
+     vier Personal Modifiers: das Inventar fuehrt sie unter
+     ...ActiveFrameVariants, die API unter personalModifiers - und laut Wiki
+     sind sie fuer jeden Spieler dieselben. Stimmen die Mengen ueberein,
+     gehoert der Stand zu dieser Woche.
+     EINSCHRAENKUNG, DIE HIER STEHEN BLEIBEN MUSS: dass Punktestand und
+     Varianten beim Reset GEMEINSAM zuruecksetzen, ist plausibel (es sind
+     Nachbarfelder desselben Datensatzes), aber noch nicht ueber einen
+     Reset hinweg beobachtet. Wer das nachpruefen kann: einmal montags nach
+     dem Reset ins frische Inventar sehen. Faellt es anders aus, steht hier
+     dieselbe Falle wie frueher bei den Netracells. */
+  const imInventar = (inv[`${eintrag.feld}ActiveFrameVariants`] || []).map(variantenSchluessel);
+  const ausApi = eintrag.modifiers || [];
+  const belegt = ausApi.length > 0
+    && new Set(imInventar).size === new Set(ausApi).size
+    && ausApi.every(k => imInventar.includes(k));
+
+  const stand = belegt ? roh : 0;
+  /* Ueber 27 kommt man nur mit Elite - das sagt der Stand selbst, ganz ohne
+     ...HardModeStatus, dessen Bedeutung sich nicht belegen laesst (er stand
+     auf 0, waehrend 27 Punkte Elite laengst freigeschaltet hatten). */
+  const elite = stand > ARCHIMEDEA_MAX;
+  const stufen = elite ? [...ARCHIMEDEA_STUFEN, ...ARCHIMEDEA_STUFEN_ELITE] : ARCHIMEDEA_STUFEN;
+  return {
+    art: 'score',
+    punkte: stand,
+    max: elite ? ARCHIMEDEA_STUFEN_ELITE[ARCHIMEDEA_STUFEN_ELITE.length - 1] : ARCHIMEDEA_MAX,
+    stufen,
+    erledigt: stand,
+    von: elite ? ARCHIMEDEA_STUFEN_ELITE[ARCHIMEDEA_STUFEN_ELITE.length - 1] : ARCHIMEDEA_MAX,
+    /* Fertig ist die Woche, wenn die letzte erreichbare Belohnungsstufe
+       vergeben ist - nicht erst beim rechnerischen Maximum. */
+    fertigAb: stufen[stufen.length - 1]
+  };
+}
+
+/* ---- Kahl's Garrison ---- */
+
+/**
+ * Kahls Wochenauftrag steht im Inventar - aber ohne Datum.
+ *
+ * Affiliations[KahlSyndicate].WeeklyMissions traegt je Woche einen Eintrag
+ * mit CompletedMission und einer laufenden WeekCount. Was WeekCount 650
+ * fuer ein Kalenderdatum ist, steht nirgends: es ist DEs eigener Zaehler
+ * mit unbekanntem Nullpunkt. Und der Eintrag entsteht erst beim Starten
+ * der Mission - im Abzug vom 12.08. und im Abzug vom 06.09. stand deshalb
+ * dieselbe 649/650, 25 Tage auseinander.
+ *
+ * "Hoechster WeekCount = diese Woche" waere also falsch. Es liefert nie ein
+ * falsches "offen", aber regelmaessig ein falsches "erledigt" - naemlich
+ * immer dann, wenn man Kahl letzte Woche gemacht und diese noch nicht
+ * angefasst hat. Der haeufigste Fall ueberhaupt.
+ *
+ * Der Anker loest das ohne zu raten: sehen wir die WeekCount steigen,
+ * WAEHREND wir dieselbe Woche schon vorher beobachtet haben, dann kann die
+ * neue Zahl nur zu dieser Woche gehoeren. Ab da rechnet sich jede weitere
+ * Woche daraus aus. Vorher bleibt Kahl beim Schalter - lieber eine Woche
+ * laenger von Hand als eine Woche lang falsch.
+ */
+export function kahlWoche(inv) {
+  const auftraege = (inv?.Affiliations || [])
+    .find(a => a.Tag === 'KahlSyndicate')?.WeeklyMissions || [];
+  const zahlen = auftraege.map(x => x.WeekCount).filter(n => typeof n === 'number');
+  return zahlen.length ? Math.max(...zahlen) : null;
 }
 
 /**
- * Haengt echten Fortschritt an die Inhalte, wo er sich nachweisen laesst.
+ * Anker fortschreiben. Gibt den alten zurueck, wenn sich nichts Belegbares
+ * ergibt - der Aufrufer speichert nur, was sich geaendert hat.
+ */
+export function kahlAnker(alt, inv, wochenEnde) {
+  const woche = kahlWoche(inv);
+  /* Nur ein Inventar aus DIESER Woche darf ankern - sonst datiert der
+     Anker eine alte Beobachtung auf heute. */
+  if (woche == null || wochenEnde == null || inventarWoche(inv) !== wochenEnde) return alt;
+  /* Aenderung innerhalb derselben, schon beobachteten Woche gesehen: das
+     ist der Beweis. */
+  if (alt && alt.resetAt === wochenEnde && woche > alt.week) {
+    return { week: woche, resetAt: wochenEnde, bestaetigt: true };
+  }
+  if (alt?.bestaetigt) return alt;
+  /* Sonst nur merken, was gerade dasteht - ohne Anspruch darauf, dass es
+     zu dieser Woche gehoert. */
+  return { week: woche, resetAt: wochenEnde, bestaetigt: false };
+}
+
+function kahlFortschritt(inv, anker, wochenEnde) {
+  if (!anker?.bestaetigt || wochenEnde == null) return null;
+  const diese = anker.week + Math.round((wochenEnde - anker.resetAt) / WOCHE_MS);
+  const auftraege = (inv.Affiliations || [])
+    .find(a => a.Tag === 'KahlSyndicate')?.WeeklyMissions || [];
+  const eintrag = auftraege.find(x => x.WeekCount === diese);
+  /* Kein Eintrag fuer diese Woche = nicht gestartet = offen. */
+  return punkte(eintrag?.CompletedMission ? 1 : 0, 1);
+}
+
+/* ------------------------------ Zusammenfuehren ------------------------------ */
+
+function fortschrittFuer(e, inv, wochenStart, wochenEnde, jetzt, opts) {
+  switch (e.key) {
+    case 'archon':     return archonFortschritt(inv, wochenStart, jetzt);
+    case 'netracells': return netracellFortschritt(inv, wochenEnde);
+    case 'circuit':    return circuitFortschritt(inv);
+    case 'descendia':  return descendiaFortschritt(inv, wochenEnde);
+    case 'kahl':       return kahlFortschritt(inv, opts.kahlAnker, wochenEnde);
+    /* Beide Archimedea tragen ihr Inventarfeld selbst mit sich (siehe
+       ARCHIMEDEA_ARTEN) - eine dritte Art faende sich hier von allein ein. */
+    default:           return e.feld ? archimedeaFortschritt(inv, e) : null;
+  }
+}
+
+/**
+ * Ein Zustand je Eintrag, berechnet an genau EINER Stelle.
+ *
+ * Vorher rechnete die Oberflaeche zweimal aus, was "fertig" heisst - einmal
+ * fuer die Karte, einmal fuer die Zaehlerpille - und die zwei Rechnungen
+ * waren nicht dieselbe. Jetzt steht das Ergebnis in den Daten, und beide
+ * lesen es nur noch ab.
+ */
+function zustand(e) {
+  if (e.progress) {
+    const { erledigt, fertigAb, von } = e.progress;
+    const ziel = fertigAb ?? von;
+    if (ziel > 0 && erledigt >= ziel) return 'done';
+    return erledigt > 0 ? 'partial' : 'open';
+  }
+  return e.manuellErledigt ? 'done' : 'open';
+}
+
+/**
+ * Haengt Fortschritt, Handhaken und Zustand an die Wochenansicht.
  *
  * rawInventory ist die Antwort von api.warframe.com/api/inventory.php, wie
  * core/inventory.js sie zwischenspeichert - NICHT die aufbereitete Sicht
- * aus inventory-items.js. Fehlt sie (kein Abruf, oder die Berechtigung
- * steht aus), bleibt jeder Eintrag unangetastet: die Oberflaeche faellt
- * dann von selbst auf den manuellen Schalter zurueck.
+ * aus inventory-items.js.
+ *
+ * ES WIRD NUR AUSGEWERTET, WAS AUS DIESER WOCHE STAMMT. Fehlt das Inventar,
+ * oder ist es aelter als der laufende Reset, bleibt jeder Eintrag beim
+ * Handhaken - und `inventar` sagt der Oberflaeche, warum. Ein Fortschritt
+ * aus der Vorwoche ist schlimmer als gar keiner: er sieht richtig aus.
+ *
+ * opts.manuell    - { key: true } der selbst gesetzten Haken dieser Woche
+ * opts.kahlAnker  - siehe kahlAnker weiter oben
  */
-export function annotateProgress(weekly, rawInventory, jetzt = Date.now()) {
-  if (!weekly || !rawInventory) return weekly;
+export function annotateWeekly(weekly, rawInventory, jetzt = Date.now(), opts = {}) {
+  if (!weekly) return weekly;
 
-  const fortschritt = {
-    archon: archonFortschritt(rawInventory, weekly.resetAt, jetzt),
-    netracells: netracellFortschritt(rawInventory, weekly.resetAt),
-    circuit: (() => {
-      const xp = rawInventory.EndlessXP || [];
-      const normal = circuitRang(xp.find(c => c.Category === 'EXC_NORMAL'));
-      const hard   = circuitRang(xp.find(c => c.Category === 'EXC_HARD'));
-      return (normal || hard) ? { normal, hard } : null;
-    })()
-  };
+  const manuell = opts.manuell || {};
+  const wochenEnde  = weekly.resetAt ? new Date(weekly.resetAt).getTime() : null;
+  const wochenStart = wochenEnde != null ? wochenEnde - WOCHE_MS : null;
+
+  const invWoche = rawInventory ? inventarWoche(rawInventory) : null;
+  const frisch   = wochenEnde != null && invWoche != null && invWoche === wochenEnde;
+  const nutzbar  = !!rawInventory && frisch;
+
+  const content = weekly.content.map(e => {
+    const eintrag = { ...e, manuellErledigt: !!manuell[e.key] };
+    const p = nutzbar ? fortschrittFuer(e, rawInventory, wochenStart, wochenEnde, jetzt, opts) : null;
+    if (p) eintrag.progress = p;
+    eintrag.nachweis = p ? 'auto' : 'manuell';
+    eintrag.status = zustand(eintrag);
+    return eintrag;
+  });
 
   return {
     ...weekly,
-    content: weekly.content.map(e => {
-      const p = fortschritt[e.key];
-      return p ? { ...e, progress: p } : e;
-    })
+    content,
+    /* Damit die Oberflaeche sagen kann, WARUM gerade nichts verfolgt wird -
+       statt stillschweigend auf Schalter zurueckzufallen. */
+    inventar: { vorhanden: !!rawInventory, woche: invWoche, frisch },
+    offen: content.filter(c => c.status !== 'done').length
   };
 }
+

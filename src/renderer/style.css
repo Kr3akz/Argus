@@ -8826,6 +8826,20 @@ input[type=number]:focus, input[type=email]:focus, input[type=password]:focus {
   text-transform: uppercase; letter-spacing: .6px;
   margin: 4px 0 14px;
 }
+/* Die zweite Gruppe ("Done this week") braucht Luft nach oben, sonst klebt
+   ihre Ueberschrift an der letzten Karte der ersten. */
+.weekly-grid + .weekly-group-title { margin-top: 22px; }
+
+/* Hinweis, warum gerade nichts automatisch verfolgt wird. Gedaempft, nicht
+   als Warnung: es ist ein Zustand, kein Fehler. */
+.weekly-inv-note {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 16px; padding: 11px 14px;
+  border: 1px solid rgba(255, 255, 255, .07); border-radius: 10px;
+  background: var(--surface-1, rgba(255, 255, 255, .03));
+  font-size: 12px; line-height: 1.55; color: var(--text-3);
+}
+.weekly-inv-note .btn-sm { margin-left: auto; flex-shrink: 0; }
 
 /* Spalten statt Raster - und zwar aus einem Grund, der beides auf einmal
    loest: In einem Raster richtet sich jede Reihe nach ihrer hoechsten Karte.
@@ -8934,6 +8948,18 @@ input[type=number]:focus, input[type=email]:focus, input[type=password]:focus {
 .wk-bar { flex: 1; height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
 .wk-bar-fill { height: 100%; background: var(--accent); border-radius: 999px; transition: width .3s var(--ease); }
 .wk-bar-fill.is-complete { background: var(--green); }
+
+/* Belohnungsstufen der Archimedea als Marken auf dem Balken. overflow bleibt
+   sichtbar, damit die Marke an 100% nicht abgeschnitten wird - der Fuellbalken
+   bringt seine eigene Rundung mit, die Ecken bleiben also sauber. */
+.wk-bar-ticks { position: relative; overflow: visible; }
+.wk-tick {
+  position: absolute; top: -2px; width: 2px; height: 10px; border-radius: 1px;
+  background: var(--surface-3, rgba(255,255,255,.22)); transform: translateX(-1px);
+  pointer-events: auto;
+}
+.wk-tick.passed { background: rgba(0, 0, 0, .35); }
+.wk-next { font-size: 11px; color: var(--text-3); margin-top: 5px; }
 .wk-bar-num { font-size: 11px; color: var(--text-3); flex-shrink: 0; font-variant-numeric: tabular-nums; width: 40px; text-align: right; }
 .wk-unclaimed {
   display: inline-flex; align-items: center; gap: 4px;

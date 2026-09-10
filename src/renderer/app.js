@@ -10316,7 +10316,9 @@ let weeklyMode = 'content';   // 'content' | 'vendors'
 const WEEKLY_ICONS = {
   archon: 'narmer', circuit: 'bolt',
   'deep-archimedea': 'biotics', 'temporal-archimedea': 'clock',
-  netracells: 'cube', kahl: 'steelpath',
+  /* Descendia geht 21 Stockwerke abwaerts - "layers" ist das einzige
+     Zeichen im Satz, das gestapelte Ebenen zeigt. */
+  netracells: 'cube', descendia: 'layers', kahl: 'steelpath',
   teshin: 'steelpath', bird3: 'traces', yonta: 'biotics',
   acrithis: 'star', palladino: 'lotus', nightwave: 'nightwave'
 };
@@ -10330,45 +10332,71 @@ const weeklySrcTag = quelle => quelle === 'api'
   ? '<span class="weekly-src weekly-src-live" title="Own expiry from the world state">live</span>'
   : '<span class="weekly-src weekly-src-reset" title="No expiry in the API — follows the common weekly reset">reset</span>';
 
-/* Punktreihe fuer Archon (3) und Netracells (5) - eine gefuellte Zelle je
-   erledigtem Lauf. Fuer 3 und 5 liest sich das auf einen Blick, fuer den
-   Circuit mit seinen zehn Stufen waere es nur noch eine Perlenkette;
-   dafuer gibt es weiter unten den Balken. */
-function renderPips(fortschritt) {
-  const { erledigt, von } = fortschritt;
-  const voll = erledigt >= von;
-  const zellen = Array.from({ length: von }, (_, i) =>
-    `<span class="wk-pip${i < erledigt ? ' filled' : ''}"></span>`).join('');
+/* Der Kern gibt jedem Fortschritt eine `art` mit - die Oberflaeche waehlt
+   danach die Darstellung und muss selbst nicht mehr wissen, welcher Inhalt
+   wie gezaehlt wird. Frueher stand diese Zuordnung als Kette von
+   Sonderfaellen mitten in der Karte. */
+
+/* Punktreihe fuer die kleinen Zaehlungen - Archon (3), Netracells (5),
+   Kahl (1). In dieser Groesse liest sie sich auf einen Blick; ab zehn
+   Stufen waere sie nur noch eine Perlenkette, dafuer gibt es die Balken. */
+function renderPips(p) {
+  const voll = p.erledigt >= p.von;
+  const zellen = Array.from({ length: p.von }, (_, i) =>
+    `<span class="wk-pip${i < p.erledigt ? ' filled' : ''}"></span>`).join('');
   return `
     <div class="wk-progress">
       <div class="wk-pips${voll ? ' is-complete' : ''}">
         ${zellen}
-        <span class="wk-pip-label">${erledigt} / ${von}</span>
+        <span class="wk-pip-label">${p.erledigt} / ${p.von}</span>
       </div>
     </div>`;
 }
 
-/* Zwei Balken - normaler Circuit und Steel Path teilen sich dieselbe Woche,
-   aber getrennte Fortschrittsleisten, weil man beide unabhaengig spielt. */
-function renderCircuitProgress(fortschritt) {
-  const zeile = (label, rang) => {
-    if (!rang) return '';
-    const pct = rang.von ? Math.round(rang.erledigt / rang.von * 100) : 0;
-    const voll = rang.erledigt >= rang.von;
+/* Getrennte Balken je Reihe - Circuit und Descendia laufen beide in normal
+   UND Steel Path, und man spielt die unabhaengig voneinander. */
+function renderBars(p) {
+  const zeile = r => {
+    const pct = r.von ? Math.round(r.erledigt / r.von * 100) : 0;
+    const voll = r.erledigt >= r.von;
     return `
       <div class="wk-bar-row">
-        <span class="wk-bar-label">${esc(label)}</span>
+        <span class="wk-bar-label">${esc(r.label)}</span>
         <div class="wk-bar"><div class="wk-bar-fill${voll ? ' is-complete' : ''}" style="width:${pct}%"></div></div>
-        <span class="wk-bar-num">${rang.erledigt}/${rang.von}</span>
+        <span class="wk-bar-num">${r.erledigt}/${r.von}</span>
       </div>
-      ${rang.unclaimed ? '<div class="wk-unclaimed">Unclaimed rewards waiting</div>' : ''}`;
+      ${r.hinweis ? `<div class="wk-unclaimed">${esc(r.hinweis)}</div>` : ''}`;
   };
+  return `<div class="wk-progress">${p.reihen.map(zeile).join('')}</div>`;
+}
+
+/* Research Points der Archimedea - derselbe Balken, den das Spiel selbst
+   zeigt, mit den Belohnungsstufen als Marken darauf. "16 / 27" sagt mehr
+   als ein Haken es koennte: da sind zwei Missionen mit voller Bestueckung
+   gelaufen und eine fehlt noch. */
+function renderScore(p) {
+  const pct  = p.max ? Math.min(100, Math.round(p.punkte / p.max * 100)) : 0;
+  const voll = p.punkte >= (p.fertigAb ?? p.max);
+  const marken = p.stufen.map(s => `
+    <span class="wk-tick${p.punkte >= s ? ' passed' : ''}"
+          style="left:${p.max ? s / p.max * 100 : 0}%"
+          title="Reward tier at ${s} Research Points"></span>`).join('');
+  const naechste = p.stufen.find(s => s > p.punkte);
   return `
     <div class="wk-progress">
-      ${zeile('Normal', fortschritt.normal)}
-      ${zeile('Steel Path', fortschritt.hard)}
+      <div class="wk-bar-row">
+        <span class="wk-bar-label">Research</span>
+        <div class="wk-bar wk-bar-ticks">
+          <div class="wk-bar-fill${voll ? ' is-complete' : ''}" style="width:${pct}%"></div>
+          ${marken}
+        </div>
+        <span class="wk-bar-num">${p.punkte}/${p.max}</span>
+      </div>
+      ${naechste ? `<div class="wk-next">Next reward tier at ${naechste} points</div>` : ''}
     </div>`;
 }
+
+const WEEKLY_PROGRESS = { pips: renderPips, bars: renderBars, score: renderScore };
 
 /* Fuer alles ohne Nachweis (Archimedea, Kahl): ein echter Kippschalter statt
    eines erfundenen Fortschrittsbalkens. Persistiert ueber den Reset-
@@ -10384,13 +10412,9 @@ function renderManualToggle(e) {
 }
 
 function renderWeeklyContentCard(e) {
-  const auto = AUTO_KEYS.has(e.key) && e.progress;
-  const manuell = !AUTO_KEYS.has(e.key);
-  const fertig = auto
-    ? (e.key === 'circuit'
-        ? [e.progress.normal, e.progress.hard].every(r => !r || r.erledigt >= r.von)
-        : e.progress.erledigt >= e.progress.von)
-    : e.manuellErledigt;
+  /* Der Zustand kommt fertig aus dem Kern (siehe zustand() in
+     core/weekly.js) - hier wird er nur noch gelesen. */
+  const fertig = e.status === 'done';
 
   /* Der Circuit bekommt Bilder statt einer Namensliste - Warframes und
      Waffen sind das, was man auf einen Blick erkennt. Alles andere
@@ -10417,10 +10441,13 @@ function renderWeeklyContentCard(e) {
 
   const unterschrift = [e.detail, e.ort].filter(Boolean).map(esc).join(' · ');
 
-  let fortschrittHtml = '';
-  if (e.key === 'circuit' && e.progress) fortschrittHtml = renderCircuitProgress(e.progress);
-  else if (auto) fortschrittHtml = renderPips(e.progress);
-  else if (manuell) fortschrittHtml = renderManualToggle(e);
+  /* Fortschritt wenn belegt, sonst der Haken zum selbst Abhaken. Welcher
+     Inhalt in welche Gruppe faellt, entscheidet allein, ob der Kern etwas
+     nachweisen konnte - keine zweite Liste von Schluesseln mehr, die von
+     der im Kern abweichen kann. */
+  const fortschrittHtml = e.progress
+    ? (WEEKLY_PROGRESS[e.progress.art]?.(e.progress) ?? '')
+    : renderManualToggle(e);
 
   return `
     <div class="wk-card${fertig ? ' is-complete' : ''}" data-weekly-card="${esc(e.key)}">
@@ -10432,7 +10459,9 @@ function renderWeeklyContentCard(e) {
         </div>
         <div class="wk-time">
           ${e.eta ? `<span class="wk-eta">${esc(e.eta)}</span>` : ''}
-          ${auto ? '<span class="weekly-src weekly-src-auto" title="Read from your own game data">tracked</span>' : weeklySrcTag(e.quelle)}
+          ${e.progress
+            ? '<span class="weekly-src weekly-src-auto" title="Read from your own game data">tracked</span>'
+            : weeklySrcTag(e.quelle)}
         </div>
       </div>
       ${fortschrittHtml}
@@ -10470,11 +10499,49 @@ function renderWeeklyVendorCard(e) {
     </div>`;
 }
 
-/* Nur diese drei lassen sich aus dem eigenen Spielstand nachweisen - siehe
-   AUTO_ERKENNBAR in core/weekly.js, dessen Kommentar den Grund fuer jedes
-   einzelne Feld traegt. Dieselbe Liste hier, weil der Renderer wissen muss,
-   ob eine Karte eine Punktreihe oder einen Kippschalter bekommt. */
-const AUTO_KEYS = new Set(['archon', 'netracells', 'circuit']);
+/**
+ * Warum gerade kein Fortschritt verfolgt wird - falls er es nicht wird.
+ *
+ * Das ist der Hinweis, der frueher gefehlt hat: ohne ihn stand eine Zahl
+ * aus der Vorwoche stillschweigend als die dieser Woche da. Lieber ein
+ * Satz zu viel als eine Zahl, die richtig aussieht und es nicht ist.
+ */
+function renderWeeklyInventoryNote(inv) {
+  const el = $('weekly-inv-note');
+  if (!el) return;
+  if (!inv || inv.frisch) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+
+  const wann = inv.woche
+    ? new Date(inv.woche).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })
+    : null;
+  el.innerHTML = inv.vorhanden
+    ? `Progress tracking is paused — your inventory data is from the week that ended
+       ${wann ? `on ${esc(wann)}` : 'before this one'}, so anything in it belongs to last week.
+       <button class="btn-sm" id="btn-weekly-to-inv">Open Inventory</button>`
+    : `No inventory data yet, so nothing can be tracked automatically — tick items off
+       yourself, or fetch your inventory once.
+       <button class="btn-sm" id="btn-weekly-to-inv">Open Inventory</button>`;
+  el.classList.remove('hidden');
+  const btn = $('btn-weekly-to-inv');
+  if (btn) btn.onclick = () => showTab('inventory');
+}
+
+/* Offen zuerst, Erledigtes darunter - die Frage lautet "was fehlt mir
+   noch", und die Antwort soll ganz oben stehen. Zwei Raster statt einer
+   Sortierung, damit die Trennung auch sichtbar ist. */
+function renderWeeklyContentPane(w) {
+  const offen  = w.content.filter(c => c.status !== 'done');
+  const fertig = w.content.filter(c => c.status === 'done');
+  const gruppe = (titel, liste) => liste.length
+    ? `<div class="weekly-group-title">${titel} · ${liste.length}</div>
+       <div class="weekly-grid">${liste.map(renderWeeklyContentCard).join('')}</div>`
+    : '';
+
+  $('weekly-content').innerHTML =
+    gruppe('Still open', offen) + gruppe('Done this week', fertig);
+
+  bindWeeklyToggles();
+}
 
 function renderWeekly(w) {
   weeklyState = w;
@@ -10487,7 +10554,8 @@ function renderWeekly(w) {
     : '';
   $('weekly-reset-when').textContent = wann;
 
-  $('weekly-content').innerHTML = w.content.map(renderWeeklyContentCard).join('');
+  renderWeeklyInventoryNote(w.inventar);
+  renderWeeklyContentPane(w);
 
   /* Zwei Spalten von Hand statt column-count: nur so lassen sich beide
      unten buendig abschliessen. Der Spaltenumbruch des Browsers verteilt
@@ -10501,6 +10569,21 @@ function renderWeekly(w) {
     .map(sp => `<div class="wk-vcol">${sp.map(renderWeeklyVendorCard).join('')}</div>`)
     .join('');
 
+  /* Die Pille zeigt, wie viel diese Woche noch offen ist. NUR Inhalte:
+     Haendler kann man nicht "erledigen", sie zaehlten frueher trotzdem
+     alle mit - die Pille stand damit dauerhaft bei sechs und darueber und
+     sagte nichts mehr aus. Gezaehlt wird jetzt, was der Kern als offen
+     ausweist (siehe zustand() in core/weekly.js). */
+  const pille = $('weekly-count');
+  if (pille) {
+    pille.textContent = w.offen ?? 0;
+    pille.classList.toggle('hidden', !w.offen);
+  }
+}
+
+/* Die Haken haengen an Karten, die bei jedem Umgruppieren neu entstehen -
+   deshalb nach jedem Zeichnen neu binden statt einmal beim Laden. */
+function bindWeeklyToggles() {
   document.querySelectorAll('.wk-manual-check').forEach(cb => {
     cb.addEventListener('change', async () => {
       const key = cb.dataset.weeklyKey;
@@ -10508,31 +10591,27 @@ function renderWeekly(w) {
       try {
         await window.api.setWeeklyDone(key, weeklyState.resetAt, cb.checked);
         const entry = weeklyState.content.find(c => c.key === key);
-        if (entry) entry.manuellErledigt = cb.checked;
-        /* $ ist im ganzen Haus ausschliesslich getElementById (siehe
-           Kopf der Datei) - fuer einen Attribut-Selektor braucht es
-           echtes querySelector, sonst findet das still und leise
-           nichts. */
-        document.querySelector(`[data-weekly-card="${key}"]`)?.classList.toggle('is-complete', cb.checked);
-      } catch { cb.checked = !cb.checked; }
-      finally { cb.disabled = false; }
+        if (entry) {
+          entry.manuellErledigt = cb.checked;
+          entry.status = cb.checked ? 'done' : 'open';
+        }
+        /* Neu zeichnen statt nur eine Klasse zu setzen: die Karte wechselt
+           die Gruppe, und die Zaehler oben und in der Seitenleiste haengen
+           daran. */
+        renderWeeklyContentPane(weeklyState);
+        const pille = $('weekly-count');
+        const offen = weeklyState.content.filter(c => c.status !== 'done').length;
+        weeklyState.offen = offen;
+        if (pille) {
+          pille.textContent = offen;
+          pille.classList.toggle('hidden', !offen);
+        }
+      } catch {
+        cb.checked = !cb.checked;
+        cb.disabled = false;
+      }
     });
   });
-
-  /* Die Pille zeigt, wie viel diese Woche noch offen ist - Inhalte UND
-     Haendler, alles mit einer Restzeit oder einem noch nicht gesetzten
-     Haken zaehlt als offen. */
-  const nochOffen = e => AUTO_KEYS.has(e.key)
-    ? (e.key === 'circuit'
-        ? [e.progress?.normal, e.progress?.hard].some(r => r && r.erledigt < r.von)
-        : (e.progress ? e.progress.erledigt < e.progress.von : true))
-    : (e.eta != null || (e.eintraege !== undefined && !e.manuellErledigt));
-  const offen = w.content.filter(nochOffen).length + w.vendors.filter(v => v.eta).length;
-  const pille = $('weekly-count');
-  if (pille) {
-    pille.textContent = offen;
-    pille.classList.toggle('hidden', !offen);
-  }
 }
 
 function setWeeklyError(text) {
