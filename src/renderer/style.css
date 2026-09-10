@@ -8788,7 +8788,7 @@ input[type=number]:focus, input[type=email]:focus, input[type=password]:focus {
 .weekly-reset {
   position: relative; overflow: hidden;
   display: flex; align-items: center; gap: 16px;
-  padding: 15px 22px; margin-bottom: 18px;
+  padding: 12px 22px; margin-bottom: 14px;
   background:
     radial-gradient(140% 160% at 0% 0%, rgb(var(--t-accent) / .13), transparent 60%),
     var(--surface);
@@ -8816,7 +8816,7 @@ input[type=number]:focus, input[type=email]:focus, input[type=password]:focus {
 /* ---------- Content / Vendor Umschalter ---------- */
 .weekly-mode-row {
   display: flex; align-items: center; gap: 14px;
-  margin-bottom: 18px;
+  margin-bottom: 14px;
 }
 .weekly-mode-row .meta { font-size: 12px; color: var(--text-3); }
 
@@ -8831,7 +8831,7 @@ input[type=number]:focus, input[type=email]:focus, input[type=password]:focus {
 /* Die zweite Gruppe ("Done this week") braucht Luft nach oben, sonst klebt
    ihre Ueberschrift an der letzten Karte der ersten - aber nur so viel, dass
    beide Gruppen zusammen noch auf einen Schirm passen. */
-.weekly-grid + .weekly-group-title { margin-top: 14px; }
+.weekly-cols + .weekly-group-title { margin-top: 14px; }
 
 /* Hinweis, warum gerade nichts automatisch verfolgt wird. Gedaempft, nicht
    als Warnung: es ist ein Zustand, kein Fehler. */
@@ -8844,44 +8844,25 @@ input[type=number]:focus, input[type=email]:focus, input[type=password]:focus {
 }
 .weekly-inv-note .btn-sm { margin-left: auto; flex-shrink: 0; }
 
-/* Spalten statt Raster - und zwar aus einem Grund, der beides auf einmal
-   loest: In einem Raster richtet sich jede Reihe nach ihrer hoechsten Karte.
-   Die Circuit-Karte mit ihren acht Bildern ist doppelt so hoch wie
-   "Netracells" mit einer Zeile, also klaffte neben den kurzen Karten Luft,
-   und die sechs Haendler standen vier-zu-zwei da wie hingewuerfelt.
-   Mit column-count fliessen die Karten und schliessen die Luecken selbst -
-   der Inhalt passt dadurch auf einen Schirm, statt 100px zu ueberlaufen.
-   break-inside: avoid haelt jede Karte zusammen, sonst zerschneidet der
-   Spaltenumbruch sie mittendrin. */
-.weekly-grid {
-  column-count: 3;
-  column-gap: 14px;
-}
-.weekly-grid > * {
-  break-inside: avoid;
-  -webkit-column-break-inside: avoid;
-  margin-bottom: 14px;
-}
-/* Haendler: zwei echte Spalten statt Spaltenumbruch - siehe renderWeekly.
-   Beide enden buendig, weil die letzte Karte jeder Spalte den Rest fuellt. */
-.weekly-grid-vendors {
-  column-count: initial;
-  display: flex;
-  gap: 14px;
-  align-items: stretch;
-}
-.wk-vcol {
+/* Inhalte: dieselben echten Spalten wie bei den Haendlern, damit alle drei
+   oben UND unten buendig abschliessen. Welche Karte in welche Spalte
+   kommt, entscheidet verteileWeeklyKarten() nach gemessener Hoehe - die
+   Reihenfolge im HTML ist nur der erste Anlauf. */
+.weekly-cols { display: flex; gap: 14px; align-items: stretch; }
+.wk-col {
   flex: 1; min-width: 0;
   display: flex; flex-direction: column; gap: 14px;
 }
-.wk-vcol > .wk-card { margin-bottom: 0; }
+.wk-col > .wk-card { margin-bottom: 0; }
 /* Der Ausgleich: was an Hoehe fehlt, nimmt die unterste Karte auf. */
-.wk-vcol > .wk-card:last-child { flex: 1; }
-@media (max-width: 1400px) { .weekly-grid { column-count: 2; } }
-@media (max-width: 1000px) {
-  .weekly-grid { column-count: 1; }
-  .weekly-grid-vendors { flex-direction: column; }
-}
+.wk-col > .wk-card:last-child { flex: 1; }
+/* ... ausser waehrend der Messung: dann soll jede Karte ihre eigene Hoehe
+   zeigen und nicht die der Spalte. Siehe verteileWeeklyKarten(). */
+.weekly-cols.is-measuring .wk-col > .wk-card:last-child { flex: none; }
+/* Ganz schmal untereinander. Die Inhaltsspalten regelt ohnehin schon
+   weeklySpaltenAnzahl(); fuer die Haendler, die immer zweispaltig gebaut
+   werden, ist diese Regel der einzige Ausweg. */
+@media (max-width: 1000px) { .weekly-cols { flex-direction: column; } }
 
 .wk-card {
   position: relative; overflow: hidden;
@@ -8976,13 +8957,22 @@ input[type=number]:focus, input[type=email]:focus, input[type=password]:focus {
 /* Dieselben zwei Klassen wie im Einstellungs-Tab - ein Kippschalter sieht
    ueberall im Haus gleich aus. */
 /* Leiser als frueher: der Haken ist der Rueckfall, nicht der Normalfall -
-   mit frischem Inventar steht er auf keiner Karte mehr. Deshalb rechts
-   unten in die Ecke statt quer ueber die halbe Karte. */
+   mit frischem Inventar steht er auf keiner Karte mehr. Deshalb neben den
+   Text statt quer ueber die halbe Karte (siehe .wk-body.has-toggle); nur
+   wenn eine Karte gar keinen Text hat, faellt er auf eine eigene Zeile. */
 .wk-manual {
   display: flex; align-items: center; justify-content: flex-end; gap: 9px;
   margin-top: 10px; padding-top: 9px; border-top: 1px solid rgba(255,255,255,.05);
 }
 .wk-manual-label { font-size: 11px; color: var(--text-3); }
+
+/* Text links, Schalter rechts daneben - auf derselben Zeile. */
+.wk-body.has-toggle { display: flex; align-items: center; gap: 14px; }
+.wk-body-text { flex: 1; min-width: 0; }
+.wk-body.has-toggle .wk-manual {
+  margin: 0; padding: 0; border-top: none; flex-shrink: 0;
+}
+.wk-body.has-toggle .wk-manual-label { display: none; }
 
 .wk-body { margin-top: 11px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.05); }
 /* Eine Zeile je Eintrag statt zwei: Titel und Zusatz nebeneinander. Bei drei

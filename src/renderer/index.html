@@ -482,16 +482,14 @@
       </div>
 
       <div class="weekly-pane active" id="weekly-pane-content">
-        <!-- Ohne .weekly-grid: der Behaelter traegt jetzt je Gruppe eine
-             Ueberschrift UND ein eigenes Raster (siehe
-             renderWeeklyContentPane). Blieb die Spaltenklasse hier stehen,
-             lagen zwei column-counts ineinander und die Ueberschrift
-             besetzte die erste Spalte allein. -->
+        <!-- Bewusst ohne Spaltenklasse: die Spalten baut
+             renderWeeklyContentPane hier hinein, samt Ueberschriften und
+             dem Streifen fuer Erledigtes. -->
         <div id="weekly-content"></div>
       </div>
 
       <div class="weekly-pane" id="weekly-pane-vendors">
-        <div class="weekly-grid weekly-grid-vendors" id="weekly-vendors"></div>
+        <div class="weekly-cols" id="weekly-vendors"></div>
 
         <!-- Steht NUR hier und nicht unter beiden Ansichten: im Content-Teil
              kosteten diese vier Zeilen genau den Platz, der dort zum

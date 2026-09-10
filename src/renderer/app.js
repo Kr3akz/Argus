@@ -10476,6 +10476,16 @@ function renderWeeklyContentCard(e) {
 
   const unterschrift = [e.detail, e.ort].filter(Boolean).map(esc).join(' · ');
 
+  /* Der Haken steht NEBEN dem Text, nicht darunter. Als eigene Zeile kostete
+     er bei Kahl eine ganze Kartenhoehe fuer einen einzigen Schalter - und
+     die Karte hat rechts neben ihrer einen Zeile ohnehin Platz. */
+  const haken = e.nachweis !== 'auto' ? renderManualToggle(e) : '';
+  const koerper = zeilen
+    ? `<div class="wk-body${haken ? ' has-toggle' : ''}">
+         <div class="wk-body-text">${zeilen}</div>${haken}
+       </div>`
+    : haken;
+
   return `
     <div class="wk-card${fertig ? ' is-complete' : ''}" data-weekly-card="${esc(e.key)}">
       <div class="wk-head">
@@ -10490,9 +10500,8 @@ function renderWeeklyContentCard(e) {
         </div>
       </div>
       ${e.progress ? (WEEKLY_PROGRESS[e.progress.art]?.(e.progress) ?? '') : ''}
-      ${zeilen ? `<div class="wk-body">${zeilen}</div>` : ''}
+      ${koerper}
       ${renderWeeklyRewards(e.belohnungen)}
-      ${e.nachweis !== 'auto' ? renderManualToggle(e) : ''}
     </div>`;
 }
 
@@ -10588,6 +10597,72 @@ function renderWeeklyInventoryNote(inv) {
   if (btn) btn.onclick = () => showTab('inventory');
 }
 
+/* Wie viele Spalten passen. Dieselben Schwellen wie frueher der
+   column-count der CSS-Regel - nur muss die Zahl jetzt auch das Skript
+   kennen, weil es die Karten selbst verteilt. */
+function weeklySpaltenAnzahl() {
+  /* Gemessen wird der BEHAELTER, nicht das Fenster. Die alten Schwellen
+     stammten aus einer Media Query und meinten die Fensterbreite - bei
+     1500px Fenster bleiben hier aber nur 1334px uebrig, und drei Spalten
+     fielen dadurch auf zwei zurueck, obwohl sie bequem gepasst haetten. */
+  const breite = $('weekly-content')?.clientWidth || 0;
+  return breite < 820 ? 1 : breite < 1180 ? 2 : 3;
+}
+
+/**
+ * Karten auf die Spalten verteilen - nach gemessener Hoehe, nicht nach
+ * Anzahl.
+ *
+ * WARUM NICHT column-count: der Spaltenumbruch des Browsers verteilt nach
+ * Inhaltsmenge und kennt kein "streck die letzte Karte auf den Rest". Die
+ * Spalten endeten dadurch auf drei verschiedenen Hoehen, und die Circuit-
+ * Karte mit ihren zehn Bildern zog eine davon weit nach unten. Die
+ * Haendleransicht loest das seit jeher mit echten Flex-Spalten - beide
+ * benutzen jetzt dasselbe .weekly-cols / .wk-col, nur mit einem Schritt
+ * mehr hier: dort stehen sechs aehnlich hohe Karten, hier sieben sehr
+ * verschiedene.
+ *
+ * Deshalb zwei Durchgaenge. Erst stehen die Karten reihum in den Spalten -
+ * das ist noch nicht ausgewogen, hat aber schon die richtige Breite, und
+ * nur bei richtiger Breite stimmt die gemessene Hoehe. Dann wandert jede
+ * Karte in die Spalte, die gerade am kuerzesten ist. Verschoben werden die
+ * fertigen Knoten, nicht neu gezeichnet: die Bilder bleiben geladen und
+ * nichts blitzt auf.
+ */
+function verteileWeeklyKarten(raster) {
+  const spalten = [...raster.querySelectorAll('.wk-col')];
+  if (spalten.length < 2) return;
+
+  const karten = [...raster.querySelectorAll('.wk-card')];
+
+  /* MESSEN OHNE DEN AUSGLEICH. Die unterste Karte jeder Spalte traegt
+     flex:1 und ist damit auf die Spaltenhoehe gestreckt - wer so misst,
+     misst die Spalte und nicht die Karte. Die Circuit-Karte kam dadurch mit
+     486px statt ihrer echten 284 in die Rechnung, und die Verteilung war
+     genau deshalb schief. */
+  raster.classList.add('is-measuring');
+  const hoehen = karten.map(k => k.offsetHeight);
+  raster.classList.remove('is-measuring');
+
+  /* Groesste zuerst in die jeweils kuerzeste Spalte. Andersherum - in der
+     Reihenfolge des Inhalts - landet ein Brocken wie der Circuit zufaellig
+     irgendwo und zieht seine Spalte allein nach unten. */
+  const reihenfolge = karten.map((_, i) => i).sort((a, b) => hoehen[b] - hoehen[a]);
+  const summe = spalten.map(() => 0);
+  const zuteilung = new Array(karten.length);
+
+  for (const i of reihenfolge) {
+    let ziel = 0;
+    for (let s = 1; s < summe.length; s++) if (summe[s] < summe[ziel]) ziel = s;
+    zuteilung[i] = ziel;
+    summe[ziel] += hoehen[i] + 14;   // 14 = der gap zwischen zwei Karten
+  }
+
+  /* Einsortiert wird wieder in der urspruenglichen Reihenfolge - die
+     Verteilung soll die Hoehen ausgleichen, nicht die Liste umsortieren. */
+  karten.forEach((karte, i) => spalten[zuteilung[i]].appendChild(karte));
+}
+
 /* Offen zuerst als volle Karten, Erledigtes darunter als Streifen - die
    Frage lautet "was fehlt mir noch", und die Antwort soll ganz oben stehen
    und ohne Scrollen dastehen. */
@@ -10595,13 +10670,30 @@ function renderWeeklyContentPane(w) {
   const offen  = w.content.filter(c => c.status !== 'done');
   const fertig = w.content.filter(c => c.status === 'done');
 
+  /* Ueberschriften nur, wenn es wirklich zwei Gruppen gibt. Steht alles
+     unter "Still open", trennt die Zeile nichts von nichts - sie kostet
+     dann bloss die 31px, die den Reiter zum Scrollen zwingen, und die Zahl
+     steht ohnehin in der Pille an der Seitenleiste. */
+  const zweiGruppen = offen.length > 0 && fertig.length > 0;
+
   const teile = [];
   if (offen.length) {
-    teile.push(`<div class="weekly-group-title">Still open · ${offen.length}</div>`);
-    teile.push(`<div class="weekly-grid">${offen.map(renderWeeklyContentCard).join('')}</div>`);
+    const n = weeklySpaltenAnzahl();
+    /* Erste Verteilung reihum - sie wird gleich durch die gemessene
+       ersetzt, muss aber schon die richtige Spaltenbreite haben. */
+    const spalten = Array.from({ length: n }, () => []);
+    offen.forEach((c, i) => spalten[i % n].push(c));
+    if (zweiGruppen) {
+      teile.push(`<div class="weekly-group-title">Still open · ${offen.length}</div>`);
+    }
+    teile.push(`<div class="weekly-cols">${spalten
+      .map(sp => `<div class="wk-col">${sp.map(renderWeeklyContentCard).join('')}</div>`)
+      .join('')}</div>`);
   }
   if (fertig.length) {
-    teile.push(`<div class="weekly-group-title">Done this week · ${fertig.length}</div>`);
+    if (zweiGruppen) {
+      teile.push(`<div class="weekly-group-title">Done this week · ${fertig.length}</div>`);
+    }
     teile.push(`<div class="weekly-done-row">${fertig.map(renderWeeklyDoneCard).join('')}</div>`);
   }
   if (!offen.length && !fertig.length) {
@@ -10609,8 +10701,20 @@ function renderWeeklyContentPane(w) {
   }
 
   $('weekly-content').innerHTML = teile.join('');
+  const raster = $('weekly-content').querySelector('.weekly-cols');
+  if (raster) verteileWeeklyKarten(raster);
   bindWeeklyToggles();
 }
+
+/* Die Spaltenzahl haengt an der Fensterbreite, und die Verteilung an der
+   Spaltenzahl - beim Groessenwechsel also neu rechnen. Entprellt, weil ein
+   Ziehen am Fensterrand sonst hundert Neuverteilungen ausloest. */
+let weeklyResizeTimer = null;
+window.addEventListener('resize', () => {
+  if (!$('tab-weekly')?.classList.contains('active') || !weeklyState) return;
+  clearTimeout(weeklyResizeTimer);
+  weeklyResizeTimer = setTimeout(() => renderWeeklyContentPane(weeklyState), 150);
+});
 
 function renderWeekly(w) {
   weeklyState = w;
@@ -10635,7 +10739,7 @@ function renderWeekly(w) {
   const haelfte = Math.ceil(w.vendors.length / 2);
   const spalten = [w.vendors.slice(0, haelfte), w.vendors.slice(haelfte)];
   $('weekly-vendors').innerHTML = spalten
-    .map(sp => `<div class="wk-vcol">${sp.map(renderWeeklyVendorCard).join('')}</div>`)
+    .map(sp => `<div class="wk-col">${sp.map(renderWeeklyVendorCard).join('')}</div>`)
     .join('');
 
   /* Die Pille zeigt, wie viel diese Woche noch offen ist. NUR Inhalte:

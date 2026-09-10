@@ -44,11 +44,13 @@ follow [semantic versioning](https://semver.org/lang/en/).
   it uses has no known starting point. So Argus watches for it to move, once,
   and from then on knows the answer for good. Until that happens Kahl keeps the
   manual switch; a week of ticking beats a week of being told the wrong thing.
-- **Open first, done underneath — on one screen.** The content list is split in
-  two, with a count on each heading, so "what do I still owe this week" is
-  answered at the top of the page rather than by reading seven cards. Finished
-  weeklies shrink to a single strip, mission details sit on one line each, and
-  the whole tab fits without scrolling.
+- **Open first, done underneath — on one screen.** What you still owe is
+  answered at the top of the page rather than by reading seven cards: finished
+  weeklies shrink to a single strip below the rest, mission details sit on one
+  line each, and the whole tab fits without scrolling. The three columns are
+  filled by measured height, not by counting cards, so they line up top and
+  bottom the way the vendor list always has — the Circuit with its ten pictures
+  no longer drags one column halfway down the page on its own.
 - **Every card shows what the week is actually worth.** The Archon Hunt carries
   the shard its archon drops — Amar crimson, Nira amber, Boreal azure — Deep
   Archimedea its three colours and the Melee Arcane Adapter, Temporal all six
