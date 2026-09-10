@@ -10671,6 +10671,16 @@ function besteVerteilung(hoehen, anzahl) {
   if (anzahl < 2 || n === 0) return new Array(n).fill(0);
 
   const ABSTAND = 14;   // derselbe gap wie in .wk-col
+
+  /* Die Suche laeuft im Zeichenpfad der Oberflaeche. Sieben Karten sind
+     nichts, aber die Zahl steht hier nicht fest - kommt ein Wochen-Inhalt
+     dazu, waechst sie mit. Ab einer Groesse, die man nicht mehr in einem
+     Wimpernschlag durchrechnet, gilt wieder die Faustregel: groesste Karte
+     zuerst in die jeweils kuerzeste Spalte. Die ist nicht optimal, aber sie
+     ist sofort da - und ein hakender Reiter waere schlimmer als ein paar
+     Pixel Versatz. */
+  if (n > 12) return gierigeVerteilung(hoehen, anzahl, ABSTAND);
+
   const zuteilung = new Array(n).fill(0);
   const summen = new Array(anzahl).fill(0);
   let beste = null, besterMax = Infinity, besterAbstand = Infinity;
@@ -10696,6 +10706,20 @@ function besteVerteilung(hoehen, anzahl) {
   rechnen(0);
 
   return beste || new Array(n).fill(0);
+}
+
+/** Faustregel fuer den Fall, dass sich das Durchrechnen nicht mehr lohnt. */
+function gierigeVerteilung(hoehen, anzahl, abstand) {
+  const summen = new Array(anzahl).fill(0);
+  const zuteilung = new Array(hoehen.length);
+  const reihenfolge = hoehen.map((_, i) => i).sort((a, b) => hoehen[b] - hoehen[a]);
+  for (const i of reihenfolge) {
+    let ziel = 0;
+    for (let s = 1; s < anzahl; s++) if (summen[s] < summen[ziel]) ziel = s;
+    zuteilung[i] = ziel;
+    summen[ziel] += hoehen[i] + (summen[ziel] ? abstand : 0);
+  }
+  return zuteilung;
 }
 
 /* Alle Karten in einem Raster, erledigte gruen umrandet an ihrem Platz.
