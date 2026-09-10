@@ -10606,7 +10606,7 @@ function weeklySpaltenAnzahl() {
      1500px Fenster bleiben hier aber nur 1334px uebrig, und drei Spalten
      fielen dadurch auf zwei zurueck, obwohl sie bequem gepasst haetten. */
   const breite = $('weekly-content')?.clientWidth || 0;
-  return breite < 820 ? 1 : breite < 1180 ? 2 : 3;
+  return breite < 700 ? 1 : breite < 1060 ? 2 : 3;
 }
 
 /**
@@ -10644,23 +10644,67 @@ function verteileWeeklyKarten(raster) {
   const hoehen = karten.map(k => k.offsetHeight);
   raster.classList.remove('is-measuring');
 
-  /* Groesste zuerst in die jeweils kuerzeste Spalte. Andersherum - in der
-     Reihenfolge des Inhalts - landet ein Brocken wie der Circuit zufaellig
-     irgendwo und zieht seine Spalte allein nach unten. */
-  const reihenfolge = karten.map((_, i) => i).sort((a, b) => hoehen[b] - hoehen[a]);
-  const summe = spalten.map(() => 0);
-  const zuteilung = new Array(karten.length);
+  const zuteilung = besteVerteilung(hoehen, spalten.length);
 
-  for (const i of reihenfolge) {
-    let ziel = 0;
-    for (let s = 1; s < summe.length; s++) if (summe[s] < summe[ziel]) ziel = s;
-    zuteilung[i] = ziel;
-    summe[ziel] += hoehen[i] + 14;   // 14 = der gap zwischen zwei Karten
-  }
+  karten.forEach((karte, i) => {
+    /* Was in einer kurzen Spalte an Hoehe uebrig bleibt, verteilt sich nach
+       Inhalt: eine Karte mit drei Missionen und sieben Belohnungen nimmt
+       mehr davon auf als eine mit einer Zeile. Gleichmaessig aufgeteilt sah
+       es aus, als haetten die duennen Karten ohne Grund Luft. */
+    karte.style.flexGrow = String(hoehen[i]);
+    /* Einsortiert wird in der urspruenglichen Reihenfolge - die Verteilung
+       soll die Hoehen ausgleichen, nicht die Liste umsortieren. */
+    spalten[zuteilung[i]].appendChild(karte);
+  });
+}
 
-  /* Einsortiert wird wieder in der urspruenglichen Reihenfolge - die
-     Verteilung soll die Hoehen ausgleichen, nicht die Liste umsortieren. */
-  karten.forEach((karte, i) => spalten[zuteilung[i]].appendChild(karte));
+/**
+ * Welche Karte in welche Spalte, so dass die hoechste Spalte so niedrig wie
+ * moeglich ausfaellt.
+ *
+ * DURCHGERECHNET, NICHT GESCHAETZT. Erst stand hier die uebliche Heuristik
+ * "groesste Karte zuerst in die kuerzeste Spalte". Die ist schnell und
+ * meistens ordentlich, lag hier aber daneben: bei den sieben echten
+ * Kartenhoehen (303, 259, 259, 237, 210, 188, 169) kam sie auf 666px, wo
+ * 595 moeglich sind - und genau diese 71px waren der Unterschied zwischen
+ * "passt auf den Schirm" und "man muss scrollen".
+ *
+ * Sieben Karten auf drei Spalten sind 3^7 = 2187 Moeglichkeiten. Die kann
+ * man alle durchgehen. Zwei Kniffe halten das auch bei mehr Karten klein:
+ * leere Spalten sind untereinander austauschbar, also wird nur die erste
+ * davon probiert; und ein Ast, dessen Spalte schon jetzt hoeher ist als die
+ * bisher beste Loesung, wird gar nicht erst weiterverfolgt.
+ */
+function besteVerteilung(hoehen, anzahl) {
+  const n = hoehen.length;
+  if (anzahl < 2 || n === 0) return new Array(n).fill(0);
+
+  const ABSTAND = 14;   // derselbe gap wie in .wk-col
+  const zuteilung = new Array(n).fill(0);
+  const summen = new Array(anzahl).fill(0);
+  let beste = null, besterMax = Infinity, besterAbstand = Infinity;
+
+  const rechnen = i => {
+    if (i === n) {
+      const max = Math.max(...summen);
+      const spanne = max - Math.min(...summen);
+      if (max < besterMax || (max === besterMax && spanne < besterAbstand)) {
+        besterMax = max; besterAbstand = spanne; beste = zuteilung.slice();
+      }
+      return;
+    }
+    for (let s = 0; s < anzahl; s++) {
+      const vorher = summen[s];
+      summen[s] = vorher + hoehen[i] + (vorher ? ABSTAND : 0);
+      zuteilung[i] = s;
+      if (summen[s] <= besterMax) rechnen(i + 1);
+      summen[s] = vorher;
+      if (vorher === 0) break;   // weitere leere Spalten sind dieselbe Loesung
+    }
+  };
+  rechnen(0);
+
+  return beste || new Array(n).fill(0);
 }
 
 /* Offen zuerst als volle Karten, Erledigtes darunter als Streifen - die
@@ -10670,12 +10714,6 @@ function renderWeeklyContentPane(w) {
   const offen  = w.content.filter(c => c.status !== 'done');
   const fertig = w.content.filter(c => c.status === 'done');
 
-  /* Ueberschriften nur, wenn es wirklich zwei Gruppen gibt. Steht alles
-     unter "Still open", trennt die Zeile nichts von nichts - sie kostet
-     dann bloss die 31px, die den Reiter zum Scrollen zwingen, und die Zahl
-     steht ohnehin in der Pille an der Seitenleiste. */
-  const zweiGruppen = offen.length > 0 && fertig.length > 0;
-
   const teile = [];
   if (offen.length) {
     const n = weeklySpaltenAnzahl();
@@ -10683,18 +10721,20 @@ function renderWeeklyContentPane(w) {
        ersetzt, muss aber schon die richtige Spaltenbreite haben. */
     const spalten = Array.from({ length: n }, () => []);
     offen.forEach((c, i) => spalten[i % n].push(c));
-    if (zweiGruppen) {
-      teile.push(`<div class="weekly-group-title">Still open · ${offen.length}</div>`);
-    }
     teile.push(`<div class="weekly-cols">${spalten
       .map(sp => `<div class="wk-col">${sp.map(renderWeeklyContentCard).join('')}</div>`)
       .join('')}</div>`);
   }
   if (fertig.length) {
-    if (zweiGruppen) {
-      teile.push(`<div class="weekly-group-title">Done this week · ${fertig.length}</div>`);
-    }
-    teile.push(`<div class="weekly-done-row">${fertig.map(renderWeeklyDoneCard).join('')}</div>`);
+    /* Die Beschriftung steht IN der Zeile, nicht darueber. Als eigene
+       Ueberschrift kostete sie 31px - und genau die fehlten, sobald
+       ueberhaupt etwas erledigt war. Ueber den offenen Karten braucht es
+       gar keine mehr: was oben steht, ist offen, und die Zahl steht in der
+       Pille an der Seitenleiste. */
+    teile.push(`<div class="weekly-done-row">
+      <span class="weekly-done-label">Done this week</span>
+      ${fertig.map(renderWeeklyDoneCard).join('')}
+    </div>`);
   }
   if (!offen.length && !fertig.length) {
     teile.push('<p class="meta">Nothing to show — the world state came back empty.</p>');

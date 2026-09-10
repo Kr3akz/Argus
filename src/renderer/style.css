@@ -8823,15 +8823,14 @@ input[type=number]:focus, input[type=email]:focus, input[type=password]:focus {
 .weekly-pane { display: none; }
 .weekly-pane.active { display: block; animation: fade .2s var(--ease); }
 
-.weekly-group-title {
-  font-size: 12px; font-weight: 600; color: var(--text-2);
+/* Beschriftung der Erledigt-Zeile - IN der Zeile, nicht darueber. Als
+   eigene Ueberschrift kostete sie 31px, und genau die fehlten, sobald
+   ueberhaupt etwas erledigt war. */
+.weekly-done-label {
+  font-size: 11px; font-weight: 600; color: var(--text-3);
   text-transform: uppercase; letter-spacing: .6px;
-  margin: 2px 0 10px;
+  align-self: center; margin-right: 4px;
 }
-/* Die zweite Gruppe ("Done this week") braucht Luft nach oben, sonst klebt
-   ihre Ueberschrift an der letzten Karte der ersten - aber nur so viel, dass
-   beide Gruppen zusammen noch auf einen Schirm passen. */
-.weekly-cols + .weekly-group-title { margin-top: 14px; }
 
 /* Hinweis, warum gerade nichts automatisch verfolgt wird. Gedaempft, nicht
    als Warnung: es ist ein Zustand, kein Fehler. */
@@ -8853,12 +8852,15 @@ input[type=number]:focus, input[type=email]:focus, input[type=password]:focus {
   flex: 1; min-width: 0;
   display: flex; flex-direction: column; gap: 14px;
 }
-.wk-col > .wk-card { margin-bottom: 0; }
-/* Der Ausgleich: was an Hoehe fehlt, nimmt die unterste Karte auf. */
-.wk-col > .wk-card:last-child { flex: 1; }
+/* Der Ausgleich auf die volle Spaltenhoehe: was fehlt, teilen sich ALLE
+   Karten der Spalte. Zuerst bekam ihn nur die unterste - dann stand unter
+   "Netracells" mit seiner einen Zeile ein handbreites Loch, waehrend die
+   Karten darueber eng standen. flex-basis bleibt auto, sonst waeren alle
+   Karten gleich hoch statt jede um denselben Rest gewachsen. */
+.wk-col > .wk-card { margin-bottom: 0; flex: 1 0 auto; }
 /* ... ausser waehrend der Messung: dann soll jede Karte ihre eigene Hoehe
    zeigen und nicht die der Spalte. Siehe verteileWeeklyKarten(). */
-.weekly-cols.is-measuring .wk-col > .wk-card:last-child { flex: none; }
+.weekly-cols.is-measuring .wk-col > .wk-card { flex: none; }
 /* Ganz schmal untereinander. Die Inhaltsspalten regelt ohnehin schon
    weeklySpaltenAnzahl(); fuer die Haendler, die immer zweispaltig gebaut
    werden, ist diese Regel der einzige Ausweg. */
@@ -8993,8 +8995,11 @@ input[type=number]:focus, input[type=email]:focus, input[type=password]:focus {
 }
 .wk-rw img { width: 22px; height: 22px; object-fit: contain; }
 
-/* Erledigt: ein Streifen statt einer Karte. */
-.weekly-done-row { display: flex; flex-wrap: wrap; gap: 8px; }
+/* Erledigt: ein Streifen statt einer Karte, und alles auf einer Zeile. */
+.weekly-done-row {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin-top: 14px;
+}
 .wk-done {
   display: flex; align-items: center; gap: 9px;
   padding: 8px 12px; border-radius: 10px;
