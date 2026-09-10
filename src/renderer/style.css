@@ -8809,6 +8809,8 @@ input[type=number]:focus, input[type=email]:focus, input[type=password]:focus {
   text-shadow: 0 0 22px rgb(var(--t-accent) / .35);
 }
 .weekly-reset-when { font-size: 12px; color: var(--text-3); }
+.weekly-sync { font-size: 11px; color: var(--text-3); opacity: .7; }
+.weekly-sync:not(:empty)::before { content: '·'; margin-right: 7px; }
 .weekly-reset .btn-sm { position: relative; flex-shrink: 0; margin-left: auto; }
 
 /* ---------- Content / Vendor Umschalter ---------- */
@@ -8822,13 +8824,14 @@ input[type=number]:focus, input[type=email]:focus, input[type=password]:focus {
 .weekly-pane.active { display: block; animation: fade .2s var(--ease); }
 
 .weekly-group-title {
-  font-size: 13px; font-weight: 600; color: var(--text-2);
+  font-size: 12px; font-weight: 600; color: var(--text-2);
   text-transform: uppercase; letter-spacing: .6px;
-  margin: 4px 0 14px;
+  margin: 2px 0 10px;
 }
 /* Die zweite Gruppe ("Done this week") braucht Luft nach oben, sonst klebt
-   ihre Ueberschrift an der letzten Karte der ersten. */
-.weekly-grid + .weekly-group-title { margin-top: 22px; }
+   ihre Ueberschrift an der letzten Karte der ersten - aber nur so viel, dass
+   beide Gruppen zusammen noch auf einen Schirm passen. */
+.weekly-grid + .weekly-group-title { margin-top: 14px; }
 
 /* Hinweis, warum gerade nichts automatisch verfolgt wird. Gedaempft, nicht
    als Warnung: es ist ein Zustand, kein Fehler. */
@@ -8928,6 +8931,9 @@ input[type=number]:focus, input[type=email]:focus, input[type=password]:focus {
 .weekly-src-live  { background: rgba(var(--t-green) / .16); color: var(--green); }
 .weekly-src-reset { background: rgba(255, 255, 255, .07);   color: var(--text-3); }
 .weekly-src-auto  { background: rgb(var(--t-accent) / .16); color: var(--accent); }
+/* "unread": gerechnet, aber seit der letzten Lesung des Inventars ist nichts
+   dazugekommen - die Null darunter ist kein Messwert dieser Woche. */
+.weekly-src-old   { background: rgba(255, 255, 255, .05); color: var(--text-3); font-style: italic; }
 
 /* ---------- Fortschritt: Punkte (Archon 3, Netracells 5) ---------- */
 .wk-pips { display: flex; align-items: center; gap: 5px; }
@@ -8969,16 +8975,51 @@ input[type=number]:focus, input[type=email]:focus, input[type=password]:focus {
 /* ---------- Manueller Haken (Archimedea, Kahl) ---------- */
 /* Dieselben zwei Klassen wie im Einstellungs-Tab - ein Kippschalter sieht
    ueberall im Haus gleich aus. */
+/* Leiser als frueher: der Haken ist der Rueckfall, nicht der Normalfall -
+   mit frischem Inventar steht er auf keiner Karte mehr. Deshalb rechts
+   unten in die Ecke statt quer ueber die halbe Karte. */
 .wk-manual {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  margin-top: 13px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.05);
+  display: flex; align-items: center; justify-content: flex-end; gap: 9px;
+  margin-top: 10px; padding-top: 9px; border-top: 1px solid rgba(255,255,255,.05);
 }
-.wk-manual-label { font-size: 11.5px; color: var(--text-3); }
+.wk-manual-label { font-size: 11px; color: var(--text-3); }
 
-.wk-body { margin-top: 13px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.05); }
-.wk-row { padding: 5px 0; }
-.wk-row b { display: block; font-size: 12.5px; font-weight: 550; color: var(--text); }
-.wk-row span { display: block; font-size: 11px; color: var(--text-3); margin-top: 2px; line-height: 1.45; }
+.wk-body { margin-top: 11px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.05); }
+/* Eine Zeile je Eintrag statt zwei: Titel und Zusatz nebeneinander. Bei drei
+   Archimedea-Missionen mit Abweichung und zwei Risiken spart das die halbe
+   Karte - und genau die fehlte, um alles ohne Scrollen unterzubringen. */
+.wk-row { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; }
+.wk-row b { font-size: 12.5px; font-weight: 550; color: var(--text); flex-shrink: 0; }
+.wk-row span {
+  font-size: 11px; color: var(--text-3); line-height: 1.4; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* Was diese Woche daran haengt. Klein, ohne Namen - der steht im title. */
+.wk-rewards { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-top: 10px; }
+.wk-rw {
+  width: 28px; height: 28px; border-radius: 7px;
+  background: var(--surface-2); display: grid; place-items: center; flex-shrink: 0;
+}
+.wk-rw img { width: 22px; height: 22px; object-fit: contain; }
+
+/* Erledigt: ein Streifen statt einer Karte. */
+.weekly-done-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.wk-done {
+  display: flex; align-items: center; gap: 9px;
+  padding: 8px 12px; border-radius: 10px;
+  border: 1px solid rgba(var(--t-green) / .22);
+  background: rgba(var(--t-green) / .07);
+}
+.wk-done b { font-size: 12.5px; font-weight: 550; color: var(--text-2); }
+.wk-done .wk-icon {
+  width: 24px; height: 24px; border-radius: 7px;
+  background: rgba(var(--t-green) / .16); color: var(--green);
+}
+.wk-done-num { font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.wk-done-tick { color: var(--green); display: grid; place-items: center; }
+.wk-done .wk-manual { margin: 0; padding: 0; border: none; }
+.wk-done .wk-manual-label { display: none; }
 
 .wk-vendor-what { font-size: 12.5px; color: var(--text-2); line-height: 1.5; }
 

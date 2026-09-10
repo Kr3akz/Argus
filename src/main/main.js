@@ -35,7 +35,7 @@ import { loadMods, POLARITIES, RARITY_LABELS, searchMods, isAuraMod, isExilusMod
 import { evaluateBuild, combineBuilds, orokinTypeFor } from '../core/builds.js';
 import { indexArcanes, searchArcanes, arcaneSlotCount, maxArcaneRank, isArcaneName } from '../core/arcanes.js';
 import { fetchWorldState } from '../core/worldstate.js';
-import { annotateWeekly, kahlAnker } from '../core/weekly.js';
+import { annotateWeekly, kahlAnker, inventarStand } from '../core/weekly.js';
 import { searchResourceGuides, RESOURCE_CATEGORIES } from '../core/farming.js';
 import { getMiningGuide } from '../core/mining.js';
 import { getDucatsReferenceList, buildPrimeSets, buildDucatsCatalog, buildInventoryDucats,
@@ -1929,6 +1929,39 @@ ipcMain.handle('worldstate:get', async (_e, force) => {
    dessen Rueckfall. Bleibt der aus, gibt es hier ok:false statt eines
    halben Gerippes - eine Wochenansicht ohne Zeiten waere schlimmer als
    eine ehrliche Fehlermeldung. */
+/**
+ * Nachlesen, wenn der Inventarstand aus einer vergangenen Woche stammt.
+ *
+ * Gibt zurueck, OB ein Scan laeuft - nicht sein Ergebnis. Der Aufrufer soll
+ * nicht warten: der Scan braucht rund zehn Sekunden, und solange soll der
+ * Reiter nicht leer stehen. Fertig meldet er sich ueber 'inventory:updated',
+ * dieselbe Nachricht, die auch der Log-Beobachter schickt.
+ *
+ * Drei Bremsen, alle aus demselben Grund wie beim AutoSync weiter unten:
+ * ohne laufendes Spiel gibt es nichts zu lesen, ohne Erlaubnis wird nichts
+ * angefasst, und zwei Scans kurz hintereinander kosten nur Rechenzeit -
+ * das Spiel legt das Inventar ohnehin nur beim Zonenwechsel neu ab.
+ */
+async function starteWochenScan() {
+  if (Date.now() - lastAutoSyncAt < AUTO_SYNC_MIN_MS) return false;
+
+  /* Die zwei billigen Fragen VOR der Rueckmeldung - sonst meldet die
+     Oberflaeche "wird nachgelesen", waehrend in Wahrheit nichts passiert.
+     tasklist kostet Millisekunden, der Scan Sekunden. */
+  const cfg = await loadConfig();
+  if (cfg.inventoryScan !== true) return false;
+  if (!(await findGameProcessIds()).length) return false;   // Spiel laeuft nicht
+
+  lastAutoSyncAt = Date.now();
+  console.log('[Weekly] Inventarstand ist aus einer alten Woche - Scan gestartet');
+
+  inventoryPayload({ refresh: true })
+    .then(payload => sendToMain('inventory:updated', payload.data))
+    .catch(err => console.error('[Weekly] Nachlesen fehlgeschlagen:', err.message));
+
+  return true;
+}
+
 ipcMain.handle('weekly:get', async (_e, force) => {
   try {
     const ws = await fetchWorldState({ force: !!force });
@@ -1947,15 +1980,32 @@ ipcMain.handle('weekly:get', async (_e, force) => {
       ({ inventory } = await loadInventory({ refresh: false }));
     } catch { /* kein Abruf vorhanden - unveraendert weiter */ }
 
+    /* Stammt der Stand aus einer vergangenen Woche, ist er fuer diese Ansicht
+       wertlos - dann JETZT nachlesen, statt den Benutzer auf Schalter
+       zurueckzuwerfen. Der Scan liest den Arbeitsspeicher des laufenden
+       Spiels, kostet also niemanden ausser der eigenen CPU etwas; laeuft
+       Warframe nicht, wird er gar nicht erst angefangen.
+       Er blockiert diese Antwort NICHT: zehn Sekunden Wartezeit beim Oeffnen
+       des Reiters waeren schlimmer als eine Sekunde alte Anzeige. Wenn er
+       fertig ist, meldet 'inventory:updated' es, und die Ansicht laedt sich
+       selbst neu. */
+    const wochenEnde  = weekly.resetAt ? new Date(weekly.resetAt).getTime() : null;
+    const wochenStart = wochenEnde != null ? wochenEnde - 7 * 86400000 : null;
+
+    let scanLaeuft = false;
+    const stand = inventory ? inventarStand(inventory) : null;
+    if (wochenStart != null && (stand == null || stand < wochenStart)) {
+      scanLaeuft = await starteWochenScan();
+    }
+
     const st = await store.load();
-    const wochenEnde = weekly.resetAt ? new Date(weekly.resetAt).getTime() : null;
 
     /* Kahls Wochenzaehler traegt kein Datum. Der Anker lernt die Zuordnung
        durch Beobachtung - siehe kahlAnker in core/weekly.js. Geschrieben
        wird nur, wenn sich tatsaechlich etwas geaendert hat. */
     let anker = st.kahlAnker;
     if (inventory) {
-      const neu = kahlAnker(anker, inventory, wochenEnde);
+      const neu = kahlAnker(anker, inventory, wochenEnde, wochenStart);
       if (JSON.stringify(neu) !== JSON.stringify(anker)) {
         anker = neu;
         await store.setKahlAnker(neu);
@@ -1969,6 +2019,7 @@ ipcMain.handle('weekly:get', async (_e, force) => {
       if (st.weeklyDone[`${c.key}:${weekly.resetAt}`]) manuell[c.key] = true;
     }
     weekly = annotateWeekly(weekly, inventory, Date.now(), { manuell, kahlAnker: anker });
+    if (scanLaeuft) weekly = { ...weekly, inventar: { ...weekly.inventar, scanLaeuft: true } };
 
     /* Bilder fuer die Circuit-Auswahl. Nur HIER moeglich und nicht in
        core/weekly.js: der Katalog ist eine Electron-freie, aber grosse
@@ -1981,17 +2032,37 @@ ipcMain.handle('weekly:get', async (_e, force) => {
         const treffer = catalog.items.find(i => i.name === name);
         return treffer ? { name, image: imageUrl(treffer.uniqueName, 128) } : { name, image: null };
       };
+      /* Die Wochenbelohnungen kommen als uniqueName herein (siehe SPLITTER in
+         core/weekly.js). Der Name daneben traegt bei den Splittern noch die
+         Farbmarkierung des Spiels - "<SHARD_RED_SIMPLE> Crimson Archon
+         Shard" - die gehoert nicht auf den Bildschirm. */
+      const nachKennung = new Map(catalog.items.map(i => [i.uniqueName, i]));
+      const belohnung = uniqueName => {
+        const treffer = nachKennung.get(uniqueName);
+        if (!treffer) return null;
+        return {
+          name: String(treffer.name || '').replace(/^<[^>]*>\s*/, ''),
+          image: imageUrl(uniqueName, 128)
+        };
+      };
       weekly = {
         ...weekly,
-        content: weekly.content.map(c => c.key !== 'circuit' ? c : ({
-          ...c,
-          eintraege: (c.eintraege || []).map(e => ({
-            ...e,
-            /* Der Titel traegt die Namen als "A, B, C" - fuer Bilder
-               braucht es sie einzeln. */
-            picks: e.titel.split(',').map(s => s.trim()).filter(Boolean).map(bild)
-          }))
-        }))
+        content: weekly.content.map(c => {
+          const angereichert = {
+            ...c,
+            belohnungen: (c.belohnungen || []).map(belohnung).filter(Boolean)
+          };
+          if (c.key !== 'circuit') return angereichert;
+          return {
+            ...angereichert,
+            eintraege: (c.eintraege || []).map(e => ({
+              ...e,
+              /* Der Titel traegt die Namen als "A, B, C" - fuer Bilder
+                 braucht es sie einzeln. */
+              picks: e.titel.split(',').map(s => s.trim()).filter(Boolean).map(bild)
+            }))
+          };
+        })
       };
     } catch { /* ohne Katalog eben ohne Bilder */ }
 

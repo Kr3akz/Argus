@@ -44,9 +44,20 @@ follow [semantic versioning](https://semver.org/lang/en/).
   it uses has no known starting point. So Argus watches for it to move, once,
   and from then on knows the answer for good. Until that happens Kahl keeps the
   manual switch; a week of ticking beats a week of being told the wrong thing.
-- **Open first, done underneath.** The content list is split in two now, with a
-  count on each heading, so "what do I still owe this week" is answered at the
-  top of the page rather than by reading seven cards.
+- **Open first, done underneath — on one screen.** The content list is split in
+  two, with a count on each heading, so "what do I still owe this week" is
+  answered at the top of the page rather than by reading seven cards. Finished
+  weeklies shrink to a single strip, mission details sit on one line each, and
+  the whole tab fits without scrolling.
+- **Every card shows what the week is actually worth.** The Archon Hunt carries
+  the shard its archon drops — Amar crimson, Nira amber, Boreal azure — Deep
+  Archimedea its three colours and the Melee Arcane Adapter, Temporal all six
+  and the Omni Forma, the Descendia Uriel, Vinquibus, Maphica and Ignia.
+- **Argus reads your inventory by itself when the weekly tab needs it.** If the
+  last read predates this week's reset, opening the tab starts one — it reads
+  the running game's memory, so it costs nothing but a few seconds of your own
+  CPU, and it does not start at all when Warframe is closed. The numbers fill
+  in on their own when it finishes.
 
 ### Fixed
 
@@ -58,11 +69,14 @@ follow [semantic versioning](https://semver.org/lang/en/).
   catch stale data was a week out of step, so it only accepted a figure once it
   had expired and rejected it while it was current. Four of five runs stayed on
   screen with all five search pulses back in hand.
-- **Progress is only read from a save file that belongs to this week.** Both
-  bugs above shared a cause: nothing asked how old the data was. Every weekly
-  now goes through that question first, and when the answer is "older than this
-  week" the tab says so in a line at the top instead of quietly showing figures
-  from the last one.
+- **Nothing is counted from a save file older than this week.** Both bugs above
+  shared a cause: nothing asked how old the data was. Every weekly now goes
+  through that question first — measured against when your game last synced
+  with the servers, which is the only date the save file carries about itself.
+  Each individual record is then checked against its own week on top of that,
+  because the game writes them one at a time, whenever you touch that piece of
+  content: one save file can easily hold four records from two different weeks
+  at once.
 - **Kahl's remaining time was a few hours instead of a few days.** The world
   state lists his garrison with a daily window, and the tab took it at face
   value and labelled it live. It follows the weekly reset now, like the rest.

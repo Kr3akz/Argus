@@ -7280,6 +7280,11 @@ if (window.api.onInventoryUpdated) {
     if (invTab && invTab.classList.contains('active')) {
       renderInventory();
     }
+    /* Die Wochenansicht wertet den Inventarstand aus - ist er gerade neu
+       geworden, gilt ihre Anzeige nicht mehr. Sie stoesst diesen Scan sogar
+       selbst an, wenn ihr Stand aus einer alten Woche stammt; hier kommt die
+       Antwort darauf an. */
+    if ($('tab-weekly')?.classList.contains('active')) loadWeekly(true);
   });
 }
 
@@ -10398,17 +10403,44 @@ function renderScore(p) {
 
 const WEEKLY_PROGRESS = { pips: renderPips, bars: renderBars, score: renderScore };
 
-/* Fuer alles ohne Nachweis (Archimedea, Kahl): ein echter Kippschalter statt
-   eines erfundenen Fortschrittsbalkens. Persistiert ueber den Reset-
-   Zeitpunkt als Schluessel - siehe store.setWeeklyDone. */
+/* Der Haken zum selbst Abhaken. Steht NUR noch da, wo der Kern nichts
+   nachweisen konnte oder sein Stand aus einer alten Woche ist - mit
+   frischem Inventar sieht man ihn gar nicht mehr. Persistiert ueber den
+   Reset-Zeitpunkt als Schluessel, siehe store.setWeeklyDone. */
 function renderManualToggle(e) {
   return `
     <label class="wk-manual">
-      <span class="wk-manual-label">Mark this week's run as done</span>
+      <span class="wk-manual-label">Mark as done</span>
       <input type="checkbox" class="toggle-checkbox wk-manual-check" data-weekly-key="${esc(e.key)}"
              ${e.manuellErledigt ? 'checked' : ''}>
       <span class="toggle-switch"></span>
     </label>`;
+}
+
+/* Was diese Woche daran haengt, als Bildreihe. Die Kennungen kommen aus
+   core/weekly.js und sind am Wiki gegengelesen; aufgeloest hat sie der
+   Hauptprozess. Ohne Katalog bleibt die Reihe leer statt kaputt. */
+function renderWeeklyRewards(liste) {
+  if (!liste || !liste.length) return '';
+  const bilder = liste.map(b => `
+    <span class="wk-rw" title="${esc(b.name)}">
+      <img src="${esc(b.image)}" alt="${esc(b.name)}"
+           onerror="this.parentNode.style.display='none'">
+    </span>`).join('');
+  return `<div class="wk-rewards">${bilder}</div>`;
+}
+
+/* Das Schild rechts oben: woher die Zahl auf dieser Karte kommt. */
+function weeklyNachweisTag(e) {
+  if (e.nachweis === 'auto') {
+    return '<span class="weekly-src weekly-src-auto" title="Read from your own game data">tracked</span>';
+  }
+  if (e.nachweis === 'alt') {
+    return '<span class="weekly-src weekly-src-old" '
+         + 'title="Nothing recorded since your last inventory read — this is not a measurement of this week">'
+         + 'unread</span>';
+  }
+  return weeklySrcTag(e.quelle);
 }
 
 function renderWeeklyContentCard(e) {
@@ -10417,9 +10449,10 @@ function renderWeeklyContentCard(e) {
   const fertig = e.status === 'done';
 
   /* Der Circuit bekommt Bilder statt einer Namensliste - Warframes und
-     Waffen sind das, was man auf einen Blick erkennt. Alles andere
-     (Archimedea-Missionen, Kahl) hat keine Item-Entsprechung und bleibt
-     Text. */
+     Waffen sind das, was man auf einen Blick erkennt. Alles andere steht
+     als EINE Zeile je Eintrag: Titel und Zusatz nebeneinander statt
+     untereinander. Das ist der halbe Kartenhoehe, und drei Missionen mit
+     ihren Abweichungen passen wieder neben den Rest auf den Schirm. */
   const zeilen = (e.eintraege || []).map(x => {
     if (x.picks && x.picks.length) {
       const bilder = x.picks.map(p => `
@@ -10432,22 +10465,16 @@ function renderWeeklyContentCard(e) {
         <div class="wk-picks">${bilder}</div>
       </div>`;
     }
+    /* Der Zusatz wird bei schmaler Spalte abgeschnitten - deshalb steht er
+       zusaetzlich im title, sonst waeren die Risiken einer Archimedea-Mission
+       je nach Fensterbreite einfach weg. */
     return `
-    <div class="wk-row">
-      <b>${esc(x.titel)}</b>
-      ${x.unter ? `<span>${esc(x.unter)}</span>` : ''}
+    <div class="wk-row"${x.unter ? ` title="${esc(x.unter)}"` : ''}>
+      <b>${esc(x.titel)}</b>${x.unter ? `<span>${esc(x.unter)}</span>` : ''}
     </div>`;
   }).join('');
 
   const unterschrift = [e.detail, e.ort].filter(Boolean).map(esc).join(' · ');
-
-  /* Fortschritt wenn belegt, sonst der Haken zum selbst Abhaken. Welcher
-     Inhalt in welche Gruppe faellt, entscheidet allein, ob der Kern etwas
-     nachweisen konnte - keine zweite Liste von Schluesseln mehr, die von
-     der im Kern abweichen kann. */
-  const fortschrittHtml = e.progress
-    ? (WEEKLY_PROGRESS[e.progress.art]?.(e.progress) ?? '')
-    : renderManualToggle(e);
 
   return `
     <div class="wk-card${fertig ? ' is-complete' : ''}" data-weekly-card="${esc(e.key)}">
@@ -10459,13 +10486,27 @@ function renderWeeklyContentCard(e) {
         </div>
         <div class="wk-time">
           ${e.eta ? `<span class="wk-eta">${esc(e.eta)}</span>` : ''}
-          ${e.progress
-            ? '<span class="weekly-src weekly-src-auto" title="Read from your own game data">tracked</span>'
-            : weeklySrcTag(e.quelle)}
+          ${weeklyNachweisTag(e)}
         </div>
       </div>
-      ${fortschrittHtml}
+      ${e.progress ? (WEEKLY_PROGRESS[e.progress.art]?.(e.progress) ?? '') : ''}
       ${zeilen ? `<div class="wk-body">${zeilen}</div>` : ''}
+      ${renderWeeklyRewards(e.belohnungen)}
+      ${e.nachweis !== 'auto' ? renderManualToggle(e) : ''}
+    </div>`;
+}
+
+/* Erledigtes braucht seine Einzelheiten nicht mehr - die Frage dazu ist
+   beantwortet. Ein Streifen je Karte statt einer ganzen: das ist der Platz,
+   der sonst zum Scrollen zwingt. */
+function renderWeeklyDoneCard(e) {
+  return `
+    <div class="wk-done" data-weekly-card="${esc(e.key)}" title="${esc(e.name)}">
+      <span class="wk-icon">${weeklyIcon(e.key, 15)}</span>
+      <b>${esc(e.name)}</b>
+      ${e.progress ? `<span class="wk-done-num">${e.progress.erledigt}/${e.progress.von}</span>` : ''}
+      <span class="wk-done-tick">${Icon.checkmark ? Icon.checkmark(13) : '✓'}</span>
+      ${e.nachweis !== 'auto' ? renderManualToggle(e) : ''}
     </div>`;
 }
 
@@ -10508,38 +10549,66 @@ function renderWeeklyVendorCard(e) {
  */
 function renderWeeklyInventoryNote(inv) {
   const el = $('weekly-inv-note');
+  const sync = $('weekly-sync');
   if (!el) return;
+
+  /* Der Normalfall: der Stand ist aus dieser Woche. Dann gehoert dazu eine
+     Randnotiz und kein Balken - wann zuletzt gelesen wurde, ist eine
+     Auskunft, kein Problem. */
+  if (sync) {
+    sync.textContent = inv?.frisch && inv.stand
+      ? `game data as of ${new Date(inv.stand).toLocaleString('en-GB',
+          { weekday: 'short', hour: '2-digit', minute: '2-digit' })}`
+      : '';
+  }
   if (!inv || inv.frisch) { el.classList.add('hidden'); el.innerHTML = ''; return; }
 
-  const wann = inv.woche
-    ? new Date(inv.woche).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })
+  /* Laeuft gerade ein Scan, ist der Zustand voruebergehend - dann kein
+     Ratschlag, sondern nur die Ansage, dass es sich gleich erledigt. */
+  if (inv.scanLaeuft) {
+    el.innerHTML = 'Reading your inventory from the running game — the numbers below '
+                 + 'fill in by themselves in a few seconds.';
+    el.classList.remove('hidden');
+    return;
+  }
+
+  const wann = inv.stand
+    ? new Date(inv.stand).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })
     : null;
   el.innerHTML = inv.vorhanden
-    ? `Progress tracking is paused — your inventory data is from the week that ended
-       ${wann ? `on ${esc(wann)}` : 'before this one'}, so anything in it belongs to last week.
+    ? `Nothing has been read from your game since ${wann ? esc(wann) : 'before this week'},
+       so the counts below only mean "not seen yet". Start Warframe and open this tab —
+       Argus reads it by itself — or tick things off here.
        <button class="btn-sm" id="btn-weekly-to-inv">Open Inventory</button>`
     : `No inventory data yet, so nothing can be tracked automatically — tick items off
-       yourself, or fetch your inventory once.
+       yourself, or read your inventory once while Warframe is running.
        <button class="btn-sm" id="btn-weekly-to-inv">Open Inventory</button>`;
   el.classList.remove('hidden');
   const btn = $('btn-weekly-to-inv');
   if (btn) btn.onclick = () => showTab('inventory');
 }
 
-/* Offen zuerst, Erledigtes darunter - die Frage lautet "was fehlt mir
-   noch", und die Antwort soll ganz oben stehen. Zwei Raster statt einer
-   Sortierung, damit die Trennung auch sichtbar ist. */
+/* Offen zuerst als volle Karten, Erledigtes darunter als Streifen - die
+   Frage lautet "was fehlt mir noch", und die Antwort soll ganz oben stehen
+   und ohne Scrollen dastehen. */
 function renderWeeklyContentPane(w) {
   const offen  = w.content.filter(c => c.status !== 'done');
   const fertig = w.content.filter(c => c.status === 'done');
-  const gruppe = (titel, liste) => liste.length
-    ? `<div class="weekly-group-title">${titel} · ${liste.length}</div>
-       <div class="weekly-grid">${liste.map(renderWeeklyContentCard).join('')}</div>`
-    : '';
 
-  $('weekly-content').innerHTML =
-    gruppe('Still open', offen) + gruppe('Done this week', fertig);
+  const teile = [];
+  if (offen.length) {
+    teile.push(`<div class="weekly-group-title">Still open · ${offen.length}</div>`);
+    teile.push(`<div class="weekly-grid">${offen.map(renderWeeklyContentCard).join('')}</div>`);
+  }
+  if (fertig.length) {
+    teile.push(`<div class="weekly-group-title">Done this week · ${fertig.length}</div>`);
+    teile.push(`<div class="weekly-done-row">${fertig.map(renderWeeklyDoneCard).join('')}</div>`);
+  }
+  if (!offen.length && !fertig.length) {
+    teile.push('<p class="meta">Nothing to show — the world state came back empty.</p>');
+  }
 
+  $('weekly-content').innerHTML = teile.join('');
   bindWeeklyToggles();
 }
 
