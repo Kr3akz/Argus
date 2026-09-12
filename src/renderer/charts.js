@@ -167,6 +167,51 @@ const Charts = (() => {
       .slice(0, limit);
   }
 
+  /**
+   * Was der Kontostand in einem Zeitraum gemacht hat.
+   *
+   * DER STAND DAVOR GEHOERT DAZU. Wer die letzten 30 Tage ansieht, will
+   * wissen, wie viel sich in 30 Tagen bewegt hat - und dafuer braucht es den
+   * Stand, mit dem der Zeitraum BEGANN. Der liegt in aller Regel davor:
+   * gemessen wird, wenn das Spiel synchronisiert, nicht am Monatsersten. Ohne
+   * ihn finge die Rechnung beim ersten Messpunkt INNERHALB des Fensters an
+   * und unterschluege alles, was bis dahin schon passiert war.
+   *
+   * Gibt es keinen Stand davor, faengt die Rechnung beim ersten Messpunkt im
+   * Fenster an - dann deckt sie weniger Zeit ab als der gewaehlte Zeitraum,
+   * und `first.at` sagt, ab wann sie gilt. Die Oberflaeche nennt das Datum,
+   * statt eine Differenz ueber dreissig Tage zu behaupten, die drei meint.
+   *
+   * @param currency 'platinum' | 'ducats'
+   * @param from     Beginn des Fensters, null = alles
+   */
+  function walletWindow(entries, { currency = 'platinum', from = null } = {}) {
+    const rows = (entries || [])
+      .filter(e => e && Number.isFinite(e.at) && e[currency] != null)
+      .sort((a, b) => a.at - b.at)
+      .map(e => ({ at: e.at, value: e[currency] }));
+
+    const leer = { points: [], first: null, last: null, delta: null, readings: 0 };
+    if (!rows.length) return leer;
+
+    const inWindow = from ? rows.filter(e => e.at >= from) : rows;
+    const anchor = from ? [...rows].reverse().find(e => e.at < from) || null : null;
+
+    const points = anchor ? [anchor, ...inWindow] : inWindow;
+    if (!points.length) return leer;
+
+    const first = points[0];
+    const last = points[points.length - 1];
+    return {
+      points, first, last,
+      /* Eine Differenz braucht zwei Messungen. Bei einer einzigen steht der
+         Stand fest, seine Bewegung nicht - und null waere die Behauptung,
+         es habe sich nichts getan. */
+      delta: points.length > 1 ? last.value - first.value : null,
+      readings: points.length
+    };
+  }
+
   /* ----------------------------- Zeichnen ----------------------------- */
 
   /**
@@ -298,6 +343,67 @@ const Charts = (() => {
   }
 
   /**
+   * Der tatsaechliche Kontostand ueber die Zeit.
+   *
+   * WAS DIESES DIAGRAMM ANDERS MACHT ALS DAS DARUEBER: dort liegen die Werte
+   * auf einem gleichmaessigen Raster, hier nicht. Ein Kontostand wird
+   * gemessen, wenn das Spiel synchronisiert - und das passiert bei
+   * Zonenwechseln, nicht zu festen Zeiten. Die x-Achse ist deshalb ECHTE ZEIT
+   * und nicht der Index eines Kastens: zwei Messungen an einem Nachmittag
+   * stehen dicht beieinander, eine Woche Pause ist eine Luecke.
+   *
+   * DIE LINIE IST GESTRICHELT, UND DAS IST KEINE ZIER. Zwischen zwei
+   * Messungen weiss niemand, was der Stand war - er kann gestiegen und wieder
+   * gefallen sein. Eine durchgezogene Linie waere eine Behauptung ueber
+   * Zeit, in die wir nicht geschaut haben. Gemessen sind die Punkte.
+   *
+   * NULLBASIERT: Ein Geldbeutel, dessen Achse bei 4.000 anfaengt, macht aus
+   * einer Schwankung von zwei Prozent ein Gebirge. Was hier interessiert, ist
+   * das Verhaeltnis zum Ganzen.
+   */
+  function balanceLine(points, { width = 720, from = null, to = null } = {}) {
+    if (!points?.length) return '';
+
+    const W = Math.max(320, Math.round(width));
+    const PLOT = { w: W - PAD.left - PAD.right, h: H - PAD.top - PAD.bottom };
+
+    const t0 = from ?? points[0].at;
+    const t1 = to ?? Math.max(points[points.length - 1].at, t0 + 1);
+    const span = Math.max(1, t1 - t0);
+
+    const max = niceMax(Math.max(...points.map(p => p.value), 1));
+    const x = t => PAD.left + Math.min(1, Math.max(0, (t - t0) / span)) * PLOT.w;
+    const y = v => PAD.top + PLOT.h - (v / max) * PLOT.h;
+
+    const grid = [0, 0.5, 1].map(f => `
+      <line class="ch-grid" x1="${PAD.left}" x2="${PAD.left + PLOT.w}" y1="${n2(y(max * f))}" y2="${n2(y(max * f))}"/>
+      <text class="ch-ylab" x="${PAD.left - 8}" y="${n2(y(max * f) + 3.5)}" text-anchor="end">${esc(short(max * f))}</text>`).join('');
+
+    const path = points.map((p, i) => `${i ? 'L' : 'M'}${n2(x(p.at))} ${n2(y(p.value))}`).join(' ');
+
+    const dots = points.map(p => `
+      <circle class="ch-dot is-balance" cx="${n2(x(p.at))}" cy="${n2(y(p.value))}" r="2.6">
+        <title>${esc(new Date(p.at).toLocaleString('en-GB', {
+          day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
+        }))} — ${esc(short(p.value))}</title>
+      </circle>`).join('');
+
+    /* Anfang und Ende der Zeitachse beschriftet, sonst nichts: die Messpunkte
+       liegen unregelmaessig, und eine Marke je Punkt waere bei dreissig
+       Messungen ein Teppich. Wann ein einzelner gemessen wurde, sagt sein
+       Tooltip. */
+    const stamp = t => new Date(t).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+    const achse = `
+      <text class="ch-xlab" x="${PAD.left}" y="${H - 8}" text-anchor="start">${esc(stamp(t0))}</text>
+      <text class="ch-xlab" x="${PAD.left + PLOT.w}" y="${H - 8}" text-anchor="end">${esc(stamp(t1))}</text>`;
+
+    return `
+      <svg class="ch-svg" viewBox="0 0 ${W} ${H}" role="img">
+        ${grid}<path class="ch-line is-balance" d="${path}"/>${dots}${achse}
+      </svg>`;
+  }
+
+  /**
    * Die Rangliste: eine Zeile je Item, der Balken im Verhaeltnis zum groessten.
    * Kein SVG - eine Liste aus divs bleibt auswaehlbar und bricht sauber um.
    */
@@ -324,5 +430,5 @@ const Charts = (() => {
     }).join('');
   }
 
-  return { series, byItem, barsWithLine, rankRows, pickBucket, short };
+  return { series, byItem, walletWindow, barsWithLine, balanceLine, rankRows, pickBucket, short };
 })();

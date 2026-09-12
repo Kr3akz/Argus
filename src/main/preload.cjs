@@ -231,6 +231,7 @@ contextBridge.exposeInMainWorld('api', {
   tradeUpdateTransaction:(i,p) => ipcRenderer.invoke('trade:updateTransaction', i, p),
   tradeRemoveTransaction:(id)  => ipcRenderer.invoke('trade:removeTransaction', id),
   tradeStatsByItem:(o)         => ipcRenderer.invoke('trade:transactionsByItem', o),
+  tradeWallet:     ()          => ipcRenderer.invoke('trade:wallet'),
   /* Updates.
      downloadUpdate und installUpdate nehmen bewusst KEINE Adresse und keinen
      Pfad entgegen. Welche Datei geladen und welche ausgefuehrt wird, weiss

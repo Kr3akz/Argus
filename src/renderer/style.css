@@ -7242,17 +7242,15 @@ body.tags-window {
   background: var(--accent);
 }
 
-.tier-chip[data-set-ownership="owned"].active,
-.tier-chip[data-mod-ownership="owned"].active,
-.tier-chip[data-arcane-ownership="owned"].active {
-  background: var(--green);
-}
-
-.tier-chip[data-set-ownership="not_owned"].active,
-.tier-chip[data-mod-ownership="not_owned"].active,
-.tier-chip[data-arcane-ownership="not_owned"].active {
-  background: var(--text-2);
-}
+/* UEBER EINE KLASSE, NICHT UEBER DAS data-Attribut DER ACHSE.
+   Hier standen vier fast gleiche Selektoren je Farbe - einer je Bereich
+   (Sets, Mods, Arcanes) -, und als die Relikte ihren Besitz-Filter bekamen,
+   fehlte der vierte: der Chip blieb dunkelgrau, waehrend derselbe Chip einen
+   Bereich weiter gruen war. Die Klasse kommt jetzt aus der Filterdefinition
+   selbst (siehe *_OWNERSHIP in app.js), damit ein neuer Bereich sie
+   zwangslaeufig mitbringt statt sie hier nachzutragen. */
+.tier-chip.chip-owned.active   { background: var(--green); }
+.tier-chip.chip-missing.active { background: var(--text-2); }
 
 .tier-chip[data-set-origin="prime"].active { background: var(--gold); }
 .tier-chip[data-set-origin="base"].active  { background: rgb(var(--t-silver)); }
@@ -9917,11 +9915,52 @@ input[type=number]:focus, input[type=email]:focus, input[type=password]:focus {
   vector-effect: non-scaling-stroke;
 }
 .ch-dot { fill: var(--gold); }
+
+/* Der gemessene Kontostand. Gestrichelt, weil zwischen zwei Messungen
+   niemand weiss, was der Stand war - die Punkte sind die Auskunft, die Linie
+   nur die Leselinie zwischen ihnen (siehe balanceLine in charts.js). */
+.ch-line.is-balance {
+  stroke: var(--accent);
+  stroke-width: 1.6;
+  stroke-dasharray: 5 4;
+  opacity: .75;
+}
+.ch-dot.is-balance { fill: var(--accent); }
 .ch-bargroup:hover .ch-bar { filter: brightness(1.25); }
 .ch-note {
   display: flex; align-items: center; gap: 6px;
   margin: 8px 0 2px; font-size: 11px; color: var(--text-3);
 }
+
+/* Die drei Zahlen der Gegenprobe: Bewegung, davon verzeichnet, Rest. Die
+   dritte traegt den Rahmen, weil sie die eigentliche Auskunft ist - die
+   beiden davor sind ihre Herleitung. */
+.ch-reconcile {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px;
+  padding: 10px 12px; margin-top: 8px;
+  background: var(--surface-2); border-radius: var(--r-sm);
+  font-size: 12px; color: var(--text-2);
+}
+.ch-reconcile b { font-variant-numeric: tabular-nums; font-size: 13px; }
+.ch-reconcile small {
+  display: inline-flex; align-items: center; gap: 3px;
+  margin-left: 6px; color: var(--text-3); font-size: 11px;
+}
+.ch-reconcile small .currency-ic { width: 11px; height: 11px; }
+.ch-gap {
+  margin-left: auto;
+  padding: 3px 10px; border-radius: 999px;
+  background: rgba(var(--t-gold) / .12);
+  box-shadow: inset 0 0 0 1px rgba(var(--t-gold) / .3);
+}
+/* Geht die Rechnung auf, ist das keine Warnung mehr, sondern eine Bestaetigung. */
+.ch-gap.is-clean {
+  background: rgba(var(--t-green) / .12);
+  box-shadow: inset 0 0 0 1px rgba(var(--t-green) / .3);
+}
+/* Die Karte ohne Messungen traegt nur einen Hinweis - sie soll dastehen,
+   aber nicht so laut wie eine mit Zahlen. */
+.ch-card.is-quiet { background: transparent; box-shadow: inset 0 0 0 1px var(--surface-2); }
 
 .ch-rank { display: flex; flex-direction: column; gap: 7px; }
 .ch-rank-row {

@@ -40,6 +40,16 @@ follow [semantic versioning](https://semver.org/lang/en/).
   without a trade are drawn as zero rather than skipped, so a quiet week doesn't
   look like a busy one. The grain follows the range you pick instead of being
   another switch.
+- **And the check on it: what your balance actually did.** Both halves of the
+  ledger have the same hole — warframe.market only knows what went through their
+  confirmation, and the local half only what you ticked off. A trade settled in
+  chat, a weapon slot, a spontaneous buy: none of it is in the book, and nothing
+  about a tidy balance sheet says so. Your platinum and ducats are noted down
+  every time Argus reads your inventory, and under the chart the two are put side
+  by side: *balance moved −1,447 · ledger accounts for −1,349 · unaccounted −98*.
+  It is deliberately not called "untracked trades" — platinum also goes on slots,
+  colours and boosters. The line between readings is dashed because between two
+  of them nobody knows what the balance was; the dots are the data.
 - **Ducats are a currency in the trade ledger.** Baro is a trade like any other,
   just in a different coin — so ducats get the same book and the same charts, on
   their own tab of the analytics. The two are never summed: there is no exchange
@@ -58,6 +68,11 @@ follow [semantic versioning](https://semver.org/lang/en/).
   metal suffix in the inventory but their picture does, while *Requiem Eterna*
   does it the other way round. Every relic now carries the other spelling as a
   fallback.
+- **The relic Owned / Not owned chips are the right colour.** They came out dark
+  grey instead of green and grey like the same two chips one section over. The
+  colours were listed once per section in the stylesheet, so the relics simply
+  weren't on the list; they now come from the filter definition itself, which is
+  why the next section to get them cannot forget.
 
 ## [1.10.0] - 2026-09-11
 

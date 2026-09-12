@@ -175,6 +175,41 @@ the chart says so underneath.
 *Net* is earnings minus spending and is labelled as such. It is not profit — what a part
 cost you in missions is not in this file.
 
+## The check: what your balance actually did
+
+Both halves of the ledger have the same hole. Warframe.market only records what went
+through their confirmation, and the local half only what you ticked off or typed in. A
+trade settled in the chat window, a weapon slot for 12 platinum, a spontaneous buy — none
+of that is in the book. So the figures above are tidy and incomplete at the same time, and
+nothing about them says so.
+
+**Your balance does not lie.** It sits in your inventory, and every time Argus reads that
+it notes the platinum and ducats down in `wallet-history.json`. Under the chart, the
+difference between the two books becomes the actual answer:
+
+```
+Balance moved  −1,447   11,464 → 10,017
+Ledger accounts for  −1,349   45 trades in that same window
+Unaccounted  −98
+```
+
+Two things about that number. It is **not** "untracked trades": platinum also goes on
+slots, colours and boosters, and the card says so. And the window is the one the
+*readings* cover, not the range you picked — from the last reading before the range to the
+most recent one — so the dates are printed next to it. A 30-day ledger measured against a
+five-day movement would produce a difference that only tells you the two windows differ.
+
+Balances are stamped with **`syncedAt`, not the time Argus read them**. The game only puts
+the inventory in memory when it syncs — on login and on zone changes — so "read two minutes
+ago" can mean a two-hour-old balance (see [inventory](inventory.md)). The sync time is when
+that balance was true, which makes it the right key: opening the tab ten times records one
+reading, not ten.
+
+The line between the readings is **dashed on purpose**. Between two measurements nobody
+knows what the balance was — it could have gone up and come back down. The dots are the
+data; the line just helps you read across them. The axis starts at zero, because a wallet
+chart that starts at 4 000 turns a two-percent wobble into a mountain range.
+
 ## Ducats are the second currency
 
 Baro Ki'Teer is a trade like any other, just in a different coin, so ducats live in the

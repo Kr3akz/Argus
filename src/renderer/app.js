@@ -5766,8 +5766,8 @@ function renderInvTierFilter(all) {
    Woertern - genau wie im Regal unter "What are you building for?".        */
 
 const RELIC_OWNERSHIP = [
-  { key: 'owned',     label: 'Owned',     icon: 'check',  match: r => (r.count || 0) > 0 },
-  { key: 'not_owned', label: 'Not owned', icon: 'cross',  match: r => (r.count || 0) === 0 }
+  { key: 'owned',     label: 'Owned',     icon: 'check', cls: 'chip-owned',   match: r => (r.count || 0) > 0 },
+  { key: 'not_owned', label: 'Not owned', icon: 'cross', cls: 'chip-missing', match: r => (r.count || 0) === 0 }
 ];
 
 /* Die Aeren. Kein Symbol: sie tragen ihre Farbe, und die sagt schon, welche
@@ -5778,8 +5778,8 @@ const RELIC_TIERS = ['Lith', 'Meso', 'Neo', 'Axi', 'Requiem', 'Omnia'].map(t => 
 }));
 
 const SET_OWNERSHIP = [
-  { key: 'owned',     label: 'Owned',     icon: 'check',  match: s => (s.ownedParts || 0) > 0 || s.complete || s.isMastered },
-  { key: 'not_owned', label: 'Not owned', icon: 'cross',  match: s => (s.ownedParts || 0) === 0 && !s.isMastered }
+  { key: 'owned',     label: 'Owned',     icon: 'check', cls: 'chip-owned',   match: s => (s.ownedParts || 0) > 0 || s.complete || s.isMastered },
+  { key: 'not_owned', label: 'Not owned', icon: 'cross', cls: 'chip-missing', match: s => (s.ownedParts || 0) === 0 && !s.isMastered }
 ];
 
 const SET_ORIGINS = [
@@ -5799,8 +5799,8 @@ const SET_KINDS = [
 ];
 
 const MOD_OWNERSHIP = [
-  { key: 'owned',     label: 'Owned',     icon: 'check',  match: m => (m.count || 0) > 0 },
-  { key: 'not_owned', label: 'Not owned', icon: 'cross',  match: m => (m.count || 0) === 0 }
+  { key: 'owned',     label: 'Owned',     icon: 'check', cls: 'chip-owned',   match: m => (m.count || 0) > 0 },
+  { key: 'not_owned', label: 'Not owned', icon: 'cross', cls: 'chip-missing', match: m => (m.count || 0) === 0 }
 ];
 
 const MOD_KINDS = [
@@ -5817,8 +5817,8 @@ const MOD_KINDS = [
 ];
 
 const ARCANE_OWNERSHIP = [
-  { key: 'owned',     label: 'Owned',     icon: 'check',  match: a => (a.count || 0) > 0 },
-  { key: 'not_owned', label: 'Not owned', icon: 'cross',  match: a => (a.count || 0) === 0 }
+  { key: 'owned',     label: 'Owned',     icon: 'check', cls: 'chip-owned',   match: a => (a.count || 0) > 0 },
+  { key: 'not_owned', label: 'Not owned', icon: 'cross', cls: 'chip-missing', match: a => (a.count || 0) === 0 }
 ];
 
 const ARCANE_KINDS = [
@@ -7778,6 +7778,10 @@ let tradeAuth = null;               // { signedIn, user }
 let tradeOrders = null;             // { orders, sell, buy }
 let tradeContracts = null;          // { auctions, open, closed, readOnly }
 let tradeTx = null;                 // { entries, summary }
+/* Kontostaende aus den Inventar-Abrufen - die Gegenprobe zum Buch. Liegt
+   neben tradeTx und nicht darin: das Buch kommt teilweise aus dem Netz, die
+   Staende von der Platte. */
+let tradeWallet = null;
 let tradeFilter = 'all';
 let tradeSort = 'plat-desc';
 let tradeBusy = false;
@@ -7956,6 +7960,11 @@ async function loadTrading({ refresh = false } = {}) {
        damit der Tab auch abgemeldet etwas zu zeigen hat. */
     const txRes = await window.api.tradeTransactions({});
     tradeTx = txRes?.ok ? txRes : { entries: [], summary: null, total: 0 };
+
+    /* Die Kontostaende genauso: sie liegen auf der Platte und kosten nichts,
+       und ohne sie faellt die Gegenprobe in der Auswertung aus. */
+    const walletRes = await window.api.tradeWallet();
+    tradeWallet = walletRes?.entries || [];
 
     if (tradeAuth.signedIn) {
       /* Gegen /v2/me pruefen, damit ein Problem hier auffaellt und nicht
@@ -9409,6 +9418,8 @@ function renderTradeAnalytics(box) {
          carry no date from warframe.market and are left out of the chart.</p>` : ''}
     </div>`;
 
+  const balance = renderBalanceCard(currency, ui, plotWidth);
+
   const top = Charts.byItem(window, { limit: 8 });
   const rank = top.length ? `
     <div class="ch-card">
@@ -9419,8 +9430,103 @@ function renderTradeAnalytics(box) {
       <div class="ch-rank">${Charts.rankRows(top, { money: v => nf(Math.round(v)) })}</div>
     </div>` : '';
 
-  box.innerHTML = tiles + chart + rank
+  box.innerHTML = tiles + chart + balance + rank
     + (rows ? '' : `<p class="ch-note">Nothing traded in this range — try a longer one.</p>`);
+}
+
+/**
+ * Die Gegenprobe: was der Geldbeutel WIRKLICH gemacht hat.
+ *
+ * WARUM DAS NEBEN DER BILANZ STEHEN MUSS: Das Handelsbuch kennt nur, was
+ * warframe.market bestaetigt hat oder was jemand hier abgehakt hat. Ein
+ * Handel im Chatfenster, ein Waffenplatz fuer 12 Platin, ein Kauf bei Baro -
+ * davon steht dort nichts. Die Bilanz darueber ist deshalb sauber und
+ * unvollstaendig zugleich, und das sieht man ihr nicht an.
+ *
+ * Der Kontostand steht im Inventar und luegt nicht. Die Differenz zwischen
+ * beiden ist die eigentliche Auskunft dieser Karte.
+ *
+ * SIE HEISST "unaccounted" UND NICHT "unrecorded trades". Platin geht auch
+ * fuer Plaetze, Farben und Booster weg, Dukaten nur bei Baro - aus einer
+ * Differenz einen Handel zu machen waere eine Erfindung. Was dasteht, ist:
+ * so viel hat sich bewegt, ohne dass das Buch etwas dazu sagt.
+ */
+function renderBalanceCard(currency, ui, plotWidth) {
+  const from = tradeRange ? Date.now() - tradeRange * 86400000 : null;
+  const w = Charts.walletWindow(tradeWallet || [], { currency, from });
+
+  if (w.readings < 2) {
+    /* DREI GRUENDE, EINE KARTE - und sie sagen nicht dasselbe. Wer fuenfzig
+       Staende hat und "letzte 7 Tage" waehlt, ohne seit drei Wochen
+       abgerufen zu haben, bekommt hier ebenfalls nur einen Messpunkt. Ihm
+       "noch keine Messungen" hinzustellen waere schlicht falsch, und der Rat,
+       oefter abzurufen, ginge an seinem Problem vorbei. */
+    const insgesamt = (tradeWallet || []).filter(e => e && e[currency] != null).length;
+    const [warum, rat] = insgesamt === 0
+      ? ['No readings yet.', 'Fetch your inventory and Argus starts keeping track.']
+      : insgesamt === 1
+        ? ['Only one reading so far.', 'A second one turns this into a comparison.']
+        : ['Only one reading falls into this range.', 'Pick a longer range, or fetch your inventory again.'];
+
+    /* Kein Zustand zum Verstecken: dass es die Gegenprobe gibt, ist die
+       halbe Auskunft - sonst haelt man die Bilanz oben fuer vollstaendig. */
+    return `
+      <div class="ch-card is-quiet">
+        <div class="ch-card-head"><b>Your actual balance</b></div>
+        <p class="ch-note">${Icon.clock(12)}
+          <span>${esc(warum)} ${esc(rat)} Argus notes your ${esc(ui.label)} every time it reads
+          your inventory, and that is the check on the figures above — trades settled in chat
+          never reach warframe.market, and the ledger cannot know about them.</span></p>
+      </div>`;
+  }
+
+  /* Die Bilanz NUR ueber den Zeitraum, den die Messungen abdecken. Ein
+     30-Tage-Buch gegen eine 5-Tage-Kontobewegung zu rechnen ergaebe eine
+     Differenz, die nur aussagt, dass die beiden Fenster verschieden sind. */
+  const covered = (tradeTx?.entries || []).filter(e =>
+    currencyOfTx(e) === currency && e.at >= w.first.at && e.at <= w.last.at && !e.dateUnknown);
+  const ledgerNet = covered.reduce((n, e) => n + (e.direction === 'sold' ? e.total : -e.total), 0);
+  const gap = w.delta - ledgerNet;
+
+  const days = Math.max(1, Math.round((w.last.at - w.first.at) / 86400000));
+  const sign = v => (v > 0 ? '+' : v < 0 ? '−' : '');
+  const cls = v => (v > 0 ? 'is-positive' : v < 0 ? 'is-negative' : '');
+  const amount = v => `${sign(v)}${nf(Math.abs(Math.round(v)))}`;
+  const day = t => new Date(t).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+
+  /* DAS FENSTER STEHT DABEI, UND ZWAR MIT DATUM. Diese Karte rechnet ueber
+     die Zeit, die die MESSUNGEN abdecken - vom letzten Stand vor dem
+     gewaehlten Zeitraum bis zum letzten ueberhaupt. Das ist fast nie genau
+     der Zeitraum aus dem Auswahlfeld, und damit steht auf demselben Schirm
+     zweimal "das Buch" mit zwei verschiedenen Zahlen. Wer nicht liest, wo
+     die eine anfaengt, haelt das fuer einen Fehler. */
+  return `
+    <div class="ch-card">
+      <div class="ch-card-head">
+        <b>Your actual balance</b>
+        <span class="trade-dim">${nf(w.readings)} readings · ${esc(day(w.first.at))} → ${esc(day(w.last.at))}
+          (${nf(days)} day${days === 1 ? '' : 's'})</span>
+      </div>
+      <div class="ch-plot">${Charts.balanceLine(w.points, {
+        width: plotWidth, from: w.first.at, to: Date.now()
+      })}</div>
+
+      <div class="ch-reconcile">
+        <span>Balance moved <b class="${cls(w.delta)}">${amount(w.delta)}</b>
+          <small>${ui.img}${nf(w.first.value)} → ${nf(w.last.value)}</small></span>
+        <span>Ledger accounts for <b class="${cls(ledgerNet)}">${amount(ledgerNet)}</b>
+          <small>${nf(covered.length)} trade${covered.length === 1 ? '' : 's'} in that same window</small></span>
+        <span class="ch-gap ${gap === 0 ? 'is-clean' : ''}">Unaccounted
+          <b class="${cls(gap)}">${amount(gap)}</b></span>
+      </div>
+
+      <p class="ch-note">${gap === 0
+        ? `Every ${esc(ui.short === 'p' ? 'platinum' : 'ducat')} is accounted for in this window.`
+        : currency === 'ducats'
+          ? `Ducats only move at Baro’s stall. Anything unaccounted for is a visit that never made it into the book.`
+          : `Not all of that is trading: slots, colours and boosters cost platinum too. What it does say is how much moved without the ledger knowing.`}
+      </p>
+    </div>`;
 }
 
 /**

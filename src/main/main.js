@@ -60,6 +60,7 @@ import { MarketPresence } from '../core/wfm-socket.js';
 import * as wfmOrders from '../core/wfm-orders.js';
 import * as wfmAuctions from '../core/wfm-auctions.js';
 import * as ledger from '../core/transactions.js';
+import { recordBalance, loadWallet } from '../core/wallet.js';
 import {
   loadRelicTables, allRewardNames, planRelics, resolveInventoryRelic, relicIconPath,
   rewardsFor, relicExpectation, indexByReward, relicsForReward, RELIC_STATES
@@ -2966,6 +2967,22 @@ ipcMain.handle('trade:removeTransaction', (_e, id) =>
 ipcMain.handle('trade:transactionsByItem', (_e, opts = {}) =>
   trade(async () => ({ rows: await ledger.transactionsByItem(opts) })));
 
+/**
+ * Die Kontostaende, die beim Inventar-Abruf mitgeschrieben wurden.
+ *
+ * Eigener Aufruf und nicht Teil von trade:transactions: das Buch kommt
+ * teilweise aus dem Netz und kann scheitern, die Staende liegen auf der
+ * Platte und nicht. Getrennt bedeutet, dass die Gegenprobe auch dann dasteht,
+ * wenn warframe.market gerade nicht antwortet.
+ */
+ipcMain.handle('trade:wallet', async () => {
+  try {
+    return { ok: true, entries: await loadWallet() };
+  } catch (err) {
+    return { ok: false, error: err.message, entries: [] };
+  }
+});
+
 /* ---------------------------- Inventar ---------------------------- */
 
 /**
@@ -3032,6 +3049,19 @@ async function inventoryPayload({ refresh }) {
 
   const view = buildInventory(res.inventory, cache.catalog, { market });
   await attachCards(view);
+
+  /* Den Kontostand mitschreiben - die Gegenprobe zum Handelsbuch.
+     Gestempelt mit syncedAt, weil das der Zeitpunkt ist, zu dem der Stand
+     GALT; damit faellt derselbe Stand bei jedem weiteren Oeffnen von selbst
+     weg (siehe wallet.js). Scheitert das Schreiben, laeuft der Tab weiter -
+     eine Gegenprobe ist eine Zugabe, keine Voraussetzung. */
+  try {
+    await recordBalance(
+      { platinum: view.currencies.platinum, ducats: view.currencies.ducats },
+      res.syncedAt || res.fetchedAt || Date.now());
+  } catch (err) {
+    console.warn('[Wallet] Kontostand nicht vermerkt:', err.message);
+  }
 
   const mastered = new Set([
     ...(res.inventory?.XPInfo || []).map(e => e.ItemType),
