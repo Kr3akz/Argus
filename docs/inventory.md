@@ -81,6 +81,45 @@ refinement separately, because intact and radiant are the same relic but not the
 decision. Something you own none of you own in no state at all — four cards saying that
 would be 2 340 cards saying nothing. The data sheet behind it still shows all four.
 
+### Vaulted or farmable
+
+The second chip row carries the era and, next to it, whether the relic still drops. That
+is the first question in front of 585 missing relics, and the interesting half is the small
+one: of 772 relics, **35 still drop**. Everything else costs platinum, or Aya at Varzia.
+
+"Vaulted" here means precisely **drops nowhere** — and that comes from the *mission* drop
+tables, not the reward tables. The reward tables list every relic that ever existed
+(773 of the 772 warframe.market knows), because they describe what is inside, not where it
+comes from. Checked against the same inventory, that told 35 relics apart from 737.
+
+Without usable drop tables the chips do not appear at all. Calling everything vaulted
+because the tables are missing would be a false statement rather than a missing one, so
+the flag stays `null` and the row says nothing.
+
+### Which relic is worth cracking
+
+Two sorts, because it is two questions:
+
+| Sort | Answers |
+|---|---|
+| **Expected platinum** | Chance × value over all six rewards — what a crack pays *on average*. The number for someone running twenty fissures: over that many, the average wins. |
+| **Most valuable drop** | The price of the single most expensive part in it, however rare. The number for someone holding *one* relic and going for the hit. |
+
+They are genuinely different lists. Measured against this inventory, the average puts
+**Meso E1** first (19.3p on average, best part 34p); the best-part sort puts **Meso V6**
+first (12.3p on average — but one part worth 60p). A relic with one 60p part and five at 2p
+has a poor average and is exactly what you make radiant.
+
+Each row shows both numbers, because sorting by a figure you cannot see is guesswork.
+The **`≥`** in front of the average means it is a lower bound: Forma, Kuva and Riven
+Slivers have no market price because they are not tradeable, and they sit in 548 of the
+772 relics. Where every reward has a price, it reads **`⌀`** instead.
+
+The value is worked out **for the refinement the row is in**, not flat intact — radiant
+lifts the rare reward from 2 % to 10 %, and if you are holding a polished relic you want to
+know what *that* one pays. A relic you own both intact and radiant shows as two rows with
+two different numbers, which is the honest answer.
+
 **The picture is fetched twice on purpose.** DE's image path for a relic does not follow
 its inventory path: the Requiem relics carry no metal suffix in your inventory but their
 image does, and *Requiem Eterna* does it the other way round. Measured against the export

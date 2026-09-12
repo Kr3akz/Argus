@@ -4219,6 +4219,9 @@ select option { background: #161b25; color: var(--text); }
 .inv-meta-row .ducats-sort-wrap { flex-shrink: 0; }
 
 .inv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+/* Relikte tragen mehr je Zeile als Materialien: Zustand, Vault-Vermerk und
+   zwei Zahlen. Bei 250 px stand der Wert halb abgeschnitten am Rand. */
+.inv-grid.is-relics { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
 .inv-item {
   display: flex; align-items: center; gap: 12px;
   background: var(--surface); border-radius: var(--r-sm); padding: 10px 14px;
@@ -4237,6 +4240,42 @@ select option { background: #161b25; color: var(--text); }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .inv-tag { font-size: 10.5px; color: var(--text-3); }
+/* Die Etiketten einer Zeile in EINER Reihe: Zustand, Vault, Wert und der
+   Suchtreffer standen sonst untereinander, sobald mehr als eines zutraf, und
+   die Zeile wuchs auf die doppelte Hoehe. */
+.inv-item-tags {
+  display: flex; align-items: center; gap: 8px; flex-wrap: nowrap;
+  overflow: hidden; min-width: 0;
+}
+.inv-item-tags > * { flex-shrink: 0; }
+/* Der Suchtreffer darf schrumpfen - er ist der laengste und der einzige, der
+   sich abkuerzen laesst, ohne dass eine Zahl verloren geht. */
+.inv-item-tags .is-hit { flex-shrink: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inv-tag.is-vaulted {
+  display: inline-flex; align-items: center; gap: 3px;
+  color: #ff9d9d;
+}
+/* Die rechte Spalte einer Zeile: Anzahl oben, Wert darunter. Beides
+   rechtsbuendig, damit die Ziffern untereinander stehen. */
+.inv-item-right {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 1px;
+  flex-shrink: 0;
+}
+/* Der Wert traegt Zahlen und wird deshalb nicht ganz so leise wie der Rest -
+   danach wird sortiert, und eine Reihenfolge, deren Zahl man suchen muss,
+   ist keine. Die beiden Zahlen durch einen Mittelpunkt getrennt, nicht durch
+   ein Wort: "average" und "best" stuenden in jeder der 778 Zeilen und sagten
+   dort nichts, was der Tooltip nicht besser sagt. */
+.inv-value {
+  display: inline-flex; align-items: baseline; gap: 5px;
+  font-size: 10.5px; color: var(--text-2);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.inv-value-top::before { content: '·'; margin-right: 5px; color: var(--text-3); }
+/* Das teuerste Teil in Gold: es ist die Zahl, wegen der man ein Relikt
+   aufhebt, und dieselbe Farbe traegt im Programm ueberall das, was etwas
+   wert ist. */
+.inv-value-top { color: var(--gold); }
 .inv-item-count {
   font-size: 13px; font-weight: 650; color: var(--gold);
   font-variant-numeric: tabular-nums; white-space: nowrap;
@@ -7251,6 +7290,13 @@ body.tags-window {
    zwangslaeufig mitbringt statt sie hier nachzutragen. */
 .tier-chip.chip-owned.active   { background: var(--green); }
 .tier-chip.chip-missing.active { background: var(--text-2); }
+
+/* Gevaultet rot, weil die App ueberall sonst schon so darueber redet (siehe
+   .filter-chip.chip-vault und .dset-vault). Farmbar in Gold: das ist der Ton,
+   mit dem hier "lohnt sich, hol es dir" gesagt wird - und Gruen war eine
+   Zeile darueber schon fuer "besessen" vergeben. */
+.tier-chip.chip-vaulted.active  { background: var(--red); }
+.tier-chip.chip-farmable.active { background: var(--gold); }
 
 .tier-chip[data-set-origin="prime"].active { background: var(--gold); }
 .tier-chip[data-set-origin="base"].active  { background: rgb(var(--t-silver)); }

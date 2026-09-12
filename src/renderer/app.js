@@ -5580,6 +5580,8 @@ let inventoryData = null;
 let invSection = 'relics';
 let invTier = 'all';            // Aera-Filter, nur im Relikt-Bereich
 let invRelicOwnership = 'all';  // All, Owned, Not owned
+let invRelicVault = 'all';      // Vaulted oder farmbar, nur im Relikt-Bereich
+let invRelicSort = 'name-asc';  // Reihenfolge der Relikte, siehe INV_RELIC_SORTS
 let invSetOwnership = 'all';    // All, Owned, Not owned
 let invSetOrigin = 'all';       // Prime oder Basis, nur im Sets-Bereich
 let invSetKind = 'all';         // Gattung, nur im Sets-Bereich
@@ -5728,6 +5730,7 @@ function renderInventory() {
       invSection = btn.dataset.inv;
       invTier = 'all';
       invRelicOwnership = 'all';
+      invRelicVault = 'all';
       invSetOwnership = 'all';
       invSetOrigin = 'all';
       invSetKind = 'all';
@@ -5776,6 +5779,22 @@ const RELIC_OWNERSHIP = [
 const RELIC_TIERS = ['Lith', 'Meso', 'Neo', 'Axi', 'Requiem', 'Omnia'].map(t => ({
   key: t, label: t, cls: 'tier-' + t.toLowerCase(), match: r => r.tier === t
 }));
+
+/* Faellt es noch, oder muss man es kaufen?
+
+   DIE WICHTIGERE HAELFTE IST "Farmable", und sie ist die kleinere: von 772
+   Relikten fallen 35. Wer eine Liste mit 585 fehlenden Relikten vor sich hat,
+   fragt als erstes, welche davon ueberhaupt zu holen sind - der Rest kostet
+   Platin oder Aya bei Varzia.
+
+   Die Chips erscheinen nur, wenn die Droptabellen vorliegen: ohne sie traegt
+   jede Zeile `vaulted: null`, keine Pruefung trifft zu, und eine Leiste, die
+   alles als gevaultet ausgibt, waere eine Falschaussage statt einer
+   fehlenden Angabe (siehe vault.js). */
+const RELIC_VAULT = [
+  { key: 'farmable', label: 'Farmable', icon: 'globe', cls: 'chip-farmable', match: r => r.vaulted === false },
+  { key: 'vaulted',  label: 'Vaulted',  icon: 'box',   cls: 'chip-vaulted',  match: r => r.vaulted === true }
+];
 
 const SET_OWNERSHIP = [
   { key: 'owned',     label: 'Owned',     icon: 'check', cls: 'chip-owned',   match: s => (s.ownedParts || 0) > 0 || s.complete || s.isMastered },
@@ -5835,7 +5854,8 @@ const matchOf = (defs, key) => defs.find(f => f.key === key)?.match || (() => tr
 
 const filterRelics = list => list
   .filter(invRelicOwnership === 'all' ? () => true : matchOf(RELIC_OWNERSHIP, invRelicOwnership))
-  .filter(invTier === 'all' ? () => true : matchOf(RELIC_TIERS, invTier));
+  .filter(invRelicVault    === 'all' ? () => true : matchOf(RELIC_VAULT,     invRelicVault))
+  .filter(invTier          === 'all' ? () => true : matchOf(RELIC_TIERS,     invTier));
 
 const filterSets = list => list
   .filter(invSetOwnership === 'all' ? () => true : matchOf(SET_OWNERSHIP, invSetOwnership))
@@ -5880,6 +5900,64 @@ const filterArcanes = list => list
    Das ist NICHT dieselbe Liste rueckwaerts: der Fortschritt vergleicht
    Anteile, hier zaehlen Stueck. Ein Teil von vieren und eines von achten
    stehen beim Anteil weit auseinander, in der Hand ist beides ein Teil.    */
+
+/* ---------------- Reihenfolge der Relikte ----------------
+
+   ZWEI FRAGEN, DIE NICHT DIESELBE SIND, und genau darum zwei Sortierungen:
+
+   "Expected platinum" ist Chance mal Wert ueber alle sechs Belohnungen - was
+   ein Oeffnen IM SCHNITT einbringt. Das ist die Zahl fuer den, der zwanzig
+   Risse hintereinander laeuft: auf Dauer setzt sich der Durchschnitt durch.
+
+   "Most valuable drop" ist der Preis des TEUERSTEN Teils darin, ganz gleich
+   wie selten es faellt. Das ist die Zahl fuer den, der ein einzelnes Relikt
+   in der Hand haelt und auf den Treffer aus ist - ein Relikt mit einem Teil
+   zu 60p und fuenf zu 2p hat einen mageren Durchschnitt und ist trotzdem das,
+   was man radiant macht.
+
+   Nachgemessen am eigenen Bestand fallen die beiden Ranglisten weit
+   auseinander: nach Durchschnitt fuehrt Meso E1 (19,3p im Mittel, bestes Teil
+   34p), nach bestem Teil Meso V6 (12,3p im Mittel, aber ein Teil zu 60p).
+   Haette eine der beiden die andere mit beantwortet, braeuchte es sie nicht.
+
+   EIN UNBEKANNTER WERT IST KEINE NULL - dieselbe Regel wie bei den Sets. Ein
+   Relikt ohne Belohnungstabelle rutscht ans Ende, statt sich zwischen die
+   billigen zu stellen.                                                      */
+
+const byRelicName = (a, b) => a.name.localeCompare(b.name, 'en', { numeric: true });
+
+/** Absteigend nach einer Zahl, Unbekanntes ans Ende, sonst alphabetisch. */
+const byRelicValue = pick => (a, b) => {
+  const va = pick(a);
+  const vb = pick(b);
+  if (va == null || vb == null) return (va == null) - (vb == null) || byRelicName(a, b);
+  return vb - va || byRelicName(a, b);
+};
+
+const INV_RELIC_SORTS = {
+  'name-asc':    byRelicName,
+  'exp-plat':    byRelicValue(r => r.value?.expPlat ?? null),
+  'best-plat':   byRelicValue(r => r.value?.bestPlat?.plat ?? null),
+  'exp-ducats':  byRelicValue(r => r.value?.expDucats ?? null),
+  'count-desc':  byRelicValue(r => r.count || 0)
+};
+
+const INV_SORT_OPTIONS = {
+  sets: [
+    ['progress',     'Set progress (default)'],
+    ['parts-asc',    'Parts owned (fewest first)'],
+    ['plat-desc',    'Platinum, full set (highest)'],
+    ['ducats-desc',  'Ducats in hand (highest)'],
+    ['name-asc',     'Name (A–Z)']
+  ],
+  relics: [
+    ['name-asc',     'Relic (A–Z)'],
+    ['exp-plat',     'Expected platinum (average per crack)'],
+    ['best-plat',    'Most valuable drop (best single part)'],
+    ['exp-ducats',   'Expected ducats (average per crack)'],
+    ['count-desc',   'Quantity owned']
+  ]
+};
 
 const bySetName = (a, b) => a.name.localeCompare(b.name, 'en');
 
@@ -6014,20 +6092,27 @@ function wireInvChips(box, attr, dsKey, get, set) {
  * Exemplare darin stecken. Die Stueckzahl steht weiter in der Zeile darunter.
  */
 function renderInvRelicFilter(box, all) {
-  const allActive = invTier === 'all' && invRelicOwnership === 'all';
+  const allActive = invTier === 'all' && invRelicOwnership === 'all' && invRelicVault === 'all';
 
+  /* Besitz oben neben "All", Aera und Vault-Stand in der zweiten Zeile -
+     genau wie im Sets-Bereich, wo Gattung und Herkunft sich dieselbe Zeile
+     teilen. Zwei feste Zeilen in jedem Bereich, damit das Kachelraster beim
+     Wechsel nicht springt. */
   const html =
       invRow(invGroup(invAllChip(all.length, allActive)
                     + invChips(RELIC_OWNERSHIP, 'relic-ownership', invRelicOwnership, countMatches(all, RELIC_OWNERSHIP))))
-    + invRow(invGroup(invChips(RELIC_TIERS, 'tier', invTier, countMatches(all, RELIC_TIERS))));
+    + invRow(invGroup(invChips(RELIC_TIERS, 'tier',        invTier,        countMatches(all, RELIC_TIERS)))
+           + invGroup(invChips(RELIC_VAULT, 'relic-vault', invRelicVault, countMatches(all, RELIC_VAULT))));
 
   const ok = mountInvFilter(box, html, () => {
     invTier = 'all';
     invRelicOwnership = 'all';
+    invRelicVault = 'all';
   });
   if (!ok) return;
 
   wireInvChips(box, 'relic-ownership', 'relicOwnership', () => invRelicOwnership, v => invRelicOwnership = v);
+  wireInvChips(box, 'relic-vault',     'relicVault',     () => invRelicVault,     v => invRelicVault = v);
   wireInvChips(box, 'tier',            'tier',           () => invTier,           v => invTier = v);
 }
 
@@ -6412,6 +6497,33 @@ function loadNextInvChunk() {
   }
 }
 
+/**
+ * Das Sortierfeld fuellen - je Bereich eine andere Liste.
+ *
+ * Die Optionen standen bis hierher fest im Markup, weil nur die Sets sortiert
+ * wurden. Mit den Relikten sind es zwei Bereiche mit ganz verschiedenen
+ * Fragen ("wie weit ist das Set" gegen "was bringt ein Oeffnen"), und eine
+ * gemeinsame Liste haette in jedem der beiden die Haelfte der Eintraege
+ * gezeigt, die dort nichts bedeuten.
+ */
+function renderInvSortOptions() {
+  const wrap = $('inv-sort-wrap');
+  const sel = $('inv-sort');
+  const opts = INV_SORT_OPTIONS[invSection];
+  wrap?.classList.toggle('hidden', !opts);
+  if (!sel || !opts) return;
+
+  const current = invSection === 'sets' ? invSetSort : invRelicSort;
+  /* Nur neu zeichnen, wenn sich wirklich etwas aendert: ein innerHTML bei
+     jedem Tastendruck in der Suche schlaegt sonst das offene Auswahlfeld zu. */
+  const signatur = invSection + '|' + current;
+  if (sel.dataset.sig === signatur) return;
+  sel.dataset.sig = signatur;
+
+  sel.innerHTML = opts.map(([v, l]) =>
+    `<option value="${esc(v)}"${v === current ? ' selected' : ''}>${esc(l)}</option>`).join('');
+}
+
 function renderInventoryGrid({ keepRendered = 0 } = {}) {
   const d = inventoryData;
   if (!d || !d.sections) return;
@@ -6432,15 +6544,17 @@ function renderInventoryGrid({ keepRendered = 0 } = {}) {
   grid?.classList.toggle('is-sets', invSection === 'sets');
   grid?.classList.toggle('is-cards', invSection === 'mods');
   grid?.classList.toggle('is-arcanes', invSection === 'arcanes');
+  grid?.classList.toggle('is-relics', invSection === 'relics');
 
   if (grid) setupInvGridEvents(grid);
 
   renderInvTierFilter(all);
 
-  /* Sortiert wird nur bei den Sets: dort tragen die Karten Zahlen, nach denen
-     sich eine Reihenfolge lohnt. Relikte, Mods und Materialien stehen
-     alphabetisch, und das ist bei ihnen die einzige sinnvolle Ordnung. */
-  $('inv-sort-wrap')?.classList.toggle('hidden', invSection !== 'sets');
+  /* Sortiert wird, wo die Zeilen Zahlen tragen, nach denen sich eine
+     Reihenfolge lohnt: bei den Sets und bei den Relikten. Mods, Arcanes und
+     Materialien stehen alphabetisch - bei ihnen ist das die einzige
+     sinnvolle Ordnung. */
+  renderInvSortOptions();
 
   let list = all;
   if (invSection === 'sets') {
@@ -6491,6 +6605,10 @@ function renderInventoryGrid({ keepRendered = 0 } = {}) {
       });
     }
     list = filterRelics(list);
+    const cmp = INV_RELIC_SORTS[invRelicSort];
+    /* An Ort und Stelle, weil filterRelics ohnehin eine neue Liste gebaut
+       hat - die Reihenfolge in inventoryData bleibt unberuehrt. */
+    if (cmp) list.sort(cmp);
   } else {
     list = query ? all.filter(e => e.name.toLowerCase().includes(query)) : all;
   }
@@ -6504,7 +6622,7 @@ function renderInventoryGrid({ keepRendered = 0 } = {}) {
     || (invSection === 'sets' && (invSetOwnership !== 'all' || invSetOrigin !== 'all' || invSetKind !== 'all'))
     || (invSection === 'mods' && (invModOwnership !== 'all' || invModKind !== 'all'))
     || (invSection === 'arcanes' && (invArcaneOwnership !== 'all' || invArcaneKind !== 'all'))
-    || (invSection === 'relics' && (invRelicOwnership !== 'all' || invTier !== 'all'));
+    || (invSection === 'relics' && (invRelicOwnership !== 'all' || invRelicVault !== 'all' || invTier !== 'all'));
 
   let metaText = '';
   if (isFiltered) {
@@ -6702,6 +6820,37 @@ function arcaneTile(e, i) {
     </div>`;
 }
 
+/**
+ * Was ein Relikt wert ist, in einer Zeile.
+ *
+ * NACH EINER ZAHL ZU SORTIEREN, DIE MAN NICHT SIEHT, IST RATEN. Die Liste
+ * laesst sich nach Erwartungswert und nach bestem Teil ordnen; steht keine
+ * der beiden Zahlen auf der Zeile, ist die Reihenfolge eine Behauptung, die
+ * sich nicht nachpruefen laesst.
+ *
+ * DER PFEIL VOR DEM DURCHSCHNITT sagt, dass es eine Untergrenze ist: Forma,
+ * Kuva und Riven-Splitter haben keinen Marktpreis, weil sie nicht handelbar
+ * sind, und stecken in 548 der 772 Relikte. Ihn wegzulassen hiesse, den Wert
+ * als vollstaendig auszugeben.
+ */
+function relicValueTag(e) {
+  const v = e.value;
+  if (!v || (v.expPlat == null && !v.bestPlat)) return '';
+
+  const teil = v.pricedShare < 0.999;
+  const schnitt = v.expPlat != null
+    ? `<span title="Chance times value over all six rewards${teil
+        ? ' — a lower bound: Forma, Kuva and Riven Slivers have no market price'
+        : ''}">${teil ? '≥' : '⌀'}${nf(v.expPlat)}p</span>`
+    : '';
+  const best = v.bestPlat
+    ? `<span class="inv-value-top" title="${esc(v.bestPlat.name)} — the most valuable part in it"
+       >top ${nf(v.bestPlat.plat)}p</span>`
+    : '';
+
+  return `<span class="inv-value">${schnitt}${best}</span>`;
+}
+
 /** Relikte, Materialien, Blueprints: die gewohnte Zeile. */
 function plainRow(e, i) {
   const clickable = invSection === 'relics';
@@ -6711,6 +6860,12 @@ function plainRow(e, i) {
 
   const extra = e.quality ? `<span class="inv-tag">${esc(e.quality)}</span>`
               : unowned ? '<span class="inv-tag is-unowned-tag">Not owned</span>' : '';
+
+  /* Gevaultet gehoert auf die Zeile und nicht nur in den Filter: es ist der
+     Grund, aus dem man ein Relikt behaelt statt es aufzubrauchen. */
+  const vault = e.vaulted === true
+    ? `<span class="inv-tag is-vaulted" title="Drops nowhere right now — cracking it means buying it back">${Icon.box(10)}Vaulted</span>`
+    : '';
 
   /* Wurde nach einem TEIL gesucht, muss die Zeile sagen, WARUM sie dasteht -
      "Axi A22" allein beantwortet die Frage nach Wisp Prime Neuroptics nicht. */
@@ -6728,9 +6883,17 @@ function plainRow(e, i) {
            ${e.imageFallback ? `data-fail-src="${esc(e.imageFallback)}"` : ''}>
       <div class="inv-item-body">
         <b>${esc(e.name)}</b>
-        ${extra}${hit}
+        <span class="inv-item-tags">${extra}${vault}${hit}</span>
       </div>
-      <span class="inv-item-count ${unowned ? 'is-unowned' : ''}">${nf(e.count)}</span>
+      <!-- ZAHLEN NACH RECHTS, WORTE NACH LINKS. Der Wert gehoert neben die
+           Anzahl und nicht in die Etikettenzeile: dort stand er hinter
+           "Not owned · Vaulted" und wurde bei vier Spalten abgeschnitten -
+           ausgerechnet die Zahl, nach der man gerade sortiert hat. Rechts
+           steht ohnehin nur eine Ziffer, und darunter ist Platz. -->
+      <div class="inv-item-right">
+        <span class="inv-item-count ${unowned ? 'is-unowned' : ''}">${nf(e.count)}</span>
+        ${relicValueTag(e)}
+      </div>
     </div>`;
 }
 
@@ -7361,7 +7524,8 @@ if ($('inv-search')) {
    klebt, waere ein Sprung ohne Anlass. */
 if ($('inv-sort')) {
   $('inv-sort').onchange = e => {
-    invSetSort = e.target.value;
+    if (invSection === 'relics') invRelicSort = e.target.value;
+    else invSetSort = e.target.value;
     renderInventoryGrid();
     if (($('inv-grid')?.getBoundingClientRect().top ?? 0) < 0) {
       document.querySelector('.inv-meta-row')?.scrollIntoView({ block: 'start' });

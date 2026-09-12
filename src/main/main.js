@@ -3096,17 +3096,59 @@ async function inventoryPayload({ refresh }) {
     console.warn('[Inventory] Basis-Bausaetze fehlgeschlagen:', err.message);
   }
 
-  /* Belohnungen an jedes Relikt haengen. Damit kann die Suche im Relikt-Bereich
-     nach einem TEIL fragen ("Wisp Prime Neuroptics") statt nur nach dem Namen
-     des Relikts - die Frage, die man vor dem Aufbrechen tatsaechlich hat. */
+  /* Belohnungen, Wert und Vault-Stand an jedes Relikt haengen.
+
+     DIE BELOHNUNGEN sind der Grund, aus dem die Suche im Relikt-Bereich nach
+     einem TEIL fragen kann ("Wisp Prime Neuroptics") statt nur nach dem Namen
+     des Relikts - die Frage, die man vor dem Aufbrechen tatsaechlich hat.
+
+     DER WERT wird je Zeile in IHREM Zustand gerechnet, nicht pauschal intakt:
+     strahlend hebt die seltene Belohnung von 2 % auf 10 %, und wer ein
+     poliertes Relikt vor sich hat, will wissen, was DIESES bringt. Nicht
+     besessene Zeilen stehen als intakt da und werden auch so gerechnet.
+
+     KEINE EINZELBELOHNUNGEN MITSCHICKEN: relicExpectation liefert zu jeder
+     der sechs Belohnungen eine ausgerechnete Zeile. Ueber 778 Relikte waeren
+     das 4.700 Objekte durch die IPC-Leitung fuer eine Liste, die davon nur
+     zwei Summen zeigt - das Datenblatt holt sie sich ohnehin einzeln. */
   try {
-    const relicIdx = await loadRelicTables();
+    const [relicIdx, priceCache, vaultIdx] = await Promise.all([
+      loadRelicTables(), readPriceCache(), vaultIndex()
+    ]);
+    const lookup = relicRewardLookup(market, priceCache, cache.catalog);
+
     for (const e of view.sections.relics || []) {
       const relic = relicIdx?.byKey?.get(e.name);
       e.rewards = relic
         ? [...new Set((relic.states.Intact || relic.states[Object.keys(relic.states)[0]] || [])
             .map(r => r.itemName).filter(Boolean))]
         : [];
+
+      const table = relic ? rewardsFor(relicIdx, e.name, e.quality || 'Intact') : null;
+      if (table?.rewards?.length) {
+        const v = relicExpectation(table.rewards, lookup);
+        e.value = {
+          expPlat: v.expPlat,
+          expDucats: v.expDucats,
+          /* Anteil der Chance, fuer den ein Preis vorliegt. Unter 1 ist der
+             Erwartungswert eine UNTERGRENZE - und das ist hier der Normalfall
+             und kein Fehler: Forma, Kuva und Riven-Splitter stehen in 548 der
+             772 Relikte und haben keinen Marktpreis, weil sie nicht handelbar
+             sind. */
+          pricedShare: v.pricedShare,
+          bestPlat: v.bestPlat,
+          bestDucats: v.bestDucats
+        };
+      }
+
+      /* GEVAULTET HEISST: FAELLT NIRGENDWO MEHR - das sagen die
+         Missionstabellen, nicht die Belohnungstabelle (die fuehrt jedes
+         Relikt, das es je gab; siehe relic:details).
+
+         Ohne brauchbaren Index bleibt das Feld null statt false: "faellt
+         noch" zu behaupten, weil die Droptabellen fehlen, waere schlimmer als
+         keine Angabe - die Oberflaeche laesst die Chips dann weg. */
+      e.vaulted = vaultIdx?.usable ? !vaultIdx.liveRelics.has(e.name) : null;
     }
   } catch (err) {
     console.warn('[Inventory] Relikt-Belohnungen fehlgeschlagen:', err.message);

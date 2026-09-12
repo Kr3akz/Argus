@@ -40,6 +40,23 @@ follow [semantic versioning](https://semver.org/lang/en/).
   without a trade are drawn as zero rather than skipped, so a quiet week doesn't
   look like a busy one. The grain follows the range you pick instead of being
   another switch.
+- **Relics: vaulted or farmable, and which one is worth cracking.** Next to the
+  eras sits the question you actually have in front of 585 missing relics — of
+  772, exactly 35 still drop. That comes from the mission drop tables, not the
+  reward tables: those list every relic that ever existed, because they describe
+  what is inside and not where it comes from.
+- **Two ways to sort relics by what they pay, because it is two questions.**
+  *Expected platinum* is chance × value over all six rewards — what a crack pays
+  on average, the number for someone running twenty fissures. *Most valuable
+  drop* is the price of the single most expensive part in it, however rare — the
+  number for someone holding one relic and going for the hit. They really are
+  different lists: by average **Meso E1** leads (19.3p, best part 34p), by best
+  part **Meso V6** (12.3p on average, but one part worth 60p). Both numbers now
+  stand on every row, since sorting by a figure you cannot see is guesswork, and
+  they are worked out for the refinement the row is in — radiant lifts the rare
+  reward from 2 % to 10 %, so an intact and a radiant copy of the same relic show
+  different figures. A `≥` in front of the average means Forma or Kuva is in
+  there and has no market price, so the figure is a floor.
 - **And the check on it: what your balance actually did.** Both halves of the
   ledger have the same hole — warframe.market only knows what went through their
   confirmation, and the local half only what you ticked off. A trade settled in
