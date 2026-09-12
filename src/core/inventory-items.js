@@ -12,6 +12,7 @@
 import { imageUrl, cleanGameText } from './catalog.js';
 import { POLARITIES, modDrain, auraBonus, isAuraMod, maxRankOf, isRivenMod } from './mods.js';
 import { isInternalArcane } from './arcanes.js';
+import { relicIconPath, parseRelicPath } from './relics.js';
 
 export const SECTIONS = [
   { key: 'relics',     label: 'Relics' },
@@ -135,11 +136,36 @@ function collect(rows, catalog, { ranked = false } = {}) {
 const TIER_BY_NUM = { 1: 'Lith', 2: 'Meso', 3: 'Neo', 4: 'Axi', 5: 'Requiem', 6: 'Omnia' };
 const TIERS = new Set(Object.values(TIER_BY_NUM));
 
+/**
+ * DEs Bildpfad fuer Relikte ist NICHT einheitlich, und raten hilft nicht:
+ *
+ *   T1VoidProjectionZephyrPrimeBBronze   200   mit Metall
+ *   T5VoidProjectionImmortalDBronze      200   mit Metall (Requiem, unpolierbar)
+ *   T5VoidProjectionImmortalOmniA        200   OHNE Metall
+ *   T5VoidProjectionImmortalOmniABronze  404
+ *
+ * Nachgemessen am 12.09.2026 am Export-Spiegel. Die Requiem-Relikte tragen im
+ * Inventar keinen Metall-Suffix, ihr Bild aber schon - das Omnia-Relikt macht
+ * es genau umgekehrt. Deshalb kommt zu jedem Relikt die ANDERE Schreibweise
+ * als Rueckfall mit; das Auffangnetz in imagefail.js tauscht sie ein, wenn
+ * die erste ins Leere laeuft.
+ */
+function relicImagePair(uniqueName) {
+  const parsed = parseRelicPath(uniqueName);
+  const withMetal = relicIconPath(parsed?.base || uniqueName, parsed?.state || 'Intact');
+  const bare = parsed?.base || uniqueName;
+  const primary = uniqueName;
+  const fallback = primary === withMetal ? bare : withMetal;
+  return { image: imageUrl(primary, 128), imageFallback: imageUrl(fallback, 128) };
+}
+
 /** Relikte bekommen Stufe, Aera und einen Namen ohne das angehaengte "Relic". */
 function decorateRelic(entry) {
   const m = /(Bronze|Silver|Gold|Platinum)$/.exec(entry.uniqueName);
   entry.quality = m ? RELIC_QUALITY[m[1]] : null;
   entry.name = entry.name.replace(/\s*Relic$/i, '');
+  entry.owned = (entry.count || 0) > 0;
+  Object.assign(entry, relicImagePair(entry.uniqueName));
 
   /* Aera fuer den Filter. Zuerst aus dem Namen ("Axi A22"), weil der bereits
      aufgeloest ist; faellt der Name aus, bleibt die Ziffer im Pfad - die
@@ -152,6 +178,74 @@ function decorateRelic(entry) {
     entry.tier = t ? (TIER_BY_NUM[Number(t[1])] || null) : null;
   }
   return entry;
+}
+
+/* Relikte heissen "Lith A1", "Lith A2", "Lith A10" - ohne numerische
+   Sortierung steht A10 zwischen A1 und A2. Bei 187 eigenen Relikten fiel das
+   kaum auf, bei 772 im vollen Verzeichnis ist es der Unterschied zwischen
+   einer Liste und einem Haufen. */
+const byRelicName = (a, b) => a.name.localeCompare(b.name, 'en', { numeric: true });
+
+/**
+ * Das VOLLSTAENDIGE Reliktverzeichnis - eigener Bestand plus alles, was fehlt.
+ *
+ * WARUM DIE MARKTLISTE UND NICHT DER KATALOG:
+ *   Dieselbe Ueberlegung wie bei resolveInventoryRelic in relics.js. DEs
+ *   Export fuehrt nur die derzeit erhaeltlichen Relikte, die Droptabellen nur
+ *   die farmbaren - beide kennen die gevaulteten nicht, und genau die machen
+ *   den Grossteil des Verzeichnisses aus. warframe.market fuehrt alle 772,
+ *   weil gevaultete Relikte weiter gehandelt werden.
+ *
+ * EIN RELIKT, NICHT VIER: Das Inventar fuehrt jede Politur-Stufe als eigene
+ * Zeile (Lith M1 intakt UND Lith M1 strahlend liegen nebeneinander). Was man
+ * NICHT hat, hat man in keiner Stufe - dafuer eine Zeile je Zustand
+ * anzulegen hiesse, aus 585 fehlenden Relikten 2340 Kacheln zu machen, die
+ * alle dasselbe sagen. Der Eintrag steht deshalb als intakt da, und die
+ * Stufen stehen im Datenblatt dahinter.
+ *
+ * Ohne Marktliste bleibt es beim eigenen Bestand: ein leeres Verzeichnis
+ * waere schlechter als ein unvollstaendiges.
+ */
+export function mergeRelicCatalog(owned, marketIdx) {
+  const list = marketIdx?.list;
+  if (!Array.isArray(list) || !list.length) return [...owned].sort(byRelicName);
+
+  /* Ueber den Basispfad abgeglichen, nicht ueber den ganzen uniqueName: der
+     traegt beim eigenen Bestand die Politur-Stufe, das Verzeichnis nicht. */
+  const ownedBases = new Set();
+  for (const e of owned) {
+    const base = parseRelicPath(e.uniqueName)?.base;
+    if (base) ownedBases.add(base);
+  }
+
+  const missing = [];
+  for (const item of list) {
+    const ref = item?.gameRef;
+    if (typeof ref !== 'string' || !ref.includes('/Projections/')) continue;
+    if (ownedBases.has(ref)) continue;
+
+    const name = item.i18n?.en?.name;
+    if (!name) continue;
+
+    const entry = decorateRelic({
+      /* Mit Metall-Suffix, weil daran das Bild haengt: der blanke gameRef
+         liefert fuer 771 der 772 Relikte eine 404, und 585 Fehlversuche beim
+         Oeffnen des Bereichs sind kein Preis fuer eine schoenere Zeichenkette.
+         Die Aufloesung im Datenblatt schneidet das Suffix ohnehin wieder ab. */
+      uniqueName: relicIconPath(ref, 'Intact'),
+      name,
+      resolved: true,
+      count: 0,
+      slug: item.slug || null
+    });
+    /* KEIN Zustand: "Intact" auf einer Kachel, die man nicht besitzt, ist
+       eine Auskunft ueber ein Relikt, das gar nicht da ist. Welche Stufen es
+       gibt, steht im Datenblatt. */
+    entry.quality = null;
+    missing.push(entry);
+  }
+
+  return [...owned, ...missing].sort(byRelicName);
 }
 
 /**
@@ -242,8 +336,12 @@ export function classifyArcane(a) {
  * Zusammenfuehrung ueber die Kategorie, nicht ueber das Quellfeld: Mods aus
  * RawUpgrades (ungerankt, mit Anzahl) und Upgrades (Einzelstuecke mit Rang)
  * landen in derselben Liste, Arcanes werden aus beiden herausgezogen.
+ *
+ * @param market  Index aus loadMarketItems(), optional. Nur damit steht auch
+ *                das vollstaendige Reliktverzeichnis da - ohne bleibt es beim
+ *                eigenen Bestand (siehe mergeRelicCatalog).
  */
-export function buildInventory(inventory, catalog) {
+export function buildInventory(inventory, catalog, { market = null } = {}) {
   const inv = inventory || {};
 
   const misc = collect(inv.MiscItems, catalog);
@@ -333,7 +431,7 @@ export function buildInventory(inventory, catalog) {
   }
 
   const sections = {
-    relics:     misc.filter(e => isRelic(e.uniqueName)).map(decorateRelic).sort(byName),
+    relics:     mergeRelicCatalog(misc.filter(e => isRelic(e.uniqueName)).map(decorateRelic), market),
     sets:       [],
     materials:  misc.filter(e => !isRelic(e.uniqueName)).sort(byName),
     arcanes:    [...allArcanesMap.values()].sort(byName),

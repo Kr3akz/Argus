@@ -22,6 +22,26 @@
  *   Gespeichert wird der Stueckpreis; die Summe wird gerechnet. Andersherum
  *   liesse sich "drei Stueck zu 12p" nicht mehr von "eins zu 36p"
  *   unterscheiden, und genau das ist beim Nachschlagen die Frage.
+ *
+ * ZWEI WAEHRUNGEN, EIN BUCH:
+ *   Neben Platin steht seit v1.11 die zweite Waehrung, in der in Warframe
+ *   wirklich gehandelt wird: Dukaten. Baro nimmt Prime-Teile und gibt Dukaten,
+ *   und was bei ihm im Regal liegt, kostet welche - das ist Ein- und Ausgang
+ *   wie jeder Handel, nur mit einer anderen Muenze.
+ *
+ *   Das Feld heisst weiter `platinum` und traegt den STUECKPREIS IN DER
+ *   WAEHRUNG DER ZEILE. Das ist bewusst so und nicht schoen: den Namen zu
+ *   aendern hiesse, die Historie auf der Platte, die Zeilen von
+ *   warframe.market und vier Aufrufstellen gleichzeitig umzustellen - und
+ *   waehrenddessen gaebe es zwei Felder, die dasselbe meinen und sich
+ *   widersprechen koennen. Ein Betrag, daneben seine Waehrung.
+ *
+ *   Zeilen ohne `currency` sind Platin: vor dieser Unterscheidung gab es
+ *   nichts anderes.
+ *
+ *   NIEMALS UEBER BEIDE SUMMIEREN. 500 Dukaten sind keine 500 Platin und
+ *   lassen sich auch nicht umrechnen - es gibt keinen Kurs, nur den Umweg
+ *   ueber ein Teil, das beides hat. Jede Summe hier gilt deshalb je Waehrung.
  */
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -29,6 +49,10 @@ import { randomUUID } from 'node:crypto';
 import { dataDir, dataFile } from './paths.js';
 
 const FILE = () => dataFile('transactions.json');
+
+/** Die Waehrungen, in denen sich in Warframe handeln laesst. */
+export const CURRENCIES = ['platinum', 'ducats'];
+const CURRENCY_SET = new Set(CURRENCIES);
 
 let cache = null;
 
@@ -62,6 +86,9 @@ function normalise(input = {}) {
     direction: input.direction === 'bought' ? 'bought' : 'sold',
     /* 'order' = normales Item, 'contract' = Riven-/Lich-/Sister-Auktion. */
     kind: input.kind === 'contract' ? 'contract' : 'order',
+    /* In welcher Muenze. Ohne Angabe Platin - so sind alle Zeilen zu lesen,
+       die vor dieser Unterscheidung geschrieben wurden. */
+    currency: CURRENCY_SET.has(input.currency) ? input.currency : 'platinum',
     slug: input.slug || null,
     itemId: input.itemId || null,
     name: input.name || 'Unknown item',
@@ -117,6 +144,7 @@ export async function removeTransaction(id) {
  *
  * @param direction 'sold' | 'bought' | 'all'
  * @param kind      'order' | 'contract' | 'all'
+ * @param currency  'platinum' | 'ducats' | 'all'
  * @param days      nur die letzten n Tage; null = alles
  * @param query     Freitext ueber Itemname und Handelspartner
  */
@@ -139,7 +167,7 @@ export async function allTransactions() {
  * vorbei in die Liste rutschen.
  */
 export function selectTransactions(entries, {
-  direction = 'all', kind = 'all', days = null, query = '',
+  direction = 'all', kind = 'all', currency = 'all', days = null, query = '',
   sort = 'date-desc', limit = null
 } = {}) {
   const q = String(query || '').toLowerCase().trim();
@@ -148,6 +176,7 @@ export function selectTransactions(entries, {
   let list = (entries || []).filter(e => {
     if (direction !== 'all' && e.direction !== direction) return false;
     if (kind !== 'all' && e.kind !== kind) return false;
+    if (currency !== 'all' && currencyOf(e) !== currency) return false;
     if (since && e.at < since) return false;
     if (q && !(e.name.toLowerCase().includes(q) || (e.partner || '').toLowerCase().includes(q))) return false;
     return true;
@@ -162,31 +191,49 @@ export function selectTransactions(entries, {
   return {
     entries: limit ? list.slice(0, limit) : list,
     total: list.length,
-    summary: summariseEntries(list)
+    summary: summariseByCurrency(list)
   };
 }
 
+/** Die Waehrung einer Zeile. Alles Unbekannte ist Platin - siehe Kopf. */
+export const currencyOf = e => (e?.currency === 'ducats' ? 'ducats' : 'platinum');
+
 /**
- * Die Zahlen ueber der Liste.
+ * Die Zahlen ueber der Liste - fuer EINE Waehrung.
  *
  * net ist bewusst Einnahmen minus Ausgaben und nicht "Gewinn": was ein Teil
  * beim Farmen gekostet hat, weiss diese Datei nicht. Wer etwas fuer 10p
  * kauft und fuer 30p verkauft, sieht hier +20p - das ist die ehrliche
  * Auskunft dieser Datenlage.
  */
-export function summariseEntries(list) {
+export function summariseEntries(list, currency = null) {
+  const rows = currency ? (list || []).filter(e => currencyOf(e) === currency) : (list || []);
+
   let earned = 0, spent = 0, soldCount = 0, boughtCount = 0;
-  for (const e of list) {
+  for (const e of rows) {
     if (e.direction === 'sold') { earned += e.total; soldCount += e.quantity; }
     else                        { spent  += e.total; boughtCount += e.quantity; }
   }
   return {
+    currency: currency || 'platinum',
     earned, spent, net: earned - spent,
     soldCount, boughtCount,
-    entries: list.length,
+    entries: rows.length,
     /* Bester Einzelposten: die Zeile, an die man sich erinnert. */
-    best: list.filter(e => e.direction === 'sold').sort((a, b) => b.total - a.total)[0] || null
+    best: rows.filter(e => e.direction === 'sold').sort((a, b) => b.total - a.total)[0] || null
   };
+}
+
+/**
+ * Je Waehrung eine Bilanz.
+ *
+ * Kein gemeinsames "net": 500 Dukaten und 500 Platin sind zwei Zahlen ohne
+ * Kurs dazwischen. Wer sie addiert, bekommt 1000 von nichts.
+ */
+export function summariseByCurrency(list) {
+  const out = { entries: (list || []).length };
+  for (const c of CURRENCIES) out[c] = summariseEntries(list, c);
+  return out;
 }
 
 /**
@@ -194,8 +241,8 @@ export function summariseEntries(list) {
  * Beantwortet "womit verdiene ich eigentlich Platin", was die Einzelliste
  * ab etwa fuenfzig Zeilen nicht mehr hergibt.
  */
-export async function transactionsByItem({ direction = 'sold', days = null } = {}) {
-  const { entries } = await listTransactions({ direction, days });
+export async function transactionsByItem({ direction = 'sold', days = null, currency = 'platinum' } = {}) {
+  const { entries } = await listTransactions({ direction, days, currency });
   const map = new Map();
   for (const e of entries) {
     const key = e.slug || e.name;

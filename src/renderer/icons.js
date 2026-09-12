@@ -214,6 +214,10 @@ const Icon = {
   pencil: s => svg('<path d="M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>', s),
   tag:    s => svg('<path d="M20.6 13.4 12 22l-9-9V4a1 1 0 0 1 1-1h9l7.6 7.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.5"/>', s),
   ledger: s => svg('<path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H19a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H5.5A1.5 1.5 0 0 1 4 19.5Z"/><path d="M4 17.5h16"/><path d="M8 7h8M8 11h5"/>', s),
+  /* Balken UND Kurve - das Diagramm im Handelstab zeigt beides, und das
+     Symbol soll dasselbe versprechen. Ein reines Balkensymbol stuende sonst
+     ueber einer Seite, auf der auch eine Linie liegt. */
+  chart:  s => svg('<path d="M3 3v16.5A1.5 1.5 0 0 0 4.5 21H21"/><path d="M7 17v-4M11.5 17v-7M16 17v-3M20.5 17V8"/>', s),
 
   /* Wortmarke von warframe.market.
 

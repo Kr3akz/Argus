@@ -62,6 +62,40 @@ cache would be pointless for that — the wiki serves
 `cache-control: public, max-age=31536000, immutable`, so Chromium stores every image
 permanently by itself.
 
+## Relics: the whole set, not just your shelf
+
+The **Relics** section lists all 772 relics that exist, not only the ones in your stock —
+the same **Owned / Not owned** chips the mods and arcanes sections have, plus the era
+below them. The tab counter reads `193 / 778` for the same reason it does elsewhere: how
+many kinds you hold, out of how many there are.
+
+**The list comes from warframe.market, not from DE's export.** DE's catalogue carries only
+the 31 relics currently obtainable, and the drop tables only the farmable ones; neither
+knows the vaulted relics, and those are most of what exists. Warframe.market lists all of
+them because vaulted relics keep being traded. The same reason relic names are resolved
+there in the first place — `T1VoidProjectionD` is called *Lith V1* in game, and nothing in
+the path says so.
+
+A relic you do not own shows as **one** row, not four. Your own stock lists each
+refinement separately, because intact and radiant are the same relic but not the same
+decision. Something you own none of you own in no state at all — four cards saying that
+would be 2 340 cards saying nothing. The data sheet behind it still shows all four.
+
+**The picture is fetched twice on purpose.** DE's image path for a relic does not follow
+its inventory path: the Requiem relics carry no metal suffix in your inventory but their
+image does, and *Requiem Eterna* does it the other way round. Measured against the export
+mirror on 12 September 2026:
+
+| path | image |
+|---|---|
+| `T1VoidProjectionZephyrPrimeBBronze` | 200 |
+| `T5VoidProjectionImmortalDBronze` | 200 |
+| `T5VoidProjectionImmortalOmniA` | 200 |
+| `T5VoidProjectionImmortalOmniABronze` | **404** |
+
+There is no rule to derive, so every relic carries the other spelling as a fallback and
+the image net in `imagefail.js` swaps it in when the first one comes up empty.
+
 ## Searching relics by what is inside them
 
 The search box in the **Relics** section asks two questions at once: the name of the

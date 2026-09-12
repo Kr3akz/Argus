@@ -851,6 +851,13 @@
             <button class="btn btn-sm btn-subtle" id="btn-ducats-clear" title="Resets every sell quantity to 0">
               <span class="btn-ic" data-icon="close"></span>Clear
             </button>
+            <!-- Der einzige Weg, auf dem Dukaten ins Handelsbuch kommen: Baro
+                 handelt im Spiel, und DE veroeffentlicht darueber nichts.
+                 Steht neben der Auswahl, weil genau sie gebucht wird. -->
+            <button class="btn btn-sm btn-action hidden" id="btn-ducats-record"
+                    title="Writes this selection into your trade history as ducats earned">
+              <span class="btn-ic" data-icon="ledger"></span><span id="btn-ducats-record-label">Sold to Baro</span>
+            </button>
           </div>
         </div>
 
@@ -1025,6 +1032,12 @@
             <button class="ducats-tab-btn" data-trade-mode="transactions">
               <span class="btn-ic" data-icon="ledger"></span><span>Transactions</span>
               <span class="counter-badge" id="trade-badge-tx">0</span>
+            </button>
+            <!-- Neben dem Handelsbuch, weil es dasselbe Buch ist - einmal als
+                 Liste, einmal als Kurve. Wer eine Zeile nachtraegt, will
+                 danach sehen, was sie mit dem Monat macht. -->
+            <button class="ducats-tab-btn" data-trade-mode="analytics">
+              <span class="btn-ic" data-icon="chart"></span><span>Analytics</span>
             </button>
           </div>
 
@@ -2000,12 +2013,22 @@
               <option value="bought">Bought</option>
             </select>
           </label>
+          <!-- Die Waehrung steht VOR dem Betrag, nicht dahinter: sie
+               beschriftet das Feld daneben, und wer sie danach umstellt, hat
+               eine Zahl eingetippt, die etwas anderes bedeutet, als er dachte. -->
+          <label class="field">
+            <span>Currency</span>
+            <select id="trade-tx-currency" class="select-sm">
+              <option value="platinum">Platinum</option>
+              <option value="ducats">Ducats (Baro)</option>
+            </select>
+          </label>
           <label class="field trade-field-wide">
             <span>Item</span>
             <input type="text" id="trade-tx-name" placeholder="Braton Prime Set" required>
           </label>
           <label class="field">
-            <span>Platinum each</span>
+            <span id="trade-tx-plat-label">Platinum each</span>
             <input type="number" id="trade-tx-plat" min="0" step="1" required>
           </label>
           <label class="field">
@@ -2103,6 +2126,7 @@
 
 
 <script src="icons.js"></script>
+<script src="charts.js"></script>
 <script src="stock.js"></script>
 <script src="whisper.js"></script>
 <script src="fissure-filter.js"></script>

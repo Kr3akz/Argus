@@ -8253,6 +8253,20 @@ body:not(:has(.modal:not(.hidden))) .mod-slot:hover .mod-card.rar-legendary .mod
   font-size: 10px;
   opacity: 0.8;
 }
+/* Relikte, die man nicht besitzt - dieselbe Daempfung wie bei Mods und
+   Arcanes, nur auf der Zeile statt auf der Karte. Beim Ueberfahren kommt die
+   Zeile zurueck: wer hinsieht, will lesen, nicht raten. */
+.inv-item.is-unowned {
+  opacity: 0.6;
+  filter: grayscale(0.25);
+}
+.inv-item.is-unowned:hover {
+  opacity: 1;
+  filter: none;
+}
+/* Die Null steht nicht in Gold. Gold heisst hier "so viel hast du" - eine
+   goldene Null ist ein Besitzstand ueber etwas, das nicht da ist. */
+.inv-item-count.is-unowned { color: var(--text-3); font-weight: 550; }
 
 /* ---------- Mod & Arcane Ziele ---------- */
 .agoal-gain.agoal-upgrade-type {
@@ -9816,4 +9830,124 @@ input[type=number]:focus, input[type=email]:focus, input[type=password]:focus {
 @media (max-width: 900px) {
   .vend-line { grid-template-columns: 1fr auto; }
   .vend-line .vend-gate { display: none; }
+}
+
+/* ---------- Handels-Auswertung: Kacheln, Diagramm, Rangliste ----------
+
+   Die Farben stehen NICHT hier, sondern in den Variablen ganz oben: gruen
+   fuer Einnahmen, rot fuer Ausgaben, Gold fuer die laufende Summe - dieselben
+   drei, die im Handelsbuch darueber schon gelten. Ein Diagramm mit eigener
+   Palette saehe aus wie ein Fremdkoerper auf derselben Seite.               */
+/* Gespannter Buchungsknopf im Dukaten-Tab. Nicht rot wie die Loeschknoepfe:
+   hier wird nichts vernichtet, sondern etwas eingetragen - die Warnfarbe
+   waere ein falsches Versprechen. Gold ist die Farbe der Dukaten. */
+#btn-ducats-record.armed {
+  background: rgba(var(--t-gold) / .28);
+  box-shadow: inset 0 0 0 1px rgba(var(--t-gold) / .65);
+  color: var(--gold);
+}
+
+.ch-tiles {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px; margin-bottom: 12px;
+}
+.ch-tile {
+  background: var(--surface); border-radius: var(--r-sm); padding: 12px 14px;
+  /* Der farbige Streifen links traegt die Bedeutung, nicht die Zahl: so
+     bleibt die Zahl in der Textfarbe und damit lesbar. */
+  border-left: 3px solid transparent;
+}
+.ch-tile.is-earned   { border-left-color: var(--green); }
+.ch-tile.is-spent    { border-left-color: var(--red); }
+.ch-tile.is-positive { border-left-color: var(--gold); }
+.ch-tile.is-negative { border-left-color: var(--red); }
+.ch-tile-label {
+  display: block; font-size: 10.5px; letter-spacing: .5px; text-transform: uppercase;
+  color: var(--text-3); margin-bottom: 5px;
+}
+.ch-tile-val {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums;
+}
+.ch-tile-val .currency-ic { width: 15px; height: 15px; }
+.ch-tile-sub {
+  display: block; margin-top: 4px; font-size: 11px; color: var(--text-3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.ch-card {
+  background: var(--surface); border-radius: var(--r-sm);
+  padding: 14px 16px 10px; margin-bottom: 12px;
+}
+.ch-card-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 10px; font-size: 13px;
+}
+.ch-legend { display: flex; gap: 14px; font-size: 11px; color: var(--text-3); }
+/* Der Schluessel traegt sein Muster als Punkt davor - bei der Linie als
+   Strich, damit sie sich von den beiden Balken unterscheidet. */
+.ch-key::before {
+  content: ''; display: inline-block; vertical-align: middle;
+  width: 9px; height: 9px; border-radius: 2px; margin-right: 5px;
+}
+.ch-key.is-earned::before { background: var(--green); }
+.ch-key.is-spent::before  { background: var(--red); }
+.ch-key.is-line::before   { width: 14px; height: 2px; border-radius: 0; background: var(--gold); }
+
+/* Feste Hoehe, Breite vom Kasten: die viewBox skaliert mit, deshalb muss beim
+   Fensterwechsel nichts neu gezeichnet werden. */
+.ch-plot { width: 100%; height: 240px; }
+.ch-svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.ch-grid { stroke: var(--surface-3); stroke-width: 1; }
+.ch-zero { stroke: var(--gold); stroke-width: 1; stroke-dasharray: 3 3; opacity: .45; }
+.ch-ylab, .ch-xlab {
+  fill: var(--text-3); font-size: 10px;
+  font-family: inherit; font-variant-numeric: tabular-nums;
+}
+/* Die rechte Achse gehoert der laufenden Summe und traegt deren Farbe - so
+   ist auch ohne Legende klar, welche Zahl zu welcher Kurve gehoert. */
+.ch-ylab.is-cum { fill: var(--gold); opacity: .85; }
+.ch-bar.is-earned { fill: var(--green); }
+.ch-bar.is-spent  { fill: var(--red); }
+/* preserveAspectRatio="none" streckt das SVG - und mit ihm die Strichstaerke.
+   vector-effect haelt die Linie unabhaengig davon gleich dick. */
+.ch-line {
+  fill: none; stroke: var(--gold); stroke-width: 2;
+  stroke-linejoin: round; stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+.ch-dot { fill: var(--gold); }
+.ch-bargroup:hover .ch-bar { filter: brightness(1.25); }
+.ch-note {
+  display: flex; align-items: center; gap: 6px;
+  margin: 8px 0 2px; font-size: 11px; color: var(--text-3);
+}
+
+.ch-rank { display: flex; flex-direction: column; gap: 7px; }
+.ch-rank-row {
+  display: grid; grid-template-columns: minmax(90px, 1.4fr) 3fr auto;
+  align-items: center; gap: 12px; font-size: 12px;
+}
+.ch-rank-name {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--text-2);
+}
+/* Einnahmen und Ausgaben desselben Items untereinander statt nebeneinander:
+   so bleibt die Zeile schmal, und der Vergleich der Items geht ueber die
+   Spalte statt ueber die Zeile - danach wird hier gefragt. */
+.ch-rank-bars { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ch-rank-bar { height: 7px; border-radius: 2px; min-width: 2px; }
+.ch-rank-bar.is-earned { background: var(--green); }
+.ch-rank-bar.is-spent  { background: var(--red); opacity: .75; }
+.ch-rank-val {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
+  font-variant-numeric: tabular-nums; font-weight: 600;
+  /* Dieselbe Zeilenhoehe wie die Balken daneben, damit die gruene Zahl auf
+     Hoehe des gruenen Balkens steht und die rote auf Hoehe des roten. */
+  line-height: 9px; font-size: 11px;
+}
+
+@media (max-width: 720px) {
+  .ch-rank-row { grid-template-columns: minmax(70px, 1fr) 2fr auto; }
+  .ch-legend { width: 100%; }
 }

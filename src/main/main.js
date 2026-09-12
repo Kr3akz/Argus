@@ -2904,7 +2904,11 @@ ipcMain.handle('trade:closeContract', (_e, id, info = {}) =>
  * verschieden ticken: warframe.market stempelt seine Bestaetigung, der
  * lokale Eintrag den Klick.
  */
-const txKey = e => [e.slug || e.name, e.direction, e.platinum, new Date(e.at).toISOString().slice(0, 10)].join('|');
+/* Die Waehrung gehoert in den Schluessel: "Wisp Prime Blueprint, verkauft,
+   100, heute" ist einmal ein Platinverkauf und einmal ein Gang zu Baro -
+   ohne sie wuerde eines von beiden stillschweigend verschluckt. */
+const txKey = e => [e.slug || e.name, e.direction, e.currency || 'platinum', e.platinum,
+                    new Date(e.at).toISOString().slice(0, 10)].join('|');
 
 function mergeTransactions(remote, local) {
   const seen = new Map();
@@ -3020,7 +3024,13 @@ async function inventoryPayload({ refresh }) {
      Anfrage liefert den alten Stand zurueck und darf das Buch nicht leeren. */
   if (!res.fromCache) relicsUsed.clear();
 
-  const view = buildInventory(res.inventory, cache.catalog);
+  /* VOR buildInventory, nicht erst beim Bau der Sets: aus der Marktliste kommt
+     auch das vollstaendige Reliktverzeichnis, und nur so stimmen die Zahlen in
+     view.totals.relics gleich mit. Der Aufruf ist billig - loadMarketItems
+     haelt seinen Index im Modul. */
+  const market = await loadMarketItems().catch(() => null);
+
+  const view = buildInventory(res.inventory, cache.catalog, { market });
   await attachCards(view);
 
   const mastered = new Set([
@@ -3034,7 +3044,6 @@ async function inventoryPayload({ refresh }) {
 
   let sets = [];
   try {
-    const market = await loadMarketItems().catch(() => null);
     const priceCache = await readPriceCache();
     if (market && res.inventory) {
       const invDucats = buildInventoryDucats(res.inventory, cache.catalog, market, priceCache);

@@ -455,6 +455,10 @@ function normaliseRemote(row, idx) {
     dateUnknown: at == null,
     direction,
     kind: 'order',
+    /* warframe.market kennt nur Platin - Dukaten werden im Spiel bei Baro
+       gehandelt und tauchen dort nie auf. Das Feld steht trotzdem, damit
+       jede Zeile im Buch ihre Waehrung selbst traegt. */
+    currency: 'platinum',
     slug,
     itemId,
     name,

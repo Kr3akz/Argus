@@ -152,6 +152,48 @@ what a part cost you to farm is not something this file can know. Buy for 10p, s
 The local half keeps working when you are signed out. If warframe.market's history cannot be
 reached, the summary line says *local only* rather than quietly showing you less.
 
+## Analytics
+
+The same book as a picture: earned and spent side by side per day, week or month, with the
+running total drawn over it on its own scale down the right-hand side. Under it, the eight
+items that brought in the most — with what each of them cost you, because for anything you
+buy and resell the difference is the whole answer.
+
+The grain follows the range you pick rather than being another switch: up to 45 days it
+counts by day, up to 220 by week, beyond that by month — whatever keeps the axis under
+about 45 bars. "All time" measures from your oldest trade, so it does not draw a year of
+empty months to get to the first one.
+
+**Gaps are filled in.** Three days without a trade are three days at zero. If only the days
+with turnover were drawn, a quiet week would look like one busy day next to the next, and
+the running total would slope through time that never happened.
+
+**Rows with no date stay out.** Some closed orders come back from warframe.market without a
+usable timestamp; putting them somewhere would mean inventing a day. They are counted and
+the chart says so underneath.
+
+*Net* is earnings minus spending and is labelled as such. It is not profit — what a part
+cost you in missions is not in this file.
+
+## Ducats are the second currency
+
+Baro Ki'Teer is a trade like any other, just in a different coin, so ducats live in the
+same ledger and get the same charts — the chips above the analytics pick which one you are
+looking at. **The two are never added together.** There is no exchange rate between them;
+only the detour through an item that has both a ducat value and a platinum price, and that
+is a different question from what this book records.
+
+Nothing can pick a Baro sale up on its own: he trades inside the game, DE publishes nothing
+about it, and an inventory fetch sees the balance, not the movement. Two fetches could be
+subtracted, but anyone who sells and then buys in the same visit would only ever see the
+difference. So the **Ducats** tab grows a *Sold to Baro* button next to its selection: pick
+what you handed over, press it twice, and each part lands in the book as its own line — one
+line per part, because a single "Baro sale, 4 500 ducats" would be a bar with nothing to
+say. Buying from his stall goes in by hand, through the same *Add transaction* form with
+the currency switched over.
+
+Rows written before any of this existed are platinum: there was nothing else.
+
 ## Showing up as "in game"
 
 Warframe.market sorts offers by presence, and most people filter for *online only* before

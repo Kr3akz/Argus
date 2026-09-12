@@ -4509,6 +4509,20 @@ function renderDucatsKPIs() {
     }
   }
 
+  /* Der Buchungsknopf erscheint erst, wenn es etwas zu buchen gibt: ohne
+     Auswahl gaebe es nichts einzutragen, und ein Knopf, der dann nichts tut,
+     wirkt kaputt. Die Summe steht gleich mit drauf - was gebucht wird, soll
+     man vorher lesen koennen.
+
+     Eine geaenderte Auswahl entspannt ihn wieder: bestaetigt wuerde sonst
+     eine andere Summe als die, die beim Spannen dastand. */
+  const recordBtn = $('btn-ducats-record');
+  if (recordBtn) {
+    recordBtn.classList.toggle('hidden', selectedDucats <= 0);
+    disarmBaroSale();
+    baroSaleLabel(selectedDucats, false);
+  }
+
   // KPI 2: Platin-Wert
   if ($('ducats-selected-plat')) $('ducats-selected-plat').textContent = `~${nf(selectedPlatMin)}`;
   if ($('ducats-selected-plat-sub')) {
@@ -4538,6 +4552,92 @@ function renderDucatsKPIs() {
   if ($('ducats-inv-badge-count')) {
     $('ducats-inv-badge-count').textContent = (ducatsData.inventory?.items || []).length;
   }
+}
+
+/**
+ * Die eigene Auswahl als Dukaten-Einnahme ins Handelsbuch schreiben.
+ *
+ * WARUM DAS VON HAND ANGESTOSSEN WIRD UND NICHT VON SELBST PASSIERT:
+ *   Baro handelt im Spiel. Es gibt keine Schnittstelle, die den Verkauf
+ *   meldet, kein Protokoll, keine Zeile im Log - und der Inventar-Abruf sieht
+ *   nur den Kontostand, nicht die Bewegung. Ein Abruf vorher und einer
+ *   nachher liesse sich subtrahieren, aber wer in derselben Sitzung erst
+ *   verkauft und dann einkauft, saehe nur die Differenz und nie die beiden
+ *   Seiten. Ein Knopf, den man drueckt, nachdem man verkauft hat, ist ehrlich
+ *   und genau.
+ *
+ * EINE ZEILE JE TEIL, nicht eine Summe: nur so beantwortet die Auswertung
+ * hinterher auch die Frage, WOMIT die Dukaten hereinkamen. Eine Sammelzeile
+ * "Baro sale, 4.500 Dukaten" waere ein Balken ohne Auskunft.
+ *
+ * ZWEISTUFIG, wie die Loeschknoepfe im Handelstab: erst spannen, dann
+ * ausloesen. Ein Eintrag im Buch laesst sich nur von Hand wieder herausnehmen,
+ * und ein versehentlicher Klick soll das nicht noetig machen.
+ */
+let baroArmTimer = null;
+
+function baroSaleLabel(total, armed) {
+  const el = $('btn-ducats-record-label');
+  if (el) el.textContent = armed ? `Confirm — ${nf(total)} ducats` : `Sold to Baro (${nf(total)})`;
+}
+
+function disarmBaroSale() {
+  clearTimeout(baroArmTimer);
+  baroArmTimer = null;
+  $('btn-ducats-record')?.classList.remove('armed');
+}
+
+async function recordBaroSale() {
+  const btn = $('btn-ducats-record');
+  const items = new Map();
+  for (const it of [...(ducatsData?.inventory?.items || []), ...(ducatsData?.catalog || [])]) {
+    if (!items.has(it.slug)) items.set(it.slug, it);
+  }
+
+  const rows = [...sellQuantities.entries()]
+    .filter(([slug, qty]) => qty > 0 && items.get(slug)?.ducats > 0)
+    .map(([slug, qty]) => ({ item: items.get(slug), qty }));
+  if (!rows.length) return;
+
+  const total = rows.reduce((n, r) => n + r.item.ducats * r.qty, 0);
+
+  if (!baroArmTimer) {
+    btn.classList.add('armed');
+    baroSaleLabel(total, true);
+    baroArmTimer = setTimeout(() => { disarmBaroSale(); baroSaleLabel(total, false); }, 4000);
+    return;
+  }
+  disarmBaroSale();
+
+  btn.disabled = true;
+  try {
+    for (const { item, qty } of rows) {
+      await window.api.tradeAddTransaction({
+        direction: 'sold',
+        currency: 'ducats',
+        name: item.name,
+        slug: item.slug || null,
+        image: item.image || null,
+        platinum: item.ducats,   // Stueckpreis in der Waehrung der Zeile
+        quantity: qty,
+        source: 'baro-sale'
+      });
+    }
+  } finally {
+    btn.disabled = false;
+  }
+
+  /* Abgehakt ist abgehakt: die Auswahl stehenzulassen laedt dazu ein, sie ein
+     zweites Mal zu buchen. */
+  currentSelectionPreset = 'none';
+  updateSelectionPresetButtons();
+  sellQuantities.clear();
+  renderDucatsKPIs();
+  renderDucatsCatalog();
+
+  /* Nichts weiter aufzuraeumen: der Handelstab laedt sein Buch bei jedem
+     Oeffnen neu (siehe showTab), die neuen Zeilen stehen also beim naechsten
+     Blick von selbst da. */
 }
 
 function updateDucatsModeTabs() {
@@ -5448,6 +5548,8 @@ function initDucatsEventListeners() {
     renderDucatsCatalog();
   });
 
+  $('btn-ducats-record')?.addEventListener('click', recordBaroSale);
+
   $('btn-ducats-fetch-prices')?.addEventListener('click', () => {
     fetchMissingDucatPrices(true);
   });
@@ -5477,6 +5579,7 @@ function initDucatsEventListeners() {
 let inventoryData = null;
 let invSection = 'relics';
 let invTier = 'all';            // Aera-Filter, nur im Relikt-Bereich
+let invRelicOwnership = 'all';  // All, Owned, Not owned
 let invSetOwnership = 'all';    // All, Owned, Not owned
 let invSetOrigin = 'all';       // Prime oder Basis, nur im Sets-Bereich
 let invSetKind = 'all';         // Gattung, nur im Sets-Bereich
@@ -5611,7 +5714,7 @@ function renderInventory() {
 
   $('inv-tabs').innerHTML = d.sectionMeta.map(s => {
     const total = d.totals[s.key] || { arten: 0 };
-    const labelCount = (s.key === 'mods' || s.key === 'arcanes') && total.ownedArten != null
+    const labelCount = ['mods', 'arcanes', 'relics'].includes(s.key) && total.ownedArten != null
       ? `${nf(total.ownedArten)} / ${nf(total.arten)}`
       : nf(total.arten);
     return `
@@ -5624,6 +5727,7 @@ function renderInventory() {
     btn.onclick = () => {
       invSection = btn.dataset.inv;
       invTier = 'all';
+      invRelicOwnership = 'all';
       invSetOwnership = 'all';
       invSetOrigin = 'all';
       invSetKind = 'all';
@@ -5648,51 +5752,9 @@ function renderInvTierFilter(all) {
   if (invSection === 'sets') return renderInvSetFilter(box, all);
   if (invSection === 'mods') return renderInvModFilter(box, all);
   if (invSection === 'arcanes') return renderInvArcaneFilter(box, all);
+  if (invSection === 'relics') return renderInvRelicFilter(box, all);
 
-  if (invSection !== 'relics') {
-    box.classList.add('hidden');
-    return;
-  }
-
-  const counts = new Map();
-  for (const e of all) {
-    if (!e.tier) continue;
-    counts.set(e.tier, (counts.get(e.tier) || 0) + (e.count || 0));
-  }
-
-  const order = ['Lith', 'Meso', 'Neo', 'Axi', 'Requiem', 'Omnia'];
-  const tiers = order.filter(t => counts.has(t));
-  if (!tiers.length) { box.classList.add('hidden'); return; }
-
-  const total = [...counts.values()].reduce((a, b) => a + b, 0);
-  box.classList.remove('hidden');
-
-  /* Dieselben zwei Zeilen wie in den anderen Bereichen: oben der Weg zurueck
-     zur vollen Liste, unten die Aeren. Relikte kennen keinen Besitz-Filter -
-     alles, was hier steht, hat man -, deshalb steht oben nur "All".
-
-     Die Aeren tragen kein Symbol: sie tragen ihre Farbe, und die sagt schon,
-     welche gemeint ist. */
-  box.innerHTML =
-    `<div class="chip-row"><div class="chip-group">
-       <button class="tier-chip ${invTier === 'all' ? 'active' : ''}" type="button" data-tier="all">
-         <i class="chip-ic">${Icon.grid(15)}</i>All <span>${nf(total)}</span>
-       </button>
-     </div></div>
-     <div class="chip-row"><div class="chip-group">` +
-    tiers.map(t => `
-      <button class="tier-chip tier-${t.toLowerCase()} ${invTier === t ? 'active' : ''}"
-              type="button" data-tier="${t}">
-        ${t} <span>${nf(counts.get(t))}</span>
-      </button>`).join('') +
-    `</div></div>`;
-
-  box.querySelectorAll('[data-tier]').forEach(btn => {
-    btn.onclick = () => {
-      invTier = btn.dataset.tier;
-      renderInventoryGrid();
-    };
-  });
+  box.classList.add('hidden');
 }
 
 /* ---------------- Filter-Definitionen ----------------
@@ -5702,6 +5764,18 @@ function renderInvTierFilter(all) {
    die Leiste traegt bis zu zwoelf Chips, und ein Blick auf das
    Warframe-Zeichen findet die Gattung schneller als das Lesen von zwoelf
    Woertern - genau wie im Regal unter "What are you building for?".        */
+
+const RELIC_OWNERSHIP = [
+  { key: 'owned',     label: 'Owned',     icon: 'check',  match: r => (r.count || 0) > 0 },
+  { key: 'not_owned', label: 'Not owned', icon: 'cross',  match: r => (r.count || 0) === 0 }
+];
+
+/* Die Aeren. Kein Symbol: sie tragen ihre Farbe, und die sagt schon, welche
+   gemeint ist. Die Reihenfolge ist die des Spiels, nicht die des Alphabets -
+   Lith ist die erste Aera, nicht Axi. */
+const RELIC_TIERS = ['Lith', 'Meso', 'Neo', 'Axi', 'Requiem', 'Omnia'].map(t => ({
+  key: t, label: t, cls: 'tier-' + t.toLowerCase(), match: r => r.tier === t
+}));
 
 const SET_OWNERSHIP = [
   { key: 'owned',     label: 'Owned',     icon: 'check',  match: s => (s.ownedParts || 0) > 0 || s.complete || s.isMastered },
@@ -5758,6 +5832,10 @@ const ARCANE_KINDS = [
 ];
 
 const matchOf = (defs, key) => defs.find(f => f.key === key)?.match || (() => true);
+
+const filterRelics = list => list
+  .filter(invRelicOwnership === 'all' ? () => true : matchOf(RELIC_OWNERSHIP, invRelicOwnership))
+  .filter(invTier === 'all' ? () => true : matchOf(RELIC_TIERS, invTier));
 
 const filterSets = list => list
   .filter(invSetOwnership === 'all' ? () => true : matchOf(SET_OWNERSHIP, invSetOwnership))
@@ -5845,9 +5923,9 @@ const INV_SET_SORTS = {
    Leiste. Deshalb hier ein Satz Bausteine und je Bereich nur noch die
    Aufzaehlung, welche Achse in welcher Gruppe steht.                        */
 
-/** Ein Chip: Symbol, Wort, Zahl. */
-const invChip = (attr, key, label, icon, count, on) => `
-  <button class="tier-chip ${on ? 'active' : ''}" type="button" data-${attr}="${esc(key)}">
+/** Ein Chip: Symbol, Wort, Zahl. `cls` traegt die Aera-Farbe der Relikte. */
+const invChip = (attr, key, label, icon, count, on, cls = '') => `
+  <button class="tier-chip ${cls} ${on ? 'active' : ''}" type="button" data-${attr}="${esc(key)}">
     ${icon && Icon[icon] ? `<i class="chip-ic">${Icon[icon](15)}</i>` : ''}${esc(label)}
     <span>${nf(count)}</span>
   </button>`;
@@ -5878,7 +5956,7 @@ function countMatches(list, defs) {
 const invChips = (defs, attr, active, counts) => defs
   .map(f => ({ ...f, count: counts[f.key] || 0 }))
   .filter(f => f.count > 0 || f.key === active)
-  .map(f => invChip(attr, f.key, f.label, f.icon, f.count, active === f.key))
+  .map(f => invChip(attr, f.key, f.label, f.icon, f.count, active === f.key, f.cls))
   .join('');
 
 /** Eine Gruppe zeichnet sich nur, wenn sie Chips hat. */
@@ -5923,6 +6001,34 @@ function wireInvChips(box, attr, dsKey, get, set) {
       renderInventoryGrid();
     };
   });
+}
+
+/**
+ * Die Leiste des Relikt-Bereichs.
+ *
+ * DIE ZAHLEN ZAEHLEN JETZT SORTEN, NICHT STUECK. Solange hier nur der eigene
+ * Bestand stand, war "Lith 412" die Antwort auf "wie viele Lith-Relikte liegen
+ * da" - und dieselbe Zahl stand auch im Alles-Chip. Mit dem vollstaendigen
+ * Verzeichnis daneben waere sie irrefuehrend: 585 der Kacheln haben die Anzahl
+ * null, und ein Chip soll sagen, wie viele Kacheln er zeigt, nicht wie viele
+ * Exemplare darin stecken. Die Stueckzahl steht weiter in der Zeile darunter.
+ */
+function renderInvRelicFilter(box, all) {
+  const allActive = invTier === 'all' && invRelicOwnership === 'all';
+
+  const html =
+      invRow(invGroup(invAllChip(all.length, allActive)
+                    + invChips(RELIC_OWNERSHIP, 'relic-ownership', invRelicOwnership, countMatches(all, RELIC_OWNERSHIP))))
+    + invRow(invGroup(invChips(RELIC_TIERS, 'tier', invTier, countMatches(all, RELIC_TIERS))));
+
+  const ok = mountInvFilter(box, html, () => {
+    invTier = 'all';
+    invRelicOwnership = 'all';
+  });
+  if (!ok) return;
+
+  wireInvChips(box, 'relic-ownership', 'relicOwnership', () => invRelicOwnership, v => invRelicOwnership = v);
+  wireInvChips(box, 'tier',            'tier',           () => invTier,           v => invTier = v);
 }
 
 function renderInvSetFilter(box, all) {
@@ -6264,7 +6370,12 @@ function setupInvGridEvents(grid) {
        neben der Teileliste waere nur ein Loch. */
       img.parentElement.style.display = 'none';
     } else if (img.matches('.mat-icon')) {
-      img.classList.add('is-missing');
+      /* Steht noch ein Ersatzbild aus, NICHT ausblenden: imagefail.js tauscht
+         es gleich ein, und ein verstecktes Bild bliebe versteckt, auch wenn
+         der Ersatz danach einwandfrei laedt. Relikte fahren zweigleisig -
+         DEs Bildpfad haengt bei ihnen nicht am Inventarpfad (siehe
+         relicImagePair in inventory-items.js). */
+      if (!img.dataset.failSrc) img.classList.add('is-missing');
     }
   }, true);
 }
@@ -6379,7 +6490,7 @@ function renderInventoryGrid({ keepRendered = 0 } = {}) {
         return true;
       });
     }
-    if (invTier !== 'all') list = list.filter(e => e.tier === invTier);
+    list = filterRelics(list);
   } else {
     list = query ? all.filter(e => e.name.toLowerCase().includes(query)) : all;
   }
@@ -6393,14 +6504,14 @@ function renderInventoryGrid({ keepRendered = 0 } = {}) {
     || (invSection === 'sets' && (invSetOwnership !== 'all' || invSetOrigin !== 'all' || invSetKind !== 'all'))
     || (invSection === 'mods' && (invModOwnership !== 'all' || invModKind !== 'all'))
     || (invSection === 'arcanes' && (invArcaneOwnership !== 'all' || invArcaneKind !== 'all'))
-    || (invSection === 'relics' && invTier !== 'all');
+    || (invSection === 'relics' && (invRelicOwnership !== 'all' || invTier !== 'all'));
 
   let metaText = '';
   if (isFiltered) {
     metaText = `${nf(list.length)} of ${nf(all.length)} entries`;
   } else if (invSection === 'sets') {
     metaText = `${nf(total.arten)} sets · ${nf(total.complete || 0)} complete`;
-  } else if (invSection === 'mods' || invSection === 'arcanes') {
+  } else if (invSection === 'mods' || invSection === 'arcanes' || invSection === 'relics') {
     metaText = `${nf(total.ownedArten ?? total.arten)} / ${nf(total.arten)} owned · ${nf(total.stueck)} copies in total`;
   } else {
     metaText = `${nf(total.arten)} kinds · ${nf(total.stueck)} items in total`;
@@ -6593,8 +6704,13 @@ function arcaneTile(e, i) {
 
 /** Relikte, Materialien, Blueprints: die gewohnte Zeile. */
 function plainRow(e, i) {
-  const extra = e.quality ? `<span class="inv-tag">${esc(e.quality)}</span>` : '';
   const clickable = invSection === 'relics';
+  /* Nur Relikte kennen den Zustand "nicht besessen" - Materialien und
+     Blaupausen stehen ausschliesslich mit dem eigenen Bestand da. */
+  const unowned = clickable && !(e.count > 0);
+
+  const extra = e.quality ? `<span class="inv-tag">${esc(e.quality)}</span>`
+              : unowned ? '<span class="inv-tag is-unowned-tag">Not owned</span>' : '';
 
   /* Wurde nach einem TEIL gesucht, muss die Zeile sagen, WARUM sie dasteht -
      "Axi A22" allein beantwortet die Frage nach Wisp Prime Neuroptics nicht. */
@@ -6602,15 +6718,19 @@ function plainRow(e, i) {
     ? `<span class="inv-tag is-hit">${Icon.target(10)}${esc(e.matchedReward)}</span>`
     : '';
 
+  const title = clickable
+    ? `data-idx="${i}" title="${unowned ? 'Not owned · Open data sheet' : 'Open data sheet'}"`
+    : `title="${esc(e.uniqueName)}"`;
+
   return `
-    <div class="inv-item ${clickable ? 'is-clickable' : ''}"
-         ${clickable ? `data-idx="${i}" title="Open data sheet"` : `title="${esc(e.uniqueName)}"`}>
-      <img class="mat-icon" src="${esc(e.image)}" alt="" loading="lazy">
+    <div class="inv-item ${clickable ? 'is-clickable' : ''} ${unowned ? 'is-unowned' : ''}" ${title}>
+      <img class="mat-icon" src="${esc(e.image)}" alt="" loading="lazy"
+           ${e.imageFallback ? `data-fail-src="${esc(e.imageFallback)}"` : ''}>
       <div class="inv-item-body">
         <b>${esc(e.name)}</b>
         ${extra}${hit}
       </div>
-      <span class="inv-item-count">${nf(e.count)}</span>
+      <span class="inv-item-count ${unowned ? 'is-unowned' : ''}">${nf(e.count)}</span>
     </div>`;
 }
 
@@ -7649,7 +7769,11 @@ window.api.onNavigateTab((tab, subpane) => {
    Das Handelsbuch liegt lokal, weil warframe.market keines fuehrt. Deshalb
    ueberlebt die Historie auch eine abgelaufene Anmeldung.                   */
 
-let tradeMode = 'orders';           // 'orders' | 'contracts' | 'transactions'
+let tradeMode = 'orders';           // 'orders' | 'market' | 'contracts' | 'transactions' | 'analytics'
+/* Zeitfenster der Auswertung in Tagen; null = alles. Eine EIGENE Variable und
+   nicht tradeSort: die Reihenfolge einer Liste und der Ausschnitt einer Kurve
+   sind zwei verschiedene Dinge, die sich nur dasselbe Auswahlfeld teilen. */
+let tradeRange = 30;
 let tradeAuth = null;               // { signedIn, user }
 let tradeOrders = null;             // { orders, sell, buy }
 let tradeContracts = null;          // { auctions, open, closed, readOnly }
@@ -7702,8 +7826,28 @@ const TRADE_FILTERS = {
     { key: 'bought',  label: 'Bought',   cls: 'chip-gold' },
     { key: '7',       label: 'Last 7 days' },
     { key: '30',      label: 'Last 30 days' }
+  ],
+  /* In der Auswertung waehlen die Chips keine Teilmenge, sondern die
+     WAEHRUNG - und die schliessen sich wirklich aus: ueber Platin und
+     Dukaten laesst sich nicht gemeinsam summieren, es gibt keinen Kurs
+     zwischen ihnen (siehe Kopf von core/transactions.js). Deshalb dieselbe
+     Reihe wie sonst und kein zweiter Schalter daneben. */
+  analytics: [
+    { key: 'platinum', label: 'Platinum', cls: 'chip-plat', title: 'Everything traded for platinum' },
+    { key: 'ducats',   label: 'Ducats',   cls: 'chip-gold', title: 'What Baro Ki’Teer paid you, and what you spent at his stall' }
   ]
 };
+
+/* Die Zeitfenster der Auswertung. Stehen im Sortier-Auswahlfeld, das in
+   diesem Modus "Range" heisst - ein zweites Auswahlfeld daneben waere eine
+   eigene Zeile fuer eine einzige Frage. */
+const TRADE_RANGES = [
+  [7,    'Last 7 days'],
+  [30,   'Last 30 days'],
+  [90,   'Last 90 days'],
+  [365,  'Last 12 months'],
+  [null, 'All time']
+];
 
 const TRADE_SORTS = {
   orders: [
@@ -8189,8 +8333,11 @@ function renderTradeKPIs() {
 
   /* Die 30-Tage-Zahl wird hier gerechnet und nicht nachgeladen: die
      Einträge liegen ohnehin schon vollstaendig im Speicher. */
+  /* NUR PLATIN: auf der Karte steht "platinum net", und Dukaten sind eine
+     andere Muenze ohne Kurs dazwischen. Ihre Bilanz steht in der Auswertung,
+     wo sie ihre eigene Zahlenreihe hat. */
   const since = Date.now() - 30 * 24 * 60 * 60 * 1000;
-  const recent = (tradeTx?.entries || []).filter(e => e.at >= since);
+  const recent = (tradeTx?.entries || []).filter(e => e.at >= since && currencyOfTx(e) === 'platinum');
   const earned = recent.filter(e => e.direction === 'sold').reduce((n, e) => n + e.total, 0);
   const spent = recent.filter(e => e.direction === 'bought').reduce((n, e) => n + e.total, 0);
   const net = earned - spent;
@@ -8220,7 +8367,8 @@ function updateTradeModeTabs() {
   updateTradeSearchBox();
 
   const label = $('btn-trade-new-label');
-  if (label) label.textContent = tradeMode === 'transactions' ? 'Add transaction' : 'New order';
+  const ledgerMode = tradeMode === 'transactions' || tradeMode === 'analytics';
+  if (label) label.textContent = ledgerMode ? 'Add transaction' : 'New order';
   /* Auktionen anzulegen verlangt Waffe, Attribute, Wuerfe und MR - das ist
      ein eigenes Formular und kein Knopf. Bis es steht, fuehrt der Weg fuer
      Contracts ueber die Webseite. */
@@ -8238,6 +8386,10 @@ function updateTradeSearchBox() {
   el.placeholder = tradeMode === 'market'
     ? 'Search warframe.market … e.g. Nidus Prime Blueprint, Serration, Axi A1 Relic'
     : 'Search your orders … e.g. Braton, Serration, Kulstar';
+
+  /* In der Auswertung gibt es nichts zu suchen: dort stehen Summen, keine
+     Zeilen. Ein Suchfeld, das auf nichts wirkt, ist schlimmer als keines. */
+  el.closest('.searchbox')?.classList.toggle('hidden', tradeMode === 'analytics');
 }
 
 function renderTradeFilters() {
@@ -8285,7 +8437,15 @@ function renderTradeFilters() {
   }
 
   const sel = $('trade-sort');
-  if (sel) {
+  const selLabel = document.querySelector('label[for="trade-sort"]');
+  if (sel && tradeMode === 'analytics') {
+    /* Dasselbe Auswahlfeld, andere Frage - deshalb auch eine andere
+       Beschriftung. "Sort: Last 30 days" waere schlicht falsch. */
+    if (selLabel) selLabel.textContent = 'Range:';
+    sel.innerHTML = TRADE_RANGES.map(([v, l]) =>
+      `<option value="${v === null ? 'all' : v}"${v === tradeRange ? ' selected' : ''}>${esc(l)}</option>`).join('');
+  } else if (sel) {
+    if (selLabel) selLabel.textContent = 'Sort:';
     const opts = TRADE_SORTS[tradeMode] || [];
     if (!opts.some(([v]) => v === tradeSort)) tradeSort = opts[0][0];
     sel.innerHTML = opts.map(([v, l]) =>
@@ -8308,6 +8468,10 @@ function renderTradeList() {
   if (!box) return;
 
   if (tradeMode === 'transactions') return renderTransactionList(box);
+  /* Die Auswertung liest dasselbe Buch wie die Liste darueber und braucht
+     genauso wenig eine Anmeldung: was im Spiel gehandelt wurde, steht nur
+     hier. */
+  if (tradeMode === 'analytics') return renderTradeAnalytics(box);
   /* Angebote ANDERER Leute sind oeffentlich - /v2/orders/item verlangt kein
      Token. Deshalb steht die Marktsuche vor der Anmeldungspruefung: wer
      nachsehen will, was ein Teil kostet, braucht dafuer kein Konto. Zum
@@ -9078,16 +9242,28 @@ function renderTransactionList(box) {
   }
 
   /* Eine Summenzeile ueber der Liste: was die gerade sichtbare Auswahl
-     ergibt, nicht was insgesamt gehandelt wurde. */
-  const earned = list.filter(e => e.direction === 'sold').reduce((n, e) => n + e.total, 0);
-  const spent = list.filter(e => e.direction === 'bought').reduce((n, e) => n + e.total, 0);
+     ergibt, nicht was insgesamt gehandelt wurde.
+
+     JE WAEHRUNG EINE SUMME. Platin und Dukaten in einen Topf zu werfen ergibt
+     eine Zahl, die es nicht gibt - es gibt keinen Kurs zwischen beiden. Steht
+     nur eine Waehrung in der Liste, steht auch nur eine Summe da. */
+  const sums = ['platinum', 'ducats'].map(cur => {
+    const rows = list.filter(e => currencyOfTx(e) === cur);
+    if (!rows.length) return '';
+    const ui = CURRENCY_UI[cur];
+    const earned = rows.filter(e => e.direction === 'sold').reduce((n, e) => n + e.total, 0);
+    const spent = rows.filter(e => e.direction === 'bought').reduce((n, e) => n + e.total, 0);
+    const net = earned - spent;
+    return `
+      <span class="is-positive">+${nf(earned)}${ui.short} earned</span>
+      <span class="is-negative">−${nf(spent)}${ui.short} spent</span>
+      <span>net <b class="${net >= 0 ? 'is-positive' : 'is-negative'}">${net >= 0 ? '+' : ''}${nf(net)}${ui.short}</b></span>`;
+  }).join('');
 
   box.innerHTML = `
     <div class="trade-tx-summary">
       <span><b>${nf(list.length)}</b> trade${list.length === 1 ? '' : 's'} shown</span>
-      <span class="is-positive">+${nf(earned)}p earned</span>
-      <span class="is-negative">−${nf(spent)}p spent</span>
-      <span>net <b class="${earned - spent >= 0 ? 'is-positive' : 'is-negative'}">${earned - spent >= 0 ? '+' : ''}${nf(earned - spent)}p</b></span>
+      ${sums}
       ${txRemoteNote(list)}
     </div>
   ` + list.map(e => `
@@ -9103,10 +9279,10 @@ function renderTransactionList(box) {
             ${txSourceChip(e)}
           </div>
           <div class="trade-row-meta">
-            <span class="trade-price">${platImg}<b>${nf(e.platinum)}</b></span>
+            <span class="trade-price">${CURRENCY_UI[currencyOfTx(e)].img}<b>${nf(e.platinum)}</b></span>
             <span class="trade-qty">×${nf(e.quantity)}</span>
             <span class="trade-dim ${e.direction === 'sold' ? 'is-positive' : 'is-negative'}">
-              ${e.direction === 'sold' ? '+' : '−'}${nf(e.total)}p
+              ${e.direction === 'sold' ? '+' : '−'}${nf(e.total)}${CURRENCY_UI[currencyOfTx(e)].short}
             </span>
             ${e.partner ? `<span class="trade-dim">with ${esc(e.partner)}</span>` : ''}
             <span class="trade-dim">· ${e.dateUnknown ? 'date unknown' : esc(relativeAge(e.at))}</span>
@@ -9132,17 +9308,172 @@ function renderTransactionList(box) {
   });
 }
 
-function openTxModal(entry) {
+/* --------------------------- Auswertung --------------------------- */
+
+/** Einheit einer Waehrung als Bild plus Zahl - dasselbe Symbol wie ueberall. */
+const CURRENCY_UI = {
+  platinum: {
+    label: 'platinum', short: 'p',
+    /* Platin ist ein Stoff, Dukaten sind Muenzen - die eine Ueberschrift steht
+       im Singular, die andere im Plural. Ausgeschrieben statt zusammengebaut,
+       weil "Where the ${label} comes from" fuer die Dukaten falsch waere. */
+    rankHead: 'Where the platinum comes from',
+    img: '<img class="currency-ic" src="assets/icons/currency/platinum.png" alt="p">'
+  },
+  ducats: {
+    label: 'ducats', short: 'd',
+    rankHead: 'Where the ducats come from',
+    img: '<img class="currency-ic ducat-ic" src="assets/icons/ducats.png" alt="Ducats">'
+  }
+};
+
+const currencyOfTx = e => (e?.currency === 'ducats' ? 'ducats' : 'platinum');
+
+/**
+ * Die Auswertung des Handelsbuchs.
+ *
+ * WAS HIER NICHT STEHT, UND WARUM: "Gewinn". Das Buch weiss, was
+ * hereingekommen und was hinausgegangen ist - nicht, was ein Teil beim Farmen
+ * gekostet hat. Wer ein Relikt aufbricht und das Teil fuer 30p verkauft, hat
+ * hier +30p und keine Ausgabe, obwohl die Mission eine halbe Stunde gedauert
+ * hat. "Net" ist deshalb Einnahmen minus Ausgaben und heisst auch so.
+ *
+ * DIE DUKATEN STEHEN GLEICHBERECHTIGT DANEBEN und nicht in einem zweiten Tab:
+ * es ist dieselbe Frage in einer anderen Muenze, und wer sie stellt, will
+ * beides nebeneinander halten koennen - nicht zwischen zwei Seiten springen.
+ */
+function renderTradeAnalytics(box) {
+  const currency = tradeFilter === 'ducats' ? 'ducats' : 'platinum';
+  const ui = CURRENCY_UI[currency];
+  const all = (tradeTx?.entries || []).filter(e => currencyOfTx(e) === currency);
+
+  if (!all.length) return renderAnalyticsEmpty(box, currency);
+
+  const { buckets, grain, undated } = Charts.series(all, { days: tradeRange });
+  /* Gezeichnet wird der Ausschnitt, gerechnet auch - sonst stuende ueber
+     einer 30-Tage-Kurve die Bilanz eines Jahres. */
+  const rows = buckets.reduce((acc, b) => acc + b.trades, 0);
+  const window = tradeRange
+    ? all.filter(e => e.at > 0 && !e.dateUnknown && e.at >= Date.now() - tradeRange * 86400000)
+    : all.filter(e => e.at > 0 && !e.dateUnknown);
+
+  const earned = window.filter(e => e.direction === 'sold').reduce((n, e) => n + e.total, 0);
+  const spent = window.filter(e => e.direction === 'bought').reduce((n, e) => n + e.total, 0);
+  const net = earned - spent;
+  const best = window.filter(e => e.direction === 'sold').sort((a, b) => b.total - a.total)[0] || null;
+
+  const money = v => `${ui.img}<b>${nf(Math.round(v))}</b>`;
+  const grainWord = { day: 'per day', week: 'per week', month: 'per month' }[grain] || '';
+
+  /* Einmal gemessen statt vom Browser skaliert: das SVG rechnet in
+     Bildpunkten, sonst zieht es seine Beschriftung mit in die Breite (siehe
+     Kopf von charts.js). 32 px sind die Polsterung der Karte. */
+  const plotWidth = Math.max(320, (box.clientWidth || 720) - 32);
+
+  const tiles = `
+    <div class="ch-tiles">
+      <div class="ch-tile is-earned">
+        <span class="ch-tile-label">Earned</span>
+        <div class="ch-tile-val">${money(earned)}</div>
+        <span class="ch-tile-sub">${nf(window.filter(e => e.direction === 'sold').length)} sales</span>
+      </div>
+      <div class="ch-tile is-spent">
+        <span class="ch-tile-label">Spent</span>
+        <div class="ch-tile-val">${money(spent)}</div>
+        <span class="ch-tile-sub">${nf(window.filter(e => e.direction === 'bought').length)} purchases</span>
+      </div>
+      <div class="ch-tile ${net >= 0 ? 'is-positive' : 'is-negative'}">
+        <span class="ch-tile-label">Net</span>
+        <div class="ch-tile-val">${ui.img}<b>${net >= 0 ? '+' : '−'}${nf(Math.abs(Math.round(net)))}</b></div>
+        <span class="ch-tile-sub">in minus out — not profit</span>
+      </div>
+      <div class="ch-tile">
+        <span class="ch-tile-label">Best single sale</span>
+        <div class="ch-tile-val">${best ? money(best.total) : '<b>—</b>'}</div>
+        <span class="ch-tile-sub">${best ? esc(best.name) : 'nothing sold in this range'}</span>
+      </div>
+    </div>`;
+
+  const chart = `
+    <div class="ch-card">
+      <div class="ch-card-head">
+        <b>Earned and spent ${esc(grainWord)}</b>
+        <div class="ch-legend">
+          <span class="ch-key is-earned">Earned</span>
+          <span class="ch-key is-spent">Spent</span>
+          <span class="ch-key is-line">Running total</span>
+        </div>
+      </div>
+      <div class="ch-plot">${Charts.barsWithLine(buckets, { currency: ui.label, width: plotWidth })}</div>
+      ${undated ? `<p class="ch-note">${Icon.warning(12)} ${nf(undated)} trade${undated === 1 ? '' : 's'}
+         carry no date from warframe.market and are left out of the chart.</p>` : ''}
+    </div>`;
+
+  const top = Charts.byItem(window, { limit: 8 });
+  const rank = top.length ? `
+    <div class="ch-card">
+      <div class="ch-card-head">
+        <b>${esc(ui.rankHead)}</b>
+        <span class="trade-dim">${nf(top.length)} of ${nf(new Set(window.map(e => e.slug || e.name)).size)} items</span>
+      </div>
+      <div class="ch-rank">${Charts.rankRows(top, { money: v => nf(Math.round(v)) })}</div>
+    </div>` : '';
+
+  box.innerHTML = tiles + chart + rank
+    + (rows ? '' : `<p class="ch-note">Nothing traded in this range — try a longer one.</p>`);
+}
+
+/**
+ * Kein Eintrag in dieser Waehrung - und zwei sehr verschiedene Gruende dafuer.
+ *
+ * Bei Platin fuellt sich das Buch von selbst, sobald jemand eine Order auf
+ * "Sold" setzt. Bei Dukaten gibt es nichts, was das automatisch tut: Baro
+ * handelt im Spiel, und DE veroeffentlicht darueber nichts. Dort steht
+ * deshalb, WO der Eintrag herkommt - sonst wartet man auf Zahlen, die nie
+ * kommen.
+ */
+function renderAnalyticsEmpty(box, currency) {
+  if (currency === 'ducats') {
+    box.innerHTML = tradeEmpty(Icon.baro(30), 'No ducat trades recorded yet',
+      'Baro Ki’Teer trades inside the game, so nothing here can pick it up on its own. '
+      + 'Pick your parts in the Ducats tab and hit “Sold to Baro”, or add a purchase by hand.',
+      'btn-analytics-empty', 'Add a ducat trade');
+    $('btn-analytics-empty')?.addEventListener('click', () => openTxModal(null, 'ducats'));
+    return;
+  }
+  box.innerHTML = tradeEmpty(Icon.chart(30), 'Nothing to chart yet',
+    'Hit "Sold" on an order and it lands in your trade history — the charts build themselves from it. '
+    + 'Trades made in game can be added by hand.',
+    'btn-analytics-empty', 'Add a transaction');
+  $('btn-analytics-empty')?.addEventListener('click', () => openTxModal(null, 'platinum'));
+}
+
+/**
+ * @param currency  Vorauswahl der Waehrung fuer einen NEUEN Eintrag. Wer die
+ *                  Dukaten-Auswertung offen hat und "Add transaction" drueckt,
+ *                  meint eine Dukatenzeile - das Feld soll dann nicht auf
+ *                  Platin stehen und still die falsche Waehrung buchen.
+ */
+function openTxModal(entry, currency = null) {
   editingTx = entry;
   $('trade-tx-title').textContent = entry ? 'Edit transaction' : 'Add transaction';
   $('trade-tx-submit-label').textContent = entry ? 'Save changes' : 'Add to history';
   $('trade-tx-direction').value = entry?.direction || 'sold';
+  $('trade-tx-currency').value = entry ? currencyOfTx(entry) : (currency || 'platinum');
   $('trade-tx-name').value = entry?.name || '';
   $('trade-tx-plat').value = entry?.platinum ?? '';
   $('trade-tx-qty').value = entry?.quantity ?? 1;
   $('trade-tx-partner').value = entry?.partner || '';
   $('trade-tx-status').textContent = '';
+  updateTxCurrencyLabel();
   $('trade-tx-modal').classList.remove('hidden');
+}
+
+/** Die Beschriftung des Betragsfelds folgt der gewaehlten Waehrung. */
+function updateTxCurrencyLabel() {
+  const cur = $('trade-tx-currency')?.value === 'ducats' ? 'ducats' : 'platinum';
+  const el = $('trade-tx-plat-label');
+  if (el) el.textContent = cur === 'ducats' ? 'Ducats each' : 'Platinum each';
 }
 
 const closeTxModal = () => {
@@ -9339,6 +9670,10 @@ function initTradingEvents() {
   });
 
   $('trade-sort').onchange = e => {
+    if (tradeMode === 'analytics') {
+      tradeRange = e.target.value === 'all' ? null : Number(e.target.value);
+      return renderTradeList();
+    }
     tradeSort = e.target.value;
     if (tradeMode === 'market' && marketItem) return marketLoadOffers();
     renderTradeList();
@@ -9352,7 +9687,9 @@ function initTradingEvents() {
   };
 
   $('btn-trade-new').onclick = () =>
-    tradeMode === 'transactions' ? openTxModal(null) : openNewOrderModal();
+    (tradeMode === 'transactions' || tradeMode === 'analytics')
+      ? openTxModal(null, tradeMode === 'analytics' ? tradeFilter : null)
+      : openNewOrderModal();
 
   /* ---- Anwesenheit ---- */
   $('set-trade-presence').onchange = async e => {
@@ -9583,6 +9920,8 @@ function initTradingEvents() {
   $('trade-tx-close').onclick = closeTxModal;
   $('trade-tx-modal').onclick = e => { if (e.target.id === 'trade-tx-modal') closeTxModal(); };
 
+  $('trade-tx-currency').onchange = updateTxCurrencyLabel;
+
   $('trade-tx-form').onsubmit = async e => {
     e.preventDefault();
     const status = $('trade-tx-status');
@@ -9590,6 +9929,7 @@ function initTradingEvents() {
 
     const payload = {
       direction: $('trade-tx-direction').value,
+      currency: $('trade-tx-currency').value,
       name: $('trade-tx-name').value.trim(),
       platinum: +$('trade-tx-plat').value,
       quantity: +$('trade-tx-qty').value || 1,
@@ -10756,6 +11096,16 @@ window.addEventListener('resize', () => {
   if (!$('tab-weekly')?.classList.contains('active') || !weeklyState) return;
   clearTimeout(weeklyResizeTimer);
   weeklyResizeTimer = setTimeout(() => renderWeeklyContentPane(weeklyState), 150);
+});
+
+/* Dasselbe fuer die Diagramme: sie rechnen in Bildpunkten und muessen die
+   neue Breite kennen (siehe Kopf von charts.js). Entprellt aus demselben
+   Grund - ein Ziehen am Fensterrand soll nicht hundert Diagramme zeichnen. */
+let analyticsResizeTimer = null;
+window.addEventListener('resize', () => {
+  if (tradeMode !== 'analytics' || !$('tab-trading')?.classList.contains('active')) return;
+  clearTimeout(analyticsResizeTimer);
+  analyticsResizeTimer = setTimeout(() => renderTradeList(), 150);
 });
 
 function renderWeekly(w) {
