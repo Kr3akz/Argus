@@ -25,71 +25,69 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ### Added
 
-- **The relic section shows the ones you don't have.** All 772 relics that exist,
-  with the same **Owned / Not owned** chips the mods and arcanes already had, and
-  the eras underneath. The tab now reads `193 / 778` — kinds you hold out of kinds
-  there are. The list comes from warframe.market rather than DE's export, for the
-  same reason relic names do: DE only lists the 31 relics currently obtainable,
-  and the vaulted ones are most of what exists. A relic you don't own shows as one
-  row rather than four, because you don't own it in any refinement — the four
-  states are still in its data sheet.
-- **Trading has an Analytics page.** Earned and spent side by side per day, week
-  or month, with the running total drawn over it on its own scale, and underneath
-  the eight items that brought in the most — with what each of them cost you,
-  since for anything you buy and resell the difference is the whole answer. Days
-  without a trade are drawn as zero rather than skipped, so a quiet week doesn't
-  look like a busy one. The grain follows the range you pick instead of being
-  another switch.
-- **Relics: vaulted or farmable, and which one is worth cracking.** Next to the
-  eras sits the question you actually have in front of 585 missing relics — of
-  772, exactly 35 still drop. That comes from the mission drop tables, not the
-  reward tables: those list every relic that ever existed, because they describe
-  what is inside and not where it comes from.
+- **The relic section shows the ones you don't have.** All 772 relics that
+  exist, with the same **Owned / Not owned** chips the mods and arcanes already
+  had, and the eras underneath — the tab counts kinds you hold out of kinds
+  there are, the way those two do. The list comes from warframe.market rather
+  than DE's export, for the same reason relic names do: DE only lists the
+  relics currently obtainable, and the vaulted ones are most of what exists. A
+  relic you don't own shows as one row rather than four, because you don't own
+  it in any refinement — the four states are still in its data sheet.
+- **Vaulted or farmable, as a filter.** That is the question you have in front
+  of hundreds of relics you don't own: of the 772 that exist, 35 still drop
+  today, and the rest cost platinum, or Aya at Varzia. It comes from the
+  mission drop tables and not the reward tables — those list every relic that
+  ever existed, because they describe what is inside and not where it comes
+  from.
 - **Two ways to sort relics by what they pay, because it is two questions.**
-  *Expected platinum* is chance × value over all six rewards — what a crack pays
+  *Expected platinum* is chance × value over all six rewards: what a crack pays
   on average, the number for someone running twenty fissures. *Most valuable
-  drop* is the price of the single most expensive part in it, however rare — the
-  number for someone holding one relic and going for the hit. They really are
-  different lists: by average **Meso E1** leads (19.3p, best part 34p), by best
-  part **Meso V6** (12.3p on average, but one part worth 60p). Both numbers now
-  stand on every row, since sorting by a figure you cannot see is guesswork, and
-  they are worked out for the refinement the row is in — radiant lifts the rare
-  reward from 2 % to 10 %, so an intact and a radiant copy of the same relic show
-  different figures. A `≥` in front of the average means Forma or Kuva is in
-  there and has no market price, so the figure is a floor.
-- **And the check on it: what your balance actually did.** Both halves of the
-  ledger have the same hole — warframe.market only knows what went through their
-  confirmation, and the local half only what you ticked off. A trade settled in
-  chat, a weapon slot, a spontaneous buy: none of it is in the book, and nothing
-  about a tidy balance sheet says so. Your platinum and ducats are noted down
-  every time Argus reads your inventory, and under the chart the two are put side
-  by side: *balance moved −1,447 · ledger accounts for −1,349 · unaccounted −98*.
-  It is deliberately not called "untracked trades" — platinum also goes on slots,
+  drop* is the price of the single most expensive part in it, however rare: the
+  number for someone holding one relic and going for the hit. A relic with one
+  expensive part among five cheap ones has a poor average and is exactly what
+  you make radiant — which is why the two orders really are different lists.
+- **Both figures stand on every relic**, since sorting by a number you cannot
+  see is guesswork. They are worked out for the refinement the row is in, so an
+  intact and a radiant copy of the same relic show different figures — radiant
+  lifts the rare reward from 2 % to 10 %. A `≥` in front of the average means
+  something untradeable is in there, Forma or Kuva, and the figure is a floor.
+- **Trading has an Analytics page.** Earned and spent side by side per day,
+  week or month, with the running total drawn over it on its own scale, and
+  underneath the items that brought in the most — with what each of them cost
+  you, since for anything you buy and resell the difference is the whole
+  answer. Days without a trade are drawn as zero rather than skipped, so a
+  quiet week doesn't look like a busy one. The grain follows the range you pick
+  instead of being another switch.
+- **Ducats are a currency in the trade ledger.** Baro is a trade like any
+  other, just in a different coin — so ducats get the same book and the same
+  charts, on their own tab of the analytics. The two are never summed: there is
+  no exchange rate between them. Nothing can record a Baro sale on its own (he
+  trades in game, and an inventory read sees the balance, not the movement), so
+  the Ducats tab grows a **Sold to Baro** button next to your selection — press
+  it twice and each part lands in the book as its own line. Buying from his
+  stall goes in by hand.
+- **And the check on all of it: what your balance actually did.** Both halves
+  of the ledger have the same hole — warframe.market only knows what went
+  through their confirmation, and the local half only what you ticked off. A
+  trade settled in chat, a weapon slot, a spontaneous buy: none of it is in the
+  book, and nothing about a tidy balance sheet says so. Your platinum and
+  ducats are now noted down every time Argus reads your inventory, and under
+  the chart the two are put side by side: how far the balance moved, how much
+  of that the ledger accounts for, and what is left over. That last figure is
+  deliberately not called "untracked trades" — platinum also goes on slots,
   colours and boosters. The line between readings is dashed because between two
   of them nobody knows what the balance was; the dots are the data.
-- **Ducats are a currency in the trade ledger.** Baro is a trade like any other,
-  just in a different coin — so ducats get the same book and the same charts, on
-  their own tab of the analytics. The two are never summed: there is no exchange
-  rate between them. Nothing can record a Baro sale on its own (he trades in game,
-  and an inventory read sees the balance, not the movement), so the Ducats tab
-  grows a **Sold to Baro** button next to your selection — press it twice and each
-  part lands in the book as its own line. Buying from his stall goes in by hand.
 
 ### Fixed
 
-- **Relics sort by their number again.** *Lith A10* used to sit between *A1* and
-  *A2*. Hardly noticeable across 187 relics of your own; across 772 it is the
-  difference between a list and a heap.
+- **Relics sort by their number again.** *Lith A10* used to sit between *A1*
+  and *A2*. Hardly noticeable across the couple of hundred relics you own;
+  across all 772 it is the difference between a list and a heap.
 - **Requiem relic pictures.** DE's image path for a relic does not follow its
   inventory path, and not in one direction either: the Requiem relics carry no
   metal suffix in the inventory but their picture does, while *Requiem Eterna*
   does it the other way round. Every relic now carries the other spelling as a
   fallback.
-- **The relic Owned / Not owned chips are the right colour.** They came out dark
-  grey instead of green and grey like the same two chips one section over. The
-  colours were listed once per section in the stylesheet, so the relics simply
-  weren't on the list; they now come from the filter definition itself, which is
-  why the next section to get them cannot forget.
 
 ## [1.10.0] - 2026-09-11
 
