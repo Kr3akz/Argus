@@ -61,6 +61,16 @@ offers rather than the highest: a single bidder far above the field is not a mar
 prefilling it would mean accidentally outbidding them. One real set had offers of 175p, then
 69, 60, 60, 57 — the suggestion is 60.
 
+**And it counts only the people who are in game.** On a common prime part the great majority
+of listings belong to players who last logged in days ago; theirs is the cheapest number on
+the board, and anchoring to it means undercutting a market that is not there. Only sellers
+showing as *in game* are counted. If none of them is, the line falls back to everybody and
+says so — an empty hint would be a false statement about an item with dozens of offers.
+
+**A mod's rank goes into the question too.** Rank is not a property of the goods, it is the
+goods, the same way an intact relic is not a radiant one; a maxed card and an unranked one
+in one price list are not a comparison. Change the rank in the form and Argus asks again.
+
 ## Looking up what something costs
 
 The **Market** tab sits next to Orders, because it is the same motion from the other side:

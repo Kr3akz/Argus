@@ -150,11 +150,12 @@ relics that drop it, split into the ones already in your inventory and the ones 
 farm, with the rarity and the intact-state chance. For parts that come from no relic, the
 drop-table locations stand there instead.
 
-The chips above the grid are **two independent groups** that combine: origin (**Prime** or
-**Base**) and kind (warframes, primary, secondary, melee, companions, archwing). Prime +
-Warframes gives you the prime warframes — as one row with a single choice that was exactly
-the question you could not ask. Each group counts under the other, so the number on a chip
-is the number you get after clicking it.
+The chips above the grid are **independent groups** that combine: ownership, how many parts
+you hold (**1 part**, **2 parts**, **3+**), origin (**Prime** or **Base**) and kind
+(warframes, primary, secondary, melee, companions, archwing). Prime + Warframes gives you
+the prime warframes — as one row with a single choice that was exactly the question you
+could not ask. Each group counts under the others, so the number on a chip is the number
+you get after clicking it.
 
 **Base sets come from DE's recipes, not from the market.** A base part is not tradeable,
 so warframe.market knows nothing about it; what it is made of stands in the recipe.
@@ -162,6 +163,56 @@ Anything built straight from raw materials is not a set and is left out — a Go
 ferrite and salvage, not four parts. A part counts as owned in **both** its forms: as the
 finished component and as the blueprint for it, because both mean "I have this", just at
 different stages.
+
+### What a set is worth to *you*
+
+The platinum figure on a set card is **the most valuable single part you actually hold** —
+not the price of the full set, and not the parts added up.
+
+The full set is the wrong number because a set costs what its most expensive parts cost,
+and those are usually the ones still missing. A set that trades for a hundred platinum
+because of a blade you do not have will cheerfully carry your five-platinum blueprint to
+the top of any list sorted by it. The sum is wrong for a different reason: two parts at 20p
+would look like one at 40p, and holding the same part three times does not make the part
+worth more.
+
+So there is one figure, it names its part in the tooltip, and the sort **Most valuable
+single part you own** ranks by it. A `≥` in front means one of your parts has no price yet
+and something dearer may still turn up.
+
+### Sorting by more than one thing
+
+The **Sort** control holds a *chain*, not a single answer. Click **Parts owned (fewest
+first)** and then **Most valuable single part you own** and you get the sets you hold
+exactly one piece of, expensive first. The number in each box says which criterion decides
+first; the button shows the chain; one criterion always stays, and *Back to default* undoes
+the lot.
+
+**Set progress** steps aside when you pick anything else. It orders every card uniquely —
+as the first link of a chain it would decide every pair by itself and leave nothing for a
+second criterion to do.
+
+## What a mod or arcane is worth
+
+Every tradeable card carries its warframe.market price next to the count, in the same
+corner — two halves of one question: how many are lying here, and what is one of them
+worth.
+
+**The rank is part of the price, because on a mod the rank is the goods.** The same card
+maxed can go for several times what it fetches unranked. The tile therefore asks for the
+rank you actually hold — or the unranked price if you do not hold it at all — and the data
+sheet shows the price for whichever rank you have selected on its rank ladder. A price
+still on its way shows nothing rather than a zero, and a remembered one is greyed until the
+fresh one lands.
+
+Sorting either list by platinum fetches the prices for everything the filters leave
+standing and says in the header how many are still on their way — a ranking over the few
+that happen to have a price already would be a statement about the order of the requests,
+not about the prices.
+
+Cards that warframe.market does not list — rivens, precepts, anything untradeable — have no
+price and no trade buttons, because a button that can only produce an error does not belong
+on a card.
 
 ## Data sheet for a mod or arcane
 

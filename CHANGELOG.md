@@ -21,6 +21,8 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-09-14
+
 ### Added
 
 - **Sorting takes more than one criterion now**, in **My sets**, the relic

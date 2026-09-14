@@ -36,6 +36,34 @@ It closes when the input filter leaves the menu, and at the latest five minutes 
 whether or not the game said anything. An overlay stuck over a running game is the worst
 thing it could do, so the clock has a vote.
 
+### It shows the era the fissure actually takes
+
+A Lith fissure takes a Lith relic. The game knows that and greys out the rest; the list
+beside it used to show all of yours, so you were filtering in your head against a screen
+that had already done it. Now the era chip is set for you, and the heading says which
+fissure it came from. An **Omnia** fissure accepts any era, so there the answer is *all* —
+that is the right answer, not a missing one.
+
+Working out which fissure you are in takes two sources, because neither one is enough:
+`EE.log` names the mission you picked only by its internal id, and the world state names
+the same place only by planet and node. A node table joins them.
+
+```
+Set squad mission: {"name":"SolNode75", ... }   ← EE.log: the id
+            SolNode75  ->  Cervantes (Earth)    ← the node table
+            Cervantes (Earth)  ->  Lith         ← the world state's fissure list
+```
+
+The id is used rather than the mission title standing next to it in the log, because that
+title is in **the language the game is set to**. The ids are not: `SolNode75` is the same
+everywhere. Three prefixes occur in practice — `SolNode`, `SettlementNode` and
+`CrewBattleNode` for Railjack — and all three are covered.
+
+Your own click on an era chip always wins from then until you start the next fissure. A
+mission that is not a fissure filters nothing, and if the node cannot be resolved at all
+nothing is filtered either — a list cut down for a reason nobody can see is worse than a
+long one.
+
 ## The reward screen
 
 The moment the reward screen opens after a fissure mission, Argus shows **all four parts
