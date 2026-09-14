@@ -4278,12 +4278,71 @@ let sellQuantities = new Map(); // slug -> count
 let currentSelectionPreset = 'none'; // 'all' | 'duplicates' | 'custom' | 'none'
 let ducatsMode = 'inventory';    // 'inventory' | 'catalog' | 'sets' | 'plan'
 let planTier = 'all';            // Aera-Filter des Planers
-let planSort = 'plat-desc';      // Sortierung des Planers
 let planOnlyTracked = false;     // nur die gemerkten Relikte zeigen
 let trackedRelicIds = new Set(); // "Lith V1|Radiant" der gemerkten Relikte
 let ducatsFilter = 'all';        // 'all' | 'advice-junk' | 'advice-plat' | '100' | '45' | '15'
-let ducatsSort = 'ducats-desc';   // 'ducats-desc' | 'plat-desc' | 'ratio-desc' | 'count-desc' | 'name-asc'
+/* KETTEN, KEINE EINZELWERTE: beide Listen lassen sich nach mehreren Kriterien
+   zugleich ordnen - siehe DUCAT_AXES und PLAN_AXES. */
+let ducatsSort = ['ducats-desc'];
+let planSort = ['plat-desc'];
 let isFetchingDucatPrices = false;
+
+/* ---------------- Kriterien der Dukatenliste ----------------
+
+   DIE FRAGE, DIE EIN EINZELNES KRITERIUM NICHT BEANTWORTET: "welches Teil
+   bringt die meisten Dukaten - und wenn zwei gleich viele bringen, welches
+   davon ist auf dem Markt am wenigsten wert?" Genau das ist der Fall, in dem
+   man einschmilzt statt zu verkaufen, und mit einer Wahl steht man bei jedem
+   Hundert-Dukaten-Block wieder vor derselben Frage.
+
+   Jede Achse kennt nur sich selbst; der Namensvergleich haengt als letztes
+   Glied an der Kette (siehe SortPick.chain). */
+const byDucatName = (a, b) => a.name.localeCompare(b.name, 'en');
+
+const DUCAT_AXES = {
+  'ducats-desc': (a, b) => (b.ducats || 0) - (a.ducats || 0),
+  /* Ein Teil ohne Preis ist kein billiges Teil - es ist eins, dessen Preis
+     niemand kennt. Es rutscht ans Ende, statt sich zwischen die Nullen zu
+     stellen. Frueher stand hier `a.price?.min || 0`, und damit lagen
+     unbekannte Preise mitten in der billigsten Ware. */
+  'plat-desc':   SortPick.descUnknownLast(i => i.price?.min ?? null),
+  'plat-asc':    SortPick.ascZeroLast(i => i.price?.min ?? null),
+  'ratio-desc':  SortPick.descUnknownLast(i => i.tradeAdvice?.ratio ?? null),
+  'count-desc':  (a, b) => (b.count || 0) - (a.count || 0),
+  'name-asc':    byDucatName
+};
+
+const DUCAT_SORT_OPTIONS = [
+  ['ducats-desc', 'Ducats (highest)',               'Ducats'],
+  ['plat-desc',   'Platinum price (highest)',        'Plat ↓'],
+  /* Die umgekehrte Richtung ist eine eigene Frage und nicht dieselbe Liste
+     von hinten: zusammen mit "Ducats (highest)" ist sie die Antwort auf
+     "was schmelze ich ein" - viele Dukaten, wenig Platin. */
+  ['plat-asc',    'Platinum price (lowest first)',   'Plat ↑'],
+  ['ratio-desc',  'Ducat/platinum efficiency',       'Efficiency'],
+  ['count-desc',  'Quantity in inventory',           'Quantity'],
+  ['name-asc',    'Name (A–Z)',                      'Name']
+];
+
+/* ---------------- Kriterien des Relikt-Planers ---------------- */
+const byPlanName = (a, b) =>
+  (a.tier + a.name).localeCompare(b.tier + b.name, 'en', { numeric: true });
+
+const PLAN_AXES = {
+  'plat-desc':   SortPick.descUnknownLast(r => r.expPlat ?? null),
+  'ducats-desc': SortPick.descUnknownLast(r => r.expDucats ?? null),
+  'count-desc':  (a, b) => (b.count || 0) - (a.count || 0),
+  'priced-desc': SortPick.descUnknownLast(r => r.pricedShare ?? null),
+  'name-asc':    byPlanName
+};
+
+const PLAN_SORT_OPTIONS = [
+  ['plat-desc',   'Expected platinum (highest)', 'Exp. plat'],
+  ['ducats-desc', 'Expected ducats (highest)',   'Exp. ducats'],
+  ['count-desc',  'Quantity owned',              'Quantity'],
+  ['priced-desc', 'Price coverage',              'Coverage'],
+  ['name-asc',    'Relic (A–Z)',                 'Name']
+];
 
 function updateSelectionPresetButtons() {
   $('btn-ducats-select-all')?.classList.toggle('active', currentSelectionPreset === 'all');
@@ -4661,10 +4720,13 @@ function updateDucatsModeTabs() {
   const isPlan = ducatsMode === 'plan';
 
   $('ducats-filter-chips')?.classList.toggle('hidden', !flat);
-  /* Der erste Treffer ist die Sortierung des Planers - deshalb gezielt ueber
-     die Kennung, nicht ueber die Klasse. */
-  $('ducats-sort')?.closest('.ducats-sort-wrap')?.classList.toggle('hidden', !flat);
-  $('plan-sort-wrap')?.classList.toggle('hidden', !isPlan);
+  /* Beide Sortierfelder gezielt ueber ihre Kennung: die Klasse allein traf
+     auch das jeweils andere, und ein Umschalten der Ansicht blendete dann
+     beide zugleich aus. toggleHidden schliesst zugleich ein offenes Feld -
+     ein Auswahlfeld ueber einer Liste, die es nicht mehr gibt, waere ein
+     Rest der vorigen Ansicht. */
+  SortPick.toggleHidden('ducats-sort-wrap', !flat);
+  SortPick.toggleHidden('plan-sort-wrap', !isPlan);
   $('plan-tier-filter')?.classList.toggle('hidden', !isPlan);
 
   /* "Select all", "Duplicates only" und "Clear" waehlen Teile zum Verkauf
@@ -4790,15 +4852,8 @@ function renderDucatsRelicPlan() {
 
   /* Sortiert wird auf einer Kopie: die Reihenfolge aus dem Hauptprozess bleibt
      erhalten, sonst wuerde jede Umsortierung die naechste beeinflussen. */
-  plan = [...plan].sort((a, b) => {
-    switch (planSort) {
-      case 'ducats-desc': return b.expDucats - a.expDucats || b.expPlat - a.expPlat;
-      case 'count-desc':  return b.count - a.count || b.expPlat - a.expPlat;
-      case 'priced-desc': return b.pricedShare - a.pricedShare || b.expPlat - a.expPlat;
-      case 'name-asc':    return (a.tier + a.name).localeCompare(b.tier + b.name, 'de', { numeric: true });
-      default:            return b.expPlat - a.expPlat || b.expDucats - a.expDucats;
-    }
-  });
+  const planCmp = SortPick.chain(planSort, PLAN_AXES, byPlanName);
+  if (planCmp) plan = [...plan].sort(planCmp);
 
   if (!plan.length) {
     container.innerHTML = `
@@ -5245,28 +5300,8 @@ function renderDucatsCatalog() {
   });
 
   // Sortieren
-  list.sort((a, b) => {
-    if (ducatsSort === 'ducats-desc') {
-      return b.ducats - a.ducats || (b.count || 0) - (a.count || 0) || a.name.localeCompare(b.name, 'en');
-    }
-    if (ducatsSort === 'plat-desc') {
-      const pA = a.price?.min || 0;
-      const pB = b.price?.min || 0;
-      return pB - pA || b.ducats - a.ducats;
-    }
-    if (ducatsSort === 'ratio-desc') {
-      const rA = a.tradeAdvice?.ratio || 0;
-      const rB = b.tradeAdvice?.ratio || 0;
-      return rB - rA || b.ducats - a.ducats;
-    }
-    if (ducatsSort === 'count-desc') {
-      return (b.count || 0) - (a.count || 0) || b.ducats - a.ducats;
-    }
-    if (ducatsSort === 'name-asc') {
-      return a.name.localeCompare(b.name, 'en');
-    }
-    return 0;
-  });
+  const ducatCmp = SortPick.chain(ducatsSort, DUCAT_AXES, byDucatName);
+  if (ducatCmp) list.sort(ducatCmp);
 
   const container = $('ducats-catalog');
   if (!container) return;
@@ -5510,9 +5545,11 @@ function initDucatsEventListeners() {
     renderDucatsCatalog();
   });
 
-  $('plan-sort')?.addEventListener('change', e => {
-    planSort = e.target.value;
-    renderDucatsRelicPlan();
+  SortPick.mount('plan-sort-wrap', {
+    options: PLAN_SORT_OPTIONS,
+    value: planSort,
+    fallback: 'plat-desc',
+    onChange: keys => { planSort = keys; renderDucatsRelicPlan(); }
   });
 
   // Schnell-Aktionen
@@ -5568,9 +5605,11 @@ function initDucatsEventListeners() {
   });
 
   // Sortierung
-  $('ducats-sort')?.addEventListener('change', (e) => {
-    ducatsSort = e.target.value;
-    renderDucatsCatalog();
+  SortPick.mount('ducats-sort-wrap', {
+    options: DUCAT_SORT_OPTIONS,
+    value: ducatsSort,
+    fallback: 'ducats-desc',
+    onChange: keys => { ducatsSort = keys; renderDucatsCatalog(); }
   });
 }
 
@@ -5581,15 +5620,20 @@ let invSection = 'relics';
 let invTier = 'all';            // Aera-Filter, nur im Relikt-Bereich
 let invRelicOwnership = 'all';  // All, Owned, Not owned
 let invRelicVault = 'all';      // Vaulted oder farmbar, nur im Relikt-Bereich
-let invRelicSort = 'name-asc';  // Reihenfolge der Relikte, siehe INV_RELIC_SORTS
+/* KETTEN, KEINE EINZELWERTE: sortiert wird nach mehreren Kriterien in der
+   Reihenfolge ihrer Wirkung - siehe INV_RELIC_AXES bzw. INV_SET_AXES. */
+let invRelicSort = ['name-asc'];
 let invSetOwnership = 'all';    // All, Owned, Not owned
+let invSetParts = 'all';        // Wie viele Teile beisammen sind, siehe SET_PARTS
 let invSetOrigin = 'all';       // Prime oder Basis, nur im Sets-Bereich
 let invSetKind = 'all';         // Gattung, nur im Sets-Bereich
-let invSetSort = 'progress';    // Reihenfolge der Set-Karten, siehe INV_SET_SORTS
+let invSetSort = ['progress'];
 let invModOwnership = 'all';    // All, Owned, Not owned
 let invModKind = 'all';         // Gattung (Warframe, Primary, Secondary, Melee, Companion, Archwing, etc.)
+let invModSort = ['name-asc'];  // Reihenfolge der Mod-Karten, siehe UPGRADE_AXES
 let invArcaneOwnership = 'all'; // All, Owned, Not owned
 let invArcaneKind = 'all';      // Gattung (Warframe, Primary, Secondary, Melee, Operator, Amp, etc.)
+let invArcaneSort = ['name-asc'];
 
 const QUELLEN = {
   api: { label: 'Live read from the game', stale: false }
@@ -5801,6 +5845,26 @@ const SET_OWNERSHIP = [
   { key: 'not_owned', label: 'Not owned', icon: 'cross', cls: 'chip-missing', match: s => (s.ownedParts || 0) === 0 && !s.isMastered }
 ];
 
+/**
+ * Wie viele Teile eines Sets man hat - als FILTER, nicht als Reihenfolge.
+ *
+ * WARUM BEIDES NOETIG IST: Die Sortierung "Parts owned (fewest first)" stellt
+ * die Sets mit einem Teil nach vorn, aber die mit zweien stehen weiter
+ * dahinter, und bei 308 Karten sieht man beim Blaettern nicht, wo die eine
+ * Gruppe aufhoert. Die Frage "von welchen Sets habe ich genau EINS - und
+ * welches davon ist das teuerste" ist aber eine nach einem Ausschnitt, nicht
+ * nach einer Rangfolge. Erst der Chip schneidet die Liste zu, und die
+ * Sortierung ordnet dann, was uebrig bleibt.
+ *
+ * OHNE NULL: ein Set, von dem man nichts hat, ist kein angefangenes. Wer
+ * danach sucht, nimmt "Not owned" eine Gruppe weiter links.
+ */
+const SET_PARTS = [
+  { key: 'p1', label: '1 part',    icon: 'layers', match: s => (s.ownedParts || 0) === 1 },
+  { key: 'p2', label: '2 parts',   icon: 'layers', match: s => (s.ownedParts || 0) === 2 },
+  { key: 'p3', label: '3+ parts',  icon: 'layers', match: s => (s.ownedParts || 0) >= 3 }
+];
+
 const SET_ORIGINS = [
   { key: 'prime', label: 'Prime', icon: 'star', match: s => s.kind !== 'base' },
   { key: 'base',  label: 'Base',  icon: 'cube', match: s => s.kind === 'base' }
@@ -5859,6 +5923,7 @@ const filterRelics = list => list
 
 const filterSets = list => list
   .filter(invSetOwnership === 'all' ? () => true : matchOf(SET_OWNERSHIP, invSetOwnership))
+  .filter(invSetParts     === 'all' ? () => true : matchOf(SET_PARTS,     invSetParts))
   .filter(invSetOrigin    === 'all' ? () => true : matchOf(SET_ORIGINS,   invSetOrigin))
   .filter(invSetKind      === 'all' ? () => true : matchOf(SET_KINDS,     invSetKind));
 
@@ -5879,11 +5944,20 @@ const filterArcanes = list => list
 
    Auf derselben Karte stehen aber zwei Zahlen, die eine ANDERE Frage
    beantworten: was ist das meiste wert. Wer Dukaten fuer Baro sammelt, sucht
-   den groessten Stapel im eigenen Bestand; wer verkauft, das teuerste Set.
-   Beide Zahlen standen schon da, sortiert wurde nach keiner von beiden.
+   den groessten Stapel im eigenen Bestand; wer verkauft, das teuerste Teil.
 
-   EIN UNBEKANNTER PREIS IST KEINE NULL. Das Platin eines Sets trifft erst
-   nach und nach ein (siehe fetchMissingSetPrices), und manches Set fuehrt
+   GEWERTET WIRD EIN EIGENES TEIL - nicht, was das Set kostet, und auch nicht,
+   was der Stapel zusammen bringt. Hier stand einmal der Preis des VOLLEN Sets,
+   und das war die falsche Zahl: er ist so hoch, wie die teuersten Teile sind,
+   und genau die liegen meistens nicht im Schrank. Sets wanderten damit nach
+   oben, von denen eine Blaupause zu fuenf Platin herumlag, weil die Klinge dazu
+   neunzig bringt - eine Auskunft ueber fremden Besitz. Danach stand hier die
+   Summe aller eigenen Teile, und auch die geht an der Frage vorbei: zwei Teile
+   zu 20p saehen aus wie eines zu 40p. Verglichen wird deshalb das teuerste
+   EINZELNE Stueck im Besitz (siehe stampBestOwnedPart).
+
+   EIN UNBEKANNTER PREIS IST KEINE NULL. Die Preise der Teile treffen erst
+   nach und nach ein (siehe fetchMissingSetPrices), und manches Teil fuehrt
    warframe.market gar nicht - auf der Karte steht dann ein Strich. Diese
    Karten zwischen die billigen zu stellen waere eine Behauptung ueber einen
    Preis, den niemand kennt. Sie rutschen deshalb ans Ende, statt eine
@@ -5926,56 +6000,107 @@ const filterArcanes = list => list
 
 const byRelicName = (a, b) => a.name.localeCompare(b.name, 'en', { numeric: true });
 
-/** Absteigend nach einer Zahl, Unbekanntes ans Ende, sonst alphabetisch. */
-const byRelicValue = pick => (a, b) => {
-  const va = pick(a);
-  const vb = pick(b);
-  if (va == null || vb == null) return (va == null) - (vb == null) || byRelicName(a, b);
-  return vb - va || byRelicName(a, b);
-};
+/* ---------------- Kriterien statt Sortierungen ----------------
 
-const INV_RELIC_SORTS = {
+   JEDE ACHSE KENNT NUR SICH SELBST - kein eingebauter Namensvergleich mehr.
+   Der stand frueher in jeder einzelnen Sortierung ("... || byRelicName"), und
+   solange nur EINE gewaehlt werden konnte, war das genau richtig. Mit einer
+   Kette aus mehreren Kriterien ist es das Gegenteil: nach dem ersten Glied
+   waere nie ein Gleichstand uebrig, und das zweite haette nichts mehr zu
+   entscheiden - "nur ein Teil, davon das teuerste" ergaebe wieder die
+   alphabetische Liste. Der Namensvergleich haengt deshalb als LETZTES Glied
+   an der Kette (siehe SortPick.chain). */
+
+const INV_RELIC_AXES = {
   'name-asc':    byRelicName,
-  'exp-plat':    byRelicValue(r => r.value?.expPlat ?? null),
-  'best-plat':   byRelicValue(r => r.value?.bestPlat?.plat ?? null),
-  'exp-ducats':  byRelicValue(r => r.value?.expDucats ?? null),
-  'count-desc':  byRelicValue(r => r.count || 0)
+  'exp-plat':    SortPick.descUnknownLast(r => r.value?.expPlat ?? null),
+  'best-plat':   SortPick.descUnknownLast(r => r.value?.bestPlat?.plat ?? null),
+  'exp-ducats':  SortPick.descUnknownLast(r => r.value?.expDucats ?? null),
+  'count-desc':  SortPick.descUnknownLast(r => r.count || 0)
 };
 
+/* ---------------- Reihenfolge der Mods und Arcanes ----------------
+
+   BIS HIERHER STANDEN SIE NUR ALPHABETISCH, und das war richtig, solange auf
+   den Kacheln nichts stand, wonach sich ordnen liesse. Mit dem Platinpreis
+   gibt es diese Zahl - und mit ihr die Frage, die man im Mod-Bereich
+   tatsaechlich hat: was von dem, was hier herumliegt, ist etwas wert.
+
+   BEIDE RICHTUNGEN, aus demselben Grund wie bei den Dukaten: absteigend ist
+   "was verkaufe ich", aufsteigend zusammen mit "Quantity owned" ist "was
+   kann weg". Dieselbe Liste rueckwaerts ist es nicht - unten stehen die
+   Karten ohne bekannten Preis, und die sind in beiden Fragen letzte. */
+const byUpgradeName = (a, b) => a.name.localeCompare(b.name, 'en');
+
+const UPGRADE_AXES = {
+  'name-asc':   byUpgradeName,
+  'plat-desc':  SortPick.descUnknownLast(e => e.price?.min ?? null),
+  'plat-asc':   SortPick.ascZeroLast(e => e.price?.min ?? null),
+  'count-desc': (a, b) => (b.count || 0) - (a.count || 0),
+  'count-asc':  SortPick.ascZeroLast(e => e.count || 0)
+};
+
+const UPGRADE_SORT_OPTIONS = [
+  ['name-asc',   'Name (A–Z)',                   'Name'],
+  ['plat-desc',  'Platinum (highest)',           'Plat ↓'],
+  ['plat-asc',   'Platinum (lowest first)',      'Plat ↑'],
+  ['count-desc', 'Quantity owned (most first)',  'Quantity ↓'],
+  ['count-asc',  'Quantity owned (fewest first)', 'Quantity ↑']
+];
+
+/* Welche Kriterien einen Preis BRAUCHEN. Ist eines davon gewaehlt, holt der
+   Bereich die Preise der ganzen gefilterten Liste nach statt nur die der
+   sichtbaren Kacheln - sonst waere die Reihenfolge eine Aussage ueber die
+   fuenf Prozent, die zufaellig schon einen Preis tragen. */
+const UPGRADE_PRICE_KEYS = new Set(['plat-desc', 'plat-asc']);
+
+/* Drittes Feld ist die Kurzform fuer den Knopf: dort stehen bei zwei
+   Kriterien zwei Namen nebeneinander, und "Expected platinum (average per
+   crack) › Quantity owned" passt in keine Zeile. */
 const INV_SORT_OPTIONS = {
   sets: [
-    ['progress',     'Set progress (default)'],
-    ['parts-asc',    'Parts owned (fewest first)'],
-    ['plat-desc',    'Platinum, full set (highest)'],
-    ['ducats-desc',  'Ducats in hand (highest)'],
-    ['name-asc',     'Name (A–Z)']
+    ['progress',     'Set progress (default)',              'Progress'],
+    ['part-best',    'Most valuable single part you own',   'Best part'],
+    ['parts-asc',    'Parts owned (fewest first)',          'Parts ↑'],
+    ['ducats-desc',  'Ducats in hand (highest)',            'Ducats'],
+    ['name-asc',     'Name (A–Z)',                          'Name']
   ],
   relics: [
-    ['name-asc',     'Relic (A–Z)'],
-    ['exp-plat',     'Expected platinum (average per crack)'],
-    ['best-plat',    'Most valuable drop (best single part)'],
-    ['exp-ducats',   'Expected ducats (average per crack)'],
-    ['count-desc',   'Quantity owned']
-  ]
+    ['name-asc',     'Relic (A–Z)',                             'Name'],
+    ['exp-plat',     'Expected platinum (average per crack)',    'Exp. plat'],
+    ['best-plat',    'Most valuable drop (best single part)',    'Best drop'],
+    ['exp-ducats',   'Expected ducats (average per crack)',      'Exp. ducats'],
+    ['count-desc',   'Quantity owned',                          'Quantity']
+  ],
+  /* Dieselbe Liste fuer beide: die Fragen an eine Mod und an ein Arcane sind
+     dieselben - was ist es wert, wie viele habe ich. Getrennte Listen waeren
+     zweimal dasselbe an zwei Stellen. */
+  mods:    UPGRADE_SORT_OPTIONS,
+  arcanes: UPGRADE_SORT_OPTIONS
 };
 
 const bySetName = (a, b) => a.name.localeCompare(b.name, 'en');
 
-const INV_SET_SORTS = {
-  /* KEIN VERGLEICH, und das mit Absicht: die Liste kommt bereits geordnet aus
-     dem Hauptprozess - erst die Prime-Sets nach Fortschritt, dahinter die
-     Basis-Bausaetze, gebaute ganz zuletzt (siehe buildPrimeSets und
-     buildBaseSets). Die beiden Gruppen bleiben dabei getrennt. Diese Ordnung
-     hier als Vergleich nachzubauen hiesse, sie ineinanderzuschieben - die
-     Voreinstellung saehe danach anders aus als vorher, ohne dass jemand
-     etwas umgestellt haette. */
-  progress: null,
-  'plat-desc': (a, b) => {
-    const pa = a.setPrice?.min ?? null;
-    const pb = b.setPrice?.min ?? null;
-    if (pa === null || pb === null) return (pa === null) - (pb === null) || bySetName(a, b);
-    return pb - pa || bySetName(a, b);
-  },
+const INV_SET_AXES = {
+  /* DIE REIHENFOLGE, IN DER DIE LISTE ANKOMMT, als Achse: sie kommt bereits
+     geordnet aus dem Hauptprozess - erst die Prime-Sets nach Fortschritt,
+     dahinter die Basis-Bausaetze, gebaute ganz zuletzt (siehe buildPrimeSets
+     und buildBaseSets). Diese Ordnung hier als Rechnung nachzubauen hiesse,
+     die beiden Gruppen ineinanderzuschieben; verglichen wird deshalb die
+     Position, die die Karte beim Eintreffen hatte (_ord, gestempelt in
+     renderInventoryGrid). Damit bleibt die Voreinstellung Zeichen fuer
+     Zeichen dieselbe wie vorher - und laesst sich trotzdem mit einem zweiten
+     Kriterium kombinieren. */
+  progress: (a, b) => (a._ord ?? 0) - (b._ord ?? 0),
+  /* DER PREIS EINES EIGENEN TEILS - nicht der des vollen Sets und nicht die
+     Summe des Stapels. Ein Set ist so teuer, wie seine teuersten Teile sind,
+     und die liegen meistens gerade NICHT im Schrank; danach zu ordnen hob
+     Sets nach oben, von denen eine Blaupause zu fuenf Platin herumlag, weil
+     die Klinge dazu 90 bringt. Eine Summe wiederum liesse zwei Teile zu 20p
+     aussehen wie eines zu 40p, und die Stueckzahl macht ein Teil nicht
+     teurer. Verglichen wird deshalb genau eine Zahl: das teuerste einzelne
+     Stueck im Besitz (siehe stampBestOwnedPart). */
+  'part-best': SortPick.descUnknownLast(s => stampBestOwnedPart(s)._bestPart?.plat ?? null),
   /* NULL TEILE IST KEIN ANFANG. Der Sets-Bereich zeigt auch, was man gar nicht
      hat (onlyOwned: false) - bei 308 Karten sind das die meisten. Streng
      aufsteigend stuenden die alle vorne, und die Sets mit dem EINEN Teil, um
@@ -5984,13 +6109,8 @@ const INV_SET_SORTS = {
      begonnenes: nichts zum Einschmelzen, nichts zum Verkaufen. Es rutscht
      deshalb ans Ende - wie die Karten ohne Preis eine Zeile weiter oben.
      Wie viele das sind, steht im Chip "Not owned". */
-  'parts-asc': (a, b) => {
-    const oa = a.ownedParts || 0;
-    const ob = b.ownedParts || 0;
-    if (!oa || !ob) return (oa === 0) - (ob === 0) || bySetName(a, b);
-    return oa - ob || bySetName(a, b);
-  },
-  'ducats-desc': (a, b) => (b.ownedDucats || 0) - (a.ownedDucats || 0) || bySetName(a, b),
+  'parts-asc': SortPick.ascZeroLast(s => s.ownedParts || 0),
+  'ducats-desc': (a, b) => (b.ownedDucats || 0) - (a.ownedDucats || 0),
   'name-asc': bySetName
 };
 
@@ -6117,14 +6237,17 @@ function renderInvRelicFilter(box, all) {
 }
 
 function renderInvSetFilter(box, all) {
-  const allActive = invSetKind === 'all' && invSetOrigin === 'all' && invSetOwnership === 'all';
+  const allActive = invSetKind === 'all' && invSetOrigin === 'all'
+    && invSetOwnership === 'all' && invSetParts === 'all';
 
   /* Besitz steht neben "All", weil das die Frage ist, mit der man die Liste
-     oeffnet: was habe ich, was fehlt noch. Gattung und Herkunft schneiden das
-     Ergebnis danach weiter zu - und stehen deshalb in der zweiten Zeile. */
+     oeffnet: was habe ich, was fehlt noch. Gleich daneben, wie VIEL davon -
+     dieselbe Frage, eine Stufe genauer. Gattung und Herkunft schneiden das
+     Ergebnis danach weiter zu und stehen deshalb in der zweiten Zeile. */
   const html =
       invRow(invGroup(invAllChip(all.length, allActive)
-                    + invChips(SET_OWNERSHIP, 'set-ownership', invSetOwnership, countMatches(all, SET_OWNERSHIP))))
+                    + invChips(SET_OWNERSHIP, 'set-ownership', invSetOwnership, countMatches(all, SET_OWNERSHIP)))
+           + invGroup(invChips(SET_PARTS,    'set-parts',     invSetParts,     countMatches(all, SET_PARTS))))
     + invRow(invGroup(invChips(SET_KINDS,   'set-kind',   invSetKind,   countMatches(all, SET_KINDS)))
            + invGroup(invChips(SET_ORIGINS, 'set-origin', invSetOrigin, countMatches(all, SET_ORIGINS))));
 
@@ -6132,10 +6255,12 @@ function renderInvSetFilter(box, all) {
     invSetKind = 'all';
     invSetOrigin = 'all';
     invSetOwnership = 'all';
+    invSetParts = 'all';
   });
   if (!ok) return;
 
   wireInvChips(box, 'set-ownership', 'setOwnership', () => invSetOwnership, v => invSetOwnership = v);
+  wireInvChips(box, 'set-parts',     'setParts',     () => invSetParts,     v => invSetParts = v);
   wireInvChips(box, 'set-kind',      'setKind',      () => invSetKind,      v => invSetKind = v);
   wireInvChips(box, 'set-origin',    'setOrigin',    () => invSetOrigin,    v => invSetOrigin = v);
 }
@@ -6203,46 +6328,103 @@ function setFoot(s) {
 }
 
 /**
+ * Das teuerste EINZELNE Teil, das man von diesem Set besitzt.
+ *
+ * DER PREIS EINES TEILS, NICHT DER EINES STAPELS UND NICHT DER DES SETS.
+ * Beide Nachbarzahlen waeren hier falsch, und beide standen hier schon:
+ *
+ *   Der SET-Preis ist eine Auskunft ueber Teile, die man groesstenteils gar
+ *   nicht hat. Spira Prime steht mit 119p da, weil die Klinge teuer ist - wer
+ *   davon nur die Blaupause zu 5p im Schrank hat, liest eine Zahl, die ihm
+ *   nicht gehoert.
+ *
+ *   Die SUMME aller eigenen Teile beantwortet eine andere Frage ("was ist
+ *   dieser Stapel wert") und verwischt genau die, um die es geht: zwei Teile
+ *   zu 20p saehen aus wie eines zu 40p. Auch die Stueckzahl bleibt deshalb
+ *   draussen - drei Exemplare desselben Teils machen das Teil nicht teurer.
+ *
+ * Was bleibt, ist die Frage vor dem Verkaufen: was von dem, was hier liegt,
+ * ist FUER SICH GENOMMEN etwas wert.
+ *
+ * EIN FEHLENDER PREIS KANN DEN HOECHSTEN VERSTECKEN. Solange zu einem eigenen
+ * Teil kein Preis vorliegt, koennte genau das das teuerste sein - die Zahl ist
+ * dann eine UNTERGRENZE, und die Karte schreibt ein ≥ davor. Dieselbe Regel
+ * wie beim Erwartungswert der Relikte; ohne sie saehe ein halb geladener Stand
+ * aus wie ein vollstaendiger.
+ */
+function stampBestOwnedPart(s) {
+  let best = null;
+  let offen = 0;
+
+  for (const p of s.parts || []) {
+    if (!(p.count > 0)) continue;
+    const plat = p.price?.min ?? null;
+    if (plat == null) { if (p.slug) offen++; continue; }
+    if (!best || plat > best.plat) best = { name: p.shortName || p.name, plat };
+  }
+
+  /* null heisst "darueber ist nichts bekannt" - nicht "null Platin wert". Die
+     Karte zeigt dann einen Strich statt einer erfundenen Null. */
+  s._bestPart = best;
+  s._platPending = offen;
+  return s;
+}
+
+/**
  * Die Platin-Zelle einer Set-Karte.
  *
  * Steht als eigener Baustein da, weil sie an ZWEI Stellen entsteht: beim
- * Zeichnen der Karte und noch einmal, wenn ihr Preis nachtraeglich eintrifft.
- * Der Slug an der Zelle ist die Adresse dafuer.
+ * Zeichnen der Karte und noch einmal, wenn ein Preis nachtraeglich eintrifft.
  *
- * DREI ZUSTAENDE, NICHT ZWEI: ein Preis, der noch unterwegs ist, sah bisher
- * genauso aus wie ein Set, das auf warframe.market niemand anbietet - beides
- * war derselbe Strich. Der Titel sagt jetzt, welcher der beiden Faelle es ist.
+ * DREI ZUSTAENDE, NICHT ZWEI: ein Preis, der noch unterwegs ist, sah frueher
+ * genauso aus wie ein Teil, das auf warframe.market niemand anbietet - beides
+ * war derselbe Strich. Der Titel sagt, welcher der beiden Faelle es ist.
  */
 function setPlatCell(s) {
-  const known = s.setPrice?.min != null;
-  const pending = !known && Boolean(s.setSlug) && !setPriceTried.has(s.setSlug);
-  const title = known
-    ? 'Lowest price for the complete set on warframe.market'
-    : (pending ? 'Loading the set price from warframe.market …'
-               : 'No price for this set on warframe.market');
+  stampBestOwnedPart(s);
+  const best = s._bestPart;
+  const pending = s._platPending > 0;
+  const teil = best && pending;
 
-  return `<span class="set-val${pending ? ' is-pending' : ''}"${
-      s.setSlug ? ` data-set-plat="${esc(s.setSlug)}"` : ''} title="${title}">
+  const hatTeile = (s.parts || []).some(p => p.count > 0);
+  const title = best
+    ? `${best.name} — your most valuable single part of this set`
+      + (teil ? ' so far; some part prices are still on their way' : '')
+    : pending ? 'Loading part prices from warframe.market …'
+    /* Ohne ein einziges eigenes Teil gibt es nichts zu bepreisen - das ist ein
+       anderer Fall als "der Markt fuehrt es nicht", und die Karte soll nicht
+       den Eindruck erwecken, hier laege etwas Unverkaeufliches. */
+    : hatTeile ? 'No price on warframe.market for the parts you own'
+               : 'You own no part of this set';
+
+  return `<span class="set-val${!best && pending ? ' is-pending' : ''}" data-set-plat="${esc(s.name)}"
+      title="${esc(title)}">
       <img class="currency-ic" src="assets/icons/currency/platinum.png" alt="Platin">
-      <b>${known ? nf(s.setPrice.min) : '–'}</b> <small>Set</small>
+      <b>${best ? (teil ? '≥' : '') + nf(best.plat) : '–'}</b> <small>best part</small>
     </span>`;
 }
 
-/* Slugs, deren Set-Preis in dieser Sitzung schon einmal angefragt wurde - egal
-   mit welchem Ergebnis. Ohne dieses Gedaechtnis fragte jeder Besuch des
-   Bereichs die Sets erneut ab, die warframe.market gar nicht fuehrt. */
+/* Slugs, deren Preis in dieser Sitzung schon einmal angefragt wurde - egal mit
+   welchem Ergebnis. Ohne dieses Gedaechtnis fragte jeder Besuch des Bereichs
+   dieselben Teile erneut ab, die warframe.market gar nicht fuehrt. */
 const setPriceTried = new Set();
 let isFetchingSetPrices = false;
 
 /**
- * Platinpreise der Set-Karten nachladen.
+ * Die Preise der EIGENEN Teile nachladen.
  *
- * WARUM DAS NOETIG IST: die Karten kommen mit dem Preisstand, der beim Aufbau
- * zufaellig auf Platte lag - abgefragt hat den Preis des SET-Items niemand.
- * Der Dukaten-Tab holt nur Einzelteile nach, und seine Set-Ansicht ist beim
- * Umzug in dieses Raster weggefallen. Also stand auf den meisten Karten
- * dauerhaft ein Strich, waehrend dasselbe Teil eine Ebene tiefer im Datenblatt
- * einen Preis hatte.
+ * NUR WAS MAN BESITZT, und das macht den Abruf ueberhaupt erst tragbar: die
+ * 308 Sets haben zusammen rund 1.500 Teile, besessen ist davon ein Bruchteil.
+ * Der Preis eines Teils, das man nicht hat, steht auch auf keiner Karte.
+ *
+ * ALLE EIGENEN TEILE, NICHT NUR EINES: welches das teuerste ist, weiss man
+ * erst, wenn man alle kennt. Beim ersten Teil aufzuhoeren hiesse, die Antwort
+ * von der Reihenfolge der Abrufe abhaengig zu machen.
+ *
+ * WAS GERADE GEFILTERT AUF DEM SCHIRM STEHT, KOMMT ZUERST: im Mindestabstand
+ * der Warteschlange sind ein paar hundert Teile Minuten, und in denen will man
+ * den Preis des Sets sehen, nach dem man gesucht hat - nicht den von Ash Prime,
+ * nur weil A vorne im Alphabet steht.
  *
  * DAS RASTER WIRD NICHT NEU GEZEICHNET: die eingetroffenen Preise wandern in
  * die Zellen, die schon stehen. Ein Neuaufbau waere mitten im Scrollen ein
@@ -6251,35 +6433,41 @@ let isFetchingSetPrices = false;
 async function fetchMissingSetPrices() {
   if (isFetchingSetPrices) return;
 
-  const missing = (inventoryData?.sections?.sets || []).filter(s =>
-    s.setSlug && s.setPrice?.min == null && !setPriceTried.has(s.setSlug));
+  const sets = inventoryData?.sections?.sets || [];
+  const offen = s => (s.parts || []).some(p =>
+    p.count > 0 && p.slug && p.price?.min == null && !setPriceTried.has(p.slug));
+  const missing = sets.filter(offen);
   if (!missing.length) return;
 
-  /* Was gerade gefiltert auf dem Schirm steht, kommt zuerst: 160 Sets im
-     Mindestabstand der Warteschlange sind gut eine Minute, und in der will man
-     den Preis des Sets sehen, nach dem man gesucht hat - nicht den von Ash
-     Prime, nur weil A vorne im Alphabet steht. */
-  const onScreen = new Set((currentInvList || []).map(s => s.setSlug));
-  const queue = [...missing.filter(s => onScreen.has(s.setSlug)),
-                 ...missing.filter(s => !onScreen.has(s.setSlug))];
+  const onScreen = new Set((currentInvList || []).map(s => s.name));
+  const queue = [...missing.filter(s => onScreen.has(s.name)),
+                 ...missing.filter(s => !onScreen.has(s.name))];
 
   isFetchingSetPrices = true;
   try {
     const BATCH_SIZE = 10;
-    for (let i = 0; i < queue.length; i += BATCH_SIZE) {
-      const batch = queue.slice(i, i + BATCH_SIZE);
-      /* VOR dem Abruf vermerken, nicht danach: ein Fehlschlag darf denselben
-         Slug nicht beim naechsten Blick wieder in die Schlange stellen. */
-      batch.forEach(s => setPriceTried.add(s.setSlug));
+    for (const s of queue) {
+      const slugs = (s.parts || [])
+        .filter(p => p.count > 0 && p.slug && p.price?.min == null && !setPriceTried.has(p.slug))
+        .map(p => p.slug);
+      if (!slugs.length) continue;
 
-      const prices = await window.api.fetchDucatPrices(batch.map(s => s.setSlug));
-      for (const s of batch) {
-        if (prices?.[s.setSlug]) s.setPrice = prices[s.setSlug];
-        paintSetPlat(s);
+      for (let i = 0; i < slugs.length; i += BATCH_SIZE) {
+        const batch = slugs.slice(i, i + BATCH_SIZE);
+        /* VOR dem Abruf vermerken, nicht danach: ein Fehlschlag darf denselben
+           Slug nicht beim naechsten Blick wieder in die Schlange stellen. */
+        batch.forEach(slug => setPriceTried.add(slug));
+
+        const prices = await window.api.fetchDucatPrices(batch);
+        for (const p of s.parts) if (prices?.[p.slug]) p.price = prices[p.slug];
       }
+      /* Je Set neu gezeichnet, nicht erst am Ende: eine Karte, deren Teile
+         gerade durchgelaufen sind, ist fertig - und die naechste dauert
+         wieder Sekunden. */
+      paintSetPlat(s);
     }
   } catch (err) {
-    console.error('Could not load set prices:', err);
+    console.error('Could not load part prices:', err);
   } finally {
     isFetchingSetPrices = false;
     resortAfterPrices();
@@ -6287,11 +6475,23 @@ async function fetchMissingSetPrices() {
 }
 
 /**
+ * Haengt die Reihenfolge der Set-Karten an einem TEILE-Preis?
+ *
+ * Nur ein Kriterium tut das - das teuerste Einzelteil. Es steht und faellt mit
+ * Zahlen, die erst nach und nach von warframe.market eintreffen; deshalb wird
+ * nach dem letzten Preis noch einmal geordnet und solange mitgezaehlt, worauf
+ * die Liste wartet. Als Menge geschrieben und nicht als Vergleich, damit die
+ * naechste preisgebundene Sortierung nicht an einer der beiden Stellen
+ * vergessen wird.
+ */
+const SET_PRICE_KEYS = new Set(['part-best']);
+const setSortNeedsPrices = () => invSetSort.some(k => SET_PRICE_KEYS.has(k));
+/**
  * Nach dem letzten Preis noch einmal ordnen - aber nur, wenn die Reihenfolge
  * ueberhaupt am Preis haengt.
  *
  * Beim Sortieren nach Platin stehen die Karten ohne Preis hinten (siehe
- * INV_SET_SORTS). Waehrend die Preise eintrudeln, ist das genau richtig -
+ * INV_SET_AXES). Waehrend die Preise eintrudeln, ist das genau richtig -
  * hinterher aber falsch, denn dort stehen jetzt Sets mit einer Zahl. Ohne
  * diesen Durchgang bliebe die Liste bis zur naechsten Eingabe verkehrt.
  *
@@ -6301,7 +6501,7 @@ async function fetchMissingSetPrices() {
  * aendert sich - das ist der Sinn der Sache -, die Seite springt aber nicht.
  */
 function resortAfterPrices() {
-  if (invSection !== 'sets' || invSetSort !== 'plat-desc') return;
+  if (invSection !== 'sets' || !setSortNeedsPrices()) return;
   if (!currentInvList?.length) return;
 
   const scroller = document.querySelector('.main-content');
@@ -6318,13 +6518,240 @@ function resortAfterPrices() {
  * beim naechsten Zeichnen holt setPlatCell ihn von dort.
  */
 function paintSetPlat(s) {
-  if (!s.setSlug) return;
-  const cell = $('inv-grid')?.querySelector(`[data-set-plat="${CSS.escape(s.setSlug)}"]`);
+  /* Adressiert ueber den SET-NAMEN und nicht mehr ueber setSlug: die Zelle
+     zeigt jetzt den Wert der eigenen TEILE, und die haben je einen eigenen
+     Slug. Der Name ist das, was eine Karte eindeutig macht - er ist der
+     Schluessel, unter dem buildPrimeSets sie zusammenfasst. */
+  const cell = $('inv-grid')?.querySelector(`[data-set-plat="${CSS.escape(s.name)}"]`);
   if (!cell) return;
 
   const tmp = document.createElement('div');
   tmp.innerHTML = setPlatCell(s);
   if (tmp.firstElementChild) cell.replaceWith(tmp.firstElementChild);
+}
+
+/* ---------------- Preise der Mod- und Arcane-Karten ----------------
+
+   NUR FUER DAS, WAS GERADE DASTEHT - und das ist der Unterschied zu den Sets.
+   Dort sind es 308 Karten und der Abruf laeuft einmal durch; im Mod-Bereich
+   sind 1.219 Eintraege handelbar, und die im Mindestabstand von 350 ms
+   durchzufragen waere eine Viertelstunde Netzverkehr fuer eine Liste, von der
+   man zwanzig Karten ansieht. Gefragt wird deshalb je Nachschub-Block, den das
+   Raster zeichnet: was man sich ansieht, bekommt einen Preis, der Rest nicht.
+
+   WAS EINMAL GEFRAGT WURDE, WIRD NICHT WIEDER GEFRAGT - auch dann nicht, wenn
+   die Antwort "kein Angebot" war. Ohne dieses Gedaechtnis fragte jedes
+   Scrollen ueber dieselbe Stelle erneut nach denselben Karten. */
+const upgradePriceTried = new Set();
+/* Was eine ANTWORT hat - auch eine leere. Getrennt von upgradePriceTried, weil
+   das beim Einreihen gesetzt wird: die Zahl im Zaehler ("12 prices still
+   loading") fragt danach, was noch aussteht, und nicht danach, was schon
+   losgeschickt wurde. Mit nur einer Menge staende dort ab dem ersten Moment
+   eine Null. */
+const upgradePriceDone = new Set();
+let upgradePriceQueue = [];
+let isFetchingUpgradePrices = false;
+
+/* Derselbe Schluessel, den priceKey im Hauptprozess bildet - er benennt sowohl
+   das Gedaechtnis hier als auch die Antwort von fetchUpgradePrices. Zwei
+   Schreibweisen fuer dieselbe Sache waeren zwei Gelegenheiten, sie
+   auseinanderlaufen zu lassen. */
+const upgradePriceKey = e => `${e.slug}#r${e.priceRank ?? 0}`;
+
+function paintUpgradePlat(e) {
+  if (!e.slug) return;
+  const grid = $('inv-grid');
+  if (!grid) return;
+
+  const tag = grid.querySelector(`[data-up-plat="${CSS.escape(e.slug)}"]`);
+  const html = upgradePriceTag(e);
+
+  /* DREI FAELLE, NICHT ZWEI: das Schild kann schon stehen (Preis auffrischen),
+     noch fehlen (erster Preis - dann muss es an die Kachel angehaengt werden)
+     oder gar nicht entstehen, weil der Markt nichts fuehrt. Ohne den zweiten
+     Fall blieben genau die Karten leer, deren Preis dieser Durchgang gerade
+     geholt hat - bis zum naechsten Zeichnen des Rasters. */
+  if (tag) {
+    if (!html) { tag.remove(); return; }
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    if (tmp.firstElementChild) tag.replaceWith(tmp.firstElementChild);
+    return;
+  }
+  if (!html) return;
+
+  /* Ueber die Kachel gefunden, nicht ueber den Slug: nur der Inventar-Index
+     steht im Markup, und der ist die Position in currentInvList. Von dort in
+     die Abzeichenzeile, hinter die Anzahl - dieselbe Stelle, an der das Schild
+     auch beim Zeichnen entsteht (siehe upgradeBadges). */
+  const idx = currentInvList.indexOf(e);
+  if (idx < 0) return;
+  grid.querySelector(`[data-idx="${idx}"] .inv-badges`)?.insertAdjacentHTML('beforeend', html);
+}
+
+/**
+ * Die Preise eines Kachelblocks nachladen.
+ *
+ * Laeuft im Hintergrund und haelt EINE Schlange: ein zweiter Aufruf waehrend
+ * des ersten haengt seine Karten an und laesst den laufenden weiterarbeiten,
+ * statt sich mit ihm in dieselbe Warteschlange zu stellen.
+ */
+async function fetchUpgradePrices(entries) {
+  const offen = (entries || []).filter(e => e.slug && !upgradePriceTried.has(upgradePriceKey(e)));
+  if (!offen.length) return;
+
+  /* BEIM EINREIHEN VERMERKT, nicht beim Abrufen. Zwei Gruende, und beide sind
+     schon eingetreten: ein Fehlschlag darf dieselbe Karte nicht beim naechsten
+     Blick wieder in die Schlange stellen - und jeder Tastendruck in der Suche
+     zeichnet das Raster neu und reichte dieselbe Liste noch einmal herein.
+     Eine Karte, die schon wartet, wuerde damit zweimal abgefragt. */
+  offen.forEach(e => upgradePriceTried.add(upgradePriceKey(e)));
+
+  upgradePriceQueue.push(...offen);
+  if (isFetchingUpgradePrices) return;
+
+  isFetchingUpgradePrices = true;
+  try {
+    const BATCH_SIZE = 8;
+    while (upgradePriceQueue.length) {
+      const batch = upgradePriceQueue.splice(0, BATCH_SIZE);
+      const prices = await window.api.fetchUpgradePrices(
+        batch.map(e => ({ slug: e.slug, rank: e.priceRank ?? 0 })));
+
+      for (const e of batch) {
+        const hit = prices?.[upgradePriceKey(e)];
+        if (hit) e.price = hit;
+        upgradePriceDone.add(upgradePriceKey(e));
+        paintUpgradePlat(e);
+      }
+    }
+  } catch (err) {
+    console.error('Could not load mod prices:', err);
+  } finally {
+    isFetchingUpgradePrices = false;
+    resortAfterUpgradePrices();
+  }
+}
+
+/**
+ * Nach dem letzten Preis noch einmal ordnen - genau wie bei den Set-Karten
+ * (siehe resortAfterPrices), und aus demselben Grund: waehrend die Preise
+ * eintrudeln, stehen die Karten ohne Zahl hinten, und hinterher stimmt das
+ * nicht mehr.
+ *
+ * NUR WENN DIE REIHENFOLGE AM PREIS HAENGT. Steht die Liste alphabetisch, ist
+ * ein eingetroffener Preis eine Zahl mehr auf einer Kachel und kein Grund,
+ * das Raster neu zu bauen - der Blick springt sonst, ohne dass sich etwas
+ * geaendert haette, das man sehen wollte.
+ */
+function resortAfterUpgradePrices() {
+  if (invSection !== 'mods' && invSection !== 'arcanes') return;
+  if (!upgradeSortNeedsPrices() || !currentInvList?.length) return;
+
+  const scroller = document.querySelector('.main-content');
+  const top = scroller?.scrollTop ?? 0;
+  renderInventoryGrid({ keepRendered: invRenderedCount });
+  if (scroller) scroller.scrollTop = top;
+}
+
+
+/** Haengt die Reihenfolge des Bereichs an einem Preis? */
+function upgradeSortNeedsPrices(section = invSection) {
+  const st = INV_SORT_STATE[section];
+  if (!st || (section !== 'mods' && section !== 'arcanes')) return false;
+  return st.get().some(k => UPGRADE_PRICE_KEYS.has(k));
+}
+
+/* ---------------- Was gerade auf warframe.market steht ----------------
+
+   DIE FRAGE IST "habe ich das schon drin?", und sie stellt sich genau hier:
+   vor einer Karte mit einem vollen Set und einem WTS-Knopf. Ohne Antwort
+   klickt man ihn ein zweites Mal und legt eine zweite Order fuer dasselbe
+   Set an - oder man klickt ihn NICHT, weil man sich nicht sicher ist, und
+   sieht im Handels-Tab nach. Beides sind Wege, die es nicht braucht.
+
+   DER INDEX LEITET SICH AUS tradeOrders AB und merkt sich nichts eigenes: die
+   Orders werden an zwei Stellen neu gesetzt (nach dem Laden des Handels und
+   beim Abmelden), und ein zweiter Speicher daneben waere die dritte Stelle,
+   die jemand vergisst. Verglichen wird die Identitaet des Objekts - ist es
+   dasselbe wie beim letzten Mal, steht der Index schon. */
+let listingIndex = { src: undefined, map: new Map() };
+
+function myListings() {
+  if (listingIndex.src !== tradeOrders) {
+    const map = new Map();
+    for (const o of tradeOrders?.orders || []) {
+      if (!o.slug) continue;
+      const slot = map.get(o.slug) || { sell: null, buy: null };
+      /* Mehrere Orders desselben Typs gibt es bei einem Set praktisch nie.
+         Wo doch, gilt die sichtbare - eine pausierte ist kein Angebot. */
+      if (!slot[o.type] || (o.visible && !slot[o.type].visible)) slot[o.type] = o;
+      map.set(o.slug, slot);
+    }
+    listingIndex = { src: tradeOrders, map };
+  }
+  return listingIndex.map;
+}
+
+/**
+ * Die eigenen Orders nachladen, ohne den Handels-Tab je geoeffnet zu haben.
+ *
+ * EINMAL JE SITZUNG und nur angemeldet: wer nicht angemeldet ist, hat keine
+ * Orders, und ein Abruf, der sicher mit 401 endet, gehoert nicht in den Weg
+ * zwischen Klick und Kachelraster. Meldet, ob dadurch etwas Neues dasteht -
+ * nur dann lohnt das erneute Zeichnen.
+ */
+let listingsChecked = false;
+
+async function ensureMyListings() {
+  if (tradeOrders || listingsChecked) return false;
+  listingsChecked = true;
+  try {
+    if (!tradeAuth) tradeAuth = await window.api.tradeAuthState();
+    if (!tradeAuth?.signedIn) return false;
+    const res = await window.api.tradeOrders();
+    if (!res?.ok) return false;
+    tradeOrders = res;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Steht von diesem Set gerade etwas auf warframe.market? */
+const setIsListed = s => Boolean(s.setSlug && myListings().has(s.setSlug));
+
+/**
+ * Von der Set-Karte zu der Order, die dort schon steht.
+ *
+ * Der Umweg ueber den Handels-Tab ist Absicht und kein Sparen: das
+ * Bearbeiten-Fenster schreibt nach dem Speichern in eine Liste, die dort
+ * steht. Aufgerufen aus dem Inventar heraus saehe man das Ergebnis nicht -
+ * und beim naechsten Blick auf den Handel stuende der alte Stand.
+ */
+async function openListedOrder(id) {
+  if (!id) return;
+  showTab('trading');
+  await loadTrading();
+  const order = (tradeOrders?.orders || []).find(o => o.id === id);
+  if (order) openEditOrder(order);
+}
+
+/**
+ * Der Knopf, wenn die Order schon existiert.
+ *
+ * DER PREIS STEHT DRAUF, denn das ist die Zahl, wegen der man hinsieht: ob
+ * das Angebot noch stimmt. Pausiert bekommt er die graue Fassung - eine
+ * pausierte Order ist kein Angebot, sie steht nur bereit.
+ */
+function listedBtn(o, icon, label, tone) {
+  const paused = o.visible === false;
+  return `<button type="button" class="set-trade-btn ${tone} is-listed${paused ? ' is-paused' : ''}"
+          data-set-open="${esc(o.id)}"
+          title="${paused ? 'Paused on' : 'Already on'} warframe.market for ${nf(o.platinum)} platinum × ${
+            nf(o.quantity)} — click to edit the order">
+    ${icon}<span>${paused ? 'Paused' : label}</span><b>${nf(o.platinum)}p</b>
+  </button>`;
 }
 
 /**
@@ -6339,25 +6766,37 @@ function paintSetPlat(s) {
  * KOMPLETTE Sets zusammenkommen. Bei null waere das Angebot eine Zusage,
  * die man im Handelsfenster nicht einloesen kann - der Knopf bleibt sichtbar,
  * aber gesperrt, damit die Karte nicht je nach Bestand anders aussieht.
+ *
+ * STEHT ES SCHON DRIN, HEISST DER KNOPF ANDERS. Ein zweites Mal "WTS" zu
+ * klicken legte eine zweite Order fuer dasselbe Set an; hier fuehrt er
+ * stattdessen zu der, die es schon gibt.
  */
 function setTradeButtons(s) {
   if (!s.setSlug) return '';
   const have = s.fullSetsCount || 0;
-  return `
-    <span class="set-trade">
-      <button type="button" class="set-trade-btn is-sell${have ? '' : ' is-disabled'}"
+  const slot = myListings().get(s.setSlug);
+  const listedSell = slot?.sell || null;
+  const listedBuy = slot?.buy || null;
+
+  const sellBtn = listedSell
+    ? listedBtn(listedSell, Icon.tag(12), 'Listed', 'is-sell')
+    : `<button type="button" class="set-trade-btn is-sell${have ? '' : ' is-disabled'}"
               data-set-wts="${esc(s.setSlug)}" data-set-qty="${have}"
               title="${have
                 ? `List ${have} complete set${have === 1 ? '' : 's'} for sale on warframe.market`
                 : 'You do not have a complete set yet'}">
         ${Icon.tag(12)}<span>WTS</span>${have > 1 ? `<b>${have}</b>` : ''}
-      </button>
-      <button type="button" class="set-trade-btn is-buy"
+      </button>`;
+
+  const buyBtn = listedBuy
+    ? listedBtn(listedBuy, Icon.plus(12), 'Wanted', 'is-buy')
+    : `<button type="button" class="set-trade-btn is-buy"
               data-set-wtb="${esc(s.setSlug)}"
               title="Post a buy order for this set on warframe.market">
         ${Icon.plus(12)}<span>WTB</span>
-      </button>
-    </span>`;
+      </button>`;
+
+  return `<span class="set-trade">${sellBtn}${buyBtn}</span>`;
 }
 
 function setCardTile(s, idx) {
@@ -6384,7 +6823,7 @@ function setCardTile(s, idx) {
   }).join('');
 
   return `
-    <div class="set-card ${s.complete ? 'complete' : ''}" data-idx="${idx}">
+    <div class="set-card ${s.complete ? 'complete' : ''}${setIsListed(s) ? ' is-listed' : ''}" data-idx="${idx}">
       <div class="set-card-body">
         ${s.image ? `
           <div class="set-art-showcase">
@@ -6429,6 +6868,11 @@ function setupInvGridEvents(grid) {
     }
     const wtb = e.target.closest('[data-set-wtb]');
     if (wtb) { startOrderForSet(wtb.dataset.setWtb, 'buy', 1); return; }
+
+    /* Steht es schon drin, fuehrt der Klick zu der Order, die es gibt - nicht
+       zu einer zweiten fuer dasselbe Set. */
+    const listedEl = e.target.closest('[data-set-open]');
+    if (listedEl) { openListedOrder(listedEl.dataset.setOpen); return; }
 
     /* Ein Set-Teil fragt nach seiner Herkunft, alles andere nach seinem
        Datenblatt - deshalb VOR data-idx geprueft. */
@@ -6495,6 +6939,10 @@ function loadNextInvChunk() {
   } else {
     grid.insertAdjacentHTML('beforeend', html);
   }
+
+  /* Die Preise dieses Blocks nachholen - erst jetzt, wo die Kacheln stehen und
+     das Schild einen Platz hat, an den es geschrieben werden kann. */
+  if (invSection === 'mods' || invSection === 'arcanes') fetchUpgradePrices(nextBatch);
 }
 
 /**
@@ -6506,22 +6954,66 @@ function loadNextInvChunk() {
  * gemeinsame Liste haette in jedem der beiden die Haelfte der Eintraege
  * gezeigt, die dort nichts bedeuten.
  */
+/**
+ * Wo die Kette eines Bereichs liegt und worauf sie zurueckfaellt.
+ *
+ * Als Tabelle und nicht als Kette von if-Zweigen: mit vier Bereichen waeren es
+ * drei Verzweigungen an drei Stellen (Feld fuellen, Vergleich bauen, Preise
+ * nachladen), und die erste, die jemand vergisst, faellt still auf die Sets
+ * zurueck.
+ *
+ * `exclusive` sind Kriterien, die ALLEIN gelten - siehe pick() in sortpick.js.
+ * Bei den Sets ist das die Voreinstellung: sie ordnet eindeutig und liesse
+ * einem zweiten Kriterium sonst nichts mehr zu entscheiden.
+ */
+const INV_SORT_STATE = {
+  sets:    { get: () => invSetSort,    set: v => invSetSort = v,
+             fallback: 'progress', exclusive: ['progress'], axes: () => INV_SET_AXES,   tie: () => bySetName },
+  relics:  { get: () => invRelicSort,  set: v => invRelicSort = v,
+             fallback: 'name-asc', axes: () => INV_RELIC_AXES, tie: () => byRelicName },
+  mods:    { get: () => invModSort,    set: v => invModSort = v,
+             fallback: 'name-asc', axes: () => UPGRADE_AXES,   tie: () => byUpgradeName },
+  arcanes: { get: () => invArcaneSort, set: v => invArcaneSort = v,
+             fallback: 'name-asc', axes: () => UPGRADE_AXES,   tie: () => byUpgradeName }
+};
+
+/** Der Vergleich des aktuellen Bereichs, oder null wo nicht sortiert wird. */
+function invSortComparator(section = invSection) {
+  const st = INV_SORT_STATE[section];
+  return st ? SortPick.chain(st.get(), st.axes(), st.tie()) : null;
+}
+
 function renderInvSortOptions() {
-  const wrap = $('inv-sort-wrap');
-  const sel = $('inv-sort');
   const opts = INV_SORT_OPTIONS[invSection];
-  wrap?.classList.toggle('hidden', !opts);
-  if (!sel || !opts) return;
+  const st = INV_SORT_STATE[invSection];
+  SortPick.toggleHidden('inv-sort-wrap', !opts || !st);
+  if (!opts || !st) return;
 
-  const current = invSection === 'sets' ? invSetSort : invRelicSort;
-  /* Nur neu zeichnen, wenn sich wirklich etwas aendert: ein innerHTML bei
-     jedem Tastendruck in der Suche schlaegt sonst das offene Auswahlfeld zu. */
-  const signatur = invSection + '|' + current;
-  if (sel.dataset.sig === signatur) return;
-  sel.dataset.sig = signatur;
+  /* mount ist beliebig oft aufrufbar: es fasst das Feld nur an, wenn sich
+     Optionen oder Kette wirklich geaendert haben - ein innerHTML bei jedem
+     Tastendruck in der Suche schluege sonst das offene Feld zu. */
+  SortPick.mount('inv-sort-wrap', {
+    options: opts,
+    value: st.get(),
+    fallback: st.fallback,
+    exclusive: st.exclusive || [],
+    onChange: keys => { st.set(keys); applyInvSort(); }
+  });
+}
 
-  sel.innerHTML = opts.map(([v, l]) =>
-    `<option value="${esc(v)}"${v === current ? ' selected' : ''}>${esc(l)}</option>`).join('');
+/**
+ * Eine neue Reihenfolge faengt oben an: sonst steht man nach dem Umschalten
+ * mitten in einer Liste, die es so nicht mehr gibt.
+ *
+ * ABER NUR, WER SCHON UNTEN WAR. Wer oben steht, sieht die erste Karte
+ * ohnehin - ihn nach unten zu ziehen, damit die Sortierzeile am oberen Rand
+ * klebt, waere ein Sprung ohne Anlass.
+ */
+function applyInvSort() {
+  renderInventoryGrid();
+  if (($('inv-grid')?.getBoundingClientRect().top ?? 0) < 0) {
+    document.querySelector('.inv-meta-row')?.scrollIntoView({ block: 'start' });
+  }
 }
 
 function renderInventoryGrid({ keepRendered = 0 } = {}) {
@@ -6529,6 +7021,17 @@ function renderInventoryGrid({ keepRendered = 0 } = {}) {
   if (!d || !d.sections) return;
   const query = ($('inv-search')?.value || '').toLowerCase().trim();
   const all = d.sections[invSection] || [];
+
+  /* Die Position, in der die Liste ANGEKOMMEN ist - einmal gestempelt, damit
+     das Kriterium "Set progress" sie vergleichen kann (siehe INV_SET_AXES).
+     Nur wo sie noch fehlt: nach dem ersten Durchgang steht sie, und ein neuer
+     Abruf bringt neue Objekte mit, die sie dann bekommen. Nur die Sets - die
+     anderen Bereiche kennen kein Kriterium, das danach fragt. */
+  if (invSection === 'sets') {
+    for (let i = 0; i < all.length; i++) {
+      if (all[i]._ord == null) all[i]._ord = i;
+    }
+  }
 
   if (invChunkObserver) {
     invChunkObserver.disconnect();
@@ -6560,11 +7063,13 @@ function renderInventoryGrid({ keepRendered = 0 } = {}) {
   if (invSection === 'sets') {
     const hasQuery = Boolean(query);
     const matchOwn = invSetOwnership === 'all' ? null : matchOf(SET_OWNERSHIP, invSetOwnership);
+    const matchParts = invSetParts === 'all' ? null : matchOf(SET_PARTS, invSetParts);
     const matchOrigin = invSetOrigin === 'all' ? null : matchOf(SET_ORIGINS, invSetOrigin);
     const matchKind = invSetKind === 'all' ? null : matchOf(SET_KINDS, invSetKind);
 
     list = all.filter(s => {
       if (matchOwn && !matchOwn(s)) return false;
+      if (matchParts && !matchParts(s)) return false;
       if (matchOrigin && !matchOrigin(s)) return false;
       if (matchKind && !matchKind(s)) return false;
       if (hasQuery) {
@@ -6581,14 +7086,17 @@ function renderInventoryGrid({ keepRendered = 0 } = {}) {
     /* An Ort und Stelle sortiert, weil .filter oben ohnehin eine neue Liste
        gebaut hat. Die Reihenfolge in inventoryData bleibt so unberuehrt - sie
        gehoert auch dem Dukaten-Tab, und der ordnet anders. */
-    const cmp = INV_SET_SORTS[invSetSort];
+    const cmp = invSortComparator();
     if (cmp) list.sort(cmp);
-  } else if (invSection === 'mods') {
-    list = query ? all.filter(e => e.name.toLowerCase().includes(query) || (e.compat && e.compat.toLowerCase().includes(query))) : all;
-    list = filterMods(list);
-  } else if (invSection === 'arcanes') {
-    list = query ? all.filter(e => e.name.toLowerCase().includes(query)) : all;
-    list = filterArcanes(list);
+  } else if (invSection === 'mods' || invSection === 'arcanes') {
+    list = invSection === 'mods'
+      ? (query ? all.filter(e => e.name.toLowerCase().includes(query) || (e.compat && e.compat.toLowerCase().includes(query))) : all)
+      : (query ? all.filter(e => e.name.toLowerCase().includes(query)) : all);
+    list = invSection === 'mods' ? filterMods(list) : filterArcanes(list);
+    /* Eine neue Liste hat filterMods/filterArcanes ohnehin gebaut - der
+       Bestand in inventoryData bleibt unberuehrt. */
+    const cmp = invSortComparator();
+    if (cmp) list.sort(cmp);
   } else if (invSection === 'relics') {
     /* Die Suche fragt hier ZWEI Dinge auf einmal ab: den Namen des Relikts und
        seine Belohnungen. Wer "Wisp Prime Neuroptics" eintippt, will nicht
@@ -6605,7 +7113,7 @@ function renderInventoryGrid({ keepRendered = 0 } = {}) {
       });
     }
     list = filterRelics(list);
-    const cmp = INV_RELIC_SORTS[invRelicSort];
+    const cmp = invSortComparator();
     /* An Ort und Stelle, weil filterRelics ohnehin eine neue Liste gebaut
        hat - die Reihenfolge in inventoryData bleibt unberuehrt. */
     if (cmp) list.sort(cmp);
@@ -6619,7 +7127,8 @@ function renderInventoryGrid({ keepRendered = 0 } = {}) {
     : '';
 
   const isFiltered = query
-    || (invSection === 'sets' && (invSetOwnership !== 'all' || invSetOrigin !== 'all' || invSetKind !== 'all'))
+    || (invSection === 'sets' && (invSetOwnership !== 'all' || invSetOrigin !== 'all'
+                               || invSetKind !== 'all' || invSetParts !== 'all'))
     || (invSection === 'mods' && (invModOwnership !== 'all' || invModKind !== 'all'))
     || (invSection === 'arcanes' && (invArcaneOwnership !== 'all' || invArcaneKind !== 'all'))
     || (invSection === 'relics' && (invRelicOwnership !== 'all' || invRelicVault !== 'all' || invTier !== 'all'));
@@ -6639,10 +7148,18 @@ function renderInventoryGrid({ keepRendered = 0 } = {}) {
      Karten mit einem Strich, und ohne ein Wort dazu sieht die Liste kaputt
      aus statt unfertig. Die Zahl zaehlt, worauf die Reihenfolge noch wartet. */
   let pendingNote = '';
-  if (invSection === 'sets' && invSetSort === 'plat-desc') {
-    const pending = list.filter(s =>
-      s.setSlug && s.setPrice?.min == null && !setPriceTried.has(s.setSlug)).length;
-    if (pending) pendingNote = ` · ${nf(pending)} set price${pending === 1 ? '' : 's'} still loading`;
+  if (invSection === 'sets' && setSortNeedsPrices()) {
+    const pending = list.filter(s => (s.parts || []).some(x =>
+      x.count > 0 && x.slug && x.price?.min == null && !setPriceTried.has(x.slug))).length;
+    if (pending) pendingNote = ` · ${nf(pending)} set${pending === 1 ? '' : 's'} still pricing`;
+  } else if (upgradeSortNeedsPrices()) {
+    /* Dieselbe Auskunft im Mod- und Arcane-Bereich, und hier zaehlt sie noch
+       mehr: 1.219 handelbare Mods im Mindestabstand von 350 ms sind Minuten,
+       nicht Sekunden. Ohne die Zahl saehe eine Liste, die sich noch sortiert,
+       aus wie eine, die falsch sortiert ist. */
+    const pending = list.filter(e =>
+      e.slug && e.price?.min == null && !upgradePriceDone.has(upgradePriceKey(e))).length;
+    if (pending) pendingNote = ` · ${nf(pending)} price${pending === 1 ? '' : 's'} still loading`;
   }
 
   $('inv-meta').innerHTML = esc(metaText) + esc(pendingNote) + esc(alt);
@@ -6691,7 +7208,34 @@ function renderInventoryGrid({ keepRendered = 0 } = {}) {
   /* Erst zeichnen, dann nachladen: der Aufruf steht hinter dem Raster, damit
      er die sichtbare Liste kennt und dort anfangen kann. Laeuft im Hintergrund
      weiter, ohne dass das Zeichnen darauf wartet. */
-  if (invSection === 'sets') fetchMissingSetPrices();
+  if (invSection === 'sets') {
+    fetchMissingSetPrices();
+    /* Die eigenen Orders einmal nachholen, damit die Karten sagen koennen,
+       was davon schon auf warframe.market steht. Danach noch einmal zeichnen -
+       aber nur, wenn wirklich etwas dazugekommen ist, und mit dem Rollbalken
+       an Ort und Stelle: dieselben Karten mit einem Etikett mehr sind dieselbe
+       Seitenhoehe, ein Sprung nach oben waere grundlos. */
+    ensureMyListings().then(neu => {
+      if (!neu || invSection !== 'sets') return;
+      const scroller = document.querySelector('.main-content');
+      const top = scroller?.scrollTop ?? 0;
+      renderInventoryGrid({ keepRendered: invRenderedCount });
+      if (scroller) scroller.scrollTop = top;
+    });
+  }
+  /* Normalerweise nur der erste Block; die naechsten holt loadNextInvChunk
+     beim Scrollen nach (siehe fetchUpgradePrices - warum nicht die ganze
+     Liste).
+
+     WER NACH PLATIN ORDNET, BRAUCHT ALLE PREISE. Eine Rangfolge ueber die
+     fuenf Prozent, die zufaellig schon eine Zahl tragen, waere keine
+     Rangfolge, sondern eine Aussage ueber die Reihenfolge der Abrufe. Dann
+     also die ganze GEFILTERTE Liste - was die Chips wegschneiden, muss auch
+     nicht abgefragt werden, und genau darueber laesst sich die Wartezeit
+     kurz halten. */
+  if (invSection === 'mods' || invSection === 'arcanes') {
+    fetchUpgradePrices(upgradeSortNeedsPrices() ? list : initial);
+  }
 }
 
 /* ---------------- Kacheln des Inventar-Rasters ---------------- */
@@ -6794,12 +7338,68 @@ function modCardHtml(c) {
  * besitzt - das ist der Rang, den die Karte zeigen soll.
  */
 function modTile(e, i) {
-  const isOwned = (e.count || 0) > 0;
   return `
-    <div class="mod-slot ${isOwned ? '' : 'is-unowned'}" ${e.resolved ? `data-idx="${i}" title="${isOwned ? 'Open data sheet' : 'Not owned · Open data sheet'}"` : ''}>
+    <div class="mod-slot ${(e.count || 0) > 0 ? '' : 'is-unowned'}" ${e.resolved ? `data-idx="${i}" title="${(e.count || 0) > 0 ? 'Open data sheet' : 'Not owned · Open data sheet'}"` : ''}>
       ${modCardHtml({ ...e, rank: e.maxRank ?? 0 })}
-      <span class="mod-count ${isOwned ? '' : 'is-unowned'}">${isOwned ? nf(e.count) : '0'}</span>
+      ${upgradeBadges(e)}
     </div>`;
+}
+
+/**
+ * Anzahl und Preis als EIN Paar, in derselben Ecke.
+ *
+ * Sie standen sich vorher gegenueber - Bestand links, Preis rechts -, und
+ * damit las man sie als zwei Auskuenfte ueber zwei verschiedene Dinge. Es sind
+ * aber zwei Haelften derselben: wie viele liegen hier, und was ist eine davon
+ * wert. Nebeneinander beantworten sie die Frage "lohnt sich der Stapel" mit
+ * einem Blick, statt mit zweien ueber die Kachel hinweg.
+ *
+ * EIN GEMEINSAMER KASTEN, damit die beiden Pillen aneinander haengen bleiben,
+ * egal wie breit die Zahlen werden - und damit ein nachgereichter Preis eine
+ * Stelle hat, an die er geschrieben werden kann (siehe paintUpgradePlat).
+ */
+function upgradeBadges(e) {
+  const isOwned = (e.count || 0) > 0;
+  return `<span class="inv-badges">
+      <span class="mod-count ${isOwned ? '' : 'is-unowned'}">${isOwned ? nf(e.count) : '0'}</span>
+      ${upgradePriceTag(e)}
+    </span>`;
+}
+
+/* ---------------- Der Platinpreis einer Karte ----------------
+
+   DER RANG GEHOERT AN DIE ZAHL. Bei einem Prime-Teil ist der Preis eine Zahl;
+   bei einer Mod sind es so viele, wie die Karte Stufen hat, und sie liegen
+   weit auseinander - nachgemessen am 12.09.2026:
+
+     Arcane Energize     Rang 0     5p     Rang 5   100p
+     Primed Continuity   Rang 0    30p     Rang 10   67p
+
+   Eine blanke "5p" auf einem Rang-5-Energize waere deshalb keine Auskunft,
+   sondern eine falsche. Gefragt wird nach der Stufe, die man BESITZT (siehe
+   priceRank in main.js); besitzt man die Karte nicht, nach der ungerankten -
+   das ist die Stufe, in der sie faellt.
+
+   EIN UNBEKANNTER PREIS IST KEINE NULL, dieselbe Regel wie bei den Sets: eine
+   Karte, deren Preis noch unterwegs ist, traegt gar kein Schild statt einer
+   Null. Wer nicht handelbar ist (Rivens, Precepts), hat keinen Slug und
+   bekommt auch keins.
+
+   DAS PLATIN-SYMBOL STATT EINES "p": dieselbe Muenze steht auf den Set-Karten,
+   im Datenblatt eines Teils und in der Kopfzeile des Inventars. Ein
+   angehaengter Buchstabe waere an einer Stelle eine andere Schreibweise fuer
+   dasselbe - und der Blick muesste jedes Mal neu herausfinden, welche
+   Waehrung gemeint ist. */
+function upgradePriceTag(e) {
+  if (!e.slug || e.price?.min == null) return '';
+  const rank = e.priceRank ?? 0;
+  const alt = e.price.stale ? ' is-stale' : '';
+  const title = `Lowest price on warframe.market for rank ${rank}`
+    + (e.price.stale ? ' — a remembered price, a fresh one is on its way' : '')
+    + (e.price.online === false ? ' — nobody selling in game right now' : '');
+  return `<span class="mod-plat${alt}" data-up-plat="${esc(e.slug)}" title="${esc(title)}"
+    ><img class="currency-ic" src="assets/icons/currency/platinum.png" alt="Platinum"
+    ><b>${nf(e.price.min)}</b></span>`;
 }
 
 /**
@@ -6812,7 +7412,7 @@ function arcaneTile(e, i) {
     <div class="arc-tile ${isOwned ? '' : 'is-unowned'}" ${e.resolved ? `data-idx="${i}" title="${isOwned ? 'Open data sheet' : 'Not owned · Open data sheet'}"` : ''}>
       <div class="arc-art">
         <img src="${esc(e.card || e.image)}" alt="" loading="lazy">
-        <span class="mod-count ${isOwned ? '' : 'is-unowned'}">${isOwned ? nf(e.count) : '0'}</span>
+        ${upgradeBadges(e)}
       </div>
       <b>${esc(e.name)}</b>
       ${e.ranks?.length ? `<span class="inv-tag">${e.ranks.map(r =>
@@ -6943,10 +7543,132 @@ async function openUpgradeModal(entry) {
      die Karte noch sucht. */
   upgradeRank = upgradeData.owned?.maxRank ?? upgradeData.maxRank;
   renderUpgradeModal();
+  fetchUpgradeRankPrice();
 }
 
 function closeUpgradeModal() {
   $('upgrade-modal')?.classList.add('hidden');
+}
+
+/* ---------------- Der Preis der gewaehlten Stufe ----------------
+
+   EINE STUFE JE ABRUF, UND NUR DIE ANGESEHENE. Eine Mod hat bis zu elf Raenge;
+   alle beim Oeffnen zu holen waere elf Abrufe im Mindestabstand von 350 ms
+   fuer zehn Zahlen, die niemand liest. Was auf Platte steht, kommt mit dem
+   Datenblatt (siehe upgrade:details); der Rest wird geholt, sobald jemand auf
+   die Stufe klickt - und dann genau einer.
+
+   WAS EINMAL GEFRAGT WURDE, WIRD NICHT WIEDER GEFRAGT - auch dann nicht, wenn
+   die Antwort "kein Angebot" war. Ohne dieses Gedaechtnis fragte jeder Klick
+   hin und zurueck erneut nach einer Stufe, die der Markt nicht fuehrt. Der
+   Zustand unterscheidet dabei "laeuft" von "war schon dran": beide zeigen
+   keine Zahl, aber nur der erste darf als "laedt" dastehen. */
+const upgradeRankState = new Map();   // slug#rN -> 'loading' | 'done'
+
+const upgradeRankKey = (slug, rank) => `${slug}#r${rank}`;
+
+async function fetchUpgradeRankPrice() {
+  const d = upgradeData;
+  if (!d?.slug) return;
+
+  const rank = upgradeRank;
+  const have = d.prices?.[rank];
+  /* Ein abgelaufener Preis steht sofort da und wird trotzdem erneuert: er
+     beantwortet die Frage gut genug, um ihn zu zeigen, aber nicht gut genug,
+     um ihn stehen zu lassen. */
+  if (have && !have.stale) return;
+
+  const key = upgradeRankKey(d.slug, rank);
+  if (upgradeRankState.has(key)) return;
+  upgradeRankState.set(key, 'loading');
+  paintUpgradeRankPrice();
+
+  const res = await window.api.fetchUpgradePrices([{ slug: d.slug, rank }]);
+  upgradeRankState.set(key, 'done');
+
+  /* Zwischenzeitlich geschlossen oder eine andere Karte offen: die Antwort
+     gehoert dann zu einem Datenblatt, das niemand mehr ansieht. */
+  if (upgradeData !== d) return;
+
+  d.prices = { ...(d.prices || {}), [rank]: res?.[key] ?? null };
+  paintUpgradeRankPrice();
+}
+
+/**
+ * Nur die Preiszelle neu, nicht das ganze Datenblatt: ein innerHTML ueber den
+ * Kopf haette die Rangleiter mitgenommen, und der Klick, der den Abruf
+ * ausgeloest hat, waere zusammen mit seinem Knopf verschwunden.
+ */
+function paintUpgradeRankPrice() {
+  const cell = $('up-plat-cell');
+  if (!cell || !upgradeData) return;
+  const tmp = document.createElement('div');
+  tmp.innerHTML = upgradeModalPlat(upgradeData);
+  if (tmp.firstElementChild) cell.replaceWith(tmp.firstElementChild);
+}
+
+/**
+ * Der Platinpreis im Kopf des Datenblatts - immer fuer die GEWAEHLTE Stufe.
+ *
+ * DREI ZUSTAENDE, dieselben wie bei den Set-Karten: eine Zahl, ein Preis der
+ * noch unterwegs ist, oder die Auskunft, dass der Markt zu dieser Stufe kein
+ * Angebot fuehrt. Alle drei zeigen einen Strich, und nur der Titel
+ * unterscheidet sie - eine Null waere in allen drei Faellen falsch.
+ */
+function upgradeModalPlat(d) {
+  const known = d.prices?.[upgradeRank];
+  const pending = !known
+    && upgradeRankState.get(upgradeRankKey(d.slug, upgradeRank)) !== 'done';
+
+  const title = known
+    ? `Lowest price on warframe.market for rank ${upgradeRank}`
+      + (known.stale ? ' — remembered, a fresh one is on its way' : '')
+      + (known.online === false ? ' — nobody selling in game right now' : '')
+    : (pending ? 'Loading the price from warframe.market …'
+               : `No offer on warframe.market for rank ${upgradeRank}`);
+
+  return `
+    <span class="part-stat-val${pending ? ' is-pending' : ''}" id="up-plat-cell" title="${esc(title)}">
+      <img class="currency-ic" src="assets/icons/currency/platinum.png" alt="Platinum">
+      <b>${known ? nf(known.min) : '–'}</b> <small>Rank ${upgradeRank}</small>
+    </span>`;
+}
+
+/**
+ * Die Handelsknoepfe des Datenblatts.
+ *
+ * NUR HIER UND NICHT AUF DER KACHEL: im Raster stehen 1.219 Mod-Karten, und
+ * ein Knopfpaar auf jeder waere zweitausend Knoepfe fuer eine Handlung, die
+ * man je Sitzung ein paar Mal ausfuehrt - auf einer Karte, die zugeklappt
+ * 90 px hoch ist und dort nicht einmal Platz dafuer hat. Das Datenblatt ist
+ * die Stelle, an der man sich eine einzelne Karte ansieht, und damit die
+ * Stelle, an der die Entscheidung faellt.
+ *
+ * DER RANG GEHT MIT: verkauft wird die Stufe, die gerade gewaehlt ist - dieselbe,
+ * fuer die der Preis daneben gilt. Ein Angebot ohne Rang waere ein Angebot fuer
+ * ein anderes Gut.
+ *
+ * VERKAUFEN NUR MIT BESITZ: wer die Karte nicht hat, kann sie nicht liefern.
+ * Der Knopf bleibt sichtbar, aber gesperrt - damit der Kopf nicht je nach
+ * Bestand anders aussieht.
+ */
+function upgradeTradeButtons(d) {
+  if (!d.slug) return '';
+  const have = d.owned?.count || 0;
+  return `
+    <span class="up-trade">
+      <button type="button" class="set-trade-btn is-sell${have ? '' : ' is-disabled'}"
+              id="up-wts-btn"
+              title="${have
+                ? `List it for sale on warframe.market at rank ${upgradeRank}`
+                : 'You do not own this card'}">
+        ${Icon.tag(12)}<span>WTS</span>${have > 1 ? `<b>${have}</b>` : ''}
+      </button>
+      <button type="button" class="set-trade-btn is-buy" id="up-wtb-btn"
+              title="Post a buy order on warframe.market for rank ${upgradeRank}">
+        ${Icon.plus(12)}<span>WTB</span>
+      </button>
+    </span>`;
 }
 
 /**
@@ -7035,9 +7757,14 @@ function renderUpgradeModal() {
           <div class="im-tags">${badges}</div>
           <h2>${esc(d.name)}</h2>
           ${subline ? `<div class="up-subline">${subline}</div>` : ''}
+          <!-- Der Preis steht im Kopf und nicht bei den Werten: er gehoert zu
+               dem, was die Karte IST, nicht zu dem, was sie tut - und er
+               aendert sich mit der Stufe, die unten gewaehlt wird. -->
+          ${d.slug ? `<div class="part-header-stats">${upgradeModalPlat(d)}</div>` : ''}
         </div>
       </div>
       <div class="im-header-actions">
+        ${upgradeTradeButtons(d)}
         <button id="up-goal-btn" class="btn ${inGoals ? 'btn-secondary' : 'btn-primary'}" data-u="${esc(d.uniqueName)}" data-name="${esc(d.name)}">
           ${inGoals ? Icon.trash(14) + ' <span>Remove from goals</span>' : Icon.plus(14) + ' <span>Set as goal</span>'}
         </button>
@@ -7136,8 +7863,35 @@ function renderUpgradeModal() {
   }
 
   content.querySelectorAll('[data-rank]').forEach(btn => {
-    btn.onclick = () => { upgradeRank = Number(btn.dataset.rank); renderUpgradeModal(); };
+    btn.onclick = () => {
+      upgradeRank = Number(btn.dataset.rank);
+      renderUpgradeModal();
+      /* Jede Stufe hat ihren eigenen Preis - der neue wird geholt, sobald
+         jemand hinsieht, und nicht alle elf beim Oeffnen. */
+      fetchUpgradeRankPrice();
+    };
   });
+
+  const upWts = $('up-wts-btn');
+  if (upWts) {
+    upWts.onclick = () => {
+      if (upWts.classList.contains('is-disabled')) return;
+      /* Nur die Exemplare DIESER Stufe als Menge: wer fuenf ungerankte und
+         eines auf Rang 10 hat, bietet nicht sechs Rang-10-Karten an. Steht zu
+         der Stufe keine Zahl, bleibt es bei einer. */
+      const onRank = (d.owned?.ranks || []).find(r => r.rank === upgradeRank);
+      closeUpgradeModal();
+      startOrderForSet(d.slug, 'sell', onRank?.count || 1, upgradeRank);
+    };
+  }
+
+  const upWtb = $('up-wtb-btn');
+  if (upWtb) {
+    upWtb.onclick = () => {
+      closeUpgradeModal();
+      startOrderForSet(d.slug, 'buy', 1, upgradeRank);
+    };
+  }
 
   /* Bleibt die gezeichnete Karte aus, tritt das Bild aus DEs Export an ihre
      Stelle - und der Rahmen im Kopf schrumpft wieder auf Bildgroesse. */
@@ -7513,23 +8267,6 @@ if ($('inv-search')) {
   $('inv-search').oninput = () => {
     clearTimeout(invSearchDebounce);
     invSearchDebounce = setTimeout(() => renderInventoryGrid(), 60);
-  };
-}
-
-/* Eine neue Reihenfolge faengt oben an: sonst steht man nach dem Umschalten
-   mitten in einer Liste, die es so nicht mehr gibt.
-
-   ABER NUR, WER SCHON UNTEN WAR. Wer oben steht, sieht die erste Karte
-   ohnehin - ihn nach unten zu ziehen, damit die Sortierzeile am oberen Rand
-   klebt, waere ein Sprung ohne Anlass. */
-if ($('inv-sort')) {
-  $('inv-sort').onchange = e => {
-    if (invSection === 'relics') invRelicSort = e.target.value;
-    else invSetSort = e.target.value;
-    renderInventoryGrid();
-    if (($('inv-grid')?.getBoundingClientRect().top ?? 0) < 0) {
-      document.querySelector('.inv-meta-row')?.scrollIntoView({ block: 'start' });
-    }
   };
 }
 
@@ -9764,8 +10501,14 @@ const closeTxModal = () => {
  * Ohne Anmeldung fuehrt der Weg nicht ins Leere, sondern ins Kontofenster:
  * eine Order anzulegen ist ohne Konto nicht moeglich, und das gehoert gesagt,
  * bevor jemand ein Formular ausfuellt.
+ *
+ * @param rank  Stufe, auf die sich das Angebot bezieht - nur bei Mods und
+ *              Arcanes. Ein Set hat keine, und das Feld bleibt dann verborgen.
+ *              Es MUSS mitgehen: wer einen Rang-10-Primed-Continuity anbietet,
+ *              stellt sonst ein Angebot fuer ein ungeranktes Exemplar in die
+ *              Liste, und der Preis daneben gilt fuer ein anderes Gut.
  */
-async function startOrderForSet(slug, type, quantity) {
+async function startOrderForSet(slug, type, quantity, rank = null) {
   showTab('trading');
   await loadTrading();
 
@@ -9773,15 +10516,27 @@ async function startOrderForSet(slug, type, quantity) {
 
   const item = await window.api.tradeItemBySlug(slug);
   if (!item) {
-    alert('warframe.market does not list this set.');
+    alert('warframe.market does not list this item.');
     return;
   }
 
   openNewOrderModal();
   $('trade-new-type').value = type;
+
+  /* DER RANG VOR pickNewOrderItem, die Menge danach - und das ist kein
+     Schoenheitsfehler in der Reihenfolge:
+
+       Der RANG geht in die Preisabfrage ein (siehe suggestNewOrderPrice).
+       Wird er erst danach gesetzt, ist der Vorschlag fuer die ungerankte Ware
+       gerechnet und steht fuer eine Rang-10-Mod im Feld - genau die
+       Verwechslung, die er verhindern soll.
+
+       Die MENGE geht nirgends ein, wird aber von pickNewOrderItem auf 1
+       zurueckgesetzt. Sie muss deshalb danach kommen. */
+  if (rank != null && item.maxRank != null) {
+    $('trade-new-rank').value = Math.min(Math.max(0, rank), item.maxRank);
+  }
   await pickNewOrderItem(item);
-  /* Nach pickNewOrderItem, weil das den Preisvorschlag setzt und dabei die
-     Menge nicht anfasst - andersherum wuerde die Vorbelegung ueberschrieben. */
   $('trade-new-qty').value = Math.max(1, quantity);
 }
 
@@ -9789,11 +10544,14 @@ function openNewOrderModal() {
   newOrderItem = null;
   $('trade-new-search').value = '';
   $('trade-new-results').innerHTML = '';
-  /* Preis und Menge zuruecksetzen: sonst schlaegt der Vorschlag beim
-     naechsten Item nicht an (er fuellt nur ein leeres Feld) und die Menge
-     der vorigen Order steht noch da. */
+  /* Preis, Menge und Rang zuruecksetzen: sonst schlaegt der Vorschlag beim
+     naechsten Item nicht an (er fuellt nur ein leeres Feld), und Menge wie
+     Rang der vorigen Order stehen noch da. Beim Rang faellt das doppelt ins
+     Gewicht, seit er in die Preisabfrage eingeht - eine stehengebliebene 10
+     holte die Preise einer Stufe, die mit dem neuen Item nichts zu tun hat. */
   $('trade-new-plat').value = '';
   $('trade-new-qty').value = 1;
+  $('trade-new-rank').value = 0;
   $('trade-new-type').value = 'sell';
   $('trade-new-form').classList.add('hidden');
   $('trade-new-status').textContent = '';
@@ -9876,7 +10634,25 @@ async function suggestNewOrderPrice() {
     type: selling ? 'sell' : 'buy',
     sort: selling ? 'price-asc' : 'price-desc',
     limit: 5,
-    subtype: item.subtypes ? $('trade-new-subtype').value : null
+    /* NUR WER IM SPIEL STEHT. Eine Order von jemandem, der seit drei Tagen
+       offline ist, ist kein Preis, sondern eine Zahl - und als "guenstigster
+       Verkaeufer" ist sie eine Konkurrenz, die niemanden bedient. Wer sich
+       daran misst, unterbietet einen Markt, den es gerade nicht gibt.
+
+       Steht zu dem Item niemand im Spiel, zaehlen doch alle: eine leere Zeile
+       waere eine Falschaussage ueber einen Markt mit vierzig Verkaeufern. Was
+       davon eingetreten ist, sagt res.ingameOnly - und die Zeile sagt es
+       weiter, damit die Zahl daneben einzuordnen ist. */
+    preferIngame: true,
+    subtype: item.subtypes ? $('trade-new-subtype').value : null,
+    /* GENAU DIESER RANG, nicht bis zu ihm. Bei einer Mod ist der Rang die
+       Ware - eine nach Preis sortierte Mischung aus Rang 0 und Rang 10 ist
+       kein Preisvergleich, sondern ein Missverstaendnis mit Zahlen (dieselbe
+       Begruendung wie in der Marktsuche). Ohne diese beiden Zeilen schlug das
+       Fenster fuer ein Rang-10-Angebot den Preis der ungerankten vor. */
+    ...(item.maxRank != null
+      ? { minRank: +$('trade-new-rank').value || 0, maxRank: +$('trade-new-rank').value || 0 }
+      : {})
   });
   if (!res?.ok || !res.offers.length) {
     $('trade-new-hint').textContent = selling
@@ -9898,9 +10674,17 @@ async function suggestNewOrderPrice() {
   const median = arr => [...arr].sort((a, b) => a - b)[Math.floor(arr.length / 2)];
   const suggestion = selling ? lead : median(prices);
 
+  /* WOHER DIE ZAHLEN KOMMEN, GEHOERT DAZU. "10p" heisst etwas anderes, wenn es
+     von jemandem stammt, der gerade im Spiel sitzt, als wenn es die letzte
+     Order eines seit Tagen Abwesenden ist - und beides sieht gleich aus. */
+  const quelle = res.ingameOnly ? 'in game' : 'nobody in game — all sellers';
+  const quelleKauf = res.ingameOnly ? 'in game' : 'nobody in game — all buyers';
+
   $('trade-new-hint').innerHTML = selling
-    ? `Cheapest seller: <b>${nf(lead)}p</b> · next: ${prices.slice(1, 5).map(p => nf(p) + 'p').join(', ')}`
-    : `Buyers offer ${prices.map(p => nf(p) + 'p').join(', ')} — suggesting the middle one, <b>${nf(suggestion)}p</b>`;
+    ? `Cheapest seller <small>(${esc(quelle)})</small>: <b>${nf(lead)}p</b>`
+      + (prices.length > 1 ? ` · next: ${prices.slice(1, 5).map(p => nf(p) + 'p').join(', ')}` : '')
+    : `Buyers <small>(${esc(quelleKauf)})</small> offer ${prices.map(p => nf(p) + 'p').join(', ')}`
+      + ` — suggesting the middle one, <b>${nf(suggestion)}p</b>`;
 
   if (!$('trade-new-plat').value) $('trade-new-plat').value = suggestion;
 }
@@ -10159,6 +10943,15 @@ function initTradingEvents() {
   /* Anderer Zustand, anderer Preis - Relikte unterscheiden sich um ein
      Vielfaches zwischen intakt und strahlend. */
   $('trade-new-subtype').onchange = () => {
+    $('trade-new-plat').value = '';
+    suggestNewOrderPrice();
+  };
+  /* UND DER RANG GENAUSO. Bei einer Mod ist er nicht eine Eigenschaft der
+     Ware, sondern die Ware: Primed Continuity kostet ungerankt 30p und auf
+     Rang 10 das Doppelte. Ohne diese Zeile stuende neben einem Rang-10-Angebot
+     der Preis der ungerankten - dieselbe Verwechslung wie bei einem intakten
+     gegen ein strahlendes Relikt. */
+  $('trade-new-rank').onchange = () => {
     $('trade-new-plat').value = '';
     suggestNewOrderPrice();
   };

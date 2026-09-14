@@ -3654,6 +3654,134 @@ select option { background: #161b25; color: var(--text); }
   font-size: 12px;
   color: var(--text-3);
 }
+
+/* ---------- Sortierung aus mehreren Kriterien (sortpick.js) ----------
+
+   Der Knopf sieht aus wie das Auswahlfeld, das hier stand - dieselbe Groesse,
+   dieselben Farben. Was sich aendert, ist sein Inhalt: nicht eine Antwort,
+   sondern die Kette, in der sie gelten.
+
+   KEIN `border: 1px solid var(--border)` wie bei .select-sm nebenan: die
+   Variable ist nirgends gesetzt, und damit faellt die ganze Kurzschreibweise
+   auf border-style:none zurueck - die Felder im Programm haben also gar keinen
+   Rahmen. Was hier eine Kante braucht, bekommt sie als inneren Schatten;
+   sonst waere der Zustand "offen" von "zu" nicht zu unterscheiden. */
+.sortpick { position: relative; }
+.sortpick-caption { white-space: nowrap; }
+.sortpick-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 320px;
+  background: var(--surface-2);
+  color: var(--text);
+  padding: 5px 9px;
+  border: none;
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+  transition: background .15s var(--ease), box-shadow .15s var(--ease);
+}
+.sortpick-btn:hover { background: var(--surface-3); }
+.sortpick.is-open .sortpick-btn {
+  background: var(--accent-sf);
+  box-shadow: inset 0 0 0 1px rgb(var(--t-accent) / .45);
+  color: var(--accent);
+}
+/* Die Kette kann laenger werden als der Platz: sie wird abgeschnitten, nicht
+   umgebrochen - sonst waechst die Zeile und das Raster darunter springt. */
+.sortpick-chain {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sortpick-caret { font-size: 9px; line-height: 1; opacity: .7; }
+
+/* Das Feld haengt unter dem Knopf und rechts an ihm ausgerichtet: es sitzt am
+   rechten Rand seiner Zeile, und nach links ist der Platz.
+
+   DIESELBE UNDURCHSICHTIGE FLAECHE WIE EIN FENSTER, und nicht --surface-2: die
+   Flaechenfarben des Programms sind durchscheinendes Weiss und darauf
+   berechnet, AUF etwas zu liegen. Ein Feld, das ueber dem Kachelraster
+   schwebt, wird damit zur Milchglasscheibe - die Set-Karten standen bei der
+   ersten Fassung mitten in der Liste. */
+.sortpick-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 60;
+  min-width: 252px;
+  padding: 9px;
+  background: #161b25;
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-lg), inset 0 0 0 1px rgba(255, 255, 255, .07);
+}
+.sortpick-hint {
+  margin: 2px 6px 9px;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--text-3);
+}
+.sortpick-opts { display: flex; flex-direction: column; gap: 2px; }
+.sortpick-opt {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 6px 7px;
+  background: none;
+  border: none;
+  border-radius: var(--r-sm);
+  color: var(--text-2);
+  font-size: 12px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background .12s var(--ease), color .12s var(--ease);
+}
+.sortpick-opt:hover { background: var(--surface-2); color: var(--text); }
+.sortpick-opt.is-on { color: var(--accent); }
+
+/* Das Kaestchen traegt die NUMMER, nicht einen Haken: der Haken saehe bei zwei
+   gewaehlten Kriterien zweimal gleich aus, und welches zuerst gilt, waere
+   wieder Ratesache. */
+.sortpick-ord {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .13);
+  font: 700 10px/1 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  color: var(--accent);
+}
+.sortpick-opt.is-on .sortpick-ord {
+  background: var(--accent-sf);
+  box-shadow: inset 0 0 0 1px rgb(var(--t-accent) / .55);
+}
+.sortpick-label { flex: 1; }
+.sortpick-reset {
+  width: 100%;
+  margin-top: 8px;
+  padding: 6px 7px;
+  background: none;
+  border: none;
+  border-radius: var(--r-sm);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1);
+  color: var(--text-3);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color .12s var(--ease), box-shadow .12s var(--ease);
+}
+.sortpick-reset:hover {
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px rgb(var(--t-accent) / .4);
+}
+
 .select-sm {
   background: var(--surface-2);
   border: 1px solid var(--border);
@@ -7065,6 +7193,15 @@ body.tags-window {
   flex-shrink: 0;
 }
 
+/* Derselbe Strich-statt-Null-Fall wie bei den Set-Karten: ein Preis, der noch
+   unterwegs ist, sieht anders aus als eine Stufe, zu der es kein Angebot
+   gibt - sonst waere beides derselbe Strich. */
+.part-stat-val.is-pending b { color: var(--text-3); animation: setPlatWait 1.5s var(--ease) infinite; }
+
+/* Die Handelsknoepfe im Datenblatt einer Mod. Links vom Ziel-Knopf, weil sie
+   zusammengehoeren: beides sind Dinge, die man mit dieser Karte TUT. */
+.up-trade { display: inline-flex; align-items: center; gap: 6px; margin-right: 10px; }
+
 .prel-lead { font-size: 12.5px; color: var(--text-2); line-height: 1.55; margin-bottom: 16px; }
 .prel-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 7px; margin-bottom: 18px; }
 
@@ -7140,6 +7277,38 @@ body.tags-window {
 .set-trade-btn.is-sell:hover { background: rgba(88,166,255,.16); border-color: rgba(88,166,255,.45); }
 .set-trade-btn.is-buy { color: var(--gold); border-color: rgba(240,184,73,.25); }
 .set-trade-btn.is-buy:hover { background: rgba(240,184,73,.16); border-color: rgba(240,184,73,.45); }
+
+/* ---- Steht schon auf warframe.market ----
+
+   AUSGEFUELLT STATT UMRANDET: die anderen Knoepfe sind Angebote ("das koenntest
+   du tun"), dieser ist ein Zustand ("das TUST du gerade"). Derselbe Ton, nur
+   als Flaeche - damit faellt er auf der Karte auf, ohne eine neue Farbe ins
+   Raster zu bringen. */
+.set-trade-btn.is-listed.is-sell {
+  background: rgba(88,166,255,.18); border-color: rgba(88,166,255,.5); color: #a5d3ff;
+}
+.set-trade-btn.is-listed.is-sell:hover { background: rgba(88,166,255,.3); }
+.set-trade-btn.is-listed.is-buy {
+  background: rgba(240,184,73,.18); border-color: rgba(240,184,73,.5); color: #ffd98a;
+}
+.set-trade-btn.is-listed.is-buy:hover { background: rgba(240,184,73,.3); }
+/* Pausiert ist kein Angebot - es steht nur bereit. Die Farbe faellt weg, der
+   Knopf bleibt. */
+.set-trade-btn.is-listed.is-paused {
+  background: rgba(255,255,255,.09); border-color: rgba(255,255,255,.16); color: var(--text-3);
+}
+.set-trade-btn.is-listed.is-paused:hover { background: rgba(255,255,255,.16); color: var(--text-2); }
+
+/* KEIN ZWEITES ETIKETT IM KOPF. Es stand dort einmal und war die dritte
+   Auskunft ueber dieselbe Sache - neben der Kante um die Karte und dem Knopf
+   im Fuss, der den Preis ohnehin traegt. Bezahlt wurde es mit dem Namen: bei
+   "Burston Prime · 4/4 Teile · komplett" war die Zeile voll, und der Name
+   brach um. Die Kante sagt "hier ist etwas draussen", der Knopf sagt was und
+   zu welchem Preis - das reicht.
+
+   Eine KANTE und keine zweite Flaeche: das Raster ist voller Flaechen, und
+   eine weitere wuerde die Karte umbauen statt sie zu markieren. */
+.set-card.is-listed { box-shadow: inset 0 0 0 1px rgba(88,166,255,.35); }
 
 /* Gesperrt statt versteckt: die Karte soll nicht je nach Bestand anders
    aussehen, und der Titel sagt, warum es nicht geht. */
@@ -7963,21 +8132,63 @@ body:not(:has(.modal:not(.hidden))) .mod-slot:hover .mod-compat,
   opacity: .8;
 }
 
-/* Bestand */
-.mod-count {
+/* ---- Abzeichen einer Karte: Bestand und Preis, als Paar ----
+
+   EINE ZEILE IN DER OBEREN LINKEN ECKE, bei Mods wie bei Arcanes. Vorher sass
+   der Bestand links und der Preis rechts, und damit lasen sie sich wie zwei
+   Auskuenfte ueber zwei Dinge; es sind aber zwei Haelften derselben Frage -
+   wie viele liegen hier, und was ist eine davon wert.
+
+   Die Pillen tragen ihre Stellung nicht mehr selbst: sie sitzen in diesem
+   Kasten und richten sich nach ihm. Damit bleiben sie aneinander, egal wie
+   breit die Zahlen werden. */
+.inv-badges {
   position: absolute;
   left: -2px;
   top: -8px;
   z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Bestand */
+.mod-count,
+.mod-plat {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   padding: 1px 7px;
   border-radius: 999px;
   background: rgba(6, 9, 14, .88);
-  box-shadow: inset 0 0 0 1px rgb(var(--t-gold) / .35);
-  color: var(--gold);
   font: 700 10.5px/1.6 ui-monospace, "Cascadia Mono", Consolas, monospace;
   transition: opacity .12s var(--ease);
 }
-body:not(:has(.modal:not(.hidden))) .mod-slot:hover .mod-count { opacity: 0; }
+.mod-count {
+  box-shadow: inset 0 0 0 1px rgb(var(--t-gold) / .35);
+  color: var(--gold);
+}
+
+/* Der Platinpreis, in derselben Muenze wie ueberall sonst im Programm: das
+   Symbol statt eines angehaengten "p". */
+.mod-plat {
+  box-shadow: inset 0 0 0 1px rgb(var(--t-accent) / .35);
+  color: var(--accent);
+}
+.mod-plat .currency-ic { width: 11px; height: 11px; }
+.mod-plat b { font-weight: 700; }
+/* Ein gemerkter Preis, dessen Frist abgelaufen ist. Er steht sofort da, weil
+   ein acht Tage alter Platinpreis die Frage "verkaufen oder einschmelzen"
+   genauso gut beantwortet wie ein frischer - aber er sagt, dass er alt ist. */
+.mod-plat.is-stale {
+  color: var(--text-3);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14);
+}
+.mod-plat.is-stale .currency-ic { opacity: .55; }
+
+/* Beim Aufklappen verschwinden beide: dort wird die Karte selbst gelesen, und
+   zwei Pillen darueber stehen im Weg. */
+body:not(:has(.modal:not(.hidden))) .mod-slot:hover .inv-badges { opacity: 0; }
 
 /* ---- Seltenheit: Rahmen, Untergrund und Farbe ---- */
 
@@ -8066,11 +8277,12 @@ body:not(:has(.modal:not(.hidden))) .mod-slot:hover .mod-card.rar-legendary .mod
   width: 108px; height: 79px; object-fit: contain;
   filter: drop-shadow(0 3px 10px rgba(0, 0, 0, .5));
 }
-/* Oben rechts statt oben links wie bei den Mods.
-   `bottom` MUSS dabei zurueckgesetzt werden: die Grundform steht mit `top`
-   fest, und wer beides zugleich setzt, spannt den Kasten ueber die ganze
-   Hoehe - aus der Pille wird dann ein senkrechter Balken. */
-.arc-art .mod-count { left: auto; right: 0; top: 0; bottom: auto; }
+/* Die Abzeichenzeile sitzt bei den Arcanes an der Oberkante des Bildes statt
+   darueber: das Gefaess ist quer und fuellt die Kachel bis an den Rand, ein
+   negatives `top` wie bei der hochkanten Mod-Karte haette die Pillen aus der
+   Kachel heraushaengen lassen. Dieselbe Ecke, dieselbe Reihenfolge - nur
+   angelegt statt aufgesetzt. */
+.arc-art .inv-badges { left: 0; top: 0; }
 .arc-tile b {
   font-size: 11.5px; font-weight: 600; text-align: center; line-height: 1.3;
   color: var(--text-2);
@@ -8869,7 +9081,30 @@ input[type=number]:focus, input[type=email]:focus, input[type=password]:focus {
 .weekly-reset-when { font-size: 12px; color: var(--text-3); }
 .weekly-sync { font-size: 11px; color: var(--text-3); opacity: .7; }
 .weekly-sync:not(:empty)::before { content: '·'; margin-right: 7px; }
+
+/* Die Stoerungsmeldung, rechts neben dem Countdown und links vom Knopf.
+
+   `margin-left: auto` steht an BEIDEN - an der Meldung und weiterhin am Knopf.
+   Zwei davon teilen sich den freien Platz, und der Knopf sackte damit in die
+   Mitte zwischen Countdown und Meldung. Die Regel darunter nimmt ihm das
+   `auto` wieder ab, SOLANGE die Meldung dasteht; ohne sie hat der Knopf sein
+   `auto` und steht genau da, wo er vorher stand - ein verborgener Kasten
+   nimmt keinen Platz ein. */
+.weekly-err {
+  position: relative;
+  margin-left: auto;
+  max-width: 40ch;
+  padding: 4px 10px;
+  border-radius: var(--r-sm);
+  background: rgba(240, 184, 73, .1);
+  color: var(--gold);
+  font-size: 11px; line-height: 1.35;
+  text-align: right;
+}
 .weekly-reset .btn-sm { position: relative; flex-shrink: 0; margin-left: auto; }
+/* Steht die Meldung da, hat sie den Platz schon genommen - der Knopf braucht
+   dann nur noch den Abstand. */
+.weekly-err:not(.hidden) ~ .btn-sm { margin-left: 12px; }
 
 /* ---------- Content / Vendor Umschalter ---------- */
 .weekly-mode-row {

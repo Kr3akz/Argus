@@ -70,6 +70,10 @@ contextBridge.exposeInMainWorld('api', {
   /* Datenblatt einer Mod oder eines Arcanes. Der Inventar-Eintrag wandert
      mit, damit der Hauptprozess die Inventardatei nicht je Klick neu liest. */
   getUpgradeDetails:(u, owned) => ipcRenderer.invoke('upgrade:details', u, owned),
+  /* Preise MIT RANG - [{ slug, rank }] hinein, priceKey heraus. Bei einer Mod
+     ist der Slug allein kein Preis: Rang 0 und Hoechstrang liegen weit
+     auseinander (siehe market.js). */
+  fetchUpgradePrices:(entries) => ipcRenderer.invoke('upgrade:prices', entries),
   getRelicDetails: (u)         => ipcRenderer.invoke('relic:details', u),
   relicsForItem:   (name)      => ipcRenderer.invoke('relics:forItem', name),
   getChecklist:    (cat)       => ipcRenderer.invoke('checklist:get', cat),
@@ -164,6 +168,15 @@ contextBridge.exposeInMainWorld('api', {
     const handler = () => cb();
     ipcRenderer.on('relic:select-closed', handler);
     return () => ipcRenderer.removeListener('relic:select-closed', handler);
+  },
+  /* Der Riss, auf den die Gruppe gerade zielt - { tier, node, missionType }
+     oder null. Daran haengt der Aera-Filter der Reliktauswahl: in einen
+     Lith-Riss passt nur ein Lith-Relikt. */
+  getCurrentFissure:()         => ipcRenderer.invoke('relic:fissure'),
+  onFissureChanged:(cb)        => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on('relic:fissure', handler);
+    return () => ipcRenderer.removeListener('relic:fissure', handler);
   },
   /* Der Bestand hat sich geaendert, ohne dass jemand danach gefragt hat -
      zum Beispiel, weil gerade ein Relikt geoeffnet wurde. Traegt dieselbe

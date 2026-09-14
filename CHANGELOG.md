@@ -21,6 +21,79 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+### Added
+
+- **Sorting takes more than one criterion now**, in **My sets**, the relic
+  list, **Mods**, **Arcanes**, **Baro & Ducats** and the relic planner. Pick
+  *Parts owned (fewest first)* and then *Most valuable single part you own* and
+  you get the answer you actually wanted: of the sets you hold exactly one
+  piece of, the expensive ones first. The order you click them is the order
+  they apply — the number in each box says which decides first — and the button
+  shows the chain. One criterion always stays; *Back to default* puts it back
+  to how it was. *Set progress* steps aside on its own when you pick something
+  else: it orders every card uniquely, so as the first link it would leave
+  nothing for a second criterion to decide.
+- **Sets are valued by one part you actually hold** — *Most valuable single
+  part you own*. Not the full set: a set costs what its most expensive parts
+  cost, and those are usually the ones still missing, so a set worth a hundred
+  platinum used to carry a five-platinum blueprint to the top of the list on a
+  number that was not yours. Not the pile either: a sum would make two parts at
+  20p look like one at 40p, and holding a part three times does not make the
+  part worth more. The card shows the same figure it sorts by, and names the
+  part in its tooltip. A `≥` means a part price is still on its way and
+  something dearer may yet turn up.
+- **Sets filter by how many parts you hold** — *1 part*, *2 parts*, *3+*. The
+  sorting puts the one-part sets in front, but the two-part ones still follow,
+  and over three hundred cards you cannot see where the group ends. With the
+  chip the list is cut to the group and the sorting only orders what is left.
+- **The overlay picks the era the fissure is asking for.** Start a Lith fissure
+  and the relic list shows Lith; an Omnia fissure takes any era and the list
+  says so. The era comes from the mission you selected: `EE.log` names it only
+  by an internal id, the world state names the same place by planet and node —
+  a node table from warframestat.us joins the two, across all three id styles
+  Warframe uses. Your own click on an era chip always wins until you start the
+  next fissure, and a mission that is not a fissure filters nothing.
+- **Ducat list can sort platinum the other way round.** *Ducats (highest)*
+  together with *Platinum price (lowest first)* is the melt list: worth a lot
+  at Baro, worth little on the market. It is not the old order reversed, which
+  is why it is its own entry.
+- **Mods and arcanes carry their warframe.market price**, next to the count in
+  the same corner — they are two halves of one question: how many are lying
+  here, and what is one of them worth. The data sheet shows the price for
+  whichever rank you have selected, because a mod's rank is not a property of
+  the goods but the goods: the same card can be worth twice as much maxed. The
+  tile asks for the rank you own, or the unranked one if you don't own it. A
+  price still on its way shows nothing rather than a zero. Sorting either list
+  by platinum fetches the prices for everything the filters leave standing, and
+  says how many are still on their way.
+- **WTS and WTB in a mod's data sheet**, the same pair the set cards have. The
+  selected rank goes into the order, so the offer is for the card the price
+  next to it belongs to — and the quantity is how many you hold *at that rank*,
+  not how many you hold in total.
+- **My sets shows what is already on warframe.market.** Cards with an open
+  order carry a blue edge, and the WTS button reads *Listed* with the price you
+  asked — clicking it opens that order instead of creating a second one for the
+  same set. A paused order says so.
+
+### Changed
+
+- **The price a new order suggests now comes from sellers who are in game.**
+  On a common prime part most of the sellers are offline, and theirs was the
+  number the window proposed — while the cheapest seller you could actually
+  trade with wanted considerably more. An order from somebody who has not
+  logged in for days is not competition, and undercutting it gives away
+  platinum to nobody. If no one is in game for that item the line falls back to
+  all sellers and says so, because an empty hint would be a false statement
+  about a market with dozens of offers.
+- **A mod's rank goes into that price too.** The rank is not a property of the
+  goods, it is the goods, the same way an intact relic is not a radiant one.
+  Changing the rank in the form asks again.
+- **The weekly rotation's "world state is not reachable" sits in the countdown
+  bar now**, beside the number it is about and next to the button you retry
+  with. As a banner underneath it pushed half the page down whenever the
+  network hiccuped — the largest movement on screen for the smallest piece of
+  news.
+
 ## [1.11.0] - 2026-09-12
 
 ### Added

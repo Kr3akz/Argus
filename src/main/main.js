@@ -35,6 +35,7 @@ import { loadMods, POLARITIES, RARITY_LABELS, searchMods, isAuraMod, isExilusMod
 import { evaluateBuild, combineBuilds, orokinTypeFor } from '../core/builds.js';
 import { indexArcanes, searchArcanes, arcaneSlotCount, maxArcaneRank, isArcaneName } from '../core/arcanes.js';
 import { fetchWorldState } from '../core/worldstate.js';
+import { loadSolNodes, fissureForNode } from '../core/solnodes.js';
 import { annotateWeekly, kahlAnker, inventarStand } from '../core/weekly.js';
 import { searchResourceGuides, RESOURCE_CATEGORIES } from '../core/farming.js';
 import { getMiningGuide } from '../core/mining.js';
@@ -50,8 +51,8 @@ import { upgradeDetails } from '../core/upgrade-details.js';
 import { matchesFissureFilter } from '../core/fissure-filter.js';
 import { captureForeground, restoreForeground, bringToForeground, moveCursorIntoWindow, foregroundPid, gameWindowRect } from '../core/foreground.js';
 import { LogWatcher } from '../core/logwatch.js';
-import { loadMarketItems, findMarketItem, getPrice, getPrices, cachedPrice, prewarmPrices,
-         stopPrewarm, marketImage, marketSubIcon } from '../core/market.js';
+import { loadMarketItems, findMarketItem, getPrice, getPrices, getRankedPrices, cachedPrice,
+         priceKey, prewarmPrices, stopPrewarm, marketImage, marketSubIcon } from '../core/market.js';
 /* Handelsteil: Anmeldung, Orders, Auktionen und das lokale Handelsbuch.
    Vier Module, weil es vier verschiedene Dinge sind - siehe die Kopf-
    kommentare dort. */
@@ -2596,6 +2597,25 @@ ipcMain.handle('ducats:fetchPrices', async (_e, slugs = []) => {
   return prices;
 });
 
+/**
+ * Preise mit Rang - fuer die Mod- und Arcane-Karten im Inventar.
+ *
+ * EIGENER AUFRUF UND NICHT ducats:fetchPrices: der kennt nur Slugs, und bei
+ * einer Mod ist der Slug allein keine Auskunft. Ein ungerankter Primed
+ * Continuity kostet 30p, derselbe auf Rang 10 kostet 67p; ein Arcane Energize
+ * 5p gegen 100p. Der Rang gehoert deshalb mit in die Frage - und in den
+ * Schluessel der Antwort (siehe priceKey in market.js).
+ */
+ipcMain.handle('upgrade:prices', async (_e, entries = []) => {
+  if (!Array.isArray(entries) || !entries.length) return {};
+  try {
+    return await getRankedPrices(entries);
+  } catch (err) {
+    console.warn('[Market] Rangpreise nicht ladbar:', err.message);
+    return {};
+  }
+});
+
 /* ---------------------- Handel: warframe.market ---------------------- */
 
 /**
@@ -3154,6 +3174,32 @@ async function inventoryPayload({ refresh }) {
     console.warn('[Inventory] Relikt-Belohnungen fehlgeschlagen:', err.message);
   }
 
+  /* Was auf Platte steht, gleich an die Mod- und Arcane-Karten haengen.
+
+     OHNE DIESEN SCHRITT WAERE DIE ERSTE ANSICHT LEER: die Preise holt der
+     Renderer nach (fetchUpgradePrices), aber nur fuer die Karten, die gerade
+     im Raster stehen, und mit 350 ms Abstand. Alles, was in einer
+     frueheren Sitzung schon einmal abgefragt wurde, ist dagegen sofort da.
+     Kein Netz, kein Warten - nur die Datei, die ohnehin gelesen wurde.
+
+     DER RANG ENTSCHEIDET, WELCHER PREIS GEMEINT IST (siehe priceKey in
+     market.js): gefragt wird nach der Stufe, die man BESITZT, denn das ist
+     die Karte, die im Inventar liegt. Wer sie nicht besitzt, bekommt den
+     ungerankten Preis - das ist die Stufe, in der sie faellt. */
+  try {
+    const priceCache = await readPriceCache();
+    for (const key of ['mods', 'arcanes']) {
+      for (const e of view.sections[key] || []) {
+        if (!e.slug) continue;
+        e.priceRank = (e.count || 0) > 0 ? (e.maxRank ?? 0) : 0;
+        const hit = priceCache[priceKey(e.slug, e.priceRank)];
+        e.price = hit?.price ?? null;
+      }
+    }
+  } catch (err) {
+    console.warn('[Inventory] Mod-Preise aus dem Cache nicht lesbar:', err.message);
+  }
+
   view.sections.sets = sets;
   view.totals.sets = {
     arten: sets.length,
@@ -3353,7 +3399,34 @@ ipcMain.handle('upgrade:details', async (_e, uniqueName, owned = null) => {
     if (!cache.cards) cache.cards = await loadCardImages({}).catch(() => null);
     const card = cardUrl(cache.cards, data, data.kind === 'arcane' ? 256 : 310);
 
-    return { ok: true, data: { ...data, card, dropNote } };
+    /* Die Adresse auf warframe.market - und was ueber sie schon auf Platte
+       steht, JE RANG.
+
+       DAS DATENBLATT IST DIE STELLE, AN DER DER RANG SICHTBAR WIRD: im Raster
+       steht eine Zahl, hier steht die ganze Leiter, und zu jeder Stufe gehoert
+       ein eigener Preis (Arcane Energize: 5p auf Rang 0, 100p auf Rang 5).
+       Mitgeschickt wird nur, was ohne Netz zu haben ist; die Stufe, die
+       gewaehlt wird, holt die Oberflaeche bei Bedarf nach.
+
+       NICHT UEBER DEN NAMEN GESUCHT, sondern ueber gameRef: findMarketItem
+       faellt auf den Namen zurueck, und bei den Mods sind Namensgleichheiten
+       zwischen Karte und Set-Mod keine Seltenheit. */
+    const market = await loadMarketItems().catch(() => null);
+    const hit = market?.byGameRef?.get(uniqueName) || null;
+
+    const prices = {};
+    if (hit?.slug) {
+      /* UEBER cachedPrice UND NICHT ROH AUS DER DATEI: es liest ohne Netz, aber
+         es setzt die stale-Marke, wenn die Frist abgelaufen ist - und nur damit
+         kann die Oberflaeche entscheiden, ob sie die Zahl noch auffrischen
+         laesst. Roh gelesen saehe ein acht Tage alter Preis aus wie ein
+         frischer und wuerde nie erneuert. */
+      for (const row of data.ranks) {
+        prices[row.rank] = await cachedPrice(hit.slug, { rank: row.rank });
+      }
+    }
+
+    return { ok: true, data: { ...data, card, dropNote, slug: hit?.slug || null, prices } };
   } catch (err) {
     return { ok: false, error: err.message };
   }
@@ -4258,6 +4331,63 @@ async function describeScanned(name) {
 /** Aktuellen Stand an das Overlay schicken. Immer vollstaendig, nie in Teilen. */
 function pushRelic() {
   sendToOverlay('relic:reward', currentRelic);
+}
+
+/* ---------------- Auf welchem Riss steht die Gruppe? ----------------
+
+   DIE FRAGE, DIE DIE RELIKTAUSWAHL BEANTWORTET HABEN MUSS: in einen Lith-Riss
+   passt nur ein Lith-Relikt. Wer vor dem Auswahlbildschirm steht, hat den Riss
+   laengst gewaehlt - das Overlay wusste es nur nicht und zeigte weiter alle
+   Aeren, darunter die, die man gerade gar nicht einlegen kann.
+
+   DER WEG DAHIN geht ueber zwei Angaben, die sich ohne einander nicht nutzen
+   lassen: EE.log nennt die Missionskennung (SolNode75), der Weltzustand nennt
+   den Namen (Cervantes (Earth)). solnodes.js fuehrt beide zusammen.
+
+   OMNIA IST DER SONDERFALL und wird hier NICHT aufgeloest, sondern
+   weitergereicht: ein Omnia-Riss nimmt jede Aera. Was das fuer den Filter
+   heisst, entscheidet das Overlay - hier steht nur, was der Riss ist. */
+let currentFissure = null;
+
+function setCurrentFissure(f) {
+  const next = f
+    ? { tier: f.tier || null, node: f.node || null, missionType: f.missionType || null,
+        isHard: !!f.isHard, isStorm: !!f.isStorm }
+    : null;
+
+  /* Nur bei echter Aenderung melden. "Set squad mission" steht mehrfach im Log,
+     wenn eine Gruppe sich sammelt - jedes Mal zu senden hiesse, dem Overlay
+     denselben Filter dreimal neu aufzudruecken, auch wenn jemand ihn
+     zwischendurch von Hand umgestellt hat. */
+  if ((currentFissure?.node || null) === (next?.node || null)
+   && (currentFissure?.tier || null) === (next?.tier || null)) return;
+
+  currentFissure = next;
+  console.log('[Riss]', next ? `${next.tier} auf ${next.node}` : 'keiner');
+  sendToOverlay('relic:fissure', currentFissure);
+}
+
+/**
+ * Die Missionskennung aus dem Log zu einem Riss aufloesen.
+ *
+ * OHNE force: der Weltzustand liegt im Zwischenspeicher, und dieser Aufruf
+ * faellt in den Moment zwischen Missionswahl und Reliktauswahl - da soll nichts
+ * auf einen Netzabruf warten. Ist die Liste ein paar Minuten alt, aendert das
+ * am Ergebnis nichts: Risse laufen ueber eine Stunde.
+ *
+ * JEDER FEHLSCHLAG ENDET BEI null, nicht bei einer Vermutung. Ohne Knotentabelle
+ * oder ohne Weltzustand ist nicht bekannt, wo jemand steht - und dann darf der
+ * Filter im Overlay auch nichts wegfiltern.
+ */
+async function resolveFissureForNode(nodeId) {
+  try {
+    await loadSolNodes();
+    const ws = await fetchWorldState({ force: false });
+    return fissureForNode(nodeId, ws?.fissures);
+  } catch (err) {
+    console.warn('[Riss] Knoten nicht aufloesbar:', err.message);
+    return null;
+  }
 }
 
 /**
@@ -5187,6 +5317,14 @@ function pushRecommendedRelics() {
 function startLogWatcher() {
   logWatcher = new LogWatcher();
 
+  /* Welcher Riss gewaehlt wurde - noch BEVOR die Reliktauswahl aufgeht. Auf der
+     Sternenkarte kommt erst die Mission und dann das Relikt; wenn der
+     Auswahlbildschirm da ist, steht die Aera also schon fest. */
+  logWatcher.on('squad-mission', async ev => {
+    if (!ev?.node) { setCurrentFissure(null); return; }
+    setCurrentFissure(await resolveFissureForNode(ev.node));
+  });
+
   logWatcher.on('relic-select-open', async () => {
     try {
       /* Nur merken, was das Overlay auch WIRKLICH aufgemacht hat. Stand es
@@ -5835,6 +5973,11 @@ ipcMain.handle('relic:current', () => {
   if (left <= 0) return null;
   return { ...currentRelic, seconds: left };
 });
+
+/* Aus demselben Grund wie oben: das Overlay entsteht oft erst, WEIL die
+   Reliktauswahl aufgegangen ist - der Riss war da schon gesetzt, und die
+   zugehoerige Nachricht ging an ein Fenster, das es noch nicht gab. */
+ipcMain.handle('relic:fissure', () => currentFissure);
 
 ipcMain.handle('settings:relicAutoShow', async (_e, on) => {
   relicAutoShow = !!on;

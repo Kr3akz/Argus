@@ -430,6 +430,18 @@ export function buildInventory(inventory, catalog, { market = null } = {}) {
     }
   }
 
+  /* Die Adresse auf warframe.market an jede Karte haengen - ohne sie gibt es
+     weder einen Preis noch etwas anzubieten.
+
+     UEBER gameRef UND NICHT UEBER DEN NAMEN: der Markt fuehrt zu jedem seiner
+     Eintraege DEs uniqueName mit, und damit entfaellt jedes Raten. 1.219 der
+     3.840 Markt-Items sind Mods, 164 Arcanes - wer keinen Treffer hat, ist
+     nicht handelbar (Rivens, Vorlagen, Precepts aus dem Katalog) und bekommt
+     deshalb auch keinen Preis und keinen Handelsknopf. */
+  for (const entry of [...allModsMap.values(), ...allArcanesMap.values()]) {
+    entry.slug = market?.byGameRef?.get(entry.uniqueName)?.slug || null;
+  }
+
   const sections = {
     relics:     mergeRelicCatalog(misc.filter(e => isRelic(e.uniqueName)).map(decorateRelic), market),
     sets:       [],

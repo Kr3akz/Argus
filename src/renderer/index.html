@@ -458,10 +458,20 @@
                eine Randnotiz und kein Problem. -->
           <span class="weekly-sync" id="weekly-sync"></span>
         </div>
+        <!--
+          Der Fehler steht IN der Leiste und nicht als Balken darunter.
+
+          Er sagt genau eine Sache: die Zahl links stimmt gerade nicht, weil
+          der Weltzustand nicht erreichbar ist. Eine eigene Zeile darunter
+          schob die halbe Seite nach unten, sobald das Netz huestet - und das
+          war dann die groesste Bewegung auf dem Bildschirm fuer die kleinste
+          Auskunft. Neben dem Countdown steht sie da, wo sie hingehoert:
+          direkt an der Zahl, die sie betrifft, und gleich neben dem Knopf,
+          mit dem man es nochmal versucht.
+        -->
+        <div id="weekly-error" class="weekly-err hidden"></div>
         <button class="btn-sm" id="btn-weekly-refresh">Reload</button>
       </div>
-
-      <div id="weekly-error" class="settings-note warn hidden"></div>
 
       <!-- Steht ueber beiden Ansichten, weil es die Aussagekraft der ganzen
            Seite betrifft: ohne Inventar aus DIESER Woche wird nichts
@@ -897,29 +907,18 @@
             <button class="filter-chip chip-bronze" data-filter="15">Bronze (15/25)</button>
           </div>
 
-          <!-- Eigene Sortierung fuer den Planer: dort wird nach Erwartungswert
-               entschieden, nicht nach Dukaten je Teil. -->
-          <div class="ducats-sort-wrap hidden" id="plan-sort-wrap">
-            <label for="plan-sort">Sort:</label>
-            <select id="plan-sort" class="select-sm">
-              <option value="plat-desc">Expected platinum (highest)</option>
-              <option value="ducats-desc">Expected ducats (highest)</option>
-              <option value="count-desc">Quantity owned</option>
-              <option value="priced-desc">Price coverage</option>
-              <option value="name-asc">Relic (A–Z)</option>
-            </select>
-          </div>
+          <!--
+            Eigene Sortierung fuer den Planer: dort wird nach Erwartungswert
+            entschieden, nicht nach Dukaten je Teil.
 
-          <div class="ducats-sort-wrap">
-            <label for="ducats-sort">Sort:</label>
-            <select id="ducats-sort" class="select-sm">
-              <option value="ducats-desc">Ducats (highest)</option>
-              <option value="plat-desc">Platinum price (highest)</option>
-              <option value="ratio-desc">Ducat/platinum efficiency</option>
-              <option value="count-desc">Quantity in inventory</option>
-              <option value="name-asc">Name (A–Z)</option>
-            </select>
-          </div>
+            BEIDE FELDER SIND LEER UND WERDEN GEFUELLT - von SortPick.mount in
+            sortpick.js. Sie halten keine Antwort mehr, sondern eine KETTE aus
+            mehreren Kriterien ("nur ein Teil im Set, davon das teuerste"), und
+            die laesst sich als <option>-Liste nicht abbilden.
+          -->
+          <div class="ducats-sort-wrap hidden" id="plan-sort-wrap"></div>
+
+          <div class="ducats-sort-wrap" id="ducats-sort-wrap"></div>
         </div>
 
         <div class="ducats-catalog-list" id="ducats-catalog"></div>
@@ -1126,11 +1125,11 @@
             verschiedene Fragen ("wie weit ist das Set" gegen "was bringt ein
             Oeffnen"), und eine gemeinsame Liste zeigte in jedem die Haelfte
             der Eintraege, die dort nichts bedeuten.
+
+            Gefuellt wird das Feld von SortPick.mount (sortpick.js): mehrere
+            Kriterien zugleich, in der Reihenfolge ihrer Wirkung.
           -->
-          <div class="ducats-sort-wrap hidden" id="inv-sort-wrap">
-            <label for="inv-sort">Sort:</label>
-            <select id="inv-sort" class="select-sm"></select>
-          </div>
+          <div class="ducats-sort-wrap hidden" id="inv-sort-wrap"></div>
         </div>
 
         <div class="inv-grid" id="inv-grid"></div>
@@ -2126,6 +2125,7 @@
 
 
 <script src="icons.js"></script>
+<script src="sortpick.js"></script>
 <script src="charts.js"></script>
 <script src="stock.js"></script>
 <script src="whisper.js"></script>

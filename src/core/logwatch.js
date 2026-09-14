@@ -163,6 +163,39 @@ const RE_SELECT_ARMED  = /Subscribing for \S*ThemedProjectionManager\.swf/;
  */
 const RE_EQUIP = /Dialog::CreateOkCancel\(description=.*?\bequip\s+(\S+)\s+(\S+)\s+Relic(?:\s+\[([A-Za-z]+)\])?\s+for this mission/;
 
+/**
+ * Auf welchen Knoten die Gruppe gerade zielt.
+ *
+ * Nachgemessen an EE.log:
+ *   Net [Info]: Set squad mission: {"name":"SolNode854","difficulty":0}
+ *   Script [Info]: ThemedSquadOverlay.lua: Cached mission name=Exterminate:
+ *                  Techrot (Höllvania) (SolNode854)
+ *
+ * DIE ZEILE KOMMT VOR DER RELIKTAUSWAHL. Auf der Sternenkarte waehlt man erst
+ * den Riss und dann das Relikt; wenn der Auswahlbildschirm aufgeht, steht der
+ * Knoten also schon fest. Genau darauf beruht der Aera-Filter im Overlay: der
+ * Knoten sagt, welcher Riss gemeint ist, und der Riss sagt, welche Aera hinein
+ * darf (siehe resolveFissureForNode in main.js).
+ *
+ * NUR DIE KENNUNG, NICHT DER NAME: die zweite Zeile traegt den Missionstitel in
+ * der SPRACHE DES SPIELS ("Höllvania"). Ein Abgleich darueber haette bei jeder
+ * anderen Spracheinstellung ins Leere gegriffen. SolNode854 ist ueberall
+ * dasselbe.
+ *
+ * NICHT NUR "SolNode": nachgemessen an den 30 offenen Rissen vom 14.09.2026
+ * tragen sie drei verschiedene Praefixe - SolNode75 (Cervantes), SettlementNode1
+ * (Roche) und CrewBattleNode515 (Railjack, Luckless Expanse). Eine Regel auf
+ * SolNode haette ein Drittel der Risse stumm uebergangen.
+ *
+ * Dieselbe Zeile steht auch in RE_SELECT_CLOSED - wer eine Mission setzt, ist
+ * nicht mehr in der Reliktauswahl. Beides gilt, und beides wird gemeldet:
+ * dieser Zweig steht vor der Auswertung der Auswahl und gibt die Zeile weiter.
+ */
+const RE_SQUAD_NODE = /Set squad mission:\s*\{[^}]*"name"\s*:\s*"(\w*Node\w+)"/;
+
+/** Zurueck im Schiff heisst: keine Mission mehr im Blick. */
+const RE_LEFT_MISSION = /MatchingService::LeaveSquad|Created\s+\S*ThemedMainMenu\.swf/;
+
 const STATE_BY_TAG = {
   RADIANT: 'Radiant', FLAWLESS: 'Flawless', EXCEPTIONAL: 'Exceptional', INTACT: 'Intact'
 };
@@ -331,6 +364,13 @@ export class LogWatcher extends EventEmitter {
       this.emit('relic-closed', {});
       return;
     }
+
+    /* Der Knoten, auf den die Gruppe zielt. VOR der Auswertung der
+       Reliktauswahl, weil dieselbe Zeile auch deren Schlusssignal ist - sie
+       wird hier nur mitgelesen und nicht verbraucht. */
+    const squadNode = RE_SQUAD_NODE.exec(line);
+    if (squadNode) this.emit('squad-mission', { node: squadNode[1], at: Date.now() });
+    else if (RE_LEFT_MISSION.test(line)) this.emit('squad-mission', { node: null, at: Date.now() });
 
     const timeMatch = /^(\d+\.\d+)/.exec(line);
     const logSec = timeMatch ? parseFloat(timeMatch[1]) : (Date.now() / 1000);

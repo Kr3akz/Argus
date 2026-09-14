@@ -106,6 +106,23 @@ export async function myOrders() {
 export async function itemOffers(slug, {
   type = 'sell',            // 'sell' | 'buy' | 'all'
   onlineOnly = false,       // nur ingame/online
+  /**
+   * NUR WER IM SPIEL STEHT - und wenn keiner dasteht, doch alle.
+   *
+   * Strenger als onlineOnly, das auch "online" durchlaesst: wer auf der
+   * Webseite eingeloggt ist, aber nicht im Spiel, kann nicht handeln. Fuer
+   * einen PREISVORSCHLAG ist das der Unterschied zwischen der Konkurrenz, die
+   * es gibt, und einer Liste von Angeboten, die seit Tagen niemand bedient -
+   * genau die drueckten den vorgeschlagenen Preis.
+   *
+   * DER RUECKFALL IST TEIL DER REGEL, nicht ihre Aufweichung: steht zu einem
+   * Item gerade niemand im Spiel, waere "keine Angebote" eine Falschaussage
+   * ueber einen Markt, auf dem vierzig Leute verkaufen. Dann zaehlen alle, und
+   * das Ergebnis sagt ueber `ingameOnly` selbst, welcher der beiden Faelle
+   * eingetreten ist. Dieselbe Regel wie in summarise() in market.js, wo die
+   * Preisschilder im Spiel entstehen.
+   */
+  preferIngame = false,
   platform = null,          // 'pc' | 'ps4' | 'xbox' | 'switch' | null
   maxRank = null,           // fuer Mods: nur Angebote bis zu diesem Rang
   minRank = null,
@@ -140,6 +157,16 @@ export async function itemOffers(slug, {
     if (maxRank != null && (o.rank ?? 0) > maxRank) return false;
     return true;
   });
+
+  /* NACH dem uebrigen Filtern, damit der Rueckfall sich auf die richtige
+     Grundmenge bezieht: "niemand im Spiel" soll heissen "niemand im Spiel
+     verkauft DIESE Ware in DIESEM Zustand" - nicht "niemand im Spiel ist
+     unter den ersten zehn". */
+  let ingameOnly = false;
+  if (preferIngame) {
+    const imSpiel = list.filter(o => o.user?.status === 'ingame');
+    if (imSpiel.length) { list = imSpiel; ingameOnly = true; }
+  }
 
   const ts = o => Date.parse(o.updatedAt || o.createdAt || 0) || 0;
   const rankStatus = o => (o.user?.status === 'ingame' ? 2 : o.user?.status === 'online' ? 1 : 0);
@@ -178,6 +205,9 @@ export async function itemOffers(slug, {
     offers,
     total: list.length,
     totalUnfiltered: orders.length,
+    /* Ob preferIngame wirklich gegriffen hat. Der Aufrufer soll nicht raten
+       muessen, ob er die Konkurrenz im Spiel sieht oder den Rueckfall. */
+    ingameOnly,
     fetchedAt: (offerCache.get(slug) || {}).fetchedAt || Date.now()
   };
 }

@@ -213,18 +213,47 @@ function summarise(orders) {
   };
 }
 
-/** Preisbild eines Items. null, wenn der Markt es nicht fuehrt. */
-export async function getPrice(slug, { maxAgeMs = PRICE_TTL_MS } = {}) {
+/**
+ * Schluessel im Preis-Cache.
+ *
+ * WARUM DER RANG DAZUGEHOERT: Bei einem Prime-Teil gibt es einen Preis. Bei
+ * einer Mod gibt es zwei, und sie liegen weit auseinander - nachgemessen am
+ * 12.09.2026:
+ *
+ *   Arcane Energize     Rang 0    5p     Rang 5   100p
+ *   Primed Continuity   Rang 0   30p     Rang 10   67p
+ *
+ * Ohne Rang im Schluessel wuerde der eine den anderen ueberschreiben, und auf
+ * der Kachel stuende je nach Reihenfolge der Abrufe mal die eine, mal die
+ * andere Zahl. Der rangfreie Schluessel bleibt der blanke Slug - so wie er in
+ * market-prices.json seit der ersten Fassung steht; die gemerkten Preise der
+ * Prime-Teile und Relikte bleiben damit gueltig.
+ */
+export const priceKey = (slug, rank = null) =>
+  rank == null ? slug : `${slug}#r${rank}`;
+
+/**
+ * Preisbild eines Items. null, wenn der Markt es nicht fuehrt.
+ *
+ * `rank` fragt gezielt nach den Angeboten EINER Stufe (?rank=N). Ohne Angabe
+ * antwortet warframe.market mit den guenstigsten Angeboten ueber alle Stufen -
+ * bei einer Mod sind das fast immer die ungerankten, und ein voll aufgewertetes
+ * Exemplar saehe damit aus, als waere es fuenf Platin wert.
+ */
+export async function getPrice(slug, { maxAgeMs = PRICE_TTL_MS, rank = null } = {}) {
   if (!slug) return null;
   const cache = await loadPriceCache();
 
-  const hit = cache[slug];
+  const key = priceKey(slug, rank);
+  const hit = cache[key];
   if (hit && Date.now() - hit.fetchedAt < maxAgeMs) return hit.price;
 
   try {
-    const json = await queued(() => getJson(`${HOST}/v2/orders/item/${encodeURIComponent(slug)}/top`));
+    const url = `${HOST}/v2/orders/item/${encodeURIComponent(slug)}/top`
+      + (rank == null ? '' : `?rank=${encodeURIComponent(rank)}`);
+    const json = await queued(() => getJson(url));
     const price = summarise(json.data || {});
-    cache[slug] = { fetchedAt: Date.now(), price };
+    cache[key] = { fetchedAt: Date.now(), price };
     schedulePriceSave();
     return price;
   } catch (err) {
@@ -232,7 +261,7 @@ export async function getPrice(slug, { maxAgeMs = PRICE_TTL_MS } = {}) {
        Oberflaeche einen alten Preis als solchen zeigen kann. */
     if (hit) return { ...hit.price, stale: true, fetchedAt: hit.fetchedAt };
     if (err.status === 404) {
-      cache[slug] = { fetchedAt: Date.now(), price: null };
+      cache[key] = { fetchedAt: Date.now(), price: null };
       schedulePriceSave();
     }
     return null;
@@ -258,11 +287,11 @@ export async function getPrice(slug, { maxAgeMs = PRICE_TTL_MS } = {}) {
  * null heisst hier "darueber ist nichts bekannt" - auch dann, wenn der Markt
  * das Teil gar nicht fuehrt und als Preis null gemerkt wurde.
  */
-export async function cachedPrice(slug, { maxAgeMs = PRICE_TTL_MS } = {}) {
+export async function cachedPrice(slug, { maxAgeMs = PRICE_TTL_MS, rank = null } = {}) {
   if (!slug) return null;
   const cache = await loadPriceCache();
 
-  const hit = cache[slug];
+  const hit = cache[priceKey(slug, rank)];
   if (!hit || !hit.price) return null;
   if (Date.now() - hit.fetchedAt < maxAgeMs) return hit.price;
   return { ...hit.price, stale: true, fetchedAt: hit.fetchedAt };
@@ -330,6 +359,29 @@ export async function getPrices(slugs, opts) {
   const out = {};
   for (const slug of [...new Set(slugs.filter(Boolean))]) {
     out[slug] = await getPrice(slug, opts);
+  }
+  return out;
+}
+
+/**
+ * Preise fuer mehrere Items MIT RANG.
+ *
+ * Eingabe sind Paare { slug, rank }, das Ergebnis ist nach priceKey benannt -
+ * derselbe Schluessel, den auch der Cache fuehrt. Zwei Raenge derselben Mod
+ * sind zwei Eintraege und nicht zwei Namen fuer denselben: ein ungerankter
+ * Primed Continuity ist ein anderes Handelsgut als ein Rang-10-Exemplar.
+ */
+export async function getRankedPrices(entries, opts) {
+  const out = {};
+  const seen = new Set();
+  for (const e of entries || []) {
+    const slug = e?.slug;
+    if (!slug) continue;
+    const rank = e.rank ?? null;
+    const key = priceKey(slug, rank);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out[key] = await getPrice(slug, { ...opts, rank });
   }
   return out;
 }

@@ -48,8 +48,16 @@ let world     = null;             // Weltzustand
 let trackedRelics = [];           // Merkliste aus dem Relikt-Planer
 let recommendedRelics = [];       // Alle besessenen Relikte mit Erwartungswert
 let voidTraces = 0;               // Aktueller Vorrat an Spuren des Nichts
-let selectedTier = 'all';         // Filter: all, Lith, Meso, Neo, Axi, tracked
+let selectedTier = 'all';         // Filter: all, Lith, Meso, Neo, Axi, Requiem, tracked
 let isSelectingRelic = false;     // Ob Warframes Reliktauswahl gerade aktiv ist
+/* Der Riss, auf den die Gruppe zielt - { tier, node, missionType } oder null.
+   Kommt aus dem Hauptprozess, der ihn aus der Missionskennung im Log und der
+   Rissliste des Weltzustands zusammensetzt (siehe solnodes.js). */
+let currentFissure = null;
+/* Hat der Nutzer die Aera SELBST gewaehlt? Dann bleibt seine Wahl stehen. Der
+   Riss gibt die Aera nur vor, solange niemand widersprochen hat - sonst
+   stellte ein nachgereichter Riss die Liste unter der Hand wieder um. */
+let tierChosenByHand = false;
 let notifSettings = null;         // dieselbe Auswahl wie fuer die Toasts
 let clickThrough = false;
 let interacting = false;
@@ -383,8 +391,13 @@ function renderRecommendedRelics() {
   sec.classList.toggle('selecting', isSelectingRelic);
   if (title) title.textContent = isSelectingRelic ? 'Relic selection' : 'Tracked relics';
 
+  /* Die Leiste steht auch, wenn ein RISS die Aera vorgibt - sonst waere die
+     Liste zusammengestrichen, ohne dass ein Knopf sagt wonach, und der Weg
+     zurueck zu "All" waere nirgends zu finden. */
   const filterBar = $('ov-rec-filters');
-  if (filterBar) filterBar.classList.toggle('hidden', !isSelectingRelic && hasTracked);
+  if (filterBar) {
+    filterBar.classList.toggle('hidden', !isSelectingRelic && hasTracked && !currentFissure);
+  }
 
   const openTiers = new Map();
   for (const f of (world && world.fissures) || []) {
@@ -409,7 +422,15 @@ function renderRecommendedRelics() {
 
   const matchingFissureCount = sorted.filter(r => openTiers.get(r.tier)).length;
   if (note) {
-    if (isSelectingRelic) {
+    /* WARUM DIE LISTE SO KURZ IST, GEHOERT DANEBEN. Ein Filter, den niemand
+       gesetzt hat, sieht sonst aus wie ein leerer Bestand - "Active in
+       Warframe" haette dazu geschwiegen, waehrend drei Viertel der Relikte
+       weggeblendet sind. Steht der Riss fest, sagt die Zeile welcher. */
+    if (currentFissure?.tier && !tierChosenByHand) {
+      note.textContent = currentFissure.tier === 'Omnia'
+        ? 'Omnia fissure · any era'
+        : `${currentFissure.tier} fissure`;
+    } else if (isSelectingRelic) {
       note.textContent = 'Active in Warframe';
     } else if (selectedTier === 'tracked') {
       note.textContent = `${sorted.length} starred`;
@@ -629,12 +650,64 @@ async function applyState(st) {
 function initRecFilters() {
   $('ov-rec-filters')?.querySelectorAll('.ov-chip').forEach(btn => {
     btn.onclick = () => {
-      $('ov-rec-filters').querySelectorAll('.ov-chip').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      selectedTier = btn.dataset.tier || 'all';
+      /* Ab hier gehoert die Wahl dem Nutzer: ein spaeter eintreffender Riss
+         darf sie nicht mehr ueberschreiben. Zurueckgegeben wird sie erst mit
+         dem naechsten Riss, den er selbst startet. */
+      tierChosenByHand = true;
+      setTierChip(btn.dataset.tier || 'all');
       renderRecommendedRelics();
     };
   });
+}
+
+/** Aera setzen und den passenden Chip hervorheben. */
+function setTierChip(tier) {
+  selectedTier = tier;
+  $('ov-rec-filters')?.querySelectorAll('.ov-chip').forEach(b =>
+    b.classList.toggle('active', (b.dataset.tier || 'all') === tier));
+}
+
+/* ---------------- Die Aera, die der Riss vorgibt ----------------
+
+   IN EINEN LITH-RISS PASST NUR EIN LITH-RELIKT. Das Spiel weiss das und zeigt
+   im Auswahlbildschirm auch nur die passenden; das Overlay daneben zeigte
+   weiter alle, darunter die, die man gerade gar nicht einlegen kann. Wer vor
+   der Wahl steht, musste die Liste also selbst im Kopf filtern - und genau
+   dafuer steht sie da.
+
+   OMNIA IST DIE AUSNAHME: ein Omnia-Riss nimmt jede Aera. "Alle" ist dort
+   keine fehlende Angabe, sondern die richtige.
+
+   REQUIEM bleibt stehen, wie es kommt - auf der Kuva-Festung laufen
+   Requiem-Risse, und dafuer gibt es einen eigenen Chip.
+
+   Eine Aera, zu der es keinen Chip gibt, wird NICHT gesetzt: die Liste waere
+   dann gefiltert, ohne dass ein Knopf sagt wonach - und der Weg zurueck waere
+   nur ueber "All" zu finden. */
+function fissureTier(f) {
+  const tier = f?.tier || null;
+  if (!tier) return null;
+  if (tier === 'Omnia') return 'all';
+  const hasChip = $('ov-rec-filters')?.querySelector(`.ov-chip[data-tier="${CSS.escape(tier)}"]`);
+  return hasChip ? tier : null;
+}
+
+/**
+ * Einen gemeldeten Riss auf den Filter anwenden.
+ *
+ * @param fresh  true, wenn ein NEUER Riss gesetzt wurde - dann faellt eine
+ *               frueher von Hand getroffene Wahl weg. Beim blossen Nachreichen
+ *               desselben Risses (Fensterstart) bleibt sie stehen.
+ */
+function applyFissureTier(f, { fresh = true } = {}) {
+  currentFissure = f || null;
+  if (fresh) tierChosenByHand = false;
+  if (tierChosenByHand) return;
+
+  const tier = fissureTier(currentFissure);
+  /* Kein Riss mehr im Blick - zurueck auf alles. Eine Aera stehen zu lassen,
+     deren Riss vorbei ist, waere ein Filter ohne Grund. */
+  setTierChip(tier || 'all');
 }
 
 /**
@@ -812,6 +885,14 @@ window.api.onRelicSelectClosed(() => {
   renderRecommendedRelics();
 });
 
+/* Der Riss hat gewechselt - oder es gibt keinen mehr. Die Aera wird gesetzt,
+   BEVOR die Auswahl aufgeht: auf der Sternenkarte kommt erst die Mission und
+   dann das Relikt. */
+window.api.onFissureChanged?.(f => {
+  applyFissureTier(f);
+  renderRecommendedRelics();
+});
+
 /* ---------------- Start ---------------- */
 
 (async function boot() {
@@ -828,6 +909,14 @@ window.api.onRelicSelectClosed(() => {
   try {
     const cur = await window.api.getCurrentRelic();
     if (cur) showRelicReward(cur);
+  } catch { /* dann eben ohne */ }
+
+  /* Dasselbe fuer den Riss: gesetzt wurde er, bevor es dieses Fenster gab.
+     `fresh: false` - es ist kein NEUER Riss, sondern derselbe nachgereicht;
+     eine Wahl, die der Nutzer schon getroffen hat, bleibt damit stehen. */
+  try {
+    const f = await window.api.getCurrentFissure?.();
+    if (f) { applyFissureTier(f, { fresh: false }); renderRecommendedRelics(); }
   } catch { /* dann eben ohne */ }
   try { await applyState(await window.api.overlayState()); }
   catch { startTimers(); }
