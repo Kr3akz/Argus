@@ -62,8 +62,13 @@ Two consequences worth knowing:
   back, then fetch. Without that, Argus finds nothing and simply keeps the last known
   state.
 - **All or nothing.** Older, partly overwritten copies of the inventory also linger in
-  memory. Argus checks every candidate for all 24 fields it needs and refuses anything
+  memory. Argus checks every candidate for all 17 fields it needs and refuses anything
   incomplete rather than showing you an inventory that is quietly missing half your mods.
+- **When it will not work, you can see why.** *Scan log* under
+  **Settings → Inventory access** records what each attempt did — which parts of memory
+  were read, how much, how long, what was found and why it was rejected. It contains no
+  account ID, no inventory contents and no names, so it can be shown to anyone helping
+  you work out what is wrong.
 
 **It is a permission, and it can be withdrawn.** The switch sits under
 **Settings → Inventory access**. With it off, nothing touches the game process at all —

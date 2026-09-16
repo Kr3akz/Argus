@@ -5671,10 +5671,18 @@ function showInventoryState(code, text) {
     + 'inventory is read from the running game and never leaves this machine.'
     : text;
 
+  /* DER WEG ZUM PROTOKOLL, und nur wenn wirklich etwas schiefging.
+     Ohne diese Zeile findet den Knopf in den Einstellungen niemand - und dann
+     waere der ganze Bericht umsonst gebaut. Bei 'empty' steht er nicht da: da
+     ist nichts gescheitert, es wurde nur noch nie abgerufen. */
+  const spur = code === 'empty' ? '' :
+    '<p class="hint inv-state-trace">Settings → Inventory access → <b>Scan log</b> says what '
+  + 'the search did and where it stopped. A screenshot of it is enough to work out why.</p>';
+
   box.innerHTML = `
     <div class="inv-state-icon">${code === 'rate_limited' ? Icon.clock(30) : Icon.warning(30)}</div>
     <b>${esc(code === 'empty' ? 'No inventory loaded yet' : 'Cannot fetch right now')}</b>
-    <p>${esc(erklaerung)}</p>`;
+    <p>${esc(erklaerung)}</p>${spur}`;
 }
 
 function renderInventory() {
@@ -8282,6 +8290,10 @@ if ($('btn-inv-refresh')) $('btn-inv-refresh').onclick = async () => {
 
   if (res.ok) { inventoryData = res.data; renderInventory(); }
   else showInventoryState(res.code, res.error);
+
+  /* Die Zeile in den Einstellungen nachziehen - sonst behauptet sie beim
+     naechsten Blick dorthin noch den Stand von vor diesem Versuch. */
+  refreshScanLogLine();
 };
 
 /* Auto-Sync Listener: Hauptprozess hat im Hintergrund frische Daten geliefert */
@@ -11373,10 +11385,92 @@ async function loadSettingsTab() {
 
   renderHotkeys();
   renderNotifToggles();
+  refreshScanLogLine();
   /* Nur, wenn der Abruf beim Start nicht durchkam - Version und Unterbau
      aendern sich waehrend einer Sitzung nicht. */
   if (!appInfo) loadAboutBox();
 }
+
+/* ---------------- Scan-Protokoll ---------------- */
+
+/**
+ * Die Zeile neben dem Logs-Knopf.
+ *
+ * SIE SOLL IM NORMALFALL LANGWEILIG SEIN. Nur wenn der letzte Lauf gescheitert
+ * ist, wird sie gelb - dann ist sie naemlich der einzige Hinweis darauf, dass
+ * es hinter dem Knopf etwas zu sehen gibt.
+ */
+async function refreshScanLogLine() {
+  const row = $('inv-diag-row'), text = $('inv-diag-text');
+  if (!row || !text) return;
+
+  let s = null;
+  try { s = (await window.api.getScanLog()).summary; } catch { /* Zeile bleibt */ }
+
+  row.classList.remove('warn', 'ok');
+  if (!s || !s.count) {
+    text.textContent = 'No inventory fetch in this session yet.';
+    return;
+  }
+  const wann = new Date(s.lastAt).toLocaleTimeString('en-GB', { hour12: false });
+  if (s.lastOk) {
+    text.textContent = `Last fetch ${wann} — fine. ${s.count} run(s) recorded.`;
+  } else {
+    row.classList.add('warn');
+    text.textContent = `Fetch failed at ${wann} — ${s.lastCode || 'unknown'}. `
+                     + 'Open the log and screenshot it.';
+  }
+}
+
+/**
+ * Das Protokoll oeffnen.
+ *
+ * Geholt wird es bei JEDEM Oeffnen neu und nicht zwischengespeichert: zwischen
+ * zwei Blicken kann ein Auto-Sync gelaufen sein, und ein Bericht, der den
+ * gerade gescheiterten Lauf nicht enthaelt, waere schlimmer als keiner.
+ */
+async function openScanLog() {
+  const box = $('diag-report');
+  if (!box) return;
+  box.textContent = 'Reading …';
+  $('diag-modal').classList.remove('hidden');
+
+  try {
+    const res = await window.api.getScanLog();
+    box.textContent = res.ok ? res.report : 'The log could not be read: ' + res.error;
+  } catch (err) {
+    box.textContent = 'The log could not be read: ' + err.message;
+  }
+}
+
+if ($('btn-inv-diag')) $('btn-inv-diag').onclick = openScanLog;
+if ($('diag-modal-close')) $('diag-modal-close').onclick = () => $('diag-modal').classList.add('hidden');
+
+/* Klick auf den Hintergrund schliesst - wie bei den anderen Modalen auch.
+   Die Pruefung auf e.target verhindert, dass ein Klick INS Protokoll (zum
+   Markieren) das Fenster zuschlaegt. */
+if ($('diag-modal')) {
+  $('diag-modal').onclick = e => {
+    if (e.target === $('diag-modal')) $('diag-modal').classList.add('hidden');
+  };
+}
+
+if ($('diag-copy')) $('diag-copy').onclick = async () => {
+  const btn = $('diag-copy');
+  try {
+    await navigator.clipboard.writeText($('diag-report').textContent || '');
+    btn.textContent = 'Copied';
+  } catch {
+    btn.textContent = 'Could not copy — select and copy by hand';
+  }
+  setTimeout(() => { btn.textContent = 'Copy as text'; }, 2000);
+};
+
+if ($('diag-clear')) $('diag-clear').onclick = async () => {
+  try { await window.api.clearScanLog(); } catch { /* weiter */ }
+  await openScanLog();
+  refreshScanLogLine();
+};
 
 /* ---------------- Updates ---------------- */
 

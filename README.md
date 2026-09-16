@@ -175,7 +175,9 @@ What you are agreeing to, in plain terms:
 
 One practical detail: the game only puts your inventory in memory **when it loads a
 zone**. If nothing shows up, travel to a relay or your dojo and back to your ship, then
-fetch again.
+fetch again. If it still will not, *Scan log* under **Settings → Inventory access** says
+what the search actually did and where it stopped — it holds no account ID and no
+inventory contents, so a screenshot of it can go to whoever is helping you.
 
 The mechanics behind that are spelled out under [Is this safe?](docs/security.md), and you
 can switch it off again at any time under Settings.

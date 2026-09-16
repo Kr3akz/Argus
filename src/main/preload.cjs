@@ -54,6 +54,12 @@ contextBridge.exposeInMainWorld('api', {
      eigener Kanal: sie stehen auch, bevor je etwas abgerufen wurde. */
   getCraftChains:  ()          => ipcRenderer.invoke('foundry:chains'),
   refreshInventory:()          => ipcRenderer.invoke('inventory:refresh'),
+  /* Das Protokoll der Speichersuchen - fertig formatiert, zum Abfotografieren.
+     Es kommt als Text und nicht als Objekt: die Oberflaeche soll daran nichts
+     rechnen, sondern es hinstellen. Enthaelt nichts Vertrauliches, siehe
+     core/diagnostics.js. */
+  getScanLog:      ()          => ipcRenderer.invoke('diag:inventory'),
+  clearScanLog:    ()          => ipcRenderer.invoke('diag:clear'),
   /* Auto-Sync: der Hauptprozess meldet, wenn im Hintergrund frische Daten
      eingetroffen sind (updated) oder ein Abruf am Rate-Limit gescheitert
      ist und nur ein Hinweis bleibt (stale). */

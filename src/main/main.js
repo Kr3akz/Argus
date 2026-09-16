@@ -16,6 +16,7 @@
  */
 import { app, BrowserWindow, ipcMain, globalShortcut, shell, Notification, screen, clipboard } from 'electron';
 import path from 'node:path';
+import os from 'node:os';
 import { existsSync, mkdirSync, renameSync, cpSync, createWriteStream } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
@@ -42,6 +43,7 @@ import { getMiningGuide } from '../core/mining.js';
 import { getDucatsReferenceList, buildPrimeSets, buildDucatsCatalog, buildInventoryDucats,
          annotateInventoryContext } from '../core/ducats.js';
 import { loadInventory } from '../core/inventory.js';
+import { formatReport, clearScans, scanSummary } from '../core/diagnostics.js';
 import { scanAccountId, findGameProcessIds } from '../core/accountid.js';
 import { buildInventory, SECTIONS, ownedUpgradeRanks, miscItemCount, ownedStock, recipeRow } from '../core/inventory-items.js';
 import { buildVendorOffers } from '../core/vendors.js';
@@ -1637,7 +1639,7 @@ async function firstFetch({ withInventory }) {
   let inventoryNote = null;
   if (withInventory) {
     try {
-      const res = await loadInventory({ refresh: true, force });
+      const res = await loadInventory({ refresh: true, force, trigger: 'setup' });
       if (!res.fromCache) relicsUsed.clear();   // siehe inventoryPayload
     } catch (err) {
       inventoryNote = INVENTORY_ERRORS[err.code] || err.message;
@@ -1957,7 +1959,7 @@ async function starteWochenScan() {
   lastAutoSyncAt = Date.now();
   console.log('[Weekly] Inventarstand ist aus einer alten Woche - Scan gestartet');
 
-  inventoryPayload({ refresh: true })
+  inventoryPayload({ refresh: true, trigger: 'weekly' })
     .then(payload => sendToMain('inventory:updated', payload.data))
     .catch(err => console.error('[Weekly] Nachlesen fehlgeschlagen:', err.message));
 
@@ -3050,10 +3052,10 @@ async function attachCards(view) {
 }
 
 /** Gemeinsamer Aufbau fuer get und refresh. */
-async function inventoryPayload({ refresh }) {
+async function inventoryPayload({ refresh, trigger = 'manual' }) {
   if (!cache.catalog) await ensureData({ refresh: false });
 
-  const res = await loadInventory({ refresh });
+  const res = await loadInventory({ refresh, trigger });
 
   /* Frisch vom Server: ab hier ist die Datei wieder die Wahrheit, und was wir
      selbst mitgezaehlt haben, steckt schon darin. fromCache faellt nur weg,
@@ -3360,11 +3362,65 @@ ipcMain.handle('inventory:refresh', async () => {
     if (cfg.inventoryScan !== true) {
       return { ok: false, code: 'scan_disabled', error: INVENTORY_ERRORS.scan_disabled };
     }
-    return await inventoryPayload({ refresh: true });
+    return await inventoryPayload({ refresh: true, trigger: 'manual' });
   } catch (err) {
     const code = err.code || (err.rateLimited ? 'rate_limited' : 'unknown');
     return { ok: false, code, error: INVENTORY_ERRORS[code] || err.message };
   }
+});
+
+/**
+ * Der Bericht hinter dem Logs-Knopf in den Einstellungen.
+ *
+ * WOFUER: Acht Dinge koennen den Inventar-Scan scheitern lassen, und die
+ * Oberflaeche machte aus allen achten denselben Satz. Wer nicht am eigenen
+ * Rechner sitzt, konnte bisher nur raten. Ein Bildschirmfoto dieses Berichts
+ * beantwortet die Frage in zwei Sekunden.
+ *
+ * DER KOPF WIRD HIER GEBAUT, nicht in diagnostics.js: Fassung, Systemstand
+ * und Schalterstellung kennt nur der Hauptprozess, und genau sie beantworten
+ * die Haelfte aller Faelle schon, bevor die Laufliste ueberhaupt gelesen wird.
+ *
+ * NICHTS VERTRAULICHES: kein accountId, kein Inventarinhalt, kein Spielername -
+ * siehe den Kopf von diagnostics.js. Der Bericht ist zum Herumzeigen gebaut.
+ */
+ipcMain.handle('diag:inventory', async () => {
+  try {
+    const [cfg, info, pids] = await Promise.all([
+      loadConfig(), buildInfo(), findGameProcessIds()
+    ]);
+
+    return {
+      ok: true,
+      summary: scanSummary(),
+      report: formatReport({
+        version: app.getVersion(),
+        build: info.commit ? info.commit.slice(0, 7) : '',
+        buildDate: info.builtAt ? String(info.builtAt).slice(0, 10) : '',
+        /* os.release() liefert unter Windows den Aufbau ("10.0.26200") - das
+           ist die Zahl, an der eine Windows-Fassung zu erkennen ist, und sie
+           unterscheidet sich zwischen zwei Rechnern haeufiger als alles
+           andere im Kopf. */
+        platform: `${process.platform} ${os.release()}`,
+        arch: process.arch,
+        electron: process.versions.electron,
+        node: process.versions.node,
+        inventoryScan: cfg.inventoryScan === true,
+        /* Fehlt der Schluessel, gilt AN - dieselbe Regel wie beim AutoSync
+           selbst, sonst steht im Bericht "OFF", waehrend er laeuft. */
+        inventoryAutoSync: cfg.inventoryAutoSync !== false,
+        gameFound: pids.length > 0,
+        gamePids: pids
+      })
+    };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('diag:clear', async () => {
+  clearScans();
+  return { ok: true };
 });
 
 /**
@@ -5563,7 +5619,7 @@ function startLogWatcher() {
       lastAutoSyncAt = Date.now();
 
       console.log('[AutoSync] Inventar-Scan ausgelöst durch:', ev.trigger);
-      const payload = await inventoryPayload({ refresh: true });
+      const payload = await inventoryPayload({ refresh: true, trigger: 'autosync' });
       sendToMain('inventory:updated', payload.data);
     } catch (err) {
       console.error('[AutoSync] Fehlgeschlagen:', err.message);

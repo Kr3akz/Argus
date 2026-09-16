@@ -21,6 +21,37 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-09-16
+
+### Added
+
+- **A scan log, under Settings → Inventory access.** Eight different things can
+  stop the inventory from being read — the toggle is off, the game runs as
+  administrator, it is not running at all, the copy sits somewhere the search
+  skips, the time limit runs out, or the game is simply not holding one right
+  now. Until now all eight produced the same sentence, and the numbers that
+  tell them apart were thrown away before anyone saw them. The log keeps the
+  last twenty runs with what each one actually did: which parts of memory were
+  read, how much, how long, what was found and why it was rejected. It holds no
+  account ID, no inventory contents and no names, so a screenshot of it can go
+  straight to whoever is helping. The line next to the button turns amber when
+  the last fetch failed, and stays quiet otherwise.
+
+### Fixed
+
+- **The inventory search now looks a second time before giving up**, which is
+  most likely to matter on a machine where it never worked at all. It reads the
+  small blocks of memory first, since that is where the game usually leaves its
+  copy — but how large a block is reported as depends on what happens to sit
+  next to it, so on another PC the very same copy can land in one too large to
+  be looked at. And there is often nothing to fall back on: the game sometimes
+  holds a single copy and no more. Missing it meant "nothing found", together
+  with advice to fly to a relay that could never have helped. When the first
+  pass comes up empty, a second one now reads precisely the parts the first
+  skipped. It costs nothing when the first pass works, and it only runs when
+  you press *Fetch inventory* yourself — auto-sync stays on the quick pass, so
+  it will not interrupt a farming run.
+
 ## [1.12.0] - 2026-09-14
 
 ### Added

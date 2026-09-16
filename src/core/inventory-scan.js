@@ -40,6 +40,27 @@
  *   der VOLLSTAENDIGE Durchgang lief in 3,3 s - schneller als die 5,8 s, die
  *   der abbrechende Scan vorher ueber den ganzen Heap brauchte.
  *
+ * DIE VIERTE FALLE, gemessen am 2026-09-16 - und sie erklaert, warum derselbe
+ * Scan auf einem anderen Rechner scheitert, waehrend er hier laeuft:
+ *   Im Heap lag EINE EINZIGE Kopie. Nicht fuenf, nicht zehn - eine, 1192 KB,
+ *   vollstaendig, in einer 64-KB-Region. Die ganze Auswahl oben hatte genau
+ *   einen Kandidaten. Es gibt also keine Reserve: faellt diese eine Kopie
+ *   durch den Regionsfilter, findet der Scan nichts.
+ *
+ *   Und ob sie durchfaellt, ist keine Eigenschaft des Dokuments, sondern der
+ *   NACHBARSCHAFT. VirtualQueryEx fasst aneinandergrenzende Seiten gleicher
+ *   Schutzklasse zu einer Region zusammen; wie gross die Region um die Kopie
+ *   herum gemeldet wird, haengt davon ab, was zufaellig daneben liegt. Auf
+ *   einem dichter gepackten Heap - mehr RAM, laengere Sitzung - wachsen
+ *   dieselben Bloecke ueber die 4 MB und fallen still heraus. Der Filter ist
+ *   damit eine Wette auf die Speicherlage des Entwicklerrechners.
+ *
+ *   DESHALB EIN NACHSCHLAG: findet der erste Durchgang nichts Brauchbares,
+ *   laeuft ein zweiter ueber genau die Regionen, die der erste ausgelassen
+ *   hat (minRegion statt maxRegion - kein Byte doppelt). Bezahlt wird er nur
+ *   im Fehlerfall, und dort stand bisher gar nichts. findPattern hat diese
+ *   Bauart fuer die Account-ID von Anfang an gehabt; hier fehlte sie.
+ *
  * WAS DER SCAN NICHT KANN:
  *   Die Kopie im Heap ist die Abschrift, die der Client zuletzt vom Server
  *   geholt hat - beim Login und bei Zonenwechseln. Wer etwas verkauft, sieht
@@ -49,10 +70,12 @@
  *   Zeitpunkt des Lesens.
  *
  * ANKER:
- *   '"InfestedFoundry"' mit Anfuehrungszeichen. Rund zehn Treffer im ganzen
- *   Heap - "RawUpgrades" hat Dutzende, "ItemCount" ueber 2500, und die kosten
- *   nur Zeit. Ohne Anfuehrungszeichen traefe man DEs key=value-Konfiguration
- *   (InventoryBins={SuitBin={...}}), die nur Slot-Limits enthaelt.
+ *   '"InfestedFoundry"' mit Anfuehrungszeichen. Wenige Treffer im ganzen Heap -
+ *   gemessen zwischen EINEM und zehn, je nach Sitzung; siehe die vierte Falle,
+ *   der untere Wert ist der gefaehrliche. "RawUpgrades" hat dagegen Dutzende,
+ *   "ItemCount" ueber 2500, und die kosten nur Zeit. Ohne Anfuehrungszeichen
+ *   traefe man DEs key=value-Konfiguration (InventoryBins={SuitBin={...}}),
+ *   die nur Slot-Limits enthaelt.
  *
  * VORAUSSETZUNG:
  *   Ein Zonenwechsel muss stattgefunden haben - Dojo oder Relais und zurueck
@@ -345,8 +368,9 @@ function lostInRepair(text, data) {
  * Der Scan laeuft rund zehn Sekunden am Stueck und wuerde das Fenster genauso
  * lange einfrieren. Aus dem Hauptprozess IMMER diesen Weg nehmen.
  */
-export function scanInventoryInWorker({ maxSeconds = 180, timeoutMs = 240000 } = {}) {
-  return runInWorker({ job: 'inventory', options: { maxSeconds } }, timeoutMs);
+export function scanInventoryInWorker({ maxSeconds = 180, timeoutMs = 240000,
+                                        wide = true } = {}) {
+  return runInWorker({ job: 'inventory', options: { maxSeconds, wide } }, timeoutMs);
 }
 
 /**
@@ -355,7 +379,8 @@ export function scanInventoryInWorker({ maxSeconds = 180, timeoutMs = 240000 } =
  * BLOCKIERT mehrere Sekunden - aus dem Hauptprozess ueber
  * scanInventoryInWorker() aufrufen, nicht direkt.
  */
-export async function scanInventory({ maxSeconds = 120, keepText = false } = {}) {
+export async function scanInventory({ maxSeconds = 120, keepText = false,
+                                      wide = true } = {}) {
   const procmem = await import('./procmem.js').catch(() => null);
   if (!procmem) return fail('koffi_missing', 'The memory module could not be loaded.');
   if (!procmem.isSupported()) {
@@ -368,6 +393,14 @@ export async function scanInventory({ maxSeconds = 120, keepText = false } = {})
   }
 
   const started = Date.now();
+
+  /* EIN Zeitbudget fuer BEIDE Durchgaenge, nicht eines je Durchgang.
+     Sonst stuende hier im schlimmsten Fall die doppelte Zeit - und der Worker
+     darueber bricht nach timeoutMs ab, ohne dass irgendjemand erfaehrt, woran
+     es lag. Der Nachschlag bekommt also, was der erste uebriggelassen hat. */
+  const deadline = started + maxSeconds * 1000;
+  const restSeconds = () => (deadline - Date.now()) / 1000;
+
   let lastError = null;
 
   for (const pid of pids) {
@@ -375,84 +408,72 @@ export async function scanInventory({ maxSeconds = 120, keepText = false } = {})
     try {
       handle = procmem.openProcess(pid);
 
-      /* Jede Fundstelle wird sofort ausgemessen, geparst wird sie erst spaeter.
+      const candidates = [];
+      const passes = [];
 
-         KEIN FRUEHER ABBRUCH MEHR - siehe Kopf, dritte Falle. Wer die neueste
-         Kopie will, muss alle gesehen haben; ein Durchgang, der beim ersten
-         heilen Fund aufhoert, nimmt die erstbeste statt der aktuellsten.
-         Bezahlt wird das nicht mit Zeit, sondern mit ASSET_REGION: ohne die
-         grossen Regionen ist der volle Durchgang schneller als der abbrechende
-         ueber den ganzen Heap.
+      /* Ein Durchgang ueber eine Auswahl von Regionen.
 
-         Ohne Abbruch braucht es auch kein descending mehr - aufsteigend
-         geprueft findAllPattern zusaetzlich die Naht zwischen zwei
-         aneinandergrenzenden Regionen.
+         Jede Fundstelle wird sofort ausgemessen, geparst wird sie erst in
+         select() - eine Scheibe kann alle Feldnamen tragen und sich trotzdem
+         nicht zusammensetzen lassen, und das kostet Zeit, die der Scan noch
+         braucht.
+
+         KEIN FRUEHER ABBRUCH - siehe Kopf, dritte Falle. Wer die neueste Kopie
+         will, muss alle gesehen haben; ein Durchgang, der beim ersten heilen
+         Fund aufhoert, nimmt die erstbeste statt der aktuellsten. Deshalb
+         liefert onHit immer false.
 
          Groesse taugt uebrigens nicht als Mass: eine lange Scheibe kann mitten
          im Dokument liegen und die Haelfte der Felder verfehlen. */
-      const candidates = [];
-
-      const scan = procmem.findAllPattern(handle, ANCHOR, {
-        limit: 64, maxSeconds, maxRegion: ASSET_REGION,
-        onHit: address => {
-          const span = readSpan(procmem, handle, address);
-          if (!span.text.length) return false;
-          candidates.push({
-            address,
-            fields: countFields(span.text, REQUIRED_FIELDS),
-            syncedAt: readSyncStamp(span.text),
-            bytes: span.text.length,
-            backward: span.backward,
-            forward: span.forward,
-            text: span.text
-          });
-          return false;                    // weitersuchen, es kann Neueres kommen
-        }
-      });
-
-      if (!scan.addresses.length) {
-        lastError = fail('not_found',
-          'No inventory found in memory. Travel to a relay or your dojo and back to your ship, then try again.',
-          { stats: { regions: scan.regions, megabytes: Math.round(scan.bytes / 1048576),
-                     seconds: Number(scan.seconds.toFixed(1)) } });
-        continue;
-      }
-      if (!candidates.length) {
-        lastError = fail('not_found', 'Anchor found, but no readable span around it.');
-        continue;
-      }
-
-      /* DIE REIHENFOLGE IST DER FIX.
-
-         Erst die Feldabdeckung: eine Scheibe ohne Pflichtfelder ist unbrauchbar,
-         wie frisch sie auch sei. Dann der Stand - das ist die Achse, die vorher
-         ganz fehlte und die Adresslage als Ersatz hatte. Groesse bleibt als
-         letzte Entscheidungshilfe.
-
-         Eine Scheibe OHNE lesbaren Stempel steht hinter jeder mit: sie ist
-         angeschnitten oder alt genug, dass das Feld fehlt - in beiden Faellen
-         ist sie die schlechtere Wahl, wenn es eine datierte Alternative gibt. */
-      candidates.sort((a, b) =>
-        b.fields.length - a.fields.length
-        || (b.syncedAt || 0) - (a.syncedAt || 0)
-        || b.bytes - a.bytes);
-
-      const attempted = [];
+      const sweep = (label, opts) => {
+        const before = candidates.length;
+        const scan = procmem.findAllPattern(handle, ANCHOR, {
+          limit: 64, maxSeconds: restSeconds(), ...opts,
+          onHit: address => {
+            const span = readSpan(procmem, handle, address);
+            if (!span.text.length) return false;
+            candidates.push({
+              address,
+              fields: countFields(span.text, REQUIRED_FIELDS),
+              syncedAt: readSyncStamp(span.text),
+              bytes: span.text.length,
+              backward: span.backward,
+              forward: span.forward,
+              text: span.text
+            });
+            return false;                  // weitersuchen, es kann Neueres kommen
+          }
+        });
+        const found = candidates.length - before;
+        passes.push({
+          pass: label,
+          regions: scan.regions,
+          megabytes: Math.round(scan.bytes / 1048576),
+          anchors: scan.addresses.length,
+          spans: found,
+          seconds: Number(scan.seconds.toFixed(1)),
+          timedOut: Boolean(scan.timedOut)
+        });
+        return found;
+      };
 
       const baseStats = () => ({
+        /* Je Durchgang eine Zeile - erst daran ist abzulesen, ob der
+           Nachschlag ueberhaupt gelaufen ist und was er gekostet hat. */
+        passes,
         candidates: candidates.map(c => ({
           address: '0x' + c.address.toString(16).toUpperCase(),
           kilobytes: Math.round(c.bytes / 1024),
           fields: c.fields.length,
           syncedAt: c.syncedAt || null
         })),
-        stoppedEarly: Boolean(scan.stopped),
-        regions: scan.regions,
-        megabytes: Math.round(scan.bytes / 1048576),
+        stoppedEarly: false,
+        regions: passes.reduce((n, p) => n + p.regions, 0),
+        megabytes: passes.reduce((n, p) => n + p.megabytes, 0),
         seconds: Number(((Date.now() - started) / 1000).toFixed(1))
       });
 
-      const describe = (cand, parsed, missing) => ({
+      const describe = (cand, parsed, attempted, missing) => ({
         ...baseStats(),
         chosen: {
           address: '0x' + cand.address.toString(16).toUpperCase(),
@@ -469,65 +490,136 @@ export async function scanInventory({ maxSeconds = 120, keepText = false } = {})
         ...(missing ? { missing } : {})
       });
 
-      /* JEDE Fundstelle der Reihe nach durchprobieren - die erste, die alle
-         Proben besteht, gewinnt. Weil die Liste nach Stand sortiert ist, ist
-         das die neueste brauchbare Kopie und nicht die erstbeste.
+      /* DIE REIHENFOLGE IST DER FIX.
 
-         Geparst wird also erst hier und nicht schon im Scan: eine Scheibe kann
-         alle Feldnamen tragen und sich trotzdem nicht zusammensetzen lassen -
-         gemessen an einer vorn angeschnittenen Kopie. Die Gruende werden dabei
-         gesammelt, damit im Fehlerfall dasteht, woran es lag. */
-      let lastAttemptError = null;
+         Erst die Feldabdeckung: eine Scheibe ohne Pflichtfelder ist unbrauchbar,
+         wie frisch sie auch sei. Dann der Stand - das ist die Achse, die vorher
+         ganz fehlte und die Adresslage als Ersatz hatte. Groesse bleibt als
+         letzte Entscheidungshilfe.
 
-      for (const cand of candidates) {
-        const parsed = parseSpan(cand.text, READ_FIELDS);
-        const address = '0x' + cand.address.toString(16).toUpperCase();
+         Eine Scheibe OHNE lesbaren Stempel steht hinter jeder mit: sie ist
+         angeschnitten oder alt genug, dass das Feld fehlt - in beiden Faellen
+         ist sie die schlechtere Wahl, wenn es eine datierte Alternative gibt.
 
-        if (!parsed.data) {
-          attempted.push({ address, result: parsed.note });
-          lastAttemptError = fail('unparsable', 'The inventory span could not be parsed.',
-                                  { stats: describe(cand, parsed), text: keepText ? cand.text : undefined });
-          continue;
+         JEDE Fundstelle wird danach der Reihe nach durchprobiert - die erste,
+         die alle Proben besteht, gewinnt. Weil die Liste nach Stand sortiert
+         ist, ist das die neueste brauchbare Kopie und nicht die erstbeste.
+         Die Gruende werden dabei gesammelt, damit im Fehlerfall dasteht,
+         woran es lag.
+
+         WIRD ZWEIMAL AUFGERUFEN, wenn der Nachschlag laeuft: dann ueber die
+         VEREINIGUNG beider Durchgaenge, damit die Sortierung auch ueber die
+         Grenze der beiden Durchgaenge hinweg gilt. parseSpan haengt deshalb am
+         Kandidaten und nicht an dieser Funktion - sonst wuerde jede Scheibe
+         aus dem ersten Durchgang ein zweites Mal geparst. */
+      const select = () => {
+        candidates.sort((a, b) =>
+          b.fields.length - a.fields.length
+          || (b.syncedAt || 0) - (a.syncedAt || 0)
+          || b.bytes - a.bytes);
+
+        const attempted = [];
+        let lastAttemptError = null;
+
+        for (const cand of candidates) {
+          if (!cand.parsed) cand.parsed = parseSpan(cand.text, READ_FIELDS);
+          const parsed = cand.parsed;
+          const address = '0x' + cand.address.toString(16).toUpperCase();
+
+          if (!parsed.data) {
+            attempted.push({ address, result: parsed.note });
+            lastAttemptError = fail('unparsable', 'The inventory span could not be parsed.',
+                                    { stats: describe(cand, parsed, attempted),
+                                      text: keepText ? cand.text : undefined });
+            continue;
+          }
+
+          /* Vollstaendigkeit gegen die geparsten Schluessel pruefen, nicht gegen
+             den Rohtext: ein Feldname kann im Text stehen und beim Reparieren
+             trotzdem weggefallen sein. Ein halbes Inventar ist schlechter als
+             keins - der Aufrufer soll dann den Zwischenspeicher behalten. */
+          const missing = REQUIRED_FIELDS.filter(f => !(f in parsed.data));
+          if (missing.length) {
+            attempted.push({ address, result: `missing ${missing.length}: ${missing.join(', ')}` });
+            lastAttemptError = fail('incomplete',
+              `Inventory is missing ${missing.length} field(s): ${missing.join(', ')}`,
+              { stats: describe(cand, parsed, attempted, missing), inventory: parsed.data });
+            continue;
+          }
+
+          /* Und die zweite Probe: hat die Reparatur ein Feld gefressen, das im
+             Rohtext noch stand? Dann ist die Scheibe unbrauchbar, auch wenn alle
+             Pflichtfelder ueberlebt haben. */
+          const lost = lostInRepair(cand.text, parsed.data);
+          if (lost.length) {
+            attempted.push({ address, result: `repair dropped: ${lost.join(', ')}` });
+            lastAttemptError = fail('incomplete',
+              `The repair dropped ${lost.length} field(s) that were present: ${lost.join(', ')}`,
+              { stats: describe(cand, parsed, attempted, lost) });
+            continue;
+          }
+
+          attempted.push({ address, result: 'ok' });
+          return {
+            ok: true, inventory: parsed.data,
+            /* Der Stand des Dokuments, nicht der des Lesens - die Oberflaeche
+               kann damit sagen, wie alt das Inventar wirklich ist. */
+            syncedAt: cand.syncedAt || null,
+            stats: describe(cand, parsed, attempted, []),
+            text: keepText ? cand.text : undefined
+          };
         }
 
-        /* Vollstaendigkeit gegen die geparsten Schluessel pruefen, nicht gegen
-           den Rohtext: ein Feldname kann im Text stehen und beim Reparieren
-           trotzdem weggefallen sein. Ein halbes Inventar ist schlechter als
-           keins - der Aufrufer soll dann den Zwischenspeicher behalten. */
-        const missing = REQUIRED_FIELDS.filter(f => !(f in parsed.data));
-        if (missing.length) {
-          attempted.push({ address, result: `missing ${missing.length}: ${missing.join(', ')}` });
-          lastAttemptError = fail('incomplete',
-            `Inventory is missing ${missing.length} field(s): ${missing.join(', ')}`,
-            { stats: describe(cand, parsed, missing), inventory: parsed.data });
-          continue;
-        }
+        return lastAttemptError
+            || fail('not_found',
+                    'No inventory found in memory. Travel to a relay or your dojo and back '
+                  + 'to your ship, then try again.',
+                    { stats: baseStats() });
+      };
 
-        /* Und die zweite Probe: hat die Reparatur ein Feld gefressen, das im
-           Rohtext noch stand? Dann ist die Scheibe unbrauchbar, auch wenn alle
-           Pflichtfelder ueberlebt haben. */
-        const lost = lostInRepair(cand.text, parsed.data);
-        if (lost.length) {
-          attempted.push({ address, result: `repair dropped: ${lost.join(', ')}` });
-          lastAttemptError = fail('incomplete',
-            `The repair dropped ${lost.length} field(s) that were present: ${lost.join(', ')}`,
-            { stats: describe(cand, parsed, lost) });
-          continue;
-        }
+      /* ERSTER DURCHGANG: die kleinen Regionen. Der Normalfall, und der
+         guenstige - siehe ASSET_REGION. */
+      sweep('small regions (<= 4 MB)', { maxRegion: ASSET_REGION });
+      let outcome = select();
 
-        attempted.push({ address, result: 'ok' });
-        return {
-          ok: true, inventory: parsed.data,
-          /* Der Stand des Dokuments, nicht der des Lesens - die Oberflaeche
-             kann damit sagen, wie alt das Inventar wirklich ist. */
-          syncedAt: cand.syncedAt || null,
-          stats: describe(cand, parsed, []),
-          text: keepText ? cand.text : undefined
-        };
+      /* NACHSCHLAG, und der Grund dafuer ist gemessen (2026-09-16):
+         Im Heap lag EINE EINZIGE Kopie. Nicht fuenf, nicht zehn - eine. Die
+         ganze Auswahl oben hatte genau einen Kandidaten, und der lag zufaellig
+         in einer 64-KB-Region. Damit steht und faellt der Scan mit der Frage,
+         ob ASSET_REGION diese eine Kopie durchlaesst.
+
+         Und das ist keine Eigenschaft des Dokuments, sondern der Nachbarschaft:
+         VirtualQueryEx fasst ANEINANDERGRENZENDE Seiten gleicher Schutzklasse
+         zu EINER Region zusammen. Wie gross die Region um die Kopie herum
+         gemeldet wird, haengt also davon ab, was zufaellig daneben liegt. Auf
+         einem dichter gepackten Heap - mehr RAM, laengere Sitzung - wachsen
+         dieselben Bloecke ueber die 4 MB hinaus und fallen still heraus.
+
+         Der Nachschlag liest deshalb genau das, was der erste ausgelassen hat:
+         minRegion statt maxRegion, kein Byte doppelt. Nachgemessen teilt das
+         exakt auf - 26273 + 196 = 26469 Regionen, 3161 + 5012 = 8173 MB, keine
+         Ueberschneidung, nichts verfehlt. Genau dieselbe Bauart hat findPattern
+         fuer die Account-ID schon immer gehabt; dem Inventar-Scan fehlte sie.
+
+         WARUM ER NICHT IMMER LAEUFT (`wide`):
+           Er kostet echtes Geld - 5012 MB in 32,7 s gemessen, und das sind
+           ueberwiegend ausgelagerte Asset-Regionen, die dabei in den
+           Arbeitsspeicher zurueckgeholt werden. Auf Kosten des laufenden
+           Spiels. Einmal auf Knopfdruck ist das in Ordnung; alle drei Minuten
+           im Hintergrund waehrend einer Farmrunde nicht.
+           Deshalb: wer selbst auf "Fetch inventory" drueckt, bekommt den
+           Nachschlag. Der Auto-Sync bleibt beim guenstigen Durchgang. Welche
+           Durchgaenge gelaufen sind, steht im Scan-Protokoll - wenn der
+           Nachschlag dort regelmaessig das Ergebnis liefert, ist ASSET_REGION
+           auf dieser Maschine schlicht falsch gewaehlt. */
+      if (!outcome.ok && wide && restSeconds() > 1) {
+        if (sweep('large regions (> 4 MB)', { minRegion: ASSET_REGION + 1n })) {
+          outcome = select();
+        }
       }
 
-      lastError = lastAttemptError
-              || fail('unparsable', 'No usable inventory among the candidates.', { stats: baseStats() });
+      if (outcome.ok) return outcome;
+      lastError = outcome;
       continue;
     } catch (e) {
       lastError = fail(e.code || 'scan_failed', e.message, { detail: e.detail });

@@ -38,8 +38,15 @@ const res = await scanInventory({ maxSeconds: 180 });
 const s = res.stats || {};
 
 if (s.regions !== undefined) {
-  console.log(`  Gescannt       ${s.regions} Regionen (${s.megabytes} MB) in ${s.seconds}s`
-            + (s.stoppedEarly ? '   (abgebrochen, vollstaendige Scheibe gefunden)' : ''));
+  console.log(`  Gescannt       ${s.regions} Regionen (${s.megabytes} MB) in ${s.seconds}s`);
+}
+/* Je Durchgang eine Zeile. Steht der zweite da, hat der Regionsfilter die
+   Kopie im ersten verfehlt - genau die Auskunft, die man auf einem fremden
+   Rechner braucht und die vorher nirgends stand. */
+for (const p of s.passes || []) {
+  console.log(`     ${p.pass.padEnd(26)} ${String(p.regions).padStart(6)} Reg. `
+            + `${String(p.megabytes).padStart(5)} MB   ${p.anchors} Anker, ${p.spans} Scheiben`
+            + `   ${p.seconds}s${p.timedOut ? '   ZEIT ABGELAUFEN' : ''}`);
 }
 if (s.candidates) {
   console.log(`  Fundstellen    ${s.candidates.length}`);

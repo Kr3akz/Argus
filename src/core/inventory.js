@@ -34,6 +34,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { dataDir as defaultDataDir } from './paths.js';
 import { scanInventoryInWorker } from './inventory-scan.js';
+import { recordScan } from './diagnostics.js';
 
 const CACHE = 'inventory.json';
 
@@ -70,6 +71,7 @@ async function readCache(dataDir) {
  * CPU.
  */
 export async function loadInventory({ dataDir = defaultDataDir(), refresh = false,
+                                      trigger = 'manual',
                                       force = false } = {}) {   // eslint-disable-line no-unused-vars
   await mkdir(dataDir, { recursive: true });
   const cacheFile = path.join(dataDir, CACHE);
@@ -83,7 +85,19 @@ export async function loadInventory({ dataDir = defaultDataDir(), refresh = fals
                   + 'and back to your ship, then press "Fetch inventory" once.');
   }
 
-  const res = await scanInventoryInWorker();
+  /* Der zweite Durchgang ueber die grossen Regionen nur, wenn jemand selbst
+     gedrueckt hat. Er kostet 5 GB Lesen und holt ausgelagerte Asset-Regionen
+     in den Arbeitsspeicher zurueck - einmal auf Knopfdruck ist das in Ordnung,
+     alle drei Minuten im Hintergrund waehrend einer Farmrunde nicht.
+     Siehe inventory-scan.js, Abschnitt `wide`. */
+  const res = await scanInventoryInWorker({ wide: trigger !== 'autosync' });
+
+  /* HIER und nirgends sonst: das ist die eine Stelle, durch die jeder Scan
+     geht - Knopfdruck, Auto-Sync, Wochenansicht, Ersteinrichtung -, und sie
+     sieht Gelingen und Scheitern gleichermassen. Ein Vermerk weiter oben in
+     main.js wuerde die Faelle verpassen, in denen unten nur ein `skipped`
+     ankommt. Siehe diagnostics.js, warum es das ueberhaupt gibt. */
+  recordScan({ trigger, result: res });
 
   if (!res.ok) {
     /* Kein Fund und ein alter Stand vorhanden: den behalten und den Grund

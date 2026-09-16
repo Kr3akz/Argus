@@ -295,7 +295,7 @@ function scanRegions(handle, pattern, source, limit, deadline, onHit) {
  */
 export function findAllPattern(handle, needle,
                                { limit = 64, maxSeconds = 120, descending = false,
-                                 maxRegion, onHit } = {}) {
+                                 maxRegion, minRegion, onHit } = {}) {
   const pattern = Buffer.from(needle, 'latin1');
   const started = Date.now();
 
@@ -305,9 +305,19 @@ export function findAllPattern(handle, needle,
      gefundenen Inventarkopien lagen dagegen in Bloecken von 64 bis 128 KB.
      Die grossen auszulassen halbiert nicht nur die Zeit; sie sind meist
      ausgelagert, und sie zu lesen holt sie in den Arbeitsspeicher zurueck -
-     auf Kosten des laufenden Spiels. */
-  const regions = maxRegion ? heapRegions(handle, { maxSize: maxRegion })
-                            : heapRegions(handle);
+     auf Kosten des laufenden Spiels.
+
+     minRegion ist das Gegenstueck und existiert fuer den NACHSCHLAG: ein
+     zweiter Durchgang, der genau das liest, was der erste ausgelassen hat.
+     Beide zusammen decken denselben Heap ab wie ein ungefilterter Lauf, aber
+     ohne eine einzige Region doppelt zu lesen - siehe inventory-scan.js, wo
+     der zweite Durchgang nur startet, wenn der erste nichts hergibt. */
+  const regions = (maxRegion || minRegion)
+    ? heapRegions(handle, {
+        ...(minRegion ? { minSize: minRegion } : {}),
+        ...(maxRegion ? { maxSize: maxRegion } : {})
+      })
+    : heapRegions(handle);
 
   /* descending: von den hoechsten Adressen abwaerts - fuer Aufrufer, die beim
      ersten brauchbaren Fund abbrechen.

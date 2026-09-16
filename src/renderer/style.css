@@ -4427,6 +4427,13 @@ select option { background: #161b25; color: var(--text); }
 .inv-state-icon { display: grid; place-items: center; color: var(--gold); margin-bottom: 14px; }
 .inv-state b { display: block; font-size: 15px; margin-bottom: 8px; }
 .inv-state p { font-size: 13px; color: var(--text-3); line-height: 1.6; }
+/* Der Weg zum Scan-Protokoll. Abgesetzt und kleiner als die Fehlermeldung
+   darueber: sie ist die Auskunft, das hier nur der Hinweis, wo mehr steht. */
+.inv-state-trace {
+  margin-top: 14px; padding-top: 12px;
+  border-top: 1px solid var(--surface-2);
+}
+.inv-state-trace b { display: inline; font-size: inherit; margin: 0; color: var(--text-2); }
 .inv-notice {
   display: flex; align-items: center; gap: 9px;
   background: rgba(74, 158, 255, .1); border-radius: var(--r-sm);
@@ -6421,6 +6428,27 @@ label.setting-row.is-disabled { cursor: not-allowed; }
   gap: 10px; margin-top: 20px;
 }
 .update-actions .btn-sm { margin-right: auto; }
+
+/* Das Scan-Protokoll.
+   BREITER als der uebrige Modal-Standard (680px): der Bericht hat feste
+   Spalten, und in 680px bricht die Kandidatenzeile um - genau die Zeile, auf
+   die es ankommt. 860px fassen sie ohne Umbruch.
+
+   Die Schriftgroesse ist bewusst klein: das Ding wird abfotografiert und dann
+   herangezoomt, nicht am Bildschirm gelesen. Lieber alles auf einem Bild als
+   eine gut lesbare Haelfte. */
+.modal-box.diag-box { width: min(860px, 100%); }
+.diag-report {
+  max-height: min(58vh, 520px); overflow: auto;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: var(--r-md);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 11.5px; line-height: 1.55; color: var(--text-2);
+  /* Kein Umbruch - siehe oben. Wer schmal ist, rollt waagerecht. */
+  white-space: pre; tab-size: 2;
+  user-select: text; cursor: text;
+}
 
 /* Ersetzt die drei Hauptschalter, die in die Einstellungen gewandert sind. */
 .notif-moved-note {

@@ -1341,6 +1341,18 @@
         </label>
 
         <div id="inv-scan-status" class="settings-note hidden"></div>
+
+        <!-- Unscheinbar mit Absicht: im Normalfall interessiert diese Zeile
+             niemanden. Sie steht hier fuer den Fall, dass der Abruf bei
+             jemand anderem nicht laeuft - dann ist ein Bildschirmfoto des
+             Berichts die Antwort auf acht Fragen, die sonst einzeln gestellt
+             werden muessten. Gleiche Bauart wie die Update-Zeile darueber. -->
+        <div class="settings-note settings-note-row" id="inv-diag-row">
+          <span id="inv-diag-text">No inventory fetch in this session yet.</span>
+          <div class="about-actions">
+            <button class="btn-sm" id="btn-inv-diag">Scan log</button>
+          </div>
+        </div>
       </div>
 
       </div>
@@ -1480,6 +1492,31 @@
     <div class="update-actions">
       <button id="update-open-page" class="btn-sm">Release page</button>
       <button id="update-action" class="btn btn-primary">Download update</button>
+    </div>
+  </div>
+</div>
+
+<!-- Das Protokoll der Speichersuchen.
+     BREITER ALS DIE ANDEREN MODALE und in fester Schrift: der Bericht lebt von
+     seinen Spalten, und ein Umbruch mitten in einer Zahlenreihe macht das
+     Bildschirmfoto wertlos. Deshalb <pre> und ein waagerechter Rollbalken
+     statt Textumbruch. -->
+<div id="diag-modal" class="modal hidden">
+  <div class="modal-box diag-box">
+    <div class="modal-head">
+      <div>
+        <h3>Inventory scan log</h3>
+        <p class="hint">What the memory search did and where it stopped. No account ID,
+           no inventory contents, no names — screenshot it as it is.</p>
+      </div>
+      <button id="diag-modal-close" class="btn-sm">Close</button>
+    </div>
+
+    <pre class="diag-report" id="diag-report"></pre>
+
+    <div class="update-actions">
+      <button id="diag-clear" class="btn-sm">Clear log</button>
+      <button id="diag-copy" class="btn btn-primary">Copy as text</button>
     </div>
   </div>
 </div>
