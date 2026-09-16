@@ -55,6 +55,10 @@ export function recordScan({ trigger = 'manual', result = {}, pids = [] } = {}) 
       seconds: stats.seconds ?? null,
       pids: [...pids],
       passes: (stats.passes || []).map(p => ({ ...p })),
+      /* Wie viele Pflichtfelder es zum Zeitpunkt des Laufs GAB. Die Zahl stand
+         frueher fest im Bericht und war nach der ersten Kuerzung der Liste
+         falsch - ein Protokoll, das luegt, ist schlimmer als keines. */
+      requiredFields: stats.requiredFields || null,
       candidates: (stats.candidates || []).map(c => ({ ...c })),
       chosen: stats.chosen ? { ...stats.chosen } : null,
       note: stats.note || null,
@@ -180,6 +184,10 @@ export function formatReport(context = {}) {
            + `${String(p.anchors).padStart(3)} anchors  `
            + `${String(p.spans).padStart(3)} spans  `
            + `${String(p.seconds).padStart(6)}s`
+           /* Doppelte Anker sind der Normalfall, seit es zwei davon gibt -
+              ohne diese Zahl saehe "8 anchors, 4 spans" nach Verlust aus.
+              Kurz gehalten, damit die Zeile unter BREITE bleibt. */
+           + (p.dupes ? `  +${p.dupes} dup` : '')
            + (p.timedOut ? '  TIME LIMIT HIT' : ''));
     }
 
@@ -195,11 +203,18 @@ export function formatReport(context = {}) {
       /* Was aus jedem Kandidaten geworden ist, steht in attempts - hier
          zusammengefuehrt, damit eine Zeile je Fundstelle reicht. */
       const ergebnis = new Map(r.attempts.map(a => [a.address, a.result]));
+      /* Aeltere Laeufe im Puffer kennen die Zahl noch nicht - dann lieber
+         nichts behaupten als die alte 17 hinschreiben. */
+      const soll = r.requiredFields ? '/' + r.requiredFields : '';
       for (const c of r.candidates) {
         const mark = c.address === wahl ? '>' : ' ';
         const zeile = `  ${mark}${c.address.padEnd(15)}`
                     + `${String(c.kilobytes).padStart(6)} KB  `
-                    + `${String(c.fields).padStart(2)}/17 fields  `
+                    + `${String(c.fields).padStart(2)}${soll} fields  `
+                    /* WELCHER Anker gegriffen hat. Auf einem Konto ohne
+                       Helminth war genau das die Frage, die niemand
+                       beantworten konnte. */
+                    + (c.anchor ? `via ${c.anchor.replace(/"/g, '').padEnd(14)}` : '')
                     + `synced ${stand(c.syncedAt)}`;
 
         /* Das Ergebnis bleibt in derselben Zeile, SOLANGE ES PASST - eine
@@ -216,9 +231,12 @@ export function formatReport(context = {}) {
     }
 
     if (r.ok && r.chosen) {
-      L.push(`   document ${r.chosen.kilobytes} KB, `
+      /* Die Reparaturnotiz nennt Tiefe, Feldzahl und abgeschnittene Bytes und
+         wird damit laenger als die Zeile - umbrechen statt abschneiden, sonst
+         fehlt auf dem Bildschirmfoto genau der Teil, der etwas erklaert. */
+      L.push(...umbrich(`document ${r.chosen.kilobytes} KB, `
            + (r.chosen.startsWithBrace ? 'complete from the start' : 'cut at the front')
-           + (r.repaired ? `, repaired: ${r.note}` : ''));
+           + (r.repaired ? `, repaired: ${r.note}` : ''), '   '));
     }
   }
 

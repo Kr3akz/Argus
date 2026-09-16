@@ -21,6 +21,31 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.13.1] - 2026-09-17
+
+### Fixed
+
+- **The inventory could not be read at all on accounts without the Helminth.**
+  To find your inventory in the game's memory, Argus searches for a field name
+  it knows should be in there — and the one it used was `InfestedFoundry`,
+  which is the Helminth's data. If you have not built the Helminth segment,
+  your inventory does not contain that name, so there was nothing to find, no
+  matter how long the search ran or how much memory it read. The same field was
+  also on the list Argus insists on before it accepts a copy, so even finding
+  it another way would have ended in *"only part of the inventory could be
+  read"*. It now searches for two field names that every account has from the
+  day it is created, and says in the scan log which one it found.
+- **Four more things were demanded that a newer account need not have** —
+  a sentinel, sentinel weapons, ranked mods, and something in the foundry.
+  Any one of them missing was enough to reject the whole inventory. They are
+  still read when they are there; they are simply no longer required. If you
+  have no sentinel, you now get an inventory without sentinels instead of no
+  inventory at all.
+- **The second search pass had a blind spot of its own.** It was meant to cover
+  everything the first pass skips, but it stopped at blocks of 128 MB, which
+  can leave gigabytes of the game's memory that neither pass ever looks at. It
+  now goes all the way up.
+
 ## [1.13.0] - 2026-09-16
 
 ### Added

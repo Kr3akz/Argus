@@ -46,6 +46,7 @@ if (s.regions !== undefined) {
 for (const p of s.passes || []) {
   console.log(`     ${p.pass.padEnd(26)} ${String(p.regions).padStart(6)} Reg. `
             + `${String(p.megabytes).padStart(5)} MB   ${p.anchors} Anker, ${p.spans} Scheiben`
+            + (p.dupes ? ` (+${p.dupes} doppelt)` : '')
             + `   ${p.seconds}s${p.timedOut ? '   ZEIT ABGELAUFEN' : ''}`);
 }
 if (s.candidates) {

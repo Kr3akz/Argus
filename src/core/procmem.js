@@ -31,6 +31,15 @@ const ERROR_PARTIAL_COPY = 299;
 const MIN_REGION = 4096n;
 const MAX_REGION = 128n * 1024n * 1024n;
 
+/* Als maxSize uebergeben heisst: gar keine Obergrenze.
+   WOFUER: MAX_REGION deckelt bei 128 MB, und das ist kein Naturgesetz, sondern
+   eine Annahme ueber die Speicherlage. Am 2026-09-17 nachgemessen lagen hier
+   2024 MB in fuenf privaten, beschreibbaren Regionen ueber dieser Grenze -
+   ausserhalb BEIDER Durchgaenge, also in einem toten Winkel, den kein Bericht
+   je erwaehnt haette. Der Nachschlag hebt den Deckel deshalb auf; er laeuft
+   ohnehin nur auf Knopfdruck und nur, wenn sonst nichts gefunden wurde. */
+export const REGION_NO_LIMIT = 1n << 62n;
+
 /* Trennlinie zwischen "kleinen" und "grossen" Regionen, siehe findPattern().
    Von den 5562 MB stecken 3932 MB in nur 125 Regionen oberhalb dieser Grenze. */
 const SMALL_REGION = 4n * 1024n * 1024n;
@@ -191,9 +200,28 @@ export function* heapRegions(handle, { minSize = MIN_REGION, maxSize = MAX_REGIO
  *
  * Zwischen zwei Haeppchen und zwei aneinandergrenzenden Regionen wird die Naht
  * mitgesucht, damit ein Treffer genau auf der Grenze nicht verlorengeht.
+ *
+ * MEHRERE MUSTER IN EINEM DURCHGANG:
+ *   `patterns` ist eine Liste. Das Lesen ist das Teure - 2816 MB gemessen -, das
+ *   Suchen darin vergleichsweise billig, und deshalb kostet ein zweites Muster
+ *   nur den zusaetzlichen indexOf-Lauf ueber Speicher, der ohnehin schon geholt
+ *   ist. Gemessen: ein Muster 2,8 s, dreizehn Muster 11,3 s - also rund 0,7 s je
+ *   weiterem Muster statt eines ganzen zweiten Durchgangs.
+ *
+ *   Warum ueberhaupt mehrere: ein einzelner Feldname als Anker ist ein einzelner
+ *   Ausfallpunkt. Siehe inventory-scan.js - "InfestedFoundry" gibt es nur mit
+ *   gebautem Helminth-Segment, und auf Konten ohne das Segment fand der Scan
+ *   nichts, so lange er auch suchte.
  */
-function scanRegions(handle, pattern, source, limit, deadline, onHit) {
-  const overlap = pattern.length - 1;
+function scanRegions(handle, patterns, source, limit, deadline, onHit) {
+  /* Ein einzelner Buffer bleibt erlaubt - findPattern() ruft so auf. */
+  const list = (Array.isArray(patterns) ? patterns : [{ name: null, buf: patterns }])
+    .map(p => (Buffer.isBuffer(p) ? { name: null, buf: p } : p));
+
+  /* Die Naht muss zum LAENGSTEN Muster passen, sonst faellt ein langes Muster
+     genau auf der Haeppchengrenze durch. Fuer die Adressrechnung unten ist
+     entscheidend, dass overlap fuer alle Muster derselbe Wert ist. */
+  const overlap = Math.max(...list.map(p => p.buf.length)) - 1;
   const buffer = Buffer.allocUnsafe(CHUNK);
   const carry = Buffer.alloc(overlap);
 
@@ -205,9 +233,9 @@ function scanRegions(handle, pattern, source, limit, deadline, onHit) {
   /* Jeder Fund geht durch diese Stelle. onHit darf true liefern und die Suche
      damit beenden - so kann der Aufrufer abbrechen, sobald ein Treffer taugt,
      statt den ganzen Heap zu Ende zu lesen. Rueckgabe true heisst "aufhoeren". */
-  const record = address => {
+  const record = (address, name) => {
     addresses.push(address);
-    if (onHit && onHit(address)) { stopped = true; return true; }
+    if (onHit && onHit(address, name)) { stopped = true; return true; }
     return addresses.length >= limit;
   };
 
@@ -229,18 +257,22 @@ function scanRegions(handle, pattern, source, limit, deadline, onHit) {
       // Naht zum vorherigen Haeppchen, nur wenn es lueckenlos anschliesst
       if (overlap > 0 && carryEnd === start) {
         const seam = Buffer.concat([carry, view.subarray(0, Math.min(overlap, got))]);
-        let p = seam.indexOf(pattern);
-        while (p >= 0 && p < overlap) {
-          if (record(start - BigInt(overlap - p))) { seam.fill(0); break outer; }
-          p = seam.indexOf(pattern, p + 1);
+        for (const { name, buf } of list) {
+          let p = seam.indexOf(buf);
+          while (p >= 0 && p < overlap) {
+            if (record(start - BigInt(overlap - p), name)) { seam.fill(0); break outer; }
+            p = seam.indexOf(buf, p + 1);
+          }
         }
         seam.fill(0);
       }
 
-      let p = view.indexOf(pattern);
-      while (p >= 0) {
-        if (record(start + BigInt(p))) break outer;
-        p = view.indexOf(pattern, p + 1);
+      for (const { name, buf } of list) {
+        let p = view.indexOf(buf);
+        while (p >= 0) {
+          if (record(start + BigInt(p), name)) break outer;
+          p = view.indexOf(buf, p + 1);
+        }
       }
 
       /* Nahtpuffer nachziehen. Bei einem zu kurzen Lesevorgang laege der Rest
@@ -296,7 +328,11 @@ function scanRegions(handle, pattern, source, limit, deadline, onHit) {
 export function findAllPattern(handle, needle,
                                { limit = 64, maxSeconds = 120, descending = false,
                                  maxRegion, minRegion, onHit } = {}) {
-  const pattern = Buffer.from(needle, 'latin1');
+  /* Ein Muster oder viele - die Liste geht so, wie sie hereinkommt, an
+     scanRegions weiter; onHit bekommt den Namen des Musters mitgeliefert,
+     damit der Aufrufer weiss, WELCHER Anker getroffen hat. */
+  const pattern = (Array.isArray(needle) ? needle : [needle])
+    .map(n => ({ name: n, buf: Buffer.from(n, 'latin1') }));
   const started = Date.now();
 
   /* maxRegion schneidet die grossen Regionen weg. Gemessen an einem laufenden

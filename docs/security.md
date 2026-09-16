@@ -62,8 +62,10 @@ Two consequences worth knowing:
   back, then fetch. Without that, Argus finds nothing and simply keeps the last known
   state.
 - **All or nothing.** Older, partly overwritten copies of the inventory also linger in
-  memory. Argus checks every candidate for all 17 fields it needs and refuses anything
-  incomplete rather than showing you an inventory that is quietly missing half your mods.
+  memory. Argus checks every candidate for the fields it cannot do without and refuses
+  anything incomplete, rather than showing you an inventory that is quietly missing half
+  your mods. That list holds only what every account has — things you may simply not own
+  yet, like a sentinel or the Helminth, are read when present and never demanded.
 - **When it will not work, you can see why.** *Scan log* under
   **Settings → Inventory access** records what each attempt did — which parts of memory
   were read, how much, how long, what was found and why it was rejected. It contains no

@@ -61,6 +61,26 @@
  *   im Fehlerfall, und dort stand bisher gar nichts. findPattern hat diese
  *   Bauart fuer die Account-ID von Anfang an gehabt; hier fehlte sie.
  *
+ * DIE FUENFTE FALLE, und sie war die wirkliche Ursache (2026-09-17):
+ *   Der Nachschlag half nicht. Aus dem Bericht eines fremden Rechners kam:
+ *   Schalter an, Spiel laeuft, 5049 MB gelesen, beide Durchgaenge, 4,1 s -
+ *   und NULL Anker. Nicht "in der falschen Region", sondern gar nicht da.
+ *
+ *   Der Anker war '"InfestedFoundry"', und darin stehen ConsumedSuits, Slots
+ *   und Resources: das ist Helminth. Wer das Segment nie gebaut hat, hat den
+ *   Schluessel im Dokument nicht - und dann findet kein noch so gruendlicher
+ *   Scan etwas. Das Feld stand zu allem Ueberfluss auch in REQUIRED_FIELDS,
+ *   die Kopie waere also selbst dann verworfen worden, haette man sie anders
+ *   gefunden.
+ *
+ *   DIESELBE KRANKHEIT WIE DIE DRITTE UND VIERTE FALLE: eine Regel, die an
+ *   EINEM Konto auf EINEM Rechner geeicht wurde, als allgemein ausgegeben.
+ *   Erst die Adresslage, dann die Regionsgroesse, jetzt der Feldbestand.
+ *
+ *   Deshalb ZWEI Anker statt einem, beide Skalare, die es ab Kontoerstellung
+ *   gibt (siehe ANCHORS) - und die Pflichtliste um alles erleichtert, was ein
+ *   Spielfortschritt voraussetzt (siehe REQUIRED_FIELDS).
+ *
  * WAS DER SCAN NICHT KANN:
  *   Die Kopie im Heap ist die Abschrift, die der Client zuletzt vom Server
  *   geholt hat - beim Login und bei Zonenwechseln. Wer etwas verkauft, sieht
@@ -89,8 +109,22 @@
  */
 import { findGameProcessIds, runInWorker } from './accountid.js';
 
-/* Der Anker. Siehe Kopf - Anfuehrungszeichen sind Teil des Musters. */
-const ANCHOR = '"InfestedFoundry"';
+/* DIE ANKER. Siehe Kopf, fuenfte Falle - Anfuehrungszeichen sind Teil des
+   Musters, und es sind ZWEI, weil einer ein einzelner Ausfallpunkt war.
+   Beide sind Skalare, die es ab Kontoerstellung gibt: Endo und der
+   Mastery-Fortschritt. Am 2026-09-17 im laufenden Heap ausgezaehlt - je EIN
+   Treffer, und je einmal im Dokument:
+
+     FusionPoints       1 im Heap,    1 im Dokument
+     XPInfo             1 im Heap,    1 im Dokument
+     InfestedFoundry    1 im Heap,    1 im Dokument   (aber Helminth noetig)
+     RegularCredits     3 im Heap,    1 im Dokument
+     PlayerLevel      224 im Heap,    1 im Dokument   <- als Anker untauglich
+     Upgrades        5146 im Heap,  352 im Dokument   <- voellig untauglich
+
+   Die letzten beiden stehen hier, damit niemand sie fuer eine gute Idee haelt:
+   jeder Treffer kostet ein readSpan, und das schreitet bis zu 32 MB ab. */
+const ANCHORS = ['"FusionPoints"', '"XPInfo"'];
 
 /* Regionen darueber werden gar nicht erst gelesen: dort liegen Assets, und die
    Inventarkopien lagen ausnahmslos in Bloecken von 64 bis 128 KB. Siehe Kopf -
@@ -119,14 +153,30 @@ function readSyncStamp(text) {
   return ms > Date.now() + 86400000 ? null : ms;
 }
 
-/* PFLICHT: ohne diese Felder ist es kein ganzes Dokument. Bewusst nur solche,
-   die JEDES Konto hat - eine strengere Liste wuerde Konten aussperren, die
-   Railjack, Necramechs oder Deimos noch nicht gesehen haben.
-   XPInfo steht hier, weil die gesamte Mastery-Rechnung daran haengt. */
+/* PFLICHT: ohne diese Felder ist es kein ganzes Dokument.
+   XPInfo steht hier, weil die gesamte Mastery-Rechnung daran haengt.
+
+   DIESE LISTE HAT EIN KONTO BESCHRIEBEN UND NICHT ALLE. Sie behauptete von
+   sich, nur Felder zu enthalten, "die JEDES Konto hat" - tatsaechlich standen
+   fuenf darin, die ein Spielfortschritt voraussetzt:
+
+     InfestedFoundry   braucht das gebaute Helminth-Segment
+     Sentinels         wer nie einen Waechter hatte, hat das Feld nicht
+     SentinelWeapons   dasselbe
+     Upgrades          gerangte Mods; frische Konten haben nur RawUpgrades
+     PendingRecipes    die Foundry-Warteschlange, leer wenn nichts baut
+
+   Sie sind nach READ_FIELDS gewandert: weiter gelesen, nur nicht mehr
+   verlangt. Die Auswahl bevorzugt ohnehin die Scheibe mit der GROESSTEN
+   Feldabdeckung - die kuerzere Pflichtliste senkt also nur die Schwelle, ab
+   der eine Kopie verworfen wird, und aendert nichts daran, welche gewinnt.
+
+   Was hier bleibt, ist entweder ein Skalar, den es ab Kontoerstellung gibt,
+   oder Ausruestung aus dem Vorspiel (Startwarframe und drei Waffen). */
 export const REQUIRED_FIELDS = [
-  'Suits', 'LongGuns', 'Pistols', 'Melee', 'Sentinels', 'SentinelWeapons',
-  'Recipes', 'MiscItems', 'RawUpgrades', 'Upgrades', 'PendingRecipes',
-  'RegularCredits', 'PremiumCredits', 'FusionPoints', 'InfestedFoundry',
+  'Suits', 'LongGuns', 'Pistols', 'Melee',
+  'Recipes', 'MiscItems', 'RawUpgrades',
+  'RegularCredits', 'PremiumCredits', 'FusionPoints',
   'XPInfo', 'PlayerLevel'
 ];
 
@@ -141,6 +191,10 @@ export const REQUIRED_FIELDS = [
    verschwinden und die Mastery-Anzeige waere lautlos falsch. */
 export const READ_FIELDS = [
   ...REQUIRED_FIELDS,
+  /* Die fuenf, die aus der Pflichtliste gewandert sind - siehe dort. Gelesen
+     werden sie unveraendert; die Auswertung kommt ohne sie aus (helminth.js,
+     foundry.js und inventory-items.js fangen sie alle mit `|| []` ab). */
+  'Sentinels', 'SentinelWeapons', 'Upgrades', 'PendingRecipes', 'InfestedFoundry',
   'SpaceSuits', 'SpaceGuns', 'SpaceMelee', 'SpaceWeapons', 'Weapons',
   'SpecialItems', 'MechSuits', 'Hoverboards', 'OperatorAmps', 'QuestKeys',
   'Boosters', 'PrimeTokens', 'RawParts', 'PeriodicMissionCompletions',
@@ -427,13 +481,29 @@ export async function scanInventory({ maxSeconds = 120, keepText = false,
          im Dokument liegen und die Haelfte der Felder verfehlen. */
       const sweep = (label, opts) => {
         const before = candidates.length;
-        const scan = procmem.findAllPattern(handle, ANCHOR, {
+        let doppelt = 0;
+        const scan = procmem.findAllPattern(handle, ANCHORS, {
           limit: 64, maxSeconds: restSeconds(), ...opts,
-          onHit: address => {
+          onHit: (address, anchor) => {
+            /* ZWEI ANKER HEISST ZWEI TREFFER IN DERSELBEN KOPIE.
+               "FusionPoints" und "XPInfo" stehen beide im Dokument, also meldet
+               dieselbe Scheibe sich zweimal. Sie ein zweites Mal abzuschreiten
+               kostet noch einmal 1,2 MB Lesen und einen zweiten JSON-Durchlauf,
+               und im Protokoll staende sie doppelt.
+               Der Treffer liegt IN einer bekannten Scheibe: verworfen, bevor
+               readSpan ueberhaupt laeuft. */
+            for (const c of candidates) {
+              if (address >= c.start && address < c.end) { doppelt++; return false; }
+            }
+
             const span = readSpan(procmem, handle, address);
             if (!span.text.length) return false;
             candidates.push({
               address,
+              anchor,
+              /* Die Grenzen der Scheibe, fuer die Pruefung oben. */
+              start: span.start,
+              end: span.start + BigInt(span.text.length),
               fields: countFields(span.text, REQUIRED_FIELDS),
               syncedAt: readSyncStamp(span.text),
               bytes: span.text.length,
@@ -451,6 +521,11 @@ export async function scanInventory({ maxSeconds = 120, keepText = false,
           megabytes: Math.round(scan.bytes / 1048576),
           anchors: scan.addresses.length,
           spans: found,
+          /* Treffer, die in einer schon bekannten Scheibe lagen. Steht im
+             Bericht, weil "8 Anker, 2 Scheiben" sonst wie ein Fehler aussieht
+             und in Wahrheit heisst: beide Anker haben in vier Kopien
+             gegriffen, wie sie sollen. */
+          dupes: doppelt,
           seconds: Number(scan.seconds.toFixed(1)),
           timedOut: Boolean(scan.timedOut)
         });
@@ -461,8 +536,13 @@ export async function scanInventory({ maxSeconds = 120, keepText = false,
         /* Je Durchgang eine Zeile - erst daran ist abzulesen, ob der
            Nachschlag ueberhaupt gelaufen ist und was er gekostet hat. */
         passes,
+        /* Damit der Bericht "11/12" schreiben kann statt einer fest
+           eingebauten Zahl - die Pflichtliste ist schon einmal kuerzer
+           geworden, und dann log das Protokoll. */
+        requiredFields: REQUIRED_FIELDS.length,
         candidates: candidates.map(c => ({
           address: '0x' + c.address.toString(16).toUpperCase(),
+          anchor: c.anchor || null,
           kilobytes: Math.round(c.bytes / 1024),
           fields: c.fields.length,
           syncedAt: c.syncedAt || null
@@ -613,7 +693,14 @@ export async function scanInventory({ maxSeconds = 120, keepText = false,
            Nachschlag dort regelmaessig das Ergebnis liefert, ist ASSET_REGION
            auf dieser Maschine schlicht falsch gewaehlt. */
       if (!outcome.ok && wide && restSeconds() > 1) {
-        if (sweep('large regions (> 4 MB)', { minRegion: ASSET_REGION + 1n })) {
+        /* OHNE OBERGRENZE, und das ist eine Korrektur: heapRegions deckelt von
+           sich aus bei 128 MB, also lief der "vollstaendige" Nachschlag bis
+           hierher an einem toten Winkel vorbei. Nachgemessen am 2026-09-17
+           lagen dort 2024 MB in fuenf privaten, beschreibbaren Regionen - von
+           17433 MB committed sahen beide Durchgaenge zusammen nur 10137 MB.
+           Siehe REGION_NO_LIMIT in procmem.js. */
+        if (sweep('large regions (> 4 MB)',
+                  { minRegion: ASSET_REGION + 1n, maxRegion: procmem.REGION_NO_LIMIT })) {
           outcome = select();
         }
       }
