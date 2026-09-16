@@ -364,7 +364,7 @@ function analyseDepth(text, fields) {
  * Felder. Verloren geht hoechstens das angeschnittene erste und letzte - und ob
  * darunter ein gebrauchtes war, sagt die Vollstaendigkeitspruefung danach.
  */
-function parseSpan(text, fields) {
+export function parseSpan(text, fields) {
   if (text.startsWith('{')) {
     try {
       return { data: JSON.parse(text), repaired: false, note: 'complete' };
@@ -378,21 +378,60 @@ function parseSpan(text, fields) {
     return { data: null, repaired: false, note: 'no field found in span' };
   }
   const bounds = commas.get(topDepth);
-  if (!bounds || bounds.first >= bounds.last) {
-    return { data: null, repaired: false, note: `no usable commas at depth ${topDepth}` };
+
+  /* MEHRERE REKONSTRUKTIONEN, DIE SPARSAMSTE ZUERST.
+
+     FRUEHER STAND HIER NUR EINE: vom ersten bis zum letzten Komma der obersten
+     Ebene schneiden. Das wirft Kopf- und Schwanzfeld IMMER weg - auch dann,
+     wenn sie vollstaendig sind. Einer Scheibe, der nur die oeffnende Klammer
+     fehlt, kostete das ein ganzes Feld.
+
+     Aufgeschlagen ist das am 2026-09-17 auf einem fremden Rechner, und zwar so:
+     der Scan sucht nach '"FusionPoints"', der Textlauf begann genau dort, und
+     die Reparatur warf als Kopffeld ausgerechnet FusionPoints weg. Im Bericht
+     stand "12/12 fields ... -> missing 1: FusionPoints" - alle Feldnamen im
+     Rohtext vorhanden, und trotzdem verworfen, weil GENAU EIN ZEICHEN fehlte.
+
+     Die ersten vier Versuche behalten den gesamten Text und ergaenzen nur, was
+     an Klammern fehlt. Erst wenn keiner davon aufgeht, wird geschnitten - und
+     dann so wenig wie moeglich. Der erste, der sich parsen laesst, gewinnt;
+     weil die Liste nach Sparsamkeit geordnet ist, ist das automatisch der, der
+     am meisten behaelt. */
+  const versuche = [
+    ['opening brace added',     '{' + text],
+    ['closing brace added',     text + '}'],
+    ['both braces added',       '{' + text + '}']
+  ];
+  if (bounds && bounds.first < bounds.last) {
+    versuche.push(
+      ['tail field dropped',    '{' + text.slice(0, bounds.last) + '}'],
+      ['head field dropped',    '{' + text.slice(bounds.first + 1) + '}'],
+      ['head and tail dropped', '{' + text.slice(bounds.first + 1, bounds.last) + '}']
+    );
   }
 
-  const candidate = '{' + text.slice(bounds.first + 1, bounds.last) + '}';
-  try {
+  for (const [wie, kandidat] of versuche) {
+    let data;
+    try { data = JSON.parse(kandidat); } catch { continue; }
+    /* Ein Array oder ein blanker Wert ist kein Inventardokument - das faenge
+       sonst erst die Pflichtpruefung ab, und zwar mit einer irrefuehrenden
+       Meldung ueber fehlende Felder. */
+    if (!data || typeof data !== 'object' || Array.isArray(data)) continue;
     return {
-      data: JSON.parse(candidate),
+      data,
       repaired: true,
-      note: `repaired at depth ${topDepth} (${fieldsAtTop} fields), `
-          + `dropped ${bounds.first + 1} bytes head, ${text.length - bounds.last} bytes tail`
+      note: `${wie} at depth ${topDepth} (${fieldsAtTop} fields), `
+          + `kept ${kandidat.length} of ${text.length + 2} bytes`
     };
-  } catch (e) {
-    return { data: null, repaired: true, note: 'repair did not parse: ' + e.message };
   }
+
+  return {
+    data: null,
+    repaired: true,
+    note: bounds && bounds.first < bounds.last
+      ? `no reconstruction parsed at depth ${topDepth}`
+      : `no usable commas at depth ${topDepth}`
+  };
 }
 
 /** Wie viele der gesuchten Felder stehen als Schluessel im Text? */

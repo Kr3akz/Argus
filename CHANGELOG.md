@@ -21,6 +21,25 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.13.2] - 2026-09-17
+
+### Fixed
+
+- **A whole inventory could be thrown away over one missing character.** The
+  game does not always leave a clean copy in memory — usually the piece Argus
+  finds is cut off at one or both ends, and it has to mend it before reading
+  it. The way it mended it always discarded the first and the last entry,
+  whether or not they were damaged; a copy that was missing nothing but its
+  opening bracket lost a complete entry for no reason. That entry was often the
+  very one Argus had searched for, so the copy was then rejected as incomplete
+  — with every field name plainly present in it. Argus now tries the careful
+  repairs first and only cuts when nothing else will parse, so a copy is only
+  ever docked what is genuinely damaged.
+- **The scan log fits on a screen again.** Searching for two field names also
+  turns up the small leftover fragments of older copies, and listing every one
+  of them ran to several pages. It now shows the most complete ones and counts
+  the rest in a line.
+
 ## [1.13.1] - 2026-09-17
 
 ### Fixed

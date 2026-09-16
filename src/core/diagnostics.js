@@ -203,10 +203,22 @@ export function formatReport(context = {}) {
       /* Was aus jedem Kandidaten geworden ist, steht in attempts - hier
          zusammengefuehrt, damit eine Zeile je Fundstelle reicht. */
       const ergebnis = new Map(r.attempts.map(a => [a.address, a.result]));
+
+      /* NUR DIE VORDERSTEN, und das ist kein Geiz.
+         Seit es zwei Anker gibt, kommen auch die vielen kleinen Bruchstuecke
+         mit - gemessen 42 Fundstellen in einem Lauf. Je zwei Zeilen macht das
+         einen Bericht ueber mehrere Bildschirmseiten, und genau das war er
+         nicht: er soll auf EIN Bildschirmfoto passen.
+         Die Liste ist nach Feldabdeckung sortiert, die vordersten sind also
+         die aussagekraeftigsten - und die gewaehlte steht ohnehin unter den
+         ersten, weil sie die erste ist, die alle Proben bestanden hat. */
+      const ZEIGE = 8;
+      const liste = r.candidates.slice(0, ZEIGE);
+      const rest = r.candidates.length - liste.length;
       /* Aeltere Laeufe im Puffer kennen die Zahl noch nicht - dann lieber
          nichts behaupten als die alte 17 hinschreiben. */
       const soll = r.requiredFields ? '/' + r.requiredFields : '';
-      for (const c of r.candidates) {
+      for (const c of liste) {
         const mark = c.address === wahl ? '>' : ' ';
         const zeile = `  ${mark}${c.address.padEnd(15)}`
                     + `${String(c.kilobytes).padStart(6)} KB  `
@@ -225,6 +237,13 @@ export function formatReport(context = {}) {
         if (!res) { L.push(zeile); continue; }
         if (zeile.length + 4 + res.length <= BREITE) L.push(`${zeile}  -> ${res}`);
         else { L.push(zeile); L.push(...umbrich('-> ' + res, '       ')); }
+      }
+      /* Der Rest wird nicht verschwiegen, nur nicht aufgezaehlt - sonst sieht
+         eine gekuerzte Liste aus wie eine vollstaendige. */
+      if (rest) {
+        const kleinste = r.candidates[r.candidates.length - 1];
+        L.push(`   … ${rest} more fragment(s), down to ${kleinste.kilobytes} KB `
+             + `and ${kleinste.fields}${soll} fields`);
       }
     } else if (r.passes.length) {
       L.push('   no copy of the inventory found in memory');
