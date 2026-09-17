@@ -80,6 +80,14 @@ contextBridge.exposeInMainWorld('api', {
      ist der Slug allein kein Preis: Rang 0 und Hoechstrang liegen weit
      auseinander (siehe market.js). */
   fetchUpgradePrices:(entries) => ipcRenderer.invoke('upgrade:prices', entries),
+  /* Kursverlauf: was in 90 Tagen wirklich gehandelt wurde, nicht was jemand
+     verlangt. `cachedOnly` antwortet ohne Netz - damit ein Datenblatt sofort
+     eine Kurve zeigt und den frischen Stand nachreicht. */
+  marketStats:     (slug, o)   => ipcRenderer.invoke('market:stats', slug, o || {}),
+  marketManyStats: (list, o)   => ipcRenderer.invoke('market:manyStats', list, o || {}),
+  /* Vault-Prognose: was als naechstes aus den Droptabellen verschwindet, und
+     was davon im eigenen Schrank liegt. */
+  getInsights:     (o)         => ipcRenderer.invoke('insights:get', o || {}),
   getRelicDetails: (u)         => ipcRenderer.invoke('relic:details', u),
   relicsForItem:   (name)      => ipcRenderer.invoke('relics:forItem', name),
   getChecklist:    (cat)       => ipcRenderer.invoke('checklist:get', cat),

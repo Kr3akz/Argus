@@ -6594,7 +6594,16 @@ function paintUpgradePlat(e) {
      auch beim Zeichnen entsteht (siehe upgradeBadges). */
   const idx = currentInvList.indexOf(e);
   if (idx < 0) return;
-  grid.querySelector(`[data-idx="${idx}"] .inv-badges`)?.insertAdjacentHTML('beforeend', html);
+  const row = grid.querySelector(`[data-idx="${idx}"] .inv-badges`);
+  if (!row) return;
+
+  /* VOR das Abzeichen der eigenen Order, falls eines dasteht. Die Reihenfolge
+     ist eine Aussage: erst was die Karte kostet, dann was ich verlange - in
+     dieser Richtung liest man den Abstand zwischen beiden. Angehaengt landete
+     der Marktpreis rechts vom eigenen und drehte die Frage um. */
+  const eigene = row.querySelector('[data-up-listed]');
+  if (eigene) eigene.insertAdjacentHTML('beforebegin', html);
+  else row.insertAdjacentHTML('beforeend', html);
 }
 
 /**
@@ -6711,6 +6720,13 @@ function myListings() {
  */
 let listingsChecked = false;
 
+/* Die Bereiche, in denen eine eigene Order ueberhaupt sichtbar werden kann.
+   Materialien und Blaupausen stehen nicht darin - sie sind nicht handelbar.
+   Hier oben und nicht im Zeichner: das Raster wird bei jedem Tastendruck in
+   der Suche neu gebaut, und eine Menge, die sich nie aendert, gehoert nicht in
+   diesen Weg. */
+const LISTED_SECTIONS = new Set(['sets', 'mods', 'arcanes']);
+
 async function ensureMyListings() {
   if (tradeOrders || listingsChecked) return false;
   listingsChecked = true;
@@ -6726,8 +6742,220 @@ async function ensureMyListings() {
   }
 }
 
-/** Steht von diesem Set gerade etwas auf warframe.market? */
-const setIsListed = s => Boolean(s.setSlug && myListings().has(s.setSlug));
+/**
+ * Was zu diesem Slug offen steht - oder null.
+ *
+ * Die eine Stelle, an der gefragt wird. Vorher stand `myListings().get(...)`
+ * an drei Stellen, und jede musste selbst daran denken, dass ein fehlender
+ * Slug keinen Zugriff auf die Map bedeutet.
+ */
+const listedFor = slug => (slug ? myListings().get(slug) || null : null);
+
+/**
+ * Steht von diesem Set gerade etwas auf warframe.market?
+ *
+ * DIE TEILE ZAEHLEN MIT, UND DAS WAR DER FEHLER: gefragt wurde nur nach
+ * `setSlug` - also nach "mirage_prime_set". Verkauft werden aber ueberwiegend
+ * EINZELTEILE; zwei echte Orders im Konto lauteten auf
+ * "mirage_prime_systems_blueprint" und "pyrana_prime_barrel". Keine davon
+ * traegt den Set-Slug, und deshalb konnte die Markierung fuer die
+ * gewoehnlichste Art zu handeln nie ansprechen. Von aussen sah das aus, als
+ * gaebe es sie gar nicht.
+ *
+ * Ein Set gilt jetzt als "im Angebot", sobald IRGENDETWAS daraus draussen
+ * steht - das ganze Set oder eines seiner Teile.
+ */
+function setIsListed(s) {
+  if (listedFor(s.setSlug)) return true;
+  return (s.parts || []).some(p => listedFor(p.slug));
+}
+
+/**
+ * Die Order, die auf einem einzelnen Teil liegt - Verkauf vor Kauf.
+ *
+ * WARUM VERKAUF GEWINNT: auf der Teilekachel ist Platz fuer EIN Abzeichen.
+ * Ein Verkaufsangebot ist die Aussage ueber das Teil, das dort liegt ("das
+ * biete ich an"); ein Kaufgesuch ist eine Aussage ueber ein Teil, das man
+ * NICHT hat. Auf einer Kachel, die den eigenen Bestand zeigt, ist das erste
+ * die Antwort auf die Frage, die man sich stellt.
+ */
+const partListing = slug => {
+  const slot = listedFor(slug);
+  return slot ? (slot.sell || slot.buy) : null;
+};
+
+/* ---------------- Der Kursverlauf eines Items ----------------
+
+   WAS BEZAHLT WURDE, NICHT WAS VERLANGT WIRD. Das Preisschild daneben liest
+   Angebote - und ein Angebot ist eine Behauptung, die seit vier Monaten
+   dastehen und nie jemanden gefunden haben kann. Hier stehen Abschluesse:
+   Datum, Stueckzahl, bezahlter Preis. Erst damit laesst sich die Frage
+   beantworten, die vor jedem Verkauf steht - nicht "was ist das wert", sondern
+   "bewegt sich das, und findet es ueberhaupt jemanden".
+
+   DIE STUECKZAHL IST DIE ZWEITE HAELFTE DES PREISES. Ein Teil mit 400p und
+   vier Handeln im Monat ist etwas anderes als eines mit 40p und zweihundert.
+   Das erste ist eine Zahl, das zweite ist Geld. Deshalb steht neben jedem
+   Kurs, an wie vielen Tagen ueberhaupt etwas passiert ist.
+
+   ZWEI ANSTRICHE, UND DER ERSTE KOSTET NICHTS: was auf der Platte liegt,
+   kommt sofort auf das Datenblatt; der frische Stand loest es ab, sobald er da
+   ist. Dieselbe Regel wie bei cachedPrice() in market.js - ein paar Stunden
+   alter Verlauf beantwortet "steigt das" genauso gut wie ein taufrischer, und
+   ein Ladebalken an der Stelle einer Kurve beantwortet gar nichts.
+   -------------------------------------------------------------------- */
+
+/** Schluessel eines Verlaufs - dieselbe Schreibweise wie statsKey im Kern. */
+const mstatKey = (slug, rank = null) => (rank == null ? slug : `${slug}#r${rank}`);
+
+/**
+ * Ein Satz darueber, was die Kurve sagt.
+ *
+ * BESCHREIBEND UND NICHT VORHERSAGEND. "Steigt seit drei Wochen" ist eine
+ * Beobachtung; "wird weiter steigen" waere eine Behauptung ueber die Zukunft,
+ * die aus diesen Zahlen nicht folgt. Der Unterschied ist der zwischen einer
+ * Auskunft und einem Tipp, den niemand geprueft hat.
+ *
+ * DIE HANDELSDICHTE KOMMT ZUERST. Bei einem Gut, das an vier von dreissig
+ * Tagen ueberhaupt gehandelt wurde, ist jeder Trend das Rauschen zwischen zwei
+ * Einzelfaellen - dann gehoert genau das dorthin und keine Prozentzahl.
+ */
+function mstatReading(s) {
+  if (!s) return '';
+
+  if (s.activeDays30 != null && s.activeDays30 < 8) {
+    return `Rarely traded — ${s.activeDays30} of the last 30 days saw a sale at all. `
+         + 'A price from that few trades says little, and yours may sit for a while.';
+  }
+
+  const t = s.trend30;
+  if (t != null && Math.abs(t) >= 8) {
+    const richtung = t > 0 ? 'up' : 'down';
+    return `The last week traded ${Math.abs(t)} % ${richtung} against the month behind it`
+         + (s.median7 != null && s.median30 != null
+            ? ` — ${nf(s.median7)}p against ${nf(s.median30)}p.` : '.');
+  }
+
+  return s.median30 != null
+    ? `Steady around ${nf(s.median30)}p — no move worth acting on in the last month.`
+    : '';
+}
+
+/** Die Trendmarke. Unter drei Prozent ist kein Trend, sondern der Wochentag. */
+function mstatTrend(value, label) {
+  if (value == null) return '';
+  const flach = Math.abs(value) < 3;
+  const ton = flach ? 'is-flat' : value > 0 ? 'is-up' : 'is-down';
+  const pfeil = flach ? '=' : value > 0 ? '▲' : '▼';
+  return `<span class="mstat-trend ${ton}"
+    title="Median of the last 7 days against the last ${label} — from completed trades"
+    >${pfeil} ${flach ? '' : (value > 0 ? '+' : '') + value + ' %'}${
+      flach ? 'flat' : ''}<small>${esc(label)}</small></span>`;
+}
+
+/**
+ * Der Kasten selbst. Leer heisst leer: wo warframe.market nichts fuehrt, steht
+ * ein Satz und kein leeres Diagramm mit Nullen darin.
+ */
+function marketStatsPanel(s, { width = 300 } = {}) {
+  if (!s) {
+    return `<p class="mstat-none">warframe.market has no completed trades on record for this.</p>`;
+  }
+
+  const spanne = (s.low90 != null && s.high90 != null)
+    ? `${nf(s.low90)}–${nf(s.high90)}` : '–';
+
+  /* DAS ENGSTE FENSTER, IN DEM ETWAS PASSIERT IST - und es sagt, welches es
+     war. Bei einem Relikt, das an neun von dreissig Tagen gehandelt wurde, ist
+     die Woche oft leer; ein Strich als Hauptzahl waere dann eine Fehlanzeige
+     ueber ein Gut, das sehr wohl einen Preis hat. Die Beschriftung wandert mit,
+     damit die Zahl nicht laenger verspricht, als sie deckt. */
+  const [leit, leitLabel] =
+      s.median7  != null ? [s.median7,  '7-day median']
+    : s.median30 != null ? [s.median30, '30-day median']
+    : s.median90 != null ? [s.median90, '90-day median']
+    : [null, 'no trades'];
+
+  return `
+    <div class="mstat${s.stale ? ' is-stale' : ''}">
+      <div class="mstat-top">
+        <span class="mstat-figure" title="Median price of completed trades — ${esc(leitLabel)}">
+          <img class="currency-ic" src="assets/icons/currency/platinum.png" alt="Platinum">
+          <b>${leit != null ? nf(leit) : '–'}</b>
+          <small>${esc(leitLabel)}</small>
+        </span>
+        ${mstatTrend(s.trend30, '30d')}${mstatTrend(s.trend90, '90d')}
+        ${s.subtype ? `<span class="mstat-sub" title="warframe.market trades each condition separately — this curve is the one with the most volume">${esc(s.subtype)}</span>` : ''}
+      </div>
+
+      <div class="mstat-spark">${Charts.sparkline(s.series, { width, trend: s.trend30 })}</div>
+
+      <div class="mstat-foot">
+        <span title="Copies changing hands per day, averaged over the last 30 days">
+          <b>${s.volumePerDay != null ? nf(s.volumePerDay) : '–'}</b> <small>traded / day</small>
+        </span>
+        <span title="Lowest and highest daily median over the last 90 days">
+          <b>${spanne}</b> <small>90-day range</small>
+        </span>
+        <span title="Days in the last 30 on which this was traded at all — the closer to 30, the faster yours sells">
+          <b>${s.activeDays30 ?? '–'}<i>/30</i></b> <small>days active</small>
+        </span>
+      </div>
+
+      ${mstatReading(s) ? `<p class="mstat-read">${esc(mstatReading(s))}</p>` : ''}
+      ${s.stale ? `<p class="mstat-age">A remembered history — a fresh one is on its way.</p>` : ''}
+    </div>`;
+}
+
+/**
+ * Den Verlauf in einen Platzhalter laden.
+ *
+ * DER PLATZHALTER MUSS NOCH DASTEHEN, wenn die Antwort kommt: wer das
+ * Datenblatt in der Zwischenzeit schliesst und ein anderes oeffnet, hat ein
+ * neues Element an derselben Kennung. Deshalb wird nicht das Element gemerkt,
+ * sondern die Kennung - und vor dem Schreiben geprueft, ob dort noch derselbe
+ * Slug erwartet wird. Sonst landet der Verlauf von Mirage Prime im Datenblatt
+ * von Serration.
+ */
+async function mountMarketStats(hostId, slug, rank = null, opts = {}) {
+  const key = mstatKey(slug, rank);
+  const passt = () => {
+    const el = $(hostId);
+    return el && el.dataset.mstatKey === key ? el : null;
+  };
+
+  const el = passt();
+  if (!el) return;
+  if (!slug) {
+    el.innerHTML = `<p class="mstat-none">This is not traded on warframe.market.</p>`;
+    return;
+  }
+
+  const male = daten => {
+    const ziel = passt();
+    if (ziel) ziel.innerHTML = marketStatsPanel(daten, opts);
+  };
+
+  try {
+    const sofort = await window.api.marketStats(slug, { rank, cachedOnly: true });
+    if (sofort) male(sofort);
+  } catch { /* Kein Cache ist kein Fehler - der frische Stand kommt gleich. */ }
+
+  try {
+    male(await window.api.marketStats(slug, { rank }));
+  } catch {
+    const ziel = passt();
+    if (ziel && !ziel.querySelector('.mstat')) {
+      ziel.innerHTML = `<p class="mstat-none">Could not reach warframe.market for the history.</p>`;
+    }
+  }
+}
+
+/** Der Platzhalter, in den mountMarketStats schreibt. */
+const marketStatsSlot = (hostId, slug, rank = null) => `
+  <div class="mstat-slot" id="${esc(hostId)}" data-mstat-key="${esc(mstatKey(slug, rank))}">
+    <div class="mstat-loading">${Icon.chart(15)}<span>Reading the last 90 days …</span></div>
+  </div>`;
 
 /**
  * Von der Set-Karte zu der Order, die dort schon steht.
@@ -6782,7 +7010,7 @@ function listedBtn(o, icon, label, tone) {
 function setTradeButtons(s) {
   if (!s.setSlug) return '';
   const have = s.fullSetsCount || 0;
-  const slot = myListings().get(s.setSlug);
+  const slot = listedFor(s.setSlug);
   const listedSell = slot?.sell || null;
   const listedBuy = slot?.buy || null;
 
@@ -6807,6 +7035,44 @@ function setTradeButtons(s) {
   return `<span class="set-trade">${sellBtn}${buyBtn}</span>`;
 }
 
+/**
+ * Das Abzeichen "geht bald in den Vault".
+ *
+ * AUF DEM BILD UND NICHT IM FUSS: der Fuss traegt schon Dukaten, Platin und
+ * zwei Handelsknoepfe - ein fuenftes Element dort haette die Zeile umbrechen
+ * lassen. Die Ecke des Schaukastens ist frei, faellt beim Ueberfliegen des
+ * Rasters auf und nimmt der Karte keine Hoehe.
+ *
+ * NUR ZWEI STUFEN, UND BEIDE HABEN EINEN ANLASS: ueberfaellig heisst, es kann
+ * mit der naechsten Ankuendigung soweit sein; bald heisst, es ist in Sicht.
+ * "In zwei Jahren" waere ein Etikett ohne Anlass - siehe den Filter in
+ * main.js, der nur diese beiden Stufen ueberhaupt mitschickt.
+ *
+ * DAS IST EINE SCHAETZUNG, KEIN TERMIN. Der Titel sagt es bei jedem Zeigen
+ * dazu; die vollstaendige Begruendung steht im Insights-Modus des Handels-Tabs.
+ */
+function vaultSoonTag(s) {
+  const v = s.vaultSoon;
+  if (!v) return '';
+
+  const ueber = v.stage === 'overdue';
+  const text = ueber ? 'Overdue'
+    : v.days < 45 ? `${v.days}d`
+    : `${Math.round(v.days / 30)}mo`;
+
+  const datum = v.date
+    ? new Date(v.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+    : null;
+  const title = (ueber
+      ? 'Past its estimated vault date and still dropping — this can go with any Prime Access announcement'
+      : `Estimated to be vaulted in about ${v.days} days`)
+    + (datum ? ` (est. ${datum})` : '')
+    + '. An estimate from community data, not an announcement by Digital Extremes.';
+
+  return `<span class="set-vault-tag ${ueber ? 'is-overdue' : 'is-soon'}" title="${esc(title)}"
+    >${Icon.clock(9)}<span>${esc(text)}</span></span>`;
+}
+
 function setCardTile(s, idx) {
   const pct = s.totalParts ? Math.min(100, Math.round((s.ownedParts / s.totalParts) * 100)) : 0;
 
@@ -6818,15 +7084,28 @@ function setCardTile(s, idx) {
       ? `${p.count}/${req}`
       : (p.count > 0 ? '×' + p.count : '–');
 
+    /* STEHT DIESES TEIL DRAUSSEN? Die Antwort gehoert auf das Teil und nicht
+       nur auf die Karte: von acht Teilen eines Sets ist typischerweise EINES
+       im Angebot, und "irgendwas von diesem Set steht drin" laesst einen
+       danach suchen, welches. Die Zahl ist der eigene Preis - die einzige,
+       die man beim Blick auf ein laufendes Angebot wissen will. */
+    const listed = partListing(p.slug);
+    const listedTitle = listed
+      ? ` · ${listed.visible === false ? 'paused' : 'listed'} at ${nf(listed.platinum)}p${
+          listed.quantity > 1 ? ' ×' + nf(listed.quantity) : ''}`
+      : '';
+
     /* Jedes Teil ist anklickbar: die Frage vor einem fehlenden Teil ist
        immer dieselbe - aus welchem Relikt kommt das? */
     return `
-    <button type="button" class="set-part ${hasEnough ? 'has' : (isPartial ? 'partial' : 'missing')}"
+    <button type="button" class="set-part ${hasEnough ? 'has' : (isPartial ? 'partial' : 'missing')}${
+              listed ? ' is-listed' + (listed.visible === false ? ' is-paused' : '') : ''}"
             data-part="${esc(p.name)}"
-            title="${esc(p.name)} · ${req > 1 ? req + 'x needed · ' : ''}${p.ducats ? p.ducats + ' ducats' : 'not tradeable'}${p.price ? ' · ' + p.price.min + 'p' : ''} — click for relics">
+            title="${esc(p.name)} · ${req > 1 ? req + 'x needed · ' : ''}${p.ducats ? p.ducats + ' ducats' : 'not tradeable'}${p.price ? ' · ' + p.price.min + 'p' : ''}${listedTitle} — click for relics">
       <img class="set-part-img" src="${esc(p.image || '')}" alt="" loading="lazy">
       <span class="set-part-name">${esc(p.shortName)}</span>
       <span class="set-part-count">${countLabel}</span>
+      ${listed ? `<span class="set-part-listed">${Icon.tag(9)}${nf(listed.platinum)}</span>` : ''}
     </button>`;
   }).join('');
 
@@ -6836,6 +7115,7 @@ function setCardTile(s, idx) {
         ${s.image ? `
           <div class="set-art-showcase">
             <img class="set-art-img" src="${esc(s.image)}" alt="" loading="lazy">
+            ${vaultSoonTag(s)}
           </div>` : ''}
         <div class="set-main-content">
           <div class="set-head">
@@ -6891,10 +7171,16 @@ function setupInvGridEvents(grid) {
     if (!el) return;
     const idx = Number(el.dataset.idx);
     const item = currentInvList?.[idx];
-    if (item) {
-      const open = invSection === 'relics' ? openRelicModal : openUpgradeModal;
-      open(item);
-    }
+    if (!item) return;
+
+    /* DREI BEREICHE, DREI DATENBLAETTER. Die Sets liefen bisher mit den Mods
+       in denselben Zweig - und ein Set-Eintrag hat keinen uniqueName, also
+       endete jeder Klick auf eine Karte in "Card not found". Sichtbar war das
+       kaum, weil niemand eine Karte anklickt, von der er nichts erwartet. */
+    const open = invSection === 'relics' ? openRelicModal
+               : invSection === 'sets'   ? openSetModal
+               : openUpgradeModal;
+    open(item);
   };
 
   grid.addEventListener('error', (e) => {
@@ -7216,15 +7502,23 @@ function renderInventoryGrid({ keepRendered = 0 } = {}) {
   /* Erst zeichnen, dann nachladen: der Aufruf steht hinter dem Raster, damit
      er die sichtbare Liste kennt und dort anfangen kann. Laeuft im Hintergrund
      weiter, ohne dass das Zeichnen darauf wartet. */
-  if (invSection === 'sets') {
-    fetchMissingSetPrices();
-    /* Die eigenen Orders einmal nachholen, damit die Karten sagen koennen,
-       was davon schon auf warframe.market steht. Danach noch einmal zeichnen -
-       aber nur, wenn wirklich etwas dazugekommen ist, und mit dem Rollbalken
-       an Ort und Stelle: dieselben Karten mit einem Etikett mehr sind dieselbe
-       Seitenhoehe, ein Sprung nach oben waere grundlos. */
+  if (invSection === 'sets') fetchMissingSetPrices();
+
+  /* Die eigenen Orders einmal nachholen, damit die Kacheln sagen koennen, was
+     davon schon auf warframe.market steht. Danach noch einmal zeichnen - aber
+     nur, wenn wirklich etwas dazugekommen ist, und mit dem Rollbalken an Ort
+     und Stelle: dieselben Kacheln mit einem Etikett mehr sind dieselbe
+     Seitenhoehe, ein Sprung nach oben waere grundlos.
+
+     DREI BEREICHE UND NICHT NUR DIE SETS: gehandelt werden ueberwiegend
+     Einzelteile, Mods und Arcanes. Solange der Abruf nur im Set-Bereich lief,
+     blieben die Mod-Kacheln auch dann unmarkiert, wenn man die Karte gerade
+     selbst anbietet - und wer nie in die Sets sah, bekam die Markierung in
+     der ganzen Sitzung nicht zu sehen. */
+  if (LISTED_SECTIONS.has(invSection)) {
+    const bereich = invSection;
     ensureMyListings().then(neu => {
-      if (!neu || invSection !== 'sets') return;
+      if (!neu || invSection !== bereich) return;
       const scroller = document.querySelector('.main-content');
       const top = scroller?.scrollTop ?? 0;
       renderInventoryGrid({ keepRendered: invRenderedCount });
@@ -7370,8 +7664,55 @@ function upgradeBadges(e) {
   const isOwned = (e.count || 0) > 0;
   return `<span class="inv-badges">
       <span class="mod-count ${isOwned ? '' : 'is-unowned'}">${isOwned ? nf(e.count) : '0'}</span>
-      ${upgradePriceTag(e)}
+      ${upgradePriceTag(e)}${upgradeListedTag(e)}
     </span>`;
+}
+
+/* ---------------- Was von dieser Karte draussen steht ----------------
+
+   DER RANG ENTSCHEIDET MIT, und bei Mods ist das keine Feinheit: ein
+   ungerankter Primed Continuity und ein Rang-10-Exemplar sind zwei
+   verschiedene Waren zu 30p und 67p (siehe priceKey in market.js). Wer eine
+   Rang-10-Order laufen hat und auf eine Kachel sieht, die den ungerankten
+   Preis zeigt, bekommt sonst ein Abzeichen, das zu einer anderen Ware gehoert.
+
+   Deshalb ZUERST die Order, deren Rang zu dem passt, den die Kachel zeigt -
+   und erst danach irgendeine. Die zweite bleibt drin, weil sie trotzdem eine
+   Auskunft ist ("von dieser Karte steht etwas draussen, nur auf einer anderen
+   Stufe"); sie sagt es dann im Titel dazu. */
+function upgradeListing(e) {
+  const slot = listedFor(e?.slug);
+  if (!slot) return null;
+
+  const wanted = e.priceRank ?? 0;
+  const passt = o => o && (o.rank == null || o.rank === wanted);
+  return passt(slot.sell) ? slot.sell
+       : passt(slot.buy)  ? slot.buy
+       : (slot.sell || slot.buy);
+}
+
+/**
+ * Das Abzeichen einer laufenden Order auf einer Mod- oder Arcane-Kachel.
+ *
+ * NEBEN DEM MARKTPREIS UND NICHT STATT SEINER: die beiden Zahlen beantworten
+ * verschiedene Fragen. Links steht, was die Karte kostet; rechts, was ICH dafuer
+ * verlange. Genau der Abstand zwischen beiden ist der Grund, aus dem man eine
+ * laufende Order noch einmal anfasst.
+ */
+function upgradeListedTag(e) {
+  const o = upgradeListing(e);
+  if (!o) return '';
+
+  const paused = o.visible === false;
+  const fremderRang = o.rank != null && o.rank !== (e.priceRank ?? 0);
+  const title = `${paused ? 'Paused' : 'Your ' + (o.type === 'buy' ? 'buy' : 'sell') + ' order'}`
+    + ` on warframe.market — ${nf(o.platinum)} platinum${o.quantity > 1 ? ' × ' + nf(o.quantity) : ''}`
+    + (fremderRang ? ` · for rank ${o.rank}, not the rank shown here` : '')
+    + ' — click the card to open the data sheet';
+
+  return `<span class="mod-listed${paused ? ' is-paused' : ''}${o.type === 'buy' ? ' is-buy' : ''}"
+    data-up-listed="${esc(e.slug)}" title="${esc(title)}"
+    >${Icon.tag(9)}<b>${nf(o.platinum)}</b>${fremderRang ? `<i>r${o.rank}</i>` : ''}</span>`;
 }
 
 /* ---------------- Der Platinpreis einer Karte ----------------
@@ -7663,20 +8004,35 @@ function upgradeModalPlat(d) {
 function upgradeTradeButtons(d) {
   if (!d.slug) return '';
   const have = d.owned?.count || 0;
-  return `
-    <span class="up-trade">
-      <button type="button" class="set-trade-btn is-sell${have ? '' : ' is-disabled'}"
+
+  /* STEHT AUF DIESER STUFE SCHON ETWAS? Dieselbe Frage wie auf den Set-Karten,
+     nur mit einer Bedingung mehr: eine Order auf Rang 0 ist keine Order auf
+     Rang 10. Wer bei Rang 10 steht und eine Rang-0-Order laufen hat, soll
+     "WTS" sehen und nicht "Listed" - sonst fuehrt der Knopf zu einer Order,
+     die eine andere Ware betrifft. */
+  const slot = listedFor(d.slug);
+  const aufStufe = o => o && (o.rank == null || o.rank === upgradeRank);
+  const listedSell = aufStufe(slot?.sell) ? slot.sell : null;
+  const listedBuy  = aufStufe(slot?.buy)  ? slot.buy  : null;
+
+  const sellBtn = listedSell
+    ? listedBtn(listedSell, Icon.tag(12), 'Listed', 'is-sell')
+    : `<button type="button" class="set-trade-btn is-sell${have ? '' : ' is-disabled'}"
               id="up-wts-btn"
               title="${have
                 ? `List it for sale on warframe.market at rank ${upgradeRank}`
                 : 'You do not own this card'}">
         ${Icon.tag(12)}<span>WTS</span>${have > 1 ? `<b>${have}</b>` : ''}
-      </button>
-      <button type="button" class="set-trade-btn is-buy" id="up-wtb-btn"
+      </button>`;
+
+  const buyBtn = listedBuy
+    ? listedBtn(listedBuy, Icon.plus(12), 'Wanted', 'is-buy')
+    : `<button type="button" class="set-trade-btn is-buy" id="up-wtb-btn"
               title="Post a buy order on warframe.market for rank ${upgradeRank}">
         ${Icon.plus(12)}<span>WTB</span>
-      </button>
-    </span>`;
+      </button>`;
+
+  return `<span class="up-trade">${sellBtn}${buyBtn}</span>`;
 }
 
 /**
@@ -7795,6 +8151,18 @@ function renderUpgradeModal() {
           </div>
         </div>` : ''}
 
+      ${d.slug ? `
+        <div class="im-section">
+          <!-- DIE STUFE STEHT IM TITEL, weil der Verlauf zu genau einer
+               gehoert: Arcane Energize handelt auf Rang 0 bei 8p und auf
+               Rang 5 bei 140p (nachgemessen 17.09.2026). Eine Kurve ohne
+               Stufenangabe waere an dieser Karte die Haelfte einer Auskunft. -->
+          <div class="im-section-title">
+            Market history <span class="im-section-note">rank ${upgradeRank}</span>
+          </div>
+          ${marketStatsSlot('up-mstat', d.slug, upgradeRank)}
+        </div>` : ''}
+
       <div class="im-section">
         <div class="im-section-title">Effect</div>
         <div class="up-ranks">
@@ -7901,6 +8269,24 @@ function renderUpgradeModal() {
     };
   }
 
+  /* Steht die Order schon, fuehrt der Knopf zu ihr statt eine zweite fuer
+     dieselbe Karte anzulegen - wie auf den Set-Karten. Das Datenblatt geht
+     dabei zu: der Weg endet im Bearbeiten-Fenster des Handels-Tabs, und zwei
+     offene Fenster uebereinander waeren nur die Frage, welches gerade gilt. */
+  content.querySelectorAll('[data-set-open]').forEach(btn => {
+    btn.onclick = () => {
+      const id = btn.dataset.setOpen;
+      closeUpgradeModal();
+      openListedOrder(id);
+    };
+  });
+
+  /* Der Verlauf DIESER Stufe. Laeuft bei jedem Zeichnen neu an, und das ist
+     Absicht: ein Wechsel der Stufe zeichnet das Datenblatt ohnehin neu, und
+     dabei wechselt die Ware. Die Frist im Kern haelt den zweiten Blick auf
+     dieselbe Stufe kostenlos. */
+  if (d.slug) mountMarketStats('up-mstat', d.slug, upgradeRank);
+
   /* Bleibt die gezeichnete Karte aus, tritt das Bild aus DEs Export an ihre
      Stelle - und der Rahmen im Kopf schrumpft wieder auf Bildgroesse. */
   onImageFail(content, '.im-art', img => {
@@ -7992,6 +8378,18 @@ async function openPartModal(itemName) {
       }
     };
   }
+
+  /* Steht schon eine Order darauf, fuehrt der Knopf zu ihr - wie ueberall
+     sonst, wo dieses Plaettchen erscheint. */
+  box.querySelectorAll('[data-set-open]').forEach(btn => {
+    btn.onclick = () => {
+      const id = btn.dataset.setOpen;
+      closePartModal();
+      openListedOrder(id);
+    };
+  });
+
+  mountMarketStats('part-mstat', d.slug);
 }
 
 function partModalShell(d, body) {
@@ -8023,16 +8421,26 @@ function partModalShell(d, body) {
       </span>` : ''
   ].filter(Boolean).join('');
 
+  /* STEHT DIESES TEIL SCHON DRAUSSEN? Hier muss dieselbe Antwort stehen wie
+     auf der Teilekachel, von der aus man hergekommen ist. Ein Plaettchen, das
+     "listed 16p" sagt, und darunter ein Fenster mit einem WTS-Knopf waeren
+     zwei Aussagen ueber denselben Gegenstand - und die zweite legte beim
+     Klicken eine zweite Order fuer dasselbe Teil an. */
+  const slot = listedFor(slug);
   const tradeBtns = slug ? `
     <div class="im-header-actions part-header-actions">
-      <button type="button" id="part-wts-btn" class="set-trade-btn is-sell${ownedCount > 0 ? '' : ' is-disabled'}"
+      ${slot?.sell
+        ? listedBtn(slot.sell, Icon.tag(12), 'Listed', 'is-sell')
+        : `<button type="button" id="part-wts-btn" class="set-trade-btn is-sell${ownedCount > 0 ? '' : ' is-disabled'}"
               title="${ownedCount > 0 ? `List ${ownedCount} for sale on warframe.market` : 'You do not own this part'}">
         ${Icon.tag(12)}<span>WTS</span>${ownedCount > 1 ? `<b>${ownedCount}</b>` : ''}
-      </button>
-      <button type="button" id="part-wtb-btn" class="set-trade-btn is-buy"
+      </button>`}
+      ${slot?.buy
+        ? listedBtn(slot.buy, Icon.plus(12), 'Wanted', 'is-buy')
+        : `<button type="button" id="part-wtb-btn" class="set-trade-btn is-buy"
               title="Post a buy order on warframe.market">
         ${Icon.plus(12)}<span>WTB</span>
-      </button>
+      </button>`}
     </div>` : '';
 
   return `
@@ -8051,7 +8459,14 @@ function partModalShell(d, body) {
       ${tradeBtns}
       <button class="modal-close-icon" id="part-close" title="Close">&times;</button>
     </div>
-    <div class="im-scroll-body">${body}</div>`;
+    <div class="im-scroll-body">
+      ${slug ? `
+        <div class="im-section">
+          <div class="im-section-title">Market history</div>
+          ${marketStatsSlot('part-mstat', slug)}
+        </div>` : ''}
+      ${body}
+    </div>`;
 }
 
 /**
@@ -8090,6 +8505,243 @@ function relicSourceList(d) {
       <div class="prel-list">${mine.map(row).join('')}</div>` : ''}
     ${rest.length ? `<div class="up-src-head">${mine.length ? 'Still to farm' : 'Drops from'}</div>
       <div class="prel-list">${rest.map(row).join('')}</div>` : ''}`;
+}
+
+/* ---------------- Datenblatt eines SETS ----------------
+
+   DAS SET WAR DAS EINZIGE, WAS KEINES HATTE. Jedes Teil, jede Mod, jedes
+   Relikt liess sich anklicken und erklaerte sich; die Karte, auf der sie alle
+   liegen, nicht. Ein Klick darauf lief in openUpgradeModal - und Set-Eintraege
+   haben gar keinen uniqueName, der Aufruf endete also in einer Fehlermeldung
+   ueber eine Karte, die es nicht gibt.
+
+   WAS HIER STEHT UND AUF DER KACHEL NICHT PASST:
+     - der Kursverlauf des GANZEN Sets, nicht der eines Teils davon. Das ist
+       eine eigene Ware mit eigenem Preis - deshalb hat sie einen eigenen Slug.
+     - ganzes Set gegen Einzelteile: was mehr einbringt, ist die Frage vor
+       jedem Verkauf, und die Antwort wechselt je Set.
+     - der Vault-Termin im Klartext statt als Abzeichen von der Groesse eines
+       Daumennagels.
+
+   ALLES AUS DEM SET-OBJEKT, KEIN NETZ AUSSER FUER DEN VERLAUF: Teile, Preise,
+   Dukaten und Bestand liegen bereits in currentInvList - sie wurden fuer das
+   Raster ohnehin gebaut. Nur der Kursverlauf kommt dazu.               */
+
+let setModalData = null;
+
+const closeSetModal = () => {
+  $('set-modal').classList.add('hidden');
+  setModalData = null;
+};
+$('set-modal').onclick = e => { if (e.target === $('set-modal')) closeSetModal(); };
+
+/** Der Vault-Termin als Satz, nicht als Abzeichen. */
+function setVaultLine(s) {
+  const v = s.vaultSoon;
+  if (!v) return '';
+
+  const datum = v.date
+    ? new Date(v.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+    : null;
+  const text = v.stage === 'overdue'
+    ? `Past its estimated vault date${datum ? ` of ${datum}` : ''} and still dropping — `
+      + 'it can go with any Prime Access announcement.'
+    : `Estimated to be vaulted in about ${v.days} days${datum ? ` (${datum})` : ''}.`;
+
+  return `
+    <div class="smod-vault ${v.stage === 'overdue' ? 'is-overdue' : 'is-soon'}">
+      ${Icon.clock(14)}
+      <span>${esc(text)} This is an estimate from community data, not an announcement
+      by Digital Extremes — see <b>Trading → Insights</b>.</span>
+    </div>`;
+}
+
+/**
+ * Eine Teilezeile im Set-Datenblatt.
+ *
+ * ANKLICKBAR WIE AUF DER KACHEL: die Frage vor einem fehlenden Teil ist hier
+ * dieselbe wie dort - aus welchem Relikt kommt das. Der Weg fuehrt deshalb in
+ * dasselbe Fenster.
+ */
+function setModalPart(p) {
+  const req = p.required || 1;
+  const genug = p.count >= req;
+  const teils = !genug && p.count > 0;
+  const listed = partListing(p.slug);
+
+  return `
+    <button type="button" class="smod-part ${genug ? 'has' : teils ? 'partial' : 'missing'}"
+            data-part="${esc(p.name)}"
+            title="${esc(p.name)} — click for the relics it drops from">
+      <img class="smod-part-img" src="${esc(p.image || '')}" alt="" loading="lazy">
+      <span class="smod-part-name">${esc(p.shortName || p.name)}</span>
+      <span class="smod-part-have">${genug ? '×' + nf(p.count)
+        : p.count > 0 ? `${p.count}/${req}` : '—'}</span>
+      <!-- NULL IST HIER KEINE ZAHL, SONDERN EIN LEERES FELD. Teile eines
+           Basis-Bausatzes tragen den Dukatenwert 0 und gar keinen Slug: sie
+           sind nicht handelbar und Baro nimmt sie nicht. Eine Null neben dem
+           Dukaten-Bild waere die Behauptung, sie seien nichts wert - dabei
+           stellt sich die Frage bei ihnen gar nicht. Der Strich beim Platin
+           steht nur, wo es einen Markt GIBT und der Preis noch aussteht. -->
+      <span class="smod-part-duc">${p.ducats
+        ? `<img class="currency-ic ducat-ic" src="assets/icons/ducats.png" alt="Ducats">${nf(p.ducats)}`
+        : ''}</span>
+      <span class="smod-part-plat">${p.price?.min != null
+        ? `<img class="currency-ic" src="assets/icons/currency/platinum.png" alt="Platinum">${nf(p.price.min)}`
+        : (p.slug ? '<i>–</i>' : '')}</span>
+      ${listed ? `<span class="smod-part-listed" title="${
+        listed.visible === false ? 'Paused' : 'Listed'} on warframe.market for ${
+        nf(listed.platinum)} platinum">${Icon.tag(9)}${nf(listed.platinum)}</span>`
+        : '<span class="smod-part-listed is-empty"></span>'}
+    </button>`;
+}
+
+function renderSetModal() {
+  const s = setModalData;
+  const box = $('set-modal-content');
+  if (!s || !box) return;
+
+  const pct = s.totalParts ? Math.min(100, Math.round((s.ownedParts / s.totalParts) * 100)) : 0;
+  const slot = listedFor(s.setSlug);
+  const have = s.fullSetsCount || 0;
+
+  /* DEs Gattungsnamen sind nicht fuer Leser gemacht: dort steht "Suits",
+     "LongGuns", "SpaceGuns". Uebersetzt wird ueber dieselbe Tabelle, die auch
+     die Bauketten benutzen - eine zweite daneben waere eine zweite
+     Gelegenheit, dass beide auseinanderlaufen. Was sie nicht kennt, faellt
+     weg, statt roh dazustehen. */
+  const gattung = CHAIN_CATEGORY[s.category] || null;
+
+  const badges = [
+    `<span class="im-badge cat">${s.kind === 'base' ? 'Base set' : 'Prime set'}</span>`,
+    gattung ? `<span class="im-badge">${esc(gattung)}</span>` : '',
+    s.complete
+      ? `<span class="im-badge status done">${Icon.check(11)} ${
+          have > 1 ? have + ' full sets' : 'Complete'}</span>`
+      : `<span class="im-badge status missing">${s.ownedParts} of ${s.totalParts} parts</span>`,
+    /* Bei einem Basis-Bausatz ist "gebaut" die Antwort, die das Zusammensuchen
+       erledigt - dieselbe Auskunft, die im Kartenfuss steht. */
+    s.isMastered ? `<span class="im-badge status done">${Icon.check(11)} Already built</span>` : ''
+  ].join('');
+
+  /* Dieselben Knoepfe wie im Kartenfuss und mit derselben Regel: steht schon
+     etwas drin, fuehrt der Knopf dorthin statt eine zweite Order anzulegen. */
+  const tradeBtns = s.setSlug ? `
+    <div class="im-header-actions part-header-actions">
+      ${slot?.sell
+        ? listedBtn(slot.sell, Icon.tag(12), 'Listed', 'is-sell')
+        : `<button type="button" id="smod-wts" class="set-trade-btn is-sell${have ? '' : ' is-disabled'}"
+              title="${have
+                ? `List ${have} complete set${have === 1 ? '' : 's'} for sale on warframe.market`
+                : 'You do not have a complete set yet'}">
+        ${Icon.tag(12)}<span>WTS</span>${have > 1 ? `<b>${have}</b>` : ''}
+      </button>`}
+      ${slot?.buy
+        ? listedBtn(slot.buy, Icon.plus(12), 'Wanted', 'is-buy')
+        : `<button type="button" id="smod-wtb" class="set-trade-btn is-buy"
+              title="Post a buy order for this set on warframe.market">
+        ${Icon.plus(12)}<span>WTB</span>
+      </button>`}
+    </div>` : '';
+
+  const kopfZahlen = [
+    s.setPrice?.min != null ? `
+      <span class="part-stat-val" title="Cheapest full-set offer on warframe.market">
+        <img class="currency-ic" src="assets/icons/currency/platinum.png" alt="Platinum">
+        <b>${nf(s.setPrice.min)}</b> <small>full set</small>
+      </span>` : '',
+    s.ownedDucats ? `
+      <span class="part-stat-val" title="Ducats for every part of this set you own, duplicates included">
+        <img class="currency-ic ducat-ic" src="assets/icons/ducats.png" alt="Ducats">
+        <b>${nf(s.ownedDucats)}</b> <small>in hand</small>
+      </span>` : ''
+  ].filter(Boolean).join('');
+
+  const fehlt = (s.parts || []).filter(p => p.count < (p.required || 1));
+
+  box.innerHTML = `
+    <div class="im-header">
+      <div class="im-header-left">
+        <div class="im-art-wrap part-art-wrap">
+          <img class="im-art" src="${esc(s.image || 'assets/icons/relic.png')}" alt=""
+               data-fail-src="assets/icons/relic.png">
+        </div>
+        <div class="im-title-group">
+          <div class="im-tags">${badges}</div>
+          <h2>${esc(s.name)}</h2>
+          ${kopfZahlen ? `<div class="part-header-stats">${kopfZahlen}</div>` : ''}
+        </div>
+      </div>
+      ${tradeBtns}
+      <button class="modal-close-icon" id="smod-close" title="Close">&times;</button>
+    </div>
+
+    <div class="im-scroll-body">
+      <div class="smod-progress" title="${pct} % of the set in hand">
+        <i style="width:${pct}%"></i>
+      </div>
+
+      ${setVaultLine(s)}
+
+      ${s.setSlug ? `
+        <div class="im-section">
+          <!-- DER VERLAUF DES SETS, nicht der eines Teils: das ganze Set ist
+               auf warframe.market eine eigene Ware mit eigenem Slug. -->
+          <div class="im-section-title">Market history <span class="im-section-note">full set</span></div>
+          ${marketStatsSlot('smod-mstat', s.setSlug)}
+        </div>` : ''}
+
+      <div class="im-section">
+        <div class="im-section-title">Parts</div>
+        ${setValueLine(s)}
+        <div class="smod-parts">${(s.parts || []).map(setModalPart).join('')}</div>
+        ${fehlt.length ? `
+          <p class="smod-missing">Still missing: <b>${
+            fehlt.map(p => esc(p.shortName || p.name)).join('</b>, <b>')}</b></p>` : ''}
+      </div>
+    </div>`;
+
+  $('smod-close').onclick = closeSetModal;
+
+  $('smod-wts')?.addEventListener('click', () => {
+    if ($('smod-wts').classList.contains('is-disabled')) return;
+    closeSetModal();
+    startOrderForSet(s.setSlug, 'sell', have || 1);
+  });
+  $('smod-wtb')?.addEventListener('click', () => {
+    closeSetModal();
+    startOrderForSet(s.setSlug, 'buy', 1);
+  });
+
+  box.querySelectorAll('[data-set-open]').forEach(btn => {
+    btn.onclick = () => {
+      const id = btn.dataset.setOpen;
+      closeSetModal();
+      openListedOrder(id);
+    };
+  });
+
+  /* Ein Teil fuehrt weiter zu seinen Relikten - dasselbe Fenster wie von der
+     Kachel aus. Das Set-Blatt geht dabei zu: zwei Datenblaetter uebereinander
+     waeren nur die Frage, welches gerade gilt. */
+  box.querySelectorAll('[data-part]').forEach(btn => {
+    btn.onclick = () => {
+      const name = btn.dataset.part;
+      closeSetModal();
+      openPartModal(name);
+    };
+  });
+
+  onImageFail(box, '.smod-part-img', img => { img.style.visibility = 'hidden'; });
+
+  if (s.setSlug) mountMarketStats('smod-mstat', s.setSlug);
+}
+
+function openSetModal(s) {
+  if (!s) return;
+  setModalData = s;
+  $('set-modal').classList.remove('hidden');
+  renderSetModal();
 }
 
 /* ---------------- Datenblatt eines Relikts ---------------- */
@@ -8682,7 +9334,7 @@ window.api.onNavigateTab((tab, subpane) => {
    Das Handelsbuch liegt lokal, weil warframe.market keines fuehrt. Deshalb
    ueberlebt die Historie auch eine abgelaufene Anmeldung.                   */
 
-let tradeMode = 'orders';           // 'orders' | 'market' | 'contracts' | 'transactions' | 'analytics'
+let tradeMode = 'orders';           // 'orders' | 'market' | 'contracts' | 'transactions' | 'analytics' | 'insights'
 /* Zeitfenster der Auswertung in Tagen; null = alles. Eine EIGENE Variable und
    nicht tradeSort: die Reihenfolge einer Liste und der Ausschnitt einer Kurve
    sind zwei verschiedene Dinge, die sich nur dasselbe Auswahlfeld teilen. */
@@ -8752,6 +9404,20 @@ const TRADE_FILTERS = {
   analytics: [
     { key: 'platinum', label: 'Platinum', cls: 'chip-plat', title: 'Everything traded for platinum' },
     { key: 'ducats',   label: 'Ducats',   cls: 'chip-gold', title: 'What Baro Ki’Teer paid you, and what you spent at his stall' }
+  ],
+  /* Auch hier waehlen die Chips keine Teilmenge, sondern die FRAGE. "Was
+     kommt" ist eine Auskunft ueber den Spielplan, die drei anderen sind
+     Auskuenfte ueber den eigenen Schrank - und die drei unterscheiden sich
+     nicht darin, was sie zeigen, sondern darin, was man damit tut. */
+  insights: [
+    { key: 'schedule', label: 'What is next', cls: 'chip-plat',
+      title: 'Which primes are estimated to be vaulted next, in the order they are due' },
+    { key: 'hold',     label: 'You hold', cls: 'chip-gold',
+      title: 'Complete sets you own whose prime is heading for the vault' },
+    { key: 'fill',     label: 'Finish before it goes',
+      title: 'Sets you have started whose missing parts stop dropping soon' },
+    { key: 'spare',    label: 'Already vaulted', cls: 'chip-neutral',
+      title: 'Complete sets you own that no longer drop anywhere' }
   ]
 };
 
@@ -8794,6 +9460,16 @@ const TRADE_SORTS = {
     ['date-asc',   'Oldest first'],
     ['total-desc', 'Biggest trade'],
     ['name-asc',   'Name (A–Z)']
+  ],
+  /* Der Termin zuerst - das ist die Achse, um die es in diesem Modus geht.
+     Die drei anderen beantworten "und was davon lohnt sich": der Set-Wert,
+     wie weit man schon ist, und der Name fuer den, der etwas Bestimmtes
+     sucht. */
+  insights: [
+    ['due-asc',     'Vaulting soonest'],
+    ['value-desc',  'Set value (highest)'],
+    ['owned-desc',  'Most complete'],
+    ['name-asc',    'Name (A–Z)']
   ]
 };
 
@@ -8878,6 +9554,13 @@ async function loadTrading({ refresh = false } = {}) {
        und ohne sie faellt die Gegenprobe in der Auswertung aus. */
     const walletRes = await window.api.tradeWallet();
     tradeWallet = walletRes?.entries || [];
+
+    /* Die Vault-Prognose nur beim ausdruecklichen Aktualisieren neu holen.
+       Beim gewoehnlichen Oeffnen laedt sie der Insights-Modus selbst, und zwar
+       erst dann, wenn jemand ihn aufschlaegt: die Termine aendern sich ein
+       paar Mal im Jahr, und ein Abruf dafuer gehoert nicht in den Weg zwischen
+       Klick und Orderliste. */
+    if (refresh) insightsData = null;
 
     if (tradeAuth.signedIn) {
       /* Gegen /v2/me pruefen, damit ein Problem hier auffaellt und nicht
@@ -9293,9 +9976,13 @@ function updateTradeModeTabs() {
   if (label) label.textContent = ledgerMode ? 'Add transaction' : 'New order';
   /* Auktionen anzulegen verlangt Waffe, Attribute, Wuerfe und MR - das ist
      ein eigenes Formular und kein Knopf. Bis es steht, fuehrt der Weg fuer
-     Contracts ueber die Webseite. */
+     Contracts ueber die Webseite.
+
+     In den Insights gibt es auch nichts anzulegen: dort steht ein Kalender,
+     keine Liste eigener Posten. Wer aus einer Zeile heraus handeln will,
+     klickt die Zeile - dort sitzen die Knoepfe, die den Slug schon kennen. */
   const btn = $('btn-trade-new');
-  if (btn) btn.classList.toggle('hidden', tradeMode === 'contracts');
+  if (btn) btn.classList.toggle('hidden', tradeMode === 'contracts' || tradeMode === 'insights');
 }
 
 /* Das Suchfeld filtert je nach Modus die eigene Liste oder befragt den
@@ -9307,6 +9994,8 @@ function updateTradeSearchBox() {
   if (!el) return;
   el.placeholder = tradeMode === 'market'
     ? 'Search warframe.market … e.g. Nidus Prime Blueprint, Serration, Axi A1 Relic'
+    : tradeMode === 'insights'
+    ? 'Search primes … e.g. Xaku, Lavos, Kompressa'
     : 'Search your orders … e.g. Braton, Serration, Kulstar';
 
   /* In der Auswertung gibt es nichts zu suchen: dort stehen Summen, keine
@@ -9389,6 +10078,11 @@ function renderTradeList() {
   const box = $('trade-list');
   if (!box) return;
 
+  /* VOR DER ANMELDUNGSPRUEFUNG, wie die Marktsuche und aus demselben Grund:
+     wann DE vaultet, haengt an keinem Konto. Was die Listen mit dem eigenen
+     Schrank machen, kommt aus der Inventardatei auf dieser Platte - auch dafuer
+     braucht es warframe.market nicht. */
+  if (tradeMode === 'insights') return renderInsights(box);
   if (tradeMode === 'transactions') return renderTransactionList(box);
   /* Die Auswertung liest dasselbe Buch wie die Liste darueber und braucht
      genauso wenig eine Anmeldung: was im Spiel gehandelt wurde, steht nur
@@ -10500,6 +11194,291 @@ const closeTxModal = () => {
   editingTx = null;
 };
 
+/* --------------------------- Insights ---------------------------
+
+   WAS ALS NAECHSTES IN DEN VAULT GEHT, UND WAS DAS FUER DEN EIGENEN SCHRANK
+   HEISST.
+
+   DER EINZIGE TAB, DER NACH VORNE SIEHT. Orders, Contracts und das Handelsbuch
+   zeigen einen Stand; hier steht ein Termin. Ein gevaultetes Prime faellt
+   nirgendwo mehr - wer es dann will, muss es kaufen, und genau das hebt die
+   Preise. Der Termin ist Wochen vorher bekannt, der Preisanstieg nicht.
+
+   DIE PROGNOSE IST EINE PROGNOSE und wird auch so benannt. DE kuendigt
+   Vaultings nicht an; die Schaetzung kommt aus dem Takt der Prime-Access-
+   Pakete (siehe den Kopf von core/insights.js). Deshalb steht in jeder Zeile
+   "estimated" und nirgendwo eine Zusage.
+
+   KEINE PREISVORHERSAGE. Diese Seite ordnet Termine und den eigenen Bestand -
+   beides ist bekannt. Was der Markt daraus macht, steht als Kursverlauf im
+   Datenblatt daneben und nicht hier als Behauptung ueber naechsten Monat.
+   ---------------------------------------------------------------- */
+
+let insightsData = null;
+let insightsLoading = false;
+
+async function loadInsights({ refresh = false } = {}) {
+  if (insightsData && !refresh) return insightsData;
+  if (insightsLoading) return insightsData;
+
+  insightsLoading = true;
+  try {
+    const res = await window.api.getInsights({ refresh });
+    insightsData = res?.ok ? res : { ...res, failed: true };
+  } catch (err) {
+    insightsData = { failed: true, error: err.message, groups: [], items: [], advice: null };
+  } finally {
+    insightsLoading = false;
+  }
+  return insightsData;
+}
+
+/* Wie ein Termin sich liest. NICHT "in 56 Tagen" allein: eine Zahl ohne
+   Datum laesst einen rechnen, ein Datum ohne Zahl laesst einen zaehlen. */
+function insightDue(it) {
+  const d = it.days;
+  if (d == null) return 'no estimate';
+  const datum = it.estimatedVaultDate
+    ? new Date(it.estimatedVaultDate).toLocaleDateString('en-GB',
+        { day: 'numeric', month: 'short', year: 'numeric' })
+    : null;
+  const spanne = d < 0
+    ? `${Math.abs(d)} day${Math.abs(d) === 1 ? '' : 's'} overdue`
+    : d === 0 ? 'due today'
+    : d < 60 ? `in ${d} days`
+    : `in about ${Math.round(d / 30)} months`;
+  return datum ? `${spanne} · est. ${datum}` : spanne;
+}
+
+const INSIGHT_STAGE = {
+  overdue:   { label: 'Overdue',   cls: 'is-overdue',
+               title: 'Past the estimated date and still dropping — this can go with any Prime Access announcement' },
+  soon:      { label: 'Soon',      cls: 'is-soon',
+               title: 'Estimated to be vaulted within the next four months' },
+  later:     { label: 'Later',     cls: 'is-later',
+               title: 'Estimated further out — still farmable for a while' },
+  evergreen: { label: 'Stays',     cls: 'is-evergreen',
+               title: 'Part of the permanent relic pool — these have never been vaulted' },
+  vaulted:   { label: 'Vaulted',   cls: 'is-vaulted',
+               title: 'Drops nowhere right now — the market is the only way in' }
+};
+
+/**
+ * Eine Zeile der Prognose.
+ *
+ * DER EIGENE BESTAND STEHT MIT DRIN, weil er die Zeile erst zu einer Aussage
+ * macht: "Xaku Prime ist ueberfaellig" ist eine Nachricht, "und dir fehlen zwei
+ * Teile" ist ein Grund, heute etwas zu tun.
+ */
+function insightRow(it) {
+  const st = INSIGHT_STAGE[it.stage] || INSIGHT_STAGE.later;
+  const pct = it.totalParts ? Math.round((it.ownedParts / it.totalParts) * 100) : 0;
+
+  /* Was von diesem Set schon draussen steht - dieselbe Frage wie im Inventar,
+     und hier besonders naheliegend: wer eine Zeile "ueberfaellig" liest, will
+     wissen, ob er darauf schon reagiert hat. */
+  const offen = (it.parts || []).filter(p => partListing(p.slug)).length
+    + (listedFor(it.slug) ? 1 : 0);
+
+  const bestand = it.totalParts
+    ? `<span class="ins-have ${it.complete ? 'is-complete' : it.ownedParts ? 'is-partial' : 'is-none'}">
+         ${it.ownedParts} / ${it.totalParts} parts${
+           it.fullSetsCount > 1 ? ` · ${it.fullSetsCount} full sets` : ''}
+       </span>`
+    : '';
+
+  return `
+    <div class="ins-row ${st.cls}" data-ins-slug="${esc(it.slug)}">
+      <img class="ins-art" src="${esc(it.image || '')}" alt="" loading="lazy">
+
+      <div class="ins-main">
+        <div class="ins-title">
+          <b>${esc(it.name)}</b>
+          <span class="ins-stage ${st.cls}" title="${esc(st.title)}">${esc(st.label)}</span>
+        </div>
+        <div class="ins-sub">
+          <span title="${esc(it.category || '')}">${esc(it.category || 'Prime')}</span>
+          <i>·</i>
+          <span>${esc(it.stage === 'vaulted'
+            ? (it.vaultedForDays != null
+                ? `vaulted ${Math.round(it.vaultedForDays / 30)} months ago`
+                : 'vaulted')
+            : insightDue(it))}</span>
+        </div>
+        ${it.totalParts ? `
+          <div class="ins-bar" title="${pct} % of the set in hand">
+            <i style="width:${pct}%"></i>
+          </div>` : ''}
+      </div>
+
+      <div class="ins-right">
+        ${bestand}
+        ${it.setPrice != null ? `
+          <span class="ins-plat" title="Lowest full-set offer on warframe.market">
+            <img class="currency-ic" src="assets/icons/currency/platinum.png" alt="Platinum">
+            <b>${nf(it.setPrice)}</b>
+          </span>` : ''}
+        ${offen ? `<span class="ins-listed" title="${offen} of your orders on warframe.market ${
+            offen === 1 ? 'is' : 'are'} for this set">${Icon.tag(10)}${offen}</span>` : ''}
+      </div>
+    </div>`;
+}
+
+/** Ein Prime-Access-Paket als Block - drei Namen unter einem Datum. */
+function insightGroup(g) {
+  const st = INSIGHT_STAGE[g.stage] || INSIGHT_STAGE.later;
+  return `
+    <div class="ins-group">
+      <div class="ins-group-head ${st.cls}">
+        <b>${esc(insightDue(g.items[0]))}</b>
+        <span>${g.items.length} item${g.items.length === 1 ? '' : 's'}</span>
+      </div>
+      ${g.items.map(insightRow).join('')}
+    </div>`;
+}
+
+/* Die Sortierungen des Modus. Als Tabelle, damit der Auswahlkasten und der
+   Vergleich nicht auseinanderlaufen koennen. */
+const INSIGHT_SORTS = {
+  'due-asc':    (a, b) => (a.days ?? 1e9) - (b.days ?? 1e9),
+  'value-desc': (a, b) => (b.setPrice ?? -1) - (a.setPrice ?? -1),
+  'owned-desc': (a, b) => (b.ownedParts / (b.totalParts || 1)) - (a.ownedParts / (a.totalParts || 1)),
+  'name-asc':   (a, b) => a.name.localeCompare(b.name, 'en')
+};
+
+function renderInsights(box) {
+  const q = ($('trade-search')?.value || '').toLowerCase().trim();
+
+  if (!insightsData) {
+    box.innerHTML = `<div class="up-loading">${Icon.refresh(22)}<span>Working out what is due …</span></div>`;
+    loadInsights().then(() => { if (tradeMode === 'insights') renderTradeList(); });
+    return;
+  }
+
+  if (insightsData.failed || !insightsData.items?.length) {
+    box.innerHTML = tradeEmpty(Icon.bulb(30), 'No vault forecast',
+      insightsData.error
+        ? `The vault dates come from warframestat.us and could not be loaded: ${insightsData.error}`
+        : 'The vault dates come from warframestat.us. Nothing came back — try Refresh in a moment.',
+      'btn-ins-retry', 'Try again');
+    $('btn-ins-retry')?.addEventListener('click', async () => {
+      insightsData = null;
+      renderTradeList();
+    });
+    return;
+  }
+
+  const suche = list => q ? list.filter(it => it.name.toLowerCase().includes(q)) : list;
+  const cmp = INSIGHT_SORTS[tradeSort] || INSIGHT_SORTS['due-asc'];
+
+  /* Der Kalender: nach Paketen gruppiert, weil DE in Paketen vaultet. Die
+     Gruppierung faellt weg, sobald jemand anders sortiert als nach Termin -
+     eine Gruppe "13. August" mit den teuersten Sets darin waere keine Gruppe
+     mehr, sondern eine Ueberschrift ueber einer fremden Reihenfolge. */
+  if (tradeFilter === 'schedule') {
+    const groups = insightsData.groups
+      .map(g => ({ ...g, items: suche(g.items) }))
+      .filter(g => g.items.length);
+
+    if (!groups.length) {
+      box.innerHTML = tradeEmpty(Icon.bulb(30), 'Nothing matches',
+        q ? `No prime called “${q}” is on the schedule.` : 'No vault estimate is on record.');
+      return;
+    }
+
+    const flach = tradeSort !== 'due-asc';
+    box.innerHTML = `
+      ${insightsLead(insightsData)}
+      ${flach
+        ? `<div class="ins-group">${groups.flatMap(g => g.items).sort(cmp).map(insightRow).join('')}</div>`
+        : groups.map(insightGroup).join('')}`;
+    wireInsightRows(box);
+    return;
+  }
+
+  /* Die drei Schrank-Listen. Ohne Inventar gibt es sie nicht - und das ist
+     eine Auskunft, kein leerer Kasten. */
+  if (!insightsData.hasInventory) {
+    box.innerHTML = tradeEmpty(Icon.inventory(30), 'No inventory loaded',
+      'These three lists compare the schedule with what is actually in your account. '
+      + 'Fetch your inventory once, then they fill themselves.',
+      'btn-ins-inv', 'Go to Inventory');
+    $('btn-ins-inv')?.addEventListener('click', () => showTab('inventory'));
+    return;
+  }
+
+  const liste = suche(insightsData.advice?.[tradeFilter] || []).sort(cmp);
+  const LEER = {
+    hold: ['Nothing of yours is heading in',
+      'None of the complete sets in your account is estimated to be vaulted in the next six months.'],
+    fill: ['Nothing half-finished on a clock',
+      'Every set you have started either drops for a while yet or is already complete.'],
+    spare: ['No vaulted sets in hand',
+      'You do not hold a complete set of anything that has already been vaulted.']
+  };
+
+  if (!liste.length) {
+    const [titel, text] = LEER[tradeFilter] || ['Nothing here', ''];
+    box.innerHTML = tradeEmpty(Icon.bulb(30), q ? 'Nothing matches' : titel,
+      q ? `Nothing called “${q}” in this list.` : text);
+    return;
+  }
+
+  box.innerHTML = `
+    ${insightsLead(insightsData)}
+    <div class="ins-group">${liste.map(insightRow).join('')}</div>`;
+  wireInsightRows(box);
+}
+
+/**
+ * Der Satz ueber der Liste - woher die Termine kommen und was sie wert sind.
+ *
+ * ER STEHT IMMER DA UND NICHT NUR BEIM ERSTEN MAL. Eine Prognose, deren
+ * Herkunft man einmal gelesen und dann vergessen hat, ist von einer Zusage
+ * nicht mehr zu unterscheiden - und danach faellt eine Kaufentscheidung.
+ */
+function insightsLead(d) {
+  const alter = d.fetchedAt ? relativeAge(d.fetchedAt) : null;
+  return `
+    <div class="ins-lead">
+      ${Icon.bulb(14)}
+      <span>Estimated vault dates from the community data at warframestat.us — Digital
+      Extremes does not announce them. They follow the rhythm of Prime Access, so treat
+      them as the order things are due in, not as a promise.${
+        alter ? ` Last read ${esc(alter)}.` : ''}</span>
+    </div>`;
+}
+
+/**
+ * Ein Klick auf eine Zeile fuehrt dorthin, wo man etwas tun kann.
+ *
+ * ZUM DUKATEN-TAB UND NICHT IN EIN EIGENES FENSTER: dort steht dasselbe Set
+ * bereits mit allen Teilen, Preisen und Handelsknoepfen (siehe ducatSetPanel).
+ * Ein zweites Fenster daneben waere dieselbe Auskunft ein zweites Mal - und
+ * die Knoepfe darin muessten noch einmal gebaut werden.
+ */
+function wireInsightRows(box) {
+  box.querySelectorAll('[data-ins-slug]').forEach(row => {
+    row.onclick = async () => {
+      const slug = row.dataset.insSlug;
+      if (!slug) return;
+
+      /* Der Markt-Modus zeigt die Angebote zu diesem Set - das ist die Frage,
+         die auf "das geht bald in den Vault" folgt: was kostet es jetzt. */
+      const item = await window.api.tradeItemBySlug(slug);
+      if (!item) return;
+
+      tradeMode = 'market';
+      tradeFilter = 'sell';
+      tradeSort = 'plat-asc';
+      if ($('trade-search')) $('trade-search').value = '';
+      updateTradeModeTabs();
+      renderTradeFilters();
+      marketPick(item);
+    };
+  });
+}
+
 /* ------------------------- Neue Order ------------------------- */
 
 /**
@@ -11526,6 +12505,13 @@ const inlineNotes = s => esc(s)
   .replace(/\s+in\s+https?:\/\/\S+/gi, '')
   .replace(/https?:\/\/\S+/g, '')
   .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+  /* NACH dem Fettdruck, nie davor: sonst frisst die Regel fuer ein Sternchen
+     die Haelfte eines Paares aus zweien, und aus **so** wird <i>*so</i>*.
+     Kursiv stand im Changelog von Anfang an - "was jemand *verlangt*",
+     *"card not found"* -, nur zeigte das Fenster die Sternchen als Sternchen,
+     weil es sie nicht kannte. Auf GitHub sah derselbe Text richtig aus, und
+     genau deshalb faellt so etwas beim Schreiben nicht auf. */
+  .replace(/\*(.+?)\*/g, '<i>$1</i>')
   .replace(/`(.+?)`/g, '<code>$1</code>')
   .trim();
 

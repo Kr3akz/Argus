@@ -55,6 +55,24 @@ what you happen to own; the tooltip says why.
 Base sets have no button at all, because their parts are not tradable and warframe.market has
 no listing for them.
 
+**What you already have listed says so, on the thing itself.** A part you are currently
+selling carries its own price on its chip (`Systems Blueprint ×1 · 16`), the card around it
+picks up the trade colour, and the WTS button turns into **Listed 16p** — one click away from
+the order rather than from a second order for the same thing. The same holds on mod and
+arcane tiles, in their data sheets, and in a part's own sheet.
+
+This used to ask the wrong question. It compared your orders against the *set* slug —
+`mirage_prime_set` — while almost everybody trades single parts, and two real orders on
+`mirage_prime_systems_blueprint` and `pyrana_prime_barrel` therefore matched nothing. The
+marking existed and could never fire; from the outside it looked like it did not exist. It
+now counts a set as listed when anything from it is out there, whole or in pieces.
+
+**On a mod the rank has to match, or the button lies.** An order for a rank-10 Primed
+Continuity has nothing to do with the unranked card, and a `Listed` button on the wrong rung
+would lead you to an order about different goods. Pick rank 0 with a rank-10 order running
+and you get **WTS** back, as you should. Where a tile shows a price for one rank and your
+order sits on another, the badge says which (`118 r10`).
+
 **The suggested price differs by direction, on purpose.** Selling anchors on the cheapest
 current seller — that is the competition. Buying anchors on the **median** of the best buy
 offers rather than the highest: a single bidder far above the field is not a market price, and
@@ -184,6 +202,86 @@ the chart says so underneath.
 
 *Net* is earnings minus spending and is labelled as such. It is not profit — what a part
 cost you in missions is not in this file.
+
+## What an item has actually been selling for
+
+Every data sheet — a mod, an arcane, a single prime part — carries a **Market history**:
+ninety days of completed trades from warframe.market, as a median price, a direction, and a
+curve with the daily turnover underneath it.
+
+**These are closed trades, not standing offers.** The price tag elsewhere in Argus reads
+*offers* — what somebody is asking. An offer is a claim; it can have sat there for four
+months without ever finding a buyer. This reads what was actually paid, with a date and a
+count attached, and that is the only thing from which "is this moving" can be answered.
+
+**Turnover is the other half of the price.** A part at 400p with four trades in a month and
+one at 40p with two hundred are not the same kind of thing: the first is a number, the second
+is money. So next to the price stands how many change hands per day, and on how many of the
+last thirty days anything happened at all. Below eight of thirty the sheet stops quoting a
+trend and says so instead — between two isolated sales, a percentage is noise with a decimal
+point.
+
+**The rank and the condition go into the question.** warframe.market returns every rank of a
+mod in one list, separated only by a field: Arcane Energize trades at 8p unranked and 140p at
+rank 5, Primed Continuity at 50p and 115p. Averaging them produces a number belonging to
+neither. The sheet asks for the rank you are looking at, and says which one in the heading.
+Relics carry the same problem under another name — `intact` against `radiant` — and the panel
+names the condition it charted.
+
+**Gaps stay gaps.** Only days with trades come back, and they are placed where they belong in
+time rather than spaced evenly. A long flat stretch means nothing happened there; filling it
+in with the last known price would draw a calm market over an empty one.
+
+A remembered history appears immediately and dims itself until the fresh one arrives. A few
+hours old answers "is this climbing" as well as brand new, and a spinner in place of a curve
+answers nothing.
+
+## What is heading for the vault
+
+The **Insights** tab is the only one that looks forward. Everything else in trading shows a
+state — what is open, what it costs, what happened. This shows a date.
+
+A vaulted prime drops nowhere. Anybody who wants it afterwards has to buy it from somebody
+who farmed it first, and that is what moves the price. The date is known weeks ahead; the
+price move is not.
+
+**The estimates are estimates, and the page says so every time.** Digital Extremes does not
+announce vaultings. The dates come from the community data behind warframestat.us and follow
+the rhythm of Prime Access — which is regular enough that they fall into clean groups of
+three, one warframe and two weapons, exactly one Prime Access package:
+
+```
+35 days overdue   Quassus Prime, Trumna Prime, Xaku Prime
+in 56 days        Cedo Prime, Dual Zoren Prime, Lavos Prime
+in 5 months       Daikyu Prime, Kompressa Prime, Yareli Prime
+```
+
+Treat them as the order things are due in, not as a promise.
+
+**Overdue is the one that matters today.** Past its date and still dropping means it can go
+with the next announcement. Sets in that state also carry a red badge in the inventory, on
+the artwork, where it costs the card no height.
+
+**Eight primes are never vaulted and are not listed as late.** Braton, Bronco, Fang, Orthos,
+Paris, Burston, Akbronco and Lex Prime sit permanently in the general relic pool. The
+community estimate for them is from 2015 and is eleven years overdue; reporting that as
+"overdue" would be the opposite of the truth, since they are the only ones certain to stay.
+Anything more than a year past its estimate and still dropping counts as permanent.
+
+Three further lists compare the schedule against your own shelves, and they differ in what
+you would *do* about them rather than in what they show:
+
+- **You hold** — complete sets whose prime is heading in. After the vaulting they get
+  scarcer; selling now means selling before that.
+- **Finish before it goes** — sets you have started whose missing parts stop dropping soon.
+  The only list with a deadline on it.
+- **Already vaulted** — complete sets of things that no longer drop at all.
+
+None of them predicts a price. They sort a known date against a known shelf. What the market
+makes of it is in the history curve on the data sheet, not in a claim about next month.
+
+Clicking any row takes you to the sellers for that set, cheapest first — which is the
+question that follows "this is going away".
 
 ## The check: what your balance actually did
 

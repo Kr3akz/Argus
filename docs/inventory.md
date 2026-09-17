@@ -180,6 +180,57 @@ So there is one figure, it names its part in the tooltip, and the sort **Most va
 single part you own** ranks by it. A `≥` in front means one of your parts has no price yet
 and something dearer may still turn up.
 
+### What you already have on the market
+
+A part you are currently selling on warframe.market carries its price on its own chip, and
+the card around it picks up the trade colour. The **WTS** button turns into **Listed 16p**
+and leads to that order instead of creating a second one for the same thing.
+
+**The price is on the part, not just on the card.** A set has up to eight parts and usually
+exactly one of them is out there. A mark that only said "something from this set is listed"
+would send you looking for which; the chip answers it where you are already looking.
+
+Before this, the question was asked about the *set* — `mirage_prime_set` — while almost
+everybody trades single parts. Two real orders on `mirage_prime_systems_blueprint` and
+`pyrana_prime_barrel` matched nothing at all, so the marking could never fire for the ordinary
+way of trading. Mod and arcane tiles now carry the same badge, and there the **rank** has to
+match as well: an order for a rank-10 card is not an offer on the unranked one.
+
+### Data sheet for a set
+
+Clicking the card itself — not one of its parts — opens the set's own sheet. It was the one
+thing in the inventory that had none: every part, mod and relic explained itself, the card
+they all sit on did not. A click on it used to run into the mod data sheet, and a set entry
+has no `uniqueName`, so it ended in *"card not found"* for a card that does not exist.
+
+What is there that does not fit on the tile:
+
+- **The market history of the whole set**, which is a different item with a different price
+  and its own listing on warframe.market. Mirage Prime's full set trades around 65p while its
+  Systems Blueprint trades at 15p — one is not a hint about the other.
+- **Full set against single parts**: 74p for the set against 59p for the pieces means 15p
+  more for selling it whole. The answer flips from set to set, so it is worth stating per set.
+- **The vault date in plain words** instead of a badge the size of a thumbnail.
+- The parts as a **table** rather than as the chip cloud on the tile. On the card the question
+  is "how far am I", and names beside counts answer it. Here the question is "what do I do
+  with this", and then ducats want to line up under ducats.
+
+Every part row leads on to that part's own sheet, the same one the chips on the tile open.
+Base sets get the same page without the trading half: their parts are not tradable, so there
+is no price, no history and no buttons — a nought beside a ducat icon would claim they are
+worth nothing, when the question simply does not arise for them.
+
+### Heading for the vault
+
+Sets whose prime is estimated to be vaulted soon carry a badge on the artwork — red for
+**Overdue**, gold for a date within four months. The tooltip gives the date and says plainly
+that it is an estimate from community data, not an announcement by Digital Extremes.
+
+It sits on the picture because the card's footer is already carrying ducats, platinum and two
+trade buttons; a fifth item there would have broken the line. The full reasoning, the schedule
+it comes from, and the three lists that compare it against your shelves live in the
+**Insights** tab of Trading — see [trading.md](trading.md).
+
 ### Sorting by more than one thing
 
 The **Sort** control holds a *chain*, not a single answer. Click **Parts owned (fewest
@@ -214,6 +265,12 @@ Cards that warframe.market does not list — rivens, precepts, anything untradea
 price and no trade buttons, because a button that can only produce an error does not belong
 on a card.
 
+**A card you are selling yourself carries a second, filled-in badge** next to the market
+price. Left is what the card costs, right is what you are asking; the gap between the two is
+the reason anyone looks at a running order again. A paused order goes grey — it is not an
+offer, it is only standing by — and where your order is on a different rank than the tile is
+showing, the badge names it (`118 r10`).
+
 ## Data sheet for a mod or arcane
 
 Clicking a card opens its data sheet.
@@ -223,6 +280,11 @@ Serration                                    MOD · PRIMARY MOD · UNCOMMON
 Fits rifles · polarity V Madurai
 
 OWNED       13 copies                Rank 0 ×11 · Rank 6 · Rank 10
+
+MARKET HISTORY  rank 10
+            49  7-day median     ▲ +10 % 30d    ▲ +20.7 % 90d
+            ╱╲___╱‾‾╲__╱‾‾‾
+            68.7 traded / day · 41–56 90-day range · 29/30 days active
 
 EFFECT      [0][1][2][3][4][5][6•][7][8][9][10•]
             +165% Damage
@@ -236,6 +298,11 @@ WHERE DO I GET THIS?
 **The rank ladder is the point.** A card at rank 3 behaves differently from the same card
 at rank 10, and that is exactly the question you ask before upgrading. A dot under a
 digit marks the ranks you own; the sheet opens on the highest of them.
+
+**The history follows the ladder.** Switch to rank 0 and the curve, the median and the trend
+are recalculated for rank 0 — because that is a different item, traded at a different price.
+Where the numbers come from and why they are closed trades rather than standing offers is in
+[trading.md](trading.md).
 
 Arcanes work differently: they cost neither capacity nor endo, but themselves. Instead of
 the endo line it shows how many copies the rank consumes — 21 for rank 5. A finished

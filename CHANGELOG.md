@@ -21,6 +21,64 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-09-17
+
+### Added
+
+- **Ninety days of what an item actually sold for, on its data sheet.** Every
+  mod, arcane, prime part and set now carries a **Market history**: the median
+  of *completed* trades, the direction over the last month and quarter, and a
+  curve with the daily turnover under it. The price tag elsewhere reads offers —
+  what somebody is *asking*, which can have sat there for four months without a
+  buyer. This reads what was paid, and next to it how many change hands per day.
+  A part at 400p with four trades a month and one at 40p with two hundred are
+  not the same kind of thing. Below eight active days in thirty, Argus stops
+  quoting a trend and says so instead.
+- **The rank and the condition are part of that question.** warframe.market
+  returns every rank of a mod in one list: Arcane Energize trades at 8p unranked
+  and 140p at rank 5. Averaging them gives a number belonging to neither. Switch
+  rank on a data sheet and the whole panel is recalculated.
+- **An Insights tab that says what is heading for the vault.** A vaulted prime
+  drops nowhere, and everyone who wants it afterwards has to buy it. The
+  schedule is grouped the way Digital Extremes actually vaults, in Prime Access
+  packages of three, and three lists compare it against your own shelves: sets
+  you hold that are heading in, sets you have started whose missing parts stop
+  dropping soon, and complete sets of things already vaulted. Sets due soon also
+  carry a badge in the inventory. These are community estimates from
+  warframestat.us, not announcements, and the page says so every time — they are
+  the order things are due in, not a promise. Nothing here predicts a price.
+- **A set has a data sheet of its own.** It was the one thing in the inventory
+  that had none. It carries the history of the *whole set* — a different item at
+  a different price, Mirage Prime's set at 65p against its Systems Blueprint at
+  15p — the comparison between selling it whole and selling the pieces, the
+  vault date in words, and the parts as a table.
+
+### Fixed
+
+- **Argus never showed what you already had listed, for the ordinary way of
+  trading.** Set cards asked about the *set* slug while almost everybody sells
+  single parts, so two real orders matched nothing at all. The marking existed
+  and could not fire. A part you are selling now carries its own price on its
+  chip, mod and arcane tiles have the same badge, and their sheets turn WTS into
+  **Listed**, leading to the order that exists instead of making a second one.
+  There the rank has to match. Orders are also fetched in the mods and arcanes
+  sections now, not only in My sets.
+- **Clicking a set card did nothing useful.** It ran into the mod data sheet,
+  and a set has no `uniqueName` — so it ended in *"card not found"* for a card
+  that does not exist.
+- **The trade buttons sat on the edge of the card.** The footer needs 314 pixels
+  and a column offers 288, so it overran on every card; because none of its
+  three groups could shrink, the surplus was pushed off the end rather than
+  shared out. What has been reclaimed is spacing, not information.
+- **The vault badge covered the artwork it was pointing at**, by 13 pixels — on
+  exactly the cards it exists to draw attention to. It now sits below it.
+- **A falling price drew a solid black block instead of a pale red one.** There
+  was a `--red` colour but never the channels to go with it, so every
+  `rgb(var(--t-red) / …)` was invalid — and an invalid declaration is dropped,
+  not ignored. For a background that barely shows; for an SVG fill the default
+  takes over, and the default is black. The same gap had quietly flattened the
+  trend chip and the *Overdue* badge in Insights.
+
 ## [1.13.2] - 2026-09-17
 
 ### Fixed

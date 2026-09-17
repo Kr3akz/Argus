@@ -1038,6 +1038,15 @@
             <button class="ducats-tab-btn" data-trade-mode="analytics">
               <span class="btn-ic" data-icon="chart"></span><span>Analytics</span>
             </button>
+            <!-- ZULETZT, WEIL ES NACH VORNE SIEHT. Alle Reiter davor zeigen
+                 einen Stand: was steht offen, was kostet es, was ist gelaufen.
+                 Dieser zeigt einen Termin - welche Primes als naechstes aus
+                 den Droptabellen verschwinden und was davon im eigenen Schrank
+                 liegt. Kein Zaehlerabzeichen: die Zahl waere immer dieselbe
+                 und damit keine Auskunft. -->
+            <button class="ducats-tab-btn" data-trade-mode="insights">
+              <span class="btn-ic" data-icon="bulb"></span><span>Insights</span>
+            </button>
           </div>
 
           <div class="ducats-quick-actions">
@@ -1657,6 +1666,16 @@
 <div id="part-modal" class="modal hidden">
   <div class="modal-box item-modal-box">
     <div id="part-modal-content"></div>
+  </div>
+</div>
+
+<!-- Datenblatt des SETS. Ein Klick auf die Karte selbst, nicht auf eines
+     ihrer Teile: der Kursverlauf des ganzen Sets ist eine eigene Frage, und
+     er stand bisher nirgends - die Teile hatten ein Datenblatt, das Set
+     nicht. -->
+<div id="set-modal" class="modal hidden">
+  <div class="modal-box item-modal-box">
+    <div id="set-modal-content"></div>
   </div>
 </div>
 

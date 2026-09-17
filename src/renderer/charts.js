@@ -430,5 +430,87 @@ const Charts = (() => {
     }).join('');
   }
 
-  return { series, byItem, walletWindow, barsWithLine, balanceLine, rankRows, pickBucket, short };
+  /* --------------------- Kursverlauf eines Items --------------------- */
+
+  /**
+   * Die kleine Kurve im Datenblatt: 90 Tage Handel auf Daumennagelgroesse.
+   *
+   * HIER DOCH EINE FESTE viewBox, entgegen der Begruendung weiter oben - und
+   * zwar genau deshalb, weil kein einziges Wort darin steht. Was dort schief
+   * ging, war die mitskalierte SCHRIFT der Achsenbeschriftung; eine Kurve ohne
+   * Beschriftung hat dieses Problem nicht. Die Zahlen stehen daneben im HTML,
+   * wo sie in normaler Schriftgroesse bleiben, egal wie breit der Kasten ist.
+   *
+   * DIE ZEIT LIEGT AUF DER x-ACHSE, NICHT DIE ZAEHLUNG DER PUNKTE. Der Verlauf
+   * fuehrt nur Tage, an denen gehandelt wurde (siehe toDays in wfm-stats.js).
+   * Punkte gleichmaessig zu verteilen zoege drei Handel aus drei Monaten zu
+   * einer stetigen Linie auseinander, als waere jeden Tag etwas passiert. So
+   * bleibt eine Luecke eine Luecke: eine lange flache Strecke sagt, dass dort
+   * nichts war.
+   *
+   * DIE STUECKZAHL LIEGT DARUNTER, blass und als Balken. Sie beantwortet die
+   * Frage, die ein Preis allein nicht beantwortet: 400p sind keine 400p, wenn
+   * zuletzt vor zwei Wochen jemand gekauft hat. Blass, weil sie die zweite
+   * Frage ist und nicht die erste.
+   */
+  function sparkline(series, { width = 260, height = 52, trend = null } = {}) {
+    const pts = (series || []).filter(p => Number.isFinite(p?.m) && Number.isFinite(p?.t));
+    if (pts.length < 2) return '';
+
+    const W = Math.max(80, Math.round(width));
+    const Hs = Math.max(28, Math.round(height));
+    /* Unten ein Streifen fuer die Stueckzahl, oben und unten je ein Haar Luft,
+       damit Hoechst- und Tiefstwert nicht auf der Kante liegen. */
+    const volH = Math.round(Hs * 0.26);
+    const top = 2;
+    const lineH = Hs - volH - top - 2;
+
+    const t0 = pts[0].t;
+    const tSpan = Math.max(1, pts[pts.length - 1].t - t0);
+    const preise = pts.map(p => p.m);
+    const lo = Math.min(...preise);
+    const hi = Math.max(...preise);
+    /* Eine waagerechte Linie ist ein gueltiges Ergebnis - ein Preis, der sich
+       nicht bewegt hat. Ohne diesen Deckel teilte die Umrechnung durch null
+       und die Kurve verschwaende. */
+    const span = hi - lo || Math.max(1, hi * 0.1);
+
+    const x = t => n2(((t - t0) / tSpan) * W);
+    const y = v => n2(top + lineH - ((v - lo) / span) * lineH);
+
+    const d = pts.map((p, i) => `${i ? 'L' : 'M'}${x(p.t)} ${y(p.m)}`).join(' ');
+    /* Die Flaeche schliesst unten am Preisstreifen ab und nicht am Bildrand -
+       sonst liefe sie hinter die Stueckzahlbalken und faerbte sie mit. */
+    const flaeche = `${d} L${x(pts[pts.length - 1].t)} ${top + lineH} L${x(t0)} ${top + lineH} Z`;
+
+    const volMax = Math.max(...pts.map(p => p.v || 0), 1);
+    /* Ein Balken je Tag, aber mindestens einen halben Bildpunkt breit: bei 90
+       Punkten auf 260 Pixel waere er sonst schmaler als ein Haar und gar nicht
+       mehr zu sehen. */
+    const bw = Math.max(0.6, (W / pts.length) * 0.7);
+    const balken = pts.map(p => {
+      const h = ((p.v || 0) / volMax) * volH;
+      if (h < 0.4) return '';
+      return `<rect class="spark-vol" x="${n2(x(p.t) - bw / 2)}" y="${n2(Hs - h)}"
+        width="${n2(bw)}" height="${n2(h)}"/>`;
+    }).join('');
+
+    /* Die Richtung faerbt die Kurve. Unterhalb von drei Prozent bleibt sie
+       neutral: alles darunter ist bei einem Gut, das taeglich zwischen 60p und
+       70p schwankt, kein Trend, sondern der Tag, an dem man hinsieht. */
+    const ton = trend == null || Math.abs(trend) < 3 ? 'is-flat'
+              : trend > 0 ? 'is-up' : 'is-down';
+
+    return `
+      <svg class="spark ${ton}" viewBox="0 0 ${W} ${Hs}" preserveAspectRatio="none"
+           role="img" aria-hidden="true">
+        ${balken}
+        <path class="spark-area" d="${flaeche}"/>
+        <path class="spark-line" d="${d}"/>
+        <circle class="spark-dot" cx="${x(pts[pts.length - 1].t)}"
+                cy="${y(pts[pts.length - 1].m)}" r="2"/>
+      </svg>`;
+  }
+
+  return { series, byItem, walletWindow, barsWithLine, balanceLine, rankRows, sparkline, pickBucket, short };
 })();

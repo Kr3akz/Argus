@@ -15,6 +15,17 @@
   farmable. Varzia's monthly Aya offering is not in any drop table, so a part
   marked `0/4` may well be buyable from her this month. "Vaulted" here means
   precisely: *it drops nowhere.*
+- **Vault *forecasts* are community estimates, not announcements.** DE does not say in
+  advance what it is going to vault. The dates in the Insights tab and the badges on the
+  set cards come from warframestat.us and follow the rhythm of Prime Access — reliable
+  enough for the *order* things are due in, and wrong the moment DE changes that rhythm.
+  Eight primes that are never vaulted carry an estimate from 2015; anything more than a
+  year overdue and still dropping is therefore treated as permanent rather than as late.
+  → [details](trading.md)
+- **Nothing here predicts a price.** The market history shows what has been paid over the
+  last ninety days and the forecast shows a date. Neither is a statement about what an item
+  will be worth after a vaulting; they are put next to each other so you can draw that
+  conclusion yourself, not so Argus can draw it for you.
 - **Baro's next offer is not knowable.** DE publishes his manifest only once he is
   standing in the relay; for the other twelve days of the fortnight there is no list at
   all. Argus keeps a copy of the last one it saw and labels it as that — it does not

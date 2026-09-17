@@ -58,6 +58,8 @@ import { loadMarketItems, findMarketItem, getPrice, getPrices, getRankedPrices, 
 /* Handelsteil: Anmeldung, Orders, Auktionen und das lokale Handelsbuch.
    Vier Module, weil es vier verschiedene Dinge sind - siehe die Kopf-
    kommentare dort. */
+import { getStats, getManyStats, cachedStats } from '../core/wfm-stats.js';
+import { loadVaultData, vaultStage, buildForecast, buildAdvice } from '../core/insights.js';
 import * as wfmAuth from '../core/wfm-auth.js';
 import { MarketPresence } from '../core/wfm-socket.js';
 import * as wfmOrders from '../core/wfm-orders.js';
@@ -2618,6 +2620,107 @@ ipcMain.handle('upgrade:prices', async (_e, entries = []) => {
   }
 });
 
+/**
+ * Der Kursverlauf eines Items - was in den letzten 90 Tagen wirklich
+ * gehandelt wurde.
+ *
+ * ZWEI SCHRITTE STATT EINEM, und der erste kostet nichts: `cached` liefert,
+ * was auf der Platte liegt, ohne das Netz zu beruehren. Ein Datenblatt oeffnet
+ * sich damit sofort mit einer Kurve statt mit einem Ladebalken - und der
+ * frische Stand loest sie ab, sobald er da ist. Dieselbe Regel wie bei
+ * cachedPrice() in market.js, und aus demselben Grund: ein paar Stunden alter
+ * Kursverlauf beantwortet "steigt das" genauso gut wie ein taufrischer.
+ */
+ipcMain.handle('market:stats', async (_e, slug, opts = {}) => {
+  if (!slug) return null;
+  try {
+    return opts.cachedOnly
+      ? await cachedStats(slug, { rank: opts.rank ?? null })
+      : await getStats(slug, { rank: opts.rank ?? null });
+  } catch (err) {
+    console.warn('[Market] Kursverlauf nicht ladbar:', err.message);
+    return null;
+  }
+});
+
+/** Dasselbe fuer mehrere Items - benannt nach statsKey, wie der Cache. */
+ipcMain.handle('market:manyStats', async (_e, entries = [], opts = {}) => {
+  if (!Array.isArray(entries) || !entries.length) return {};
+  try {
+    return await getManyStats(entries, opts);
+  } catch (err) {
+    console.warn('[Market] Kursverlaeufe nicht ladbar:', err.message);
+    return {};
+  }
+});
+
+/**
+ * Die Vault-Prognose und was sie fuer den eigenen Schrank bedeutet.
+ *
+ * DIE SETS WERDEN HIER NEU GEBAUT, obwohl inventoryPayload sie auch baut -
+ * und das ist kein Versehen. Der Handels-Tab soll sich oeffnen lassen, ohne
+ * dass jemand vorher im Inventar war; haenge er am Inventar-Aufruf, stuende
+ * er beim ersten Blick leer da und fuellte sich erst nach einem Umweg. Der
+ * Bau ist billig: gelesen wird die Inventardatei, die ohnehin dasteht, und
+ * die Preise kommen aus dem Cache statt aus dem Netz.
+ *
+ * OHNE INVENTAR IST DIE PROGNOSE TROTZDEM EINE: welche Primes wann dran sind,
+ * haengt nicht am eigenen Bestand. Was dann fehlt, sind die drei Listen mit
+ * Handlungsbedarf - und die sagen das ueber `hasInventory` selbst.
+ */
+ipcMain.handle('insights:get', async (_e, opts = {}) => {
+  try {
+    if (!cache.catalog) await ensureData({ refresh: false });
+
+    const [vault, market, priceCache] = await Promise.all([
+      loadVaultData({ refresh: !!opts.refresh }),
+      loadMarketItems().catch(() => null),
+      readPriceCache()
+    ]);
+
+    let sets = [];
+    let hasInventory = false;
+    try {
+      const res = await loadInventory({ refresh: false });
+      if (market && res?.inventory) {
+        hasInventory = true;
+        const mastered = new Set([
+          ...(res.inventory?.XPInfo || []).map(e => e.ItemType),
+          ...(res.inventory?.Suits || []).map(e => e.ItemType),
+          ...(res.inventory?.Weapons || []).map(e => e.ItemType)
+        ]);
+        const invDucats = buildInventoryDucats(res.inventory, cache.catalog, market, priceCache);
+        sets = buildPrimeSets(market, priceCache, invDucats.items, {
+          onlyOwned: false, catalog: cache.catalog, mastered
+        });
+      }
+    } catch (err) {
+      /* Kein Inventar ist kein Fehler - siehe oben. */
+      console.warn('[Insights] Inventar nicht lesbar:', err.message);
+    }
+
+    /* Ohne Inventar trotzdem eine vollstaendige Set-Liste: buildPrimeSets
+       kommt mit einer leeren Besitzliste aus und liefert dann jedes Set mit
+       null Teilen. Die Prognose bleibt damit dieselbe, nur die Spalte
+       "was habe ich davon" ist leer. */
+    if (!sets.length && market) {
+      sets = buildPrimeSets(market, priceCache, [], {
+        onlyOwned: false, catalog: cache.catalog, mastered: new Set()
+      });
+    }
+
+    const forecast = buildForecast(sets, vault);
+    return {
+      ok: true,
+      ...forecast,
+      advice: buildAdvice(forecast),
+      hasInventory
+    };
+  } catch (err) {
+    return { ok: false, error: err.message, groups: [], items: [], advice: null };
+  }
+});
+
 /* ---------------------- Handel: warframe.market ---------------------- */
 
 /**
@@ -3200,6 +3303,34 @@ async function inventoryPayload({ refresh, trigger = 'manual' }) {
     }
   } catch (err) {
     console.warn('[Inventory] Mod-Preise aus dem Cache nicht lesbar:', err.message);
+  }
+
+  /* DER VAULT-TERMIN AN JEDES SET.
+     Er steht hier und nicht in einem eigenen Aufruf, weil die Set-Karten ihn
+     beim ersten Zeichnen brauchen - nachgereicht waere er ein zweites
+     Zeichnen des ganzen Rasters fuer ein Abzeichen. Der Abruf kostet nichts:
+     loadVaultData haelt seinen Stand einen Tag lang.
+
+     NICHT ZU VERWECHSELN MIT s.vaulted: das kommt aus DEs Droptabellen und
+     sagt, was HEUTE nirgends faellt (siehe vault.js). Hier steht die
+     Prognose - was demnaechst dazukommen duerfte. Zwei verschiedene Fragen,
+     deshalb zwei Felder. */
+  try {
+    const vaultData = await loadVaultData();
+    for (const s of sets) {
+      if (!s.gameRef) continue;
+      const entry = vaultData.byRef.get(s.gameRef);
+      if (!entry) continue;
+      const { stage, days } = vaultStage(entry);
+      /* 'later' und 'evergreen' bekommen kein Abzeichen: das eine ist noch
+         ein halbes Jahr hin, das andere faellt dauerhaft. Beides waere ein
+         Etikett ohne Anlass auf einer Karte, die schon voll ist. */
+      if (stage === 'overdue' || stage === 'soon') {
+        s.vaultSoon = { stage, days, date: entry.estimatedVaultDate };
+      }
+    }
+  } catch (err) {
+    console.warn('[Vault] Prognose nicht ladbar:', err.message);
   }
 
   view.sections.sets = sets;
