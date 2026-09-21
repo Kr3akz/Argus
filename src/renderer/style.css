@@ -6584,6 +6584,14 @@ label.setting-row.is-disabled { cursor: not-allowed; }
   display: block; font-size: 8.5px; color: var(--text-3);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* Der Satzpreis, bewusst leise: eine Spur heller als der Rest der Zeile und
+   in derselben Schriftgroesse. Er soll gefunden werden, wenn man ihn sucht,
+   und nicht mit der Preisspalte rechts konkurrieren - die traegt die Zahl,
+   nach der in fuenfzehn Sekunden entschieden wird. */
+.ov-rw-set {
+  font-style: normal; font-variant-numeric: tabular-nums;
+  color: var(--text-2); opacity: .8;
+}
 .ov-rw-plat {
   font: 700 11px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
   color: var(--text); text-align: right;
@@ -6832,13 +6840,60 @@ body.tags-window {
   border: 1px solid rgba(var(--t-gold) / .25);
 }
 
+/* Die Satz-Leiste: Kaestchen links, Gesamtwert rechts.
+
+   WARUM SIE EINEN EIGENEN RAHMEN HAT: Kaestchen und Satzpreis beantworten
+   dieselbe Frage in zwei Haelften - "wie weit bin ich" und "was ist es am
+   Ende wert". Standen sie als zwei lose Reihen untereinander, gehoerte
+   sichtbar nichts zusammen, und der Preis war das erste, was man uebersah.
+   Der Rahmen macht aus beidem eine Aussage und gibt der Zahl einen Platz,
+   den sie vorher nicht hatte. */
+.tag-set-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 7px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+/* Ohne Kaestchen haengt der Preis sonst am rechten Rand einer leeren Leiste. */
+.tag-set-strip.nur-preis { justify-content: center; }
+
+/* Der Gesamtwert des Satzes. Deutlich groesser und heller als die
+   Mengenangaben in den Kaestchen daneben - aber kleiner als die Preisreihe
+   unten: gewaehlt wird das TEIL, das jetzt in den Beutel geht, und diese
+   Rangfolge soll man sehen, ohne sie zu lesen. */
+.tag-set-val {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  padding-right: 1px;
+}
+.tag-set-label {
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .7px;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.tag-set-val b {
+  font: 700 12px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, .82);
+}
+.tag-set-ic { width: 10px; height: 10px; opacity: .8; }
+
 /* Set-Komponenten-Reihe */
 .tag-parts-row {
   display: flex;
   gap: 4px;
   align-items: center;
   justify-content: center;
-  margin-bottom: 7px;
   height: 26px;
 }
 
@@ -9540,21 +9595,30 @@ input[type=number]:focus, input[type=email]:focus, input[type=password]:focus {
   font-size: 9.5px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase;
   color: var(--text-3); margin-bottom: 6px;
 }
-.wk-picks { display: flex; flex-wrap: wrap; gap: 8px; }
+/* flex-start und nicht die Voreinstellung stretch: die Namen duerfen
+   verschieden hoch sein, die Kacheln sollen trotzdem auf einer Linie
+   beginnen. */
+.wk-picks { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
 .wk-pick {
   display: flex; flex-direction: column; align-items: center; gap: 2px;
-  width: 47px;
+  width: 54px;
 }
-.wk-pick img {
+.wk-pick img, .wk-pick-blank {
   width: 33px; height: 33px; object-fit: contain;
   border-radius: 10px; background: rgba(255,255,255,.04);
   padding: 3px;
   transition: background .16s var(--ease), transform .16s var(--ease);
 }
+/* Platzhalter fuer einen Eintrag ohne Bild - haelt nur die Spalte. */
+.wk-pick-blank { box-sizing: border-box; }
 .wk-pick:hover img { background: var(--accent-sf); transform: translateY(-2px); }
+/* Zwei Zeilen statt einer: "Ceramic Dagger" und "Dual Toxocyst" stehen im
+   Circuit-Topf neben lauter Einwortnamen - auf eine Zeile gekuerzt blieb von
+   ihnen "Ceramic…" uebrig, und das ist keine Waffe, die man wiedererkennt. */
 .wk-pick span {
-  font-size: 9.5px; color: var(--text-3); text-align: center;
-  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 9.5px; line-height: 1.25; color: var(--text-3); text-align: center;
+  max-width: 100%; overflow: hidden; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
 }
 
 /* ---------- Angebots-Chips mit Ueberschrift ---------- */
@@ -10828,3 +10892,144 @@ input[type=number]:focus, input[type=email]:focus, input[type=password]:focus {
   .ch-rank-row { grid-template-columns: minmax(70px, 1fr) 2fr auto; }
   .ch-legend { width: 100%; }
 }
+
+/* ---------- Gefuehrte Tour ----------
+
+   Die Schicht liegt ueber ALLEM, auch ueber den Modalen (z-index 100): sie
+   ist waehrend ihrer Laufzeit das einzige, was bedient wird. Kein
+   -webkit-app-region hier - der Markenbalken darunter zieht das Fenster, und
+   ein Klick auf "Weiter" darf nicht stattdessen das Fenster verschieben. */
+/* NUR die Deckkraft, KEIN transform - und das ist kein Geschmack.
+   Die gemeinsame fade-Regel schiebt nebenbei um 7px (translateY), und ein
+   transform auf dieser Schicht hat zwei Folgen: die Ausschnitte und ihre
+   Rahmen sitzen waehrend der Einblendung 7px tiefer als das, worauf sie
+   zeigen - sichtbar als versetzter Rahmen um die Reiterkachel -, und die
+   Schicht wird zum Bezugsrahmen fuer position:fixed, womit auch der
+   Textkasten mitwandert. Eine eigene Bildfolge ist billiger als beides. */
+.guide-layer {
+  position: fixed; inset: 0; z-index: 300;
+  -webkit-app-region: no-drag;
+  animation: guide-in .18s var(--ease);
+}
+@keyframes guide-in { from { opacity: 0; } to { opacity: 1; } }
+.guide-layer.hidden { display: none; }
+
+.guide-mask { position: absolute; inset: 0; width: 100%; height: 100%; }
+.guide-dim  { fill: rgba(6, 9, 14, .8); }
+
+/* Der Rahmen um den Ausschnitt - das eigentliche "hier, das hier".
+   Er atmet, damit das Auge ihn findet, ohne zu blinken: ein hartes Blinken
+   zieht den Blick staendig zurueck und macht den Text daneben unlesbar. */
+.guide-rings { position: absolute; inset: 0; pointer-events: none; }
+.guide-ring {
+  position: absolute;
+  border: 2px solid rgb(var(--t-accent) / .9);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .55), 0 0 22px rgb(var(--t-accent) / .35);
+  animation: guide-breathe 2.4s var(--ease) infinite;
+}
+@keyframes guide-breathe {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(0,0,0,.55), 0 0 22px rgb(var(--t-accent) / .35); }
+  50%      { box-shadow: 0 0 0 1px rgba(0,0,0,.55), 0 0 30px rgb(var(--t-accent) / .6); }
+}
+
+/* Der Reiter in der Leiste. Gleicher Rahmen, gleiche Farbe, gleiche Groesse -
+   aber er ATMET NICHT: das Atmen ist der Zeigefinger der Station, und zwei
+   Zeigefinger auf einmal zeigen nirgendwohin. Hier geht es um "du bist hier",
+   dort um "sieh hier hin". */
+.guide-ring.is-soft { animation: none; }
+
+.guide-box {
+  position: fixed;
+  width: 392px;
+  background: #161b25;
+  border: 1px solid rgba(255, 255, 255, .07);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 16px 20px 18px;
+}
+.guide-box.is-in { animation: fade .22s var(--ease); }
+
+/* Das gedrehte Quadrat sitzt zur Haelfte unter dem Kasten - sichtbar bleibt
+   die Spitze samt der beiden Kanten, die zum Rand des Kastens passen. */
+.guide-arrow {
+  position: absolute; width: 13px; height: 13px;
+  background: #161b25;
+  border: 1px solid rgba(255, 255, 255, .07);
+  transform: rotate(45deg);
+}
+.guide-box[data-side="bottom"] .guide-arrow {
+  top: -7px; margin-left: -7px; border-right: none; border-bottom: none;
+}
+.guide-box[data-side="top"] .guide-arrow {
+  bottom: -7px; margin-left: -7px; border-left: none; border-top: none;
+}
+.guide-box[data-side="right"] .guide-arrow {
+  left: -7px; margin-top: -7px; border-right: none; border-top: none;
+}
+.guide-box[data-side="left"] .guide-arrow {
+  right: -7px; margin-top: -7px; border-left: none; border-bottom: none;
+}
+
+.guide-top {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.guide-count {
+  font-size: 10.5px; font-weight: 650; letter-spacing: .5px;
+  text-transform: uppercase; color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.guide-skip {
+  background: none; border: none; cursor: pointer; padding: 2px 0;
+  font-size: 11.5px; color: var(--text-3);
+  transition: color .15s var(--ease);
+}
+.guide-skip:hover { color: var(--text-2); }
+
+/* Der Fortschritt steht als Balken da und nicht nur als "3 von 15": die Zahl
+   beantwortet "wo bin ich", der Balken "wie lange noch" - und das ist die
+   Frage, wegen der jemand abbricht. */
+.guide-rail {
+  height: 2px; border-radius: 999px; margin: 10px 0 14px;
+  background: rgba(255, 255, 255, .07); overflow: hidden;
+}
+.guide-rail i {
+  display: block; height: 100%; border-radius: 999px;
+  background: var(--accent);
+  transition: width .3s var(--ease);
+}
+
+.guide-box h3 { font-size: 17px; font-weight: 600; letter-spacing: -.2px; }
+.guide-text {
+  margin-top: 9px;
+  font-size: 12.5px; line-height: 1.6; color: var(--text-2);
+  max-height: 46vh; overflow-y: auto;
+}
+.guide-text p + p { margin-top: 9px; }
+.guide-text b { color: var(--text); font-weight: 600; }
+.guide-text em { color: var(--text); font-style: normal; font-weight: 550; }
+.guide-text kbd {
+  font: 600 9.5px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  color: var(--text-2); background: var(--surface-2);
+  border: 1px solid rgba(255, 255, 255, .07); border-bottom-width: 2px;
+  padding: 3px 5px; border-radius: 4px;
+}
+.guide-keys {
+  display: flex; gap: 16px; flex-wrap: wrap;
+  margin-top: 14px; padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, .05);
+  font-size: 11px; color: var(--text-3);
+}
+.guide-keys span { display: inline-flex; align-items: center; gap: 6px; }
+
+.guide-foot {
+  display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+  margin-top: 16px;
+}
+.guide-foot .btn { padding: 8px 20px; }
+.guide-foot .btn-sm:disabled { opacity: .3; cursor: not-allowed; }
+
+/* Meldungen liegen bei z-index 1000 und damit ueber der Tour - lesbar zu
+   bleiben ist richtig, anklickbar zu sein nicht: ein Klick darauf springt in
+   einen anderen Reiter, und die naechste Station zeigte dann auf eine Stelle,
+   die es dort nicht gibt. */
+body.guide-on .app-toast { pointer-events: none; }

@@ -1108,6 +1108,7 @@ async function submitSetup() {
   $('app').classList.remove('hidden');
   render(res.data);
   loadWorldState();
+  maybeStartGuide();
 }
 
 /* Zwischen Berechtigungsfrage und Handweg umschalten. */
@@ -1158,12 +1159,37 @@ async function allowAndDetect() {
   if (res.inventoryNote) {
     showInAppToast({ title: 'Inventory not loaded', body: res.inventoryNote });
   }
+
+  maybeStartGuide();
 }
 
 function showSetup(state) {
   $('setup').classList.remove('hidden');
   if (state?.platform) $('setup-platform').value = state.platform;
   showSetupView('permission');
+}
+
+/* ---------------- Gefuehrte Tour ----------------
+
+   Sie laeuft genau einmal von selbst, und zwar erst, wenn das Fenster steht:
+   auf dem Einrichtungsbildschirm gibt es keine Reiter, auf die sie zeigen
+   koennte, und einen Scheinwerfer auf eine noch leere Oberflaeche zu setzen
+   erklaert nichts.
+
+   Der Merker kommt aus derselben Quelle wie der Rest des Startzustands. Wo
+   der Aufruf ohnehin schon gemacht wurde (boot), wird er durchgereicht -
+   sonst holt ihn die Funktion selbst, damit die Einrichtungswege nicht jeder
+   fuer sich daran denken muessen. */
+async function maybeStartGuide(state) {
+  if (typeof Guide === 'undefined') return;
+  try {
+    const st = state || await window.api.getSetupState();
+    if (st.guideSeen === true) return;
+    /* Kurz warten: die Reiter fuellen sich nach dem ersten Zeichnen noch,
+       und eine Station, die auf eine Liste zeigt, waehrend die Liste
+       hochwaechst, zeigt danach daneben. */
+    setTimeout(() => Guide.start(), 450);
+  } catch { /* ohne Merker lieber nicht zeigen als jedes Mal zeigen */ }
 }
 
 if ($('setup-allow')) $('setup-allow').onclick = allowAndDetect;
@@ -1203,6 +1229,7 @@ async function boot() {
   $('app').classList.remove('hidden');
   render(res.data);
   loadWorldState();
+  maybeStartGuide(setup);
 }
 
 let refreshTimer = null;
@@ -12301,6 +12328,12 @@ $('set-open-fissure-notif')?.addEventListener('click', () => {
   openNotificationModal();
 });
 
+/* Die Tour von vorn. Sie schaltet sich den Reiter selbst um, hier steht
+   also nichts weiter als der Startschuss. */
+$('btn-guide-start')?.addEventListener('click', () => {
+  if (typeof Guide !== 'undefined') Guide.start();
+});
+
 /* Der Schalter fuer den Speicherzugriff. Die Rueckmeldung steht direkt
    darunter statt in einem Hinweisfenster: wer eine Erlaubnis umlegt, soll an
    Ort und Stelle sehen, was jetzt gilt. */
@@ -12943,9 +12976,16 @@ function renderWeeklyContentCard(e) {
      ihren Abweichungen passen wieder neben den Rest auf den Schirm. */
   const zeilen = (e.eintraege || []).map(x => {
     if (x.picks && x.picks.length) {
+      /* Der leere Kasten steht da, WEIL das Bild fehlen kann: ohne ihn rutschte
+         der Name eines bildlosen Eintrags an den Anfang der Reihe und stand
+         auf Bildhoehe neben den Kacheln der anderen statt unter seiner
+         eigenen. Genau so sah die Steel-Path-Zeile aus, solange "Ceramic
+         Dagger" nicht im Katalog gefunden wurde. */
       const bilder = x.picks.map(p => `
         <div class="wk-pick" title="${esc(p.name)}">
-          ${p.image ? `<img src="${esc(p.image)}" alt="" loading="eager" onerror="this.style.visibility='hidden'">` : ''}
+          ${p.image
+            ? `<img src="${esc(p.image)}" alt="" loading="eager" onerror="this.style.visibility='hidden'">`
+            : '<div class="wk-pick-blank"></div>'}
           <span>${esc(p.name)}</span>
         </div>`).join('');
       return `<div class="wk-picks-group">

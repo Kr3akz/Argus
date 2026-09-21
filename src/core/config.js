@@ -28,12 +28,18 @@ export const DEFAULT_HOTKEYS = { overlay: 'Ctrl+R', interact: 'Ctrl+E', main: 'C
 /* wfmAutoStatus steht auf AUS, und das ist keine Vorsicht aus Gewohnheit:
    der Schalter aendert etwas, das andere Leute sehen. Wer ihn nie bemerkt,
    soll auf warframe.market genau so dastehen wie vorher. */
+/* guideSeen: ob die gefuehrte Tour schon einmal gelaufen ist. FALSE heisst
+   "beim naechsten Start zeigen", und der Wert wird gesetzt, sobald die Tour
+   endet - durchgeklickt ODER abgebrochen. Wer abbricht, hat entschieden;
+   ihn erneut zu fragen waere Quengeln statt Angebot. Zurueckholen laesst sie
+   sich jederzeit ueber den Knopf im Einstellungs-Tab. */
 const DEFAULTS = {
   accountId: '', platform: 'pc', notes: {},
   overlayBounds: null, overlayOpacity: 0.94, overlayClickThrough: false,
   overlayEnabled: true,
   updateCheck: true,
   wfmAutoStatus: false,
+  guideSeen: false,
   hotkeys: { ...DEFAULT_HOTKEYS }
 };
 

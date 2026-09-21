@@ -93,6 +93,31 @@ function render(tags, panel) {
       badgeHtml = `<div class="tag-status-badge missing">0 / ${req} owned</div>`;
     }
 
+    /* Was der ganze Satz bringt.
+
+       WARUM ES UEBERHAUPT DASTEHT: Ein einzelnes Teil sagt wenig. "Trinity
+       Prime Systems Blueprint, 10p" liest sich wie Schrott, bis man weiss,
+       dass der Satz 56p bringt und das hier eines von vier Teilen ist.
+
+       WARUM ES IN DIE LEISTE GEHOERT UND NICHT DARUNTER: Als freie Zeile
+       zwischen Kaestchen und Preisreihe hatte die Zahl keinen Anker - sie
+       schwebte zwischen zwei Bloecken und war schlicht zu uebersehen. In der
+       Leiste steht sie NEBEN den Kaestchen, und damit sagt die Leiste als
+       Ganzes einen Satz: das hier sind die Teile, so viele davon hast du, so
+       viel ist alles zusammen wert. Dieselbe Hoehe wie vorher, nur mit
+       Zusammenhang.
+
+       "SET" steht dabei, weil eine blanke Zahl neben vier Kaestchen mit
+       Mengenangaben wie eine fuenfte Menge aussieht. */
+    const setMin = t.setPrice?.min;
+    const setValHtml = Number.isFinite(setMin)
+      ? `<div class="tag-set-val">
+           <span class="tag-set-label">Set</span>
+           <b>${setMin}</b>
+           <img src="assets/icons/currency/platinum.png" class="tag-set-ic" alt="p">
+         </div>`
+      : '';
+
     // Set-Komponenten-Reihe
     let partsHtml = '';
     if (t.setParts && t.setParts.length) {
@@ -112,6 +137,14 @@ function render(tags, panel) {
       `;
     }
 
+    /* Kaestchen und Satzpreis in EINER Leiste. Ohne Kaestchen - selten, aber
+       moeglich, wenn der Markt den Satz kennt und DEs Rezept nicht auffindbar
+       war - rueckt der Preis in die Mitte statt allein am rechten Rand zu
+       haengen. */
+    const setStripHtml = (partsHtml || setValHtml)
+      ? `<div class="tag-set-strip${partsHtml ? '' : ' nur-preis'}">${partsHtml}${setValHtml}</div>`
+      : '';
+
     return `
       <div class="tag-card ${isBest ? 'best' : ''} ${t.isOwn ? 'mine' : ''}"
            style="grid-column: ${(t.spalte ?? 0) + 1}">
@@ -122,7 +155,7 @@ function render(tags, panel) {
 
         ${badgeHtml}
 
-        ${partsHtml}
+        ${setStripHtml}
 
         <div class="tag-prices-row">
           <div class="tag-price-col tag-plat ${good ? 'good' : ''}">
@@ -167,3 +200,42 @@ function render(tags, panel) {
 
 window.api.onTags(data => render(data && data.tags, data && data.panel));
 window.api.onTagsHide(() => render([]));
+
+/**
+ * Teilebilder vorladen, solange niemand auf sie wartet.
+ *
+ * WARUM HIER UND NICHT IM HAUPTPROZESS: Chromium teilt seinen Plattencache
+ * nach Herkunft auf. Ein Abruf aus dem Hauptprozess hat gar keine, und was
+ * dort landet, findet dieses Fenster spaeter womoeglich nicht wieder - der
+ * Vorlauf waere Arbeit ohne Wirkung, und zwar lautlos. Aus dem Fenster
+ * geladen ist es dieselbe Schublade, garantiert.
+ *
+ * UND MIT new Image() STATT fetch(): Die CSP dieses Dokuments erlaubt
+ * cdn.jsdelivr.net ausdruecklich nur als img-src. Ein fetch() faellt unter
+ * connect-src, und das deckt `default-src 'self'` ab - es waere blockiert.
+ * Ein Bild ist ohnehin der ehrlichere Weg: genau so laedt das Schild es
+ * spaeter auch.
+ */
+window.api.onTagsPrewarm(urls => {
+  if (!Array.isArray(urls) || !urls.length) return;
+
+  let naechster = 0, geladen = 0, fehler = 0;
+  const start = Date.now();
+
+  const eines = () => new Promise(fertig => {
+    const i = naechster++;
+    if (i >= urls.length) return fertig(false);
+    const img = new Image();
+    img.onload  = () => { geladen++; fertig(true); };
+    img.onerror = () => { fehler++;  fertig(true); };
+    img.src = urls[i];
+  });
+
+  /* Acht auf einmal. Der Engpass ist die Laufzeit je Bild, nicht die
+     Bandbreite - und mehr waere gegenueber einem fremden Spiegel unhoeflich. */
+  const arbeiter = async () => { while (await eines()) { /* weiter */ } };
+  Promise.all(Array.from({ length: 8 }, arbeiter)).then(() => {
+    window.api.tagsPrewarmDone({ geladen, fehler, gesamt: urls.length,
+                                 ms: Date.now() - start });
+  });
+});

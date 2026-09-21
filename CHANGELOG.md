@@ -21,6 +21,73 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.15.0] - 2026-09-22
+
+### Added
+
+- **A guided tour on the first start.** Fifteen stations through every tab, each
+  one marking the piece of the window it is talking about instead of describing
+  it. A page of text about nine tabs is not read, and whoever reads it still has
+  to find the words again in the interface afterwards. It takes about a minute,
+  **Esc** ends it at any point, and it only explains — it switches tabs and
+  points, it never flips a switch. *Settings → Guided tour → Start the tour*
+  brings it back as often as you like.
+- **What the whole set is worth, on the reward screen.** A single part says
+  little: *Trinity Prime Systems Blueprint, 9p* reads like junk until you know
+  the set goes for 56p and this is one of four pieces. Each tag in the game now
+  carries that as one bar — the component boxes on the left with how many you
+  already own, the set's platinum on the right. Both halves answer the same
+  question, so they share a frame. The reward list in the overlay carries the
+  same figure in the small line under the name. It stays smaller than the price
+  at the bottom on purpose: you are taking the *part*, not the set, and that is
+  the number you choose by. Forma has no set, so its line stays empty.
+
+### Changed
+
+- **Notifications are off by default.** A freshly installed program has not
+  earned the right to push desktop toasts into a running game, and Void Cascade
+  was preselected — so a first start reported fissures nobody had asked for. The
+  mission types underneath stay preselected: they are a starting point, not a
+  state, and switching the master on should give you something rather than
+  eighteen empty checkboxes. An existing installation keeps whatever it already
+  had; a default must never take a choice away from anyone.
+
+### Fixed
+
+- **Circuit weapons that had no picture and a name run together.** The world
+  state hands some of the week's choices over in Digital Extremes' internal
+  spelling, without spaces — measured on 21 Sep 2026 the Steel Path row read
+  `CeramicDagger` next to Lex, Magistar, Boltor and Bronco. The lookup compared
+  names exactly, so it found nothing: no picture, and the raw form on screen.
+  Since that entry then had no image at all, its name slid up to picture height
+  beside the others. Every multi-word weapon in the Circuit pool was affected —
+  Nami Solo, Dual Toxocyst and dozens more. Names now also wrap to a second line
+  instead of being cut to *Ceramic…*, which is not a weapon anyone recognises.
+- **The price tags slid sideways while you were looking at them.** How wide the
+  dock is depends on how many relics cracked, and that number comes from the
+  log, which can arrive nine seconds late. It was re-decided on every redraw:
+  three read cards without the number sit at x=957 across three columns, the
+  same three with a late-arriving *four* at x=635 across four — a full card
+  width of movement, mid-countdown. The field is now settled on the first draw
+  and a number that turns up afterwards counts for the next round.
+- **Cards that had been read were thrown away.** Every card was clamped into the
+  reported number of columns, so if that number was wrong two real cards landed
+  in the same column and the rule meant for double readings discarded one. Four
+  read cards against three reported players produced three tags. A card that
+  does not fit now re-lays the field instead of being dropped.
+- **The tags vanished in front of a screen that was still open.** Warframe
+  buffers its log while it is in the background, and the flush that finally
+  delivers the opening line brings the closing line with it — a line that
+  belongs fifteen seconds later. Taken at face value it cleared everything away;
+  measured, six seconds early. A closing line is now only news when the log has
+  been talking all along, and otherwise the round ends on its own clock.
+- **The component pictures arrived late.** Each tag shows three to five of them
+  and one costs 329 ms cold, sixteen of them under a fifteen-second clock. There
+  are only 575 of them across every relic, 2.8 MB together, so they are all
+  fetched the moment a relic is equipped — once per installation, because the
+  mirror allows them to be kept for a year. Measured in place: 1136 ms for a
+  picture never seen before, 0 ms afterwards.
+
 ## [1.14.0] - 2026-09-17
 
 ### Added

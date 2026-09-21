@@ -200,6 +200,14 @@ catalogue and the mod list). Everything is stored under `%APPDATA%\Argus\data` �
 which means your goals, builds and notes survive an update, and an uninstall leaves them
 alone.
 
+#### The tour
+
+Once the window is up, a short guided tour runs by itself: fifteen stations through every
+tab, each one marking the piece of the window it is talking about. It takes about a
+minute, **Esc** ends it at any point, and it only explains — no switch is flipped along
+the way. It runs once; **Settings → Guided tour → Start the tour** brings it back
+whenever you want it.
+
 ---
 
 ## Documentation

@@ -501,12 +501,72 @@ export function panelGeometrieGemessen(rewards, frame, cardWidth, count) {
   const anzahlSpalten = Math.max(1, Math.min(MAX_KARTEN, Math.round(count) || MAX_KARTEN));
   const breite = cardWidth * frame.w;
   const links = frame.x + frame.w / 2 - (anzahlSpalten * breite) / 2;
+  return spaltenZuordnen(rewards, { links, breite, anzahlSpalten });
+}
 
-  /* Jede gelesene Karte faellt in die Spalte, in der ihre Mitte liegt. */
-  const spalten = rewards.map(r => {
-    const mitte = r.box.x + r.box.w / 2;
-    return Math.min(anzahlSpalten - 1, Math.max(0, Math.floor((mitte - links) / breite)));
-  });
+/**
+ * Gelesene Karten auf die Spalten eines FESTSTEHENDEN Feldes verteilen.
+ *
+ * WOZU GETRENNT: Das Feld steht nicht immer erst nach der Erkennung fest. Die
+ * Platzhalter vor der Erkennung setzen es bereits, und ab da darf es sich
+ * nicht mehr bewegen - siehe dockGeometrie in main.js. Dann gibt es zwar ein
+ * Feld, aber noch keine Zuordnung, und genau die macht diese Funktion.
+ *
+ * DAS FELD WAECHST, STATT KARTEN WEGZUWERFEN. Vorher wurde jede Karte in
+ * [0, anzahlSpalten-1] geklemmt. Stimmte die Spaltenzahl nicht - das Log
+ * nennt die Zahl der Mitspieler, und sie kommt spaet oder gar nicht -, fielen
+ * zwei echte Karten in dieselbe Spalte, und die Entdopplung darunter warf
+ * eine davon weg. Nachgemessen: vier gelesene Karten, count = 3, drei
+ * Schilder. Die vierte war nicht "nicht erkannt", sie war erkannt und dann
+ * verworfen - das schlimmste aller Ergebnisse, weil es wie ein
+ * Erkennungsfehler aussieht.
+ *
+ * Deshalb zuerst die ROHE Spalte, ungeklemmt, und danach das Feld so weit
+ * aufziehen, dass jede Karte hineinpasst. Erst wenn das ueber vier Spalten
+ * hinausginge - dann stimmt die Kartenbreite nicht, und nichts von dem hier
+ * ist zu retten - wird wieder geklemmt.
+ */
+export function spaltenZuordnen(rewards, feld) {
+  const mitten = rewards.map(r => r.box.x + r.box.w / 2);
+  let { links, breite, anzahlSpalten } = feld;
+
+  /* Eine Karte gehoert in die Spalte, deren MITTE ihrer eigenen am naechsten
+     liegt - nicht in die, in deren Bereich sie faellt. Der Unterschied
+     entscheidet genau an den Raendern, und dort spielt sich alles ab. */
+  const spalteVon = m => Math.round((m - links) / breite - 0.5);
+  const abstandZurSpalte = m => Math.abs(m - (links + (spalteVon(m) + 0.5) * breite));
+
+  /* PASST DAS FELD ZU DEN KARTEN? Zwei Dinge muessen stimmen: jede Karte
+     faellt in eine Spalte, die es gibt, und sie sitzt auch WIRKLICH darin
+     und nicht auf der Kante.
+
+     Die zweite Bedingung ist die wichtigere und war der Grund, das hier
+     ueberhaupt zu trennen: ein Feld fuer drei Spalten und eine Reihe aus
+     vier Karten sind gegeneinander um eine halbe Kartenbreite versetzt -
+     jede Karte liegt dann exakt auf einer Spaltengrenze. Das Feld blosz zu
+     verbreitern half da nichts: die Schilder standen zwar alle da, aber
+     samt und sonders eine halbe Karte daneben. */
+  const passt = mitten.every(m =>
+    spalteVon(m) >= 0 && spalteVon(m) <= anzahlSpalten - 1
+    && abstandZurSpalte(m) <= breite * 0.35);
+
+  if (!passt) {
+    /* DANN GILT, WAS DIE KARTEN SAGEN. Die gemessene BREITE bleibt - sie
+       kommt aus einer echten Messung und ist das Verlaesslichste, was es
+       hier gibt. Nur die Lage und die Spaltenzahl werden neu aus den
+       gelesenen Karten genommen, und die stehen nun einmal dort, wo sie
+       stehen. */
+    const kleinste = Math.min(...mitten);
+    const groesste = Math.max(...mitten);
+    links = kleinste - breite / 2;
+    anzahlSpalten = Math.max(1, Math.min(MAX_KARTEN,
+      Math.round((groesste - kleinste) / breite) + 1));
+  }
+
+  const spalten = mitten.map(m =>
+    Math.min(anzahlSpalten - 1, Math.max(0, Math.round((m - links) / breite - 0.5))));
+  const spaltenZahl = anzahlSpalten;
+  const linkeKante = links;
 
   /* Zwei Karten koennen nicht in derselben Spalte stehen - dann war es
      dieselbe Karte zweimal gelesen, und die bessere Lesung gewinnt. Dieselbe
@@ -521,8 +581,8 @@ export function panelGeometrieGemessen(rewards, frame, cardWidth, count) {
 
   return {
     breite,
-    links,
-    anzahlSpalten,
+    links: linkeKante,
+    anzahlSpalten: spaltenZahl,
     eintraege: [...proSpalte.values()].sort((a, b) => spalten[a] - spalten[b])
                                       .map(i => ({ index: i, spalte: spalten[i] }))
   };

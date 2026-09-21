@@ -953,6 +953,35 @@ function priceText(price, tradeable = true) {
   return price.min + 'p';
 }
 
+/**
+ * Was das GANZE Set kostet - als Nebenangabe, nicht als zweite Spalte.
+ *
+ * WARUM ES HIERHIN GEHOERT UND NICHT IN DIE PREISSPALTE: Ein einzelnes Teil
+ * sagt wenig. "Saryn Prime Systems Blueprint, 8p" liest sich wie Schrott, bis
+ * man weiss, dass der Satz 140p bringt - und diese Zahl steht nirgends, wo
+ * man in fuenfzehn Sekunden hinschauen koennte. Sie ist aber nicht die Zahl,
+ * nach der man waehlt: gewaehlt wird das Teil, das JETZT im Beutel landet.
+ * Deshalb steht sie klein in der Zeile darunter, wo ohnehin nur "your relic"
+ * stand und sonst nichts.
+ *
+ * Fehlt der Satz - Forma hat keinen - oder ist der Preis noch unterwegs,
+ * bleibt die Zeile einfach leer. Ein Ladepunkt fuer eine Nebenangabe waere
+ * mehr Aufmerksamkeit, als ihr zusteht.
+ */
+function setText(r) {
+  const min = r?.setPrice?.min;
+  return Number.isFinite(min) ? `<i class="ov-rw-set">set ${min}p</i>` : '';
+}
+
+/** Die kleine Zeile unter dem Namen - Herkunft, Lesequalitaet, Satzpreis. */
+function rewardNote(r) {
+  return [
+    r.isOwn ? 'your relic' : '',
+    r.score < 1 ? 'fuzzy match' : '',
+    setText(r)
+  ].filter(Boolean).join(' · ');
+}
+
 function rewardRow(r, bestPlat, complete) {
   const plat = priceText(r.price, r.tradeable !== false);
   const good = r.price && r.price.min >= RELIC_GOOD_PLAT;
@@ -968,7 +997,7 @@ function rewardRow(r, bestPlat, complete) {
            onerror="this.style.visibility='hidden'">
       <div class="ov-rw-body">
         <b>${esc(r.name)}</b>
-        <span>${r.isOwn ? 'your relic' : ''}${r.score < 1 ? (r.isOwn ? ' · ' : '') + 'fuzzy match' : ''}</span>
+        <span>${rewardNote(r)}</span>
       </div>
       <span class="ov-rw-plat ${good ? 'good' : ''}">${plat}</span>
       <span class="ov-rw-duc">${r.ducats != null ? r.ducats : '–'}</span>
@@ -1027,7 +1056,9 @@ function renderRelic() {
          <span class="ov-rw-pos">•</span>
          <img class="ov-rw-img" src="${esc(own.image || '')}" alt=""
               onerror="this.style.visibility='hidden'">
-         <div class="ov-rw-body"><b>${esc(own.name)}</b><span>your relic</span></div>
+         <div class="ov-rw-body"><b>${esc(own.name)}</b>
+           <span>${['your relic', setText(own)].filter(Boolean).join(' · ')}</span>
+         </div>
          <span class="ov-rw-plat">${priceText(own.price, own.tradeable !== false)}</span>
          <span class="ov-rw-duc">${own.ducats != null ? own.ducats : '–'}</span>
        </div>`

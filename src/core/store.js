@@ -8,8 +8,28 @@ import { dataDir, dataFile } from './paths.js';
 
 const FILE = () => dataFile('goals.json');
 
+/**
+ * WARUM DER HAUPTSCHALTER AUS IST: Ein frisch installiertes Programm, das
+ * ungefragt Windows-Toasts in ein laufendes Spiel schiebt, hat sich das nicht
+ * verdient. Hier stand `enabled: true` zusammen mit einer Vorauswahl auf
+ * "Void Cascade" - wer Argus zum ersten Mal startete, bekam also
+ * Kaskade-Meldungen, ohne sie je ausgewaehlt zu haben.
+ *
+ * Die Vorauswahl darunter BLEIBT: sie ist kein Zustand, sondern ein
+ * Startpunkt. Wer den Schalter umlegt, soll etwas bekommen und nicht vor
+ * achtzehn leeren Haken stehen - Void Cascade ist der Riss, den die meisten
+ * wollen, und jeder andere ist zwei Klicks entfernt.
+ *
+ * ACHTUNG BEI SPAETEREN AENDERUNGEN HIER: goals.json speichert den ganzen
+ * Zustand, also auch diese Voreinstellungen, sobald irgendetwas gesichert
+ * wird - ein Ziel, eine Notiz, ein Haken. Eine geaenderte Voreinstellung
+ * erreicht deshalb nur neue Installationen; bestehende behalten, was bei
+ * ihnen einmal auf die Platte kam. Das ist so gewollt - eine Voreinstellung
+ * darf niemandem eine Wahl wieder wegnehmen -, heisst aber auch: hier zu
+ * schrauben aendert am eigenen Rechner meistens gar nichts.
+ */
 export const DEFAULT_NOTIFICATIONS = () => ({
-  enabled: true,
+  enabled: false,
   sound: true,
   desktopToast: true,
   fissures: {

@@ -73,20 +73,53 @@ seconds you have to choose. Then it disappears by itself.
 ```
 RELIC REWARDS                             9s
    REWARD                      PLAT    DUC.
-1  Pyrana Prime Barrel            4p     15   ← your relic
+1  Pyrana Prime Barrel            4p     15
+   your relic · set 68p
 2  Vadarya Prime Receiver         2p     45
+   set 130p
 3  Dual Zoren Prime Handle        2p     15
+   set 22p
 4  Perigale Prime Stock           1p     15
+   set 45p
 ```
 
 **The numbering is the point:** it matches the order on screen, left to right. You read
 the number and click the card — no comparing names under time pressure.
+
+**What the whole set goes for** stands in the small line underneath, and deliberately
+not in the price column. A single part says little: two platinum for a Vadarya Prime
+Receiver reads like junk until you know the set is 130p and this is one of four pieces.
+But it is not the number you choose by — you are taking the *part*, not the set, and the
+column on the right is what lands in your pocket in the next fifteen seconds. Forma has
+no set, so its line stays empty; a part whose set price has not arrived yet shows
+nothing rather than a loading dot.
 
 ## Price tags inside the game
 
 Faster still, without a list: Argus puts a small tag with the platinum price and ducat
 value under each of the four cards. The most expensive part gets a green border, your
 own the label *yours*.
+
+The tag also carries the **set**, as one bar: the component boxes on the left, each with
+how many you already own, and the whole set's platinum on the right.
+
+```
+        Trinity Prime Systems Blueprint
+                  0 / 1 owned
+   ┌──────────────────────────────────┐
+   │  [▫][▫][▫][▫]          SET 56 ⬡  │
+   └──────────────────────────────────┘
+    9 ⬡                          15 D
+```
+
+The two halves answer the same question — how far along am I, and what is it worth at
+the end — so they share a frame. Loose underneath each other they belonged to nothing
+visibly, and the number was the first thing you missed. It still stays smaller and
+dimmer than the price at the bottom: that is the one you actually choose by, because you
+are taking the *part*, not the set.
+
+**This is where you see it if the tags are switched on**, because then the overlay window
+does not open at all; it would only repeat what is already on screen.
 
 That works because text recognition returns not just names but their **screen
 coordinates**. Each tag sits centred under the name it belongs to.
@@ -96,17 +129,58 @@ windows would be four renderers for the same thing and four chances for one to h
 is **click-through** and not focusable — it cannot swallow a click meant for the card
 beneath it, and never takes input away from the game.
 
-Two traps are in there, both solved:
+Three traps are in there, all solved:
 
 - Screen coordinates are real pixels; window coordinates are device-independent points.
   At 125% scaling the tags would otherwise sit a quarter too far right.
 - `showInactive()` leaves a window with `transparent: true` and `focusable: false`
   invisible on Windows — measured. Hence `show()`, which is safe here: a non-focusable
   window cannot take focus.
+- **The field is fixed once and then left alone.** How wide the dock is and where it
+  starts depends on how many relics cracked — and that number comes from the log, which
+  can arrive nine seconds late. Recomputing it on every redraw meant the whole dock slid
+  a full card width sideways while you were looking at it: measured, three read cards
+  without the number sit at x=957 across three columns, and the same three cards with a
+  late-arriving *four* sit at x=635 across four. So the field is settled on the first
+  draw — placeholders included — and a number that turns up afterwards counts for the
+  *next* round. In an endless mission that is thirty seconds away.
 
-They disappear as soon as the log reports the reward screen closed — and at the latest
-two seconds after the countdown expires, even if that message never arrives. A tag stuck
-over a running game would be the worst possible trait, so the clock has a vote.
+And a card that was read is never dropped. Each card goes to the column whose centre is
+nearest; if one falls outside the field, the field is **re-laid from the cards** rather
+than patched, because a field for three columns and a row of four cards are offset by
+exactly half a card — widening it would have put every tag half a card beside its own.
+Two readings landing in one column still collapse to the better one: that is the same
+card read twice, which is what the rule is for.
+
+**The component pictures are fetched before they are needed.** Each tag shows three to
+five of them, and cold from the mirror one costs 329 ms measured — sixteen of those
+under a fifteen-second clock, and the boxes visibly filled in afterwards. But there are
+few of them and they are always the same ones: counted across every relic there are
+exactly **575 distinct component pictures, 2.8 MB together**, and the eras overlap
+almost completely (Lith 560, Axi 572), so there is nothing to narrow down. The moment a
+relic is equipped they are all loaded eight at a time — about half a minute, against a
+fissure run that takes longer.
+
+That happens **once**, and not once per session: the mirror sends
+`cache-control: public, max-age=31536000, immutable`, so Chromium keeps them across
+restarts. Measured in place: 1136 ms for a picture it had never seen, **0 ms** for the
+same one afterwards. About 7% of components have no picture on the mirror at all; those
+boxes stay empty, as they always did.
+
+The loading is done **by the tag window**, not by the main process, even though the list
+is computed there. Chromium partitions its disk cache by origin, and a fetch from the
+main process has none — what landed there might not be found again by the window that
+needs it, and the whole exercise would have been silent busywork. The window loads them
+with `new Image()`, which is the same path the tag takes later, and is also the only one
+its content-security policy allows: `cdn.jsdelivr.net` is listed there as an image
+source, not as a connect source.
+
+They disappear as soon as the log reports the reward screen closed — unless that report
+arrived in the same buffered flush as the opening one, in which case it describes a
+screen that is still in front of you and the round's own clock decides instead — see
+*But the log is not always punctual* further down. And at the
+latest two seconds after the countdown expires, even if no message ever arrives. A tag
+stuck over a running game would be the worst possible trait, so the clock has a vote.
 
 The vertical offset below the name is 23% of screen height — 331 px at 1440p, which
 clears all four player names beneath the cards. As a fraction rather than a fixed pixel
@@ -162,6 +236,16 @@ glance reads 2560×101 pixels and costs 31 ms, against 248 ms for the whole scre
 1.5 % of one core, and only during a run. Whichever announcer is first starts the
 reading; when the log catches up later, it no longer restarts anything — it only adds
 the one thing the screen cannot show, your own drop.
+
+**And when it catches up, it brings the ending with it.** The same flush that finally
+delivers `Got rewards` usually carries `Relic reward screen shut down` right behind it —
+a line that, in game time, belongs fifteen seconds later. Taken at face value it closed
+the round on the spot and the tags vanished in front of a screen that was still open;
+measured on 21 Sep 2026, the flush arrived 9.2 s after the watcher and cut the tags six
+seconds short. So a closing line is only news when the log has been talking all along.
+If the *watcher* opened the round and the log's own opening line arrived less than two
+seconds ago, the ending is history, not news — and the round then ends on **its own
+clock**, the same fifteen seconds the game gives you.
 
 **The other three** are not in there — DE only logs your own. They are read off the
 screen by **text recognition**: a capture of the screen, then Windows' own OCR
@@ -255,6 +339,15 @@ switch.
 From **warframe.market**, via the v2 API — v1 is retired (`/v1/items` answers 404). Only
 offers from sellers who are **currently in game** are counted: the cheapest offer from
 someone who has been offline for three days is not a price, it is a number.
+
+The set price comes from the same place, looked up as the market's own set entry for the
+part — `saryn_prime_systems_blueprint` belongs to `saryn_prime_set`. Of the 596 rewards
+in DE's drop tables, 582 resolve to one of 160 prime sets; the remaining fourteen are
+Forma, Kuva, Ayatan stars, a Riven sliver, an Exilus adapter and the Requiem mods, none
+of which have a set. Once a relic is equipped, those 160 set prices are warmed in the
+background along with the part prices — behind them, never in front: the part price is
+the number on the card, the set price the note underneath, and they should arrive in
+that order.
 
 ## When nothing appears
 

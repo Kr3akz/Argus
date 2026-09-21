@@ -170,6 +170,43 @@ export function findMarketItem(idx, { uniqueName, name } = {}) {
   return null;
 }
 
+/**
+ * Das Set, zu dem ein Teil gehoert.
+ *
+ * WOZU: Ein einzelnes Prime-Teil sagt wenig darueber, ob sich das Relikt
+ * lohnt. "Saryn Prime Systems Blueprint, 8p" liest sich wie Schrott - bis man
+ * weiss, dass das Set 140p bringt und dieses Teil eines von vier ist. Genau
+ * diese Zahl fehlt auf dem Belohnungsbildschirm, und sie steht nirgends
+ * sonst, wo man in fuenfzehn Sekunden hinschauen koennte.
+ *
+ * NUR PRIME: Aus Relikten kommen Prime-Teile und Forma, sonst nichts. Ein
+ * allgemeiner Satz-Sucher haette also nichts zu tun, koennte dafuer aber
+ * Teile einsammeln, die gar keinen Satz haben.
+ *
+ * ZWEI STUFEN, WEIL EIN SATZ LAENGER HEISSEN KANN ALS SEINE TEILE: fast immer
+ * heisst er "<Basis> Set", und der erste Zugriff trifft. Nachgezaehlt an den
+ * 160 Prime-Saetzen der Marktliste gibt es genau eine Ausnahme - "Kavasa
+ * Prime Kubrow Collar Set", dessen Teile "Kavasa Prime Buckle" und "Kavasa
+ * Prime Band" heissen. Fuer sie sucht die zweite Stufe nach dem einzigen
+ * Satz, der mit derselben Basis anfaengt; bleibt es nicht bei genau einem,
+ * wird lieber nichts behauptet.
+ */
+export function findMarketSet(idx, name) {
+  if (!idx || !name) return null;
+
+  const basis = String(name).match(/^(.+?\s+Prime)\b/i)?.[1];
+  if (!basis) return null;
+
+  const direkt = idx.byName.get((basis + ' Set').toLowerCase());
+  if (direkt) return direkt;
+
+  const praefix = basis.toLowerCase() + ' ';
+  const treffer = idx.list.filter(it =>
+    (it.tags || []).includes('set')
+    && (it.i18n?.en?.name || '').toLowerCase().startsWith(praefix));
+  return treffer.length === 1 ? treffer[0] : null;
+}
+
 /* -------------------------------- Preise ------------------------------- */
 
 async function loadPriceCache() {

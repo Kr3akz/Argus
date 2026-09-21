@@ -53,8 +53,8 @@ import { upgradeDetails } from '../core/upgrade-details.js';
 import { matchesFissureFilter } from '../core/fissure-filter.js';
 import { captureForeground, restoreForeground, bringToForeground, moveCursorIntoWindow, foregroundPid, gameWindowRect } from '../core/foreground.js';
 import { LogWatcher } from '../core/logwatch.js';
-import { loadMarketItems, findMarketItem, getPrice, getPrices, getRankedPrices, cachedPrice,
-         priceKey, prewarmPrices, stopPrewarm, marketImage, marketSubIcon } from '../core/market.js';
+import { loadMarketItems, findMarketItem, findMarketSet, getPrice, getPrices, getRankedPrices,
+         cachedPrice, priceKey, prewarmPrices, stopPrewarm, marketImage, marketSubIcon } from '../core/market.js';
 /* Handelsteil: Anmeldung, Orders, Auktionen und das lokale Handelsbuch.
    Vier Module, weil es vier verschiedene Dinge sind - siehe die Kopf-
    kommentare dort. */
@@ -78,7 +78,7 @@ import { subsumedSuits } from '../core/helminth.js';
 import { buildVaultIndex, vaultStatus } from '../core/vault.js';
 import {
   scanRewardScreen, buildRewardIndex, mergeRewards, warmUpOcr, stopOcrWorker, rewardScreenVisible,
-  panelGeometrie, panelGeometrieGemessen, ocrScreen
+  panelGeometrie, panelGeometrieGemessen, spaltenZuordnen, ocrScreen
 } from '../core/rewardscan.js';
 import {
   recallGeometry, rememberGeometry, columnCrops, columnCropsFrom, frameKey, WIDE_BAND
@@ -640,6 +640,34 @@ function frameToDip(frame) {
    Hauptbildschirm, wie frueher. Das Fenster wird gleich beim Hochfahren
    angelegt, damit es beim ersten Fund fertig geladen ist; wohin es dann
    wirklich gehoert, weiss erst showTags. */
+/**
+ * Das Schilderfenster bereitstellen und auf das Spielfenster legen.
+ *
+ * DAS FENSTER FOLGT DEM SPIEL, und zwar bei JEDEM Anlass - nicht nur beim
+ * ersten Mal: wer zwischen zwei Runden auf den anderen Monitor wechselt oder
+ * aus dem Vollbild ins Fenster geht, bekaeme sonst Schilder ueber dem alten
+ * Platz.
+ *
+ * Dass es diese Funktion gibt statt zweier Kopien, hat einen konkreten
+ * Anlass: showSkeletonTags legte ein BESTEHENDES Fenster nie um. Solange das
+ * Fenster immer erst dort entstand, fiel das nicht auf. Seit der
+ * Bildervorlauf es frueher anlegt - an der Stelle, an der das Spiel gerade
+ * vermutet wird -, waere aus dem blinden Fleck ein Dock auf dem falschen
+ * Monitor geworden.
+ */
+function tagFensterAn(dip, frame) {
+  if (!tagWin || tagWin.isDestroyed()) { createTagWindow(dip); return; }
+
+  const ist = tagWin.getBounds();
+  if (Math.abs(ist.x - dip.x) > 2 || Math.abs(ist.y - dip.y) > 2 ||
+      Math.abs(ist.width - dip.width) > 2 || Math.abs(ist.height - dip.height) > 2) {
+    tagWin.setBounds({ x: Math.round(dip.x), y: Math.round(dip.y),
+                       width: Math.round(dip.width), height: Math.round(dip.height) });
+    console.log('[Relikt] Schilderfenster verschoben auf', frame?.quelle ?? 'Spielfenster',
+                `${Math.round(dip.width)}x${Math.round(dip.height)} bei ${Math.round(dip.x)},${Math.round(dip.y)}`);
+  }
+}
+
 function createTagWindow(bounds = frameToDip(cachedFrame())) {
   tagWin = new BrowserWindow({
     x: Math.round(bounds.x), y: Math.round(bounds.y),
@@ -701,22 +729,9 @@ function showTags(rewards, erwartet = 0) {
     return;
   }
 
-  /* Das Fenster folgt dem Spiel. Es wird nicht nur beim ersten Mal gesetzt:
-     wer zwischen zwei Runden auf den anderen Monitor wechselt oder aus dem
-     Vollbild ins Fenster geht, bekaeme sonst Schilder ueber dem alten Platz. */
   const frame = cachedFrame();
   const dip = frameToDip(frame);
-  if (!tagWin || tagWin.isDestroyed()) createTagWindow(dip);
-  else {
-    const ist = tagWin.getBounds();
-    if (Math.abs(ist.x - dip.x) > 2 || Math.abs(ist.y - dip.y) > 2 ||
-        Math.abs(ist.width - dip.width) > 2 || Math.abs(ist.height - dip.height) > 2) {
-      tagWin.setBounds({ x: Math.round(dip.x), y: Math.round(dip.y),
-                         width: Math.round(dip.width), height: Math.round(dip.height) });
-      console.log('[Relikt] Schilderfenster verschoben auf', frame.quelle,
-                  `${Math.round(dip.width)}x${Math.round(dip.height)} bei ${Math.round(dip.x)},${Math.round(dip.y)}`);
-    }
-  }
+  tagFensterAn(dip, frame);
 
   /* Echte Bildschirmpixel -> Punkte INNERHALB des Schilderfensters. Der
      Faktor kommt aus der Umrechnung selbst und nicht aus dem Skalierungsfaktor
@@ -766,10 +781,58 @@ function showTags(rewards, erwartet = 0) {
      lieber ein Dock, das mitwaechst, als eines, das Plaetze fuer Karten
      freihaelt, die es gar nicht gibt. Genau das war zu sehen - vier Schilder
      ueber einer kleineren Gruppe. */
+  /* DAS FELD WIRD EINMAL BESTIMMT UND DANN NICHT MEHR ANGERUEHRT.
+
+     WARUM: showTags laeuft waehrend einer Runde ein Dutzend Mal - bei jeder
+     gelesenen Karte und bei jedem eintreffenden Preis. Die Wahl zwischen den
+     beiden Modellen haengt aber an `erwartet`, und diese Zahl kann MITTEN in
+     der Anzeige dazukommen: sie stammt aus dem Log, und wenn Warframe im
+     Hintergrund laeuft, kommt das Log in Schueben. In Kaans Protokoll vom
+     21.09. holte es 9240 ms nach dem Waechter auf - also mitten in die
+     laufenden fuenfzehn Sekunden hinein.
+
+     Was dann passiert, ist nachgemessen: drei gelesene Karten ohne Zahl
+     ergeben links=957 / 3 Spalten, dieselben drei Karten mit der
+     nachgetragenen Vier ergeben links=635 / 4 Spalten. Das Dock springt um
+     eine ganze Kartenbreite zur Seite, waehrend man es ansieht.
+
+     Eine spaet gemeldete Zahl gilt deshalb erst fuer die NAECHSTE Runde -
+     dahin traegt sie letzteKartenzahl ohnehin, und in Endlosmissionen ist die
+     naechste Runde gleich da. Genau dieselbe Regel steht schon an
+     letzteGeometrie: lieber eine Korrektur, die einmal zu spaet kommt, als
+     eine, die das Dock unter dem Blick verschiebt. */
+  const fRahmen = rahmenSchluessel(frame);
   const gemessen = letzteGeometrie?.gemessen ? letzteGeometrie : null;
-  const geo = gemessen && erwartet
-    ? panelGeometrieGemessen(placeable, frame, gemessen.cardWidth, erwartet)
-    : panelGeometrie(placeable, frame.w, erwartet || undefined);
+
+  if (dockGeometrie && dockGeometrie.rahmen !== fRahmen) {
+    /* Anderer Monitor, Fenstermodus gewechselt: das eingefrorene Feld gehoert
+       zu einem Rahmen, den es nicht mehr gibt. */
+    console.log('[Relikt] Rahmen hat sich geaendert - Feld wird neu bestimmt');
+    dockGeometrie = null;
+  }
+
+  let geo;
+  if (dockGeometrie) {
+    geo = spaltenZuordnen(placeable, dockGeometrie);
+  } else {
+    geo = gemessen && erwartet
+      ? panelGeometrieGemessen(placeable, frame, gemessen.cardWidth, erwartet)
+      : panelGeometrie(placeable, frame.w, erwartet || undefined);
+    dockGeometrie = { links: geo.links, breite: geo.breite,
+                      anzahlSpalten: geo.anzahlSpalten, rahmen: fRahmen };
+  }
+
+  /* Hat spaltenZuordnen das Feld neu angesetzt - weil eine gelesene Karte
+     nicht hineinpasste -, gilt ab jetzt das neue. Sonst zieht der naechste
+     Aufruf es wieder auf den alten Stand zurueck, und das Dock flackert
+     zwischen zwei Lagen hin und her. */
+  if (geo.links !== dockGeometrie.links || geo.anzahlSpalten !== dockGeometrie.anzahlSpalten) {
+    console.log(`[Relikt] Feld neu angesetzt: ${dockGeometrie.anzahlSpalten} -> ${geo.anzahlSpalten}`
+              + ` Spalten, linke Kante ${Math.round(dockGeometrie.links)} -> ${Math.round(geo.links)}`
+              + ` (eine gelesene Karte passte nicht hinein)`);
+    dockGeometrie.links = geo.links;
+    dockGeometrie.anzahlSpalten = geo.anzahlSpalten;
+  }
   const spalte = Math.round(geo.breite * fx);
 
   /* Das Feld folgt den GELESENEN Karten und wird nicht auf die Spielerzahl
@@ -805,7 +868,11 @@ function showTags(rewards, erwartet = 0) {
     isCrafted: r.isCrafted ?? false,
     currentOwned: r.currentOwned ?? 0,
     currentRequired: r.currentRequired ?? 1,
-    setParts: r.setParts || []
+    setParts: r.setParts || [],
+    /* Was der ganze Satz bringt. Steht hier NEBEN setParts, weil beide
+       dieselbe Frage beantworten: die Kaestchen sagen, wie viel davon schon
+       daliegt, die Zahl, was es am Ende wert ist. */
+    setPrice: r.setPrice ?? null
     };
   });
 
@@ -815,15 +882,25 @@ function showTags(rewards, erwartet = 0) {
      Karte ihren Platz und zeigt darin, dass sie noch laedt. Das Dock steht
      still, und man sieht, worauf man noch wartet.
 
-     Nur mit Messung: ohne sie kommt die Spaltenzahl aus den gelesenen Karten,
-     und dann waere eine "fehlende" Spalte reine Erfindung. */
+     GEFUELLT WIRD, WAS DAS FELD HERGIBT - und die Bedingung dafuer stand
+     frueher hier als `gemessen && erwartet`. Die Sorge dahinter war richtig:
+     eine Karte, von der niemand gesagt hat, dass es sie gibt, darf nicht als
+     leerer Platz dastehen. Nur ist sie seit dem eingefrorenen Feld von selbst
+     erledigt - hat das Feld mehr Spalten als gelesene Karten, dann WEIL
+     jemand das gesagt hat: entweder die gemeldete Spielerzahl oder die
+     Platzhalter, die vor der Erkennung schon standen. Kommt das Feld aus den
+     Karten selbst, gibt es gar keine Luecke zu fuellen.
+
+     Mit der alten Bedingung fehlten die Balken genau dann, wenn die Runde
+     vom Waechter kam: das Dock stand in voller Breite da - vom Waechter
+     gesetzt -, `erwartet` war aber 0, und die noch nicht gelesenen Plaetze
+     blieben einfach leer. */
   const belegt = new Set(gelesen.map(t => t.spalte));
-  const tags = gemessen && erwartet
-    ? [...gelesen, ...Array.from({ length: geo.anzahlSpalten }, (_, i) => i)
+  const tags = [...gelesen,
+                ...Array.from({ length: geo.anzahlSpalten }, (_, i) => i)
                         .filter(i => !belegt.has(i))
                         .map(i => ({ spalte: i, loading: true }))]
-        .sort((a, b) => a.spalte - b.spalte)
-    : gelesen;
+               .sort((a, b) => a.spalte - b.spalte);
 
   const send = () => {
     if (tagWin && !tagWin.isDestroyed()) tagWin.webContents.send('tags:show', { tags, panel });
@@ -904,7 +981,7 @@ async function showSkeletonTags() {
   const fx = dip.width / frame.w;
   const fy = dip.height / frame.h;
 
-  if (!tagWin || tagWin.isDestroyed()) createTagWindow(dip);
+  tagFensterAn(dip, frame);
 
   const anzahl = Math.min(4, Math.max(1, letzteKartenzahl || geo.players || 4));
   const breite = geo.cardWidth * frame.w;
@@ -921,6 +998,13 @@ async function showSkeletonTags() {
     spalte,
     anzahlSpalten: anzahl
   };
+
+  /* UND DASSELBE FELD FUER DIE ECHTEN KARTEN. Die Platzhalter stehen hier
+     schon an ihrem Platz; wuerde showTags sich gleich sein eigenes Feld
+     ausrechnen, rueckte das Dock beim ersten gelesenen Namen zur Seite -
+     genau der Sprung, den die Zeile "letzteGeometrie = geo" oben fuer die
+     Kartenbreite bereits verhindert, nur eben fuer Lage und Spaltenzahl. */
+  dockGeometrie = { links, breite, anzahlSpalten: anzahl, rahmen: rahmenSchluessel(frame) };
 
   const tags = Array.from({ length: anzahl }, (_, i) => ({ spalte: i, loading: true }));
 
@@ -940,6 +1024,9 @@ async function showSkeletonTags() {
 function hideTags() {
   clearTimeout(tagTimer);
   tagTimer = null;
+  /* Das Feld gilt nur, solange das Dock steht. Die naechste Runde faengt mit
+     einer frischen Bestimmung an - sie hat womoeglich andere Mitspieler. */
+  dockGeometrie = null;
   if (!tagWin || tagWin.isDestroyed()) return;
   tagWin.webContents.send('tags:hide');
   tagWin.hide();
@@ -1594,8 +1681,25 @@ ipcMain.handle('setup:state', async () => {
        Prozesse liest, hat die Zustimmung nicht, die es dafuer braucht - und
        ein frisch heruntergeladenes Programm hat sie erst recht nicht. */
     inventoryScan: cfg.inventoryScan === true,
-    inventoryAutoSync: cfg.inventoryAutoSync !== false
+    inventoryAutoSync: cfg.inventoryAutoSync !== false,
+    /* Die gefuehrte Tour haengt hier mit drin und nicht an settings:get,
+       weil das Fenster diesen Aufruf beim Start ohnehin macht - fuer eine
+       Frage, die genau einmal pro Start gestellt wird, ist ein zweiter
+       Rundgang durch die IPC-Bruecke eine Leitung ohne Ladung. */
+    guideSeen: cfg.guideSeen === true
   };
+});
+
+/* Die Tour ist gelaufen - oder jemand hat sie abgebrochen. Beides zaehlt.
+   Scheitert das Schreiben, laeuft sie beim naechsten Start noch einmal: eine
+   Tour zu viel ist ein Aergernis, eine verlorene Einstellung waere ein
+   Fehler, den niemand mehr findet. */
+ipcMain.handle('settings:guideSeen', async (_e, on) => {
+  try {
+    const cfg = await loadConfig();
+    await saveConfig({ ...cfg, guideSeen: on === true });
+  } catch { /* siehe oben */ }
+  return { ok: true, guideSeen: on === true };
 });
 
 /**
@@ -1968,6 +2072,54 @@ async function starteWochenScan() {
   return true;
 }
 
+/* DEs Kategorie-Marker vor dem Namen ("<ARCHWING> Agkuza") gehoert nicht auf
+   den Bildschirm. Dieselbe Kuerzung wie in core/basesets.js. */
+const stripGameTag = name => String(name || '').replace(/^<[^>]*>\s*/, '').trim();
+
+/* Nur diese Kategorien kann der Circuit ueberhaupt auslosen: Warframes in der
+   normalen Runde, Waffen auf dem Steel Path. Die Einschraenkung ist kein
+   Schmuck - ohne sie trifft die entschaerfte Suche unten bei "Panzer
+   Vulpaphyla" das gleichnamige Haustier statt der Waffe. */
+const CIRCUIT_KATEGORIEN = new Set(['Suits', 'LongGuns', 'Pistols', 'Melee']);
+
+/**
+ * Ein Circuit-Name aus der API -> Katalogeintrag.
+ *
+ * WARUM NICHT EINFACH name === name: Die Weltzustands-API gibt manche
+ * Auswahlnamen als DEs interne Schreibweise ohne Leerzeichen heraus -
+ * nachgemessen am 21.09.2026 stand in duviriCycle.choices.hard woertlich
+ * "CeramicDagger" neben "Lex", "Magistar", "Boltor" und "Bronco". Der Katalog
+ * fuehrt den Dolch als "Ceramic Dagger"; der Gleichheitsvergleich ging daran
+ * vorbei, und die Karte zeigte die Rohform ohne Bild. Betroffen ist jede
+ * mehrteilige Waffe im Circuit-Topf - "Nami Solo", "Dual Toxocyst" und
+ * Dutzende mehr.
+ *
+ * Deshalb zwei Stufen: erst der genaue Name, dann ein Vergleich, der
+ * Leerzeichen, Bindestriche und Gross-/Kleinschreibung fallen laesst.
+ */
+function circuitItem(catalog, name) {
+  const genau = catalog.items.find(i => i.name === name);
+  if (genau) return genau;
+
+  if (!catalog.byLooseName) {
+    const entschaerfen = s => stripGameTag(s).replace(/[^a-z0-9]+/gi, '').toLowerCase();
+    catalog.byLooseName = new Map();
+    for (const it of catalog.items || []) {
+      const k = entschaerfen(it.name);
+      if (!k) continue;
+      /* Erster Treffer gewinnt, ausser ein spaeterer passt in eine
+         Circuit-Kategorie und der bisherige nicht. */
+      const alt = catalog.byLooseName.get(k);
+      if (!alt || (!CIRCUIT_KATEGORIEN.has(alt.productCategory)
+                   && CIRCUIT_KATEGORIEN.has(it.productCategory))) {
+        catalog.byLooseName.set(k, it);
+      }
+    }
+    catalog.looseKey = entschaerfen;
+  }
+  return catalog.byLooseName.get(catalog.looseKey(name)) || null;
+}
+
 ipcMain.handle('weekly:get', async (_e, force) => {
   try {
     const ws = await fetchWorldState({ force: !!force });
@@ -2035,8 +2187,10 @@ ipcMain.handle('weekly:get', async (_e, force) => {
     try {
       const catalog = await loadCatalog();
       const bild = name => {
-        const treffer = catalog.items.find(i => i.name === name);
-        return treffer ? { name, image: imageUrl(treffer.uniqueName, 128) } : { name, image: null };
+        const treffer = circuitItem(catalog, name);
+        return treffer
+          ? { name: stripGameTag(treffer.name), image: imageUrl(treffer.uniqueName, 128) }
+          : { name, image: null };
       };
       /* Die Wochenbelohnungen kommen als uniqueName herein (siehe SPLITTER in
          core/weekly.js). Der Name daneben traegt bei den Splittern noch die
@@ -4220,11 +4374,15 @@ async function describeReward(uniqueName) {
   const name = item?.name
     || clean.split('/').pop().replace(/([a-z0-9])([A-Z])/g, '$1 $2').trim();
 
-  let ducats = null, slug = null;
+  let ducats = null, slug = null, setSlug = null, setName = null;
   try {
     const market = await loadMarketItems();
     const hit = findMarketItem(market, { uniqueName: clean, name });
     if (hit) { ducats = hit.ducats ?? null; slug = hit.slug; }
+    /* Derselbe Satz wie bei den gelesenen Karten - der eigene Fund soll nicht
+       weniger sagen als die drei daneben. */
+    const satz = findMarketSet(market, name);
+    if (satz && satz.slug !== slug) { setSlug = satz.slug; setName = satz.i18n?.en?.name || null; }
   } catch {
     /* Ohne Marktliste bleiben Name und Bild - besser als gar keine Anzeige. */
   }
@@ -4233,6 +4391,7 @@ async function describeReward(uniqueName) {
      Preis geben, und das ist etwas anderes als "der Preis kommt noch". Der
      eigene Fund kann genauso ein Forma sein wie jeder andere. */
   return { uniqueName: clean, name, image: imageUrl(clean, 128), ducats, slug,
+           setSlug, setName, setPrice: await cachedPrice(setSlug),
            tradeable: !!slug };
 }
 
@@ -4323,14 +4482,19 @@ async function prewarmRewardPrices() {
     ...[...namen].filter(n => !eigene.has(n) && !aera.has(n))
   ];
 
-  const slugs = [...new Set(sortiert
-    .map(name => findMarketItem(market, { name })?.slug)
-    .filter(Boolean))];
+  /* Die Saetze HINTER die Teile, nicht dazwischen: sie sind die Nebenangabe
+     der Zeile, und sie kosten kaum etwas - ueber alle 596 Belohnungen hinweg
+     gibt es nur 160 verschiedene Prime-Saetze, und ein Satz deckt vier bis
+     fuenf Teile auf einmal ab. */
+  const slugs = [...new Set([
+    ...sortiert.map(name => findMarketItem(market, { name })?.slug),
+    ...sortiert.map(name => findMarketSet(market, name)?.slug)
+  ].filter(Boolean))];
   if (!slugs.length) return;
 
   const start = Date.now();
   const lauf = prewarmPrices(slugs);
-  console.log(`[Preise] Vorlauf: ${slugs.length} moegliche Belohnungen`
+  console.log(`[Preise] Vorlauf: ${slugs.length} moegliche Belohnungen und ihre Saetze`
             + (meineAera ? ` (${meineAera} zuerst)` : ''));
 
   const { geholt, offen, abgebrochen } = await lauf.done;
@@ -4341,6 +4505,156 @@ async function prewarmRewardPrices() {
               + ` in ${Math.round((Date.now() - start) / 1000)}s`
               + (abgebrochen ? ' (abgebrochen)' : ''));
   }
+}
+
+/* Nur einmal je Programmlauf. Chromium behaelt die Bilder ueber Neustarts
+   hinweg, aber der Vorlauf soll nicht bei jedem eingelegten Relikt erneut
+   575 Bilder durchgehen - auch wenn sie dann alle aus dem Cache kaemen. */
+let bilderVorgewaermt = false;
+
+/**
+ * Die Teilebilder der Schilder vorladen, bevor sie gebraucht werden.
+ *
+ * DAS PROBLEM: Jedes Schild zeigt drei bis fuenf Kaestchen mit dem Bild des
+ * jeweiligen Bauteils, geladen von cdn.jsdelivr.net. Kalt kostet so ein Bild
+ * nachgemessen 329 ms, und sechzehn davon (vier Karten zu vier Teilen) stehen
+ * unter einer Uhr, die fuenfzehn Sekunden laeuft. Die Kaestchen fuellten sich
+ * deshalb sichtbar nach - erst der Rahmen, Sekunden spaeter das Bild.
+ *
+ * WARUM SICH DAS LOHNT: Es sind wenige, und es sind immer dieselben.
+ * Nachgezaehlt ueber saemtliche Relikte gibt es genau 575 verschiedene
+ * Teilebilder, zusammen 2,8 MB - und die Aeren ueberschneiden sich fast
+ * vollstaendig (Lith 560, Axi 572), es gibt also nichts zu sortieren oder
+ * einzugrenzen. Zu acht parallel sind sie in gut zwanzig Sekunden da, und
+ * eine Rissmission dauert laenger.
+ *
+ * UND ES IST EINMALIG: Der Spiegel liefert
+ * "cache-control: public, max-age=31536000, immutable". Chromium legt die
+ * Bilder damit dauerhaft ab, ueber Neustarts hinweg - beim zweiten Mal ist
+ * nichts mehr zu holen. Aus genau diesem Grund auch kein eigener Bild-Cache
+ * daneben; dieselbe Ueberlegung steht im Kopf von core/cards.js.
+ *
+ * GELADEN WIRD IM SCHILDERFENSTER, nicht hier. Chromium teilt seinen
+ * Plattencache nach Herkunft auf; ein Abruf aus dem Hauptprozess hat keine,
+ * und was dort landet, faende das Fenster spaeter womoeglich nicht wieder.
+ * Der Vorlauf waere dann Arbeit ohne Wirkung - und zwar lautlos, weil die
+ * Bilder ja trotzdem irgendwann kommen. Deshalb geht nur die LISTE hinueber;
+ * das Laden macht tags.js, auf demselben Weg wie spaeter im Ernstfall.
+ *
+ * Die Liste stammt aus setAufbau - derselben Funktion, aus der auch
+ * resolveSetDetails seine Kaestchen baut. Zwei Ableitungen derselben
+ * Teileliste waeren hier besonders tueckisch: gingen sie auseinander, waermte
+ * der Vorlauf Bilder, die kein Schild je anfordert.
+ */
+async function prewarmPartImages() {
+  if (bilderVorgewaermt || !relicTags) return;
+  bilderVorgewaermt = true;
+
+  try {
+    if (!cache.catalog) cache.catalog = await loadCatalog().catch(() => null);
+    const catalog = cache.catalog;
+    if (!catalog) return;
+
+    const idx = await loadRelicTables();
+    const urls = new Set();
+    for (const name of allRewardNames(idx)) {
+      for (const t of setAufbau(catalog, name)?.teile || []) urls.add(imageUrl(t.uniqueName, 64));
+    }
+    if (!urls.size) return;
+
+    /* Das Fenster muss es GEBEN - wo es steht, ist hier gleichgueltig: es ist
+       unsichtbar, und showTags legt es vor dem Anzeigen ohnehin auf das
+       Spielfenster. Deshalb nur anlegen, falls es fehlt, und keinesfalls
+       verschieben: ein Ruck an einem Fenster, das schon richtig sitzt, waere
+       Arbeit mit Risiko und ohne Nutzen. Beim Start entsteht es sowieso
+       (siehe app.whenReady), das hier ist die Versicherung fuer den Fall,
+       dass es zwischendurch geschlossen wurde. */
+    if (!tagWin || tagWin.isDestroyed()) createTagWindow();
+
+    const liste = [...urls];
+    const senden = () => {
+      if (tagWin && !tagWin.isDestroyed()) tagWin.webContents.send('tags:prewarm', liste);
+    };
+    if (tagWin.webContents.isLoading()) tagWin.webContents.once('did-finish-load', senden);
+    else senden();
+
+    console.log(`[Bilder] Vorlauf angestossen: ${liste.length} Teilebilder`);
+  } catch (err) {
+    console.error('[Bilder] Vorlauf fehlgeschlagen:', err.message);
+  }
+}
+
+/* Der Renderer meldet zurueck, was daraus geworden ist. Ohne diese Zeile
+   waere der Vorlauf im Protokoll nicht von "gar nicht gelaufen" zu
+   unterscheiden - und genau das will man wissen, wenn die Kaestchen wieder
+   spaet kommen. Die fehlenden Bilder sind normal: rund 7 % der Bauteile hat
+   der Spiegel nicht, deren Kaestchen bleiben leer (siehe onerror in tags.js). */
+ipcMain.on('tags:prewarm-done', (_e, z) => {
+  console.log(`[Bilder] Vorlauf fertig: ${z?.geladen ?? 0} von ${z?.gesamt ?? 0}`
+            + ` in ${Math.round((z?.ms ?? 0) / 1000)}s`
+            + (z?.fehler ? `, ${z.fehler} ohne Bild beim Spiegel` : ''));
+});
+
+/**
+ * Woraus der Satz zu diesem Item besteht - rein aus dem Katalog, ohne
+ * Inventar und ohne Netz.
+ *
+ * WARUM GETRENNT VON resolveSetDetails: Es gibt einen zweiten Leser. Der
+ * Bildervorlauf (siehe prewarmPartImages) muss GENAU die Bilder waermen, die
+ * das Schild spaeter anzeigt - warmt er andere, war die Arbeit umsonst und
+ * niemand merkt es, weil die Bilder ja trotzdem irgendwann kommen. Eine
+ * zweite Ableitung derselben Teileliste waere deshalb die schlechteste aller
+ * Loesungen: sie ginge lautlos auseinander. Dieselbe Ueberlegung wie bei
+ * fissure-filter.js, wo eine zweite Kopie der Tabelle denselben Fehler
+ * zweimal trug.
+ *
+ * `ingUnique` steht neben `uniqueName`, weil ein Teil in ZWEI Formen
+ * zaehlt - als gebautes Bauteil und als Bauplan dafuer. Beim Haupt-Bauplan
+ * gibt es diese zweite Form nicht; dort steht null, und die Zaehlung
+ * darunter addiert nichts dazu.
+ */
+function setAufbau(catalog, name, uniqueName = null) {
+  if (!catalog) return null;
+
+  let primeItem = null;
+  const basis = String(name || '').match(/^(.+?\s+Prime)\b/i)?.[1];
+  if (basis) primeItem = catalog.items.find(it => it.name?.toLowerCase() === basis.toLowerCase());
+  if (!primeItem && uniqueName) primeItem = catalog.byUniqueName.get(uniqueName);
+  if (!primeItem) return null;
+
+  const rezept = catalog.recipeFor.get(primeItem.uniqueName);
+  if (!rezept) return { primeItem, teile: [] };
+
+  const teile = [{
+    name: primeItem.name + ' Blueprint',
+    shortName: 'Blueprint',
+    uniqueName: rezept.uniqueName,
+    ingUnique: null,
+    required: 1,
+    istHauptBlueprint: true
+  }];
+
+  for (const ing of rezept.ingredients || []) {
+    const ingUnique = ing.ItemType;
+    if (isRawMaterial(ingUnique)) continue;
+    const subRec  = catalog.recipeFor.get(ingUnique);
+    const ingItem = catalog.byUniqueName.get(ingUnique);
+    const targetUnique = subRec ? subRec.uniqueName : ingUnique;
+
+    let partName = ingItem?.name || ingUnique.split('/').pop();
+    if (subRec && !partName.includes('Blueprint')) partName += ' Blueprint';
+    const shortName = partName.replace(primeItem.name, '').replace('Blueprint', '').trim() || partName;
+
+    teile.push({
+      name: partName,
+      shortName,
+      uniqueName: targetUnique,
+      ingUnique,
+      required: ing.ItemCount || 1,
+      istHauptBlueprint: false
+    });
+  }
+  return { primeItem, teile };
 }
 
 /**
@@ -4387,86 +4701,42 @@ async function resolveSetDetails(name, uniqueName) {
       }
     }
 
-    if (catalog) {
-      let primeItem = null;
-      const match = name.match(/^(.+?\s+Prime)\b/i);
-      const baseName = match ? match[1] : null;
+    const aufbau = setAufbau(catalog, name, uniqueName);
+    if (aufbau) {
+      isCrafted = masteredTypes.has(aufbau.primeItem.uniqueName);
+      const klein = String(name).toLowerCase();
 
-      if (baseName) {
-        primeItem = catalog.items.find(it => it.name?.toLowerCase() === baseName.toLowerCase());
-      }
-      if (!primeItem && uniqueName) {
-        primeItem = catalog.byUniqueName.get(uniqueName);
-      }
-
-      if (primeItem) {
-        isCrafted = masteredTypes.has(primeItem.uniqueName);
-        const recipe = catalog.recipeFor.get(primeItem.uniqueName);
-
-        if (recipe) {
-          // 1. Haupt-Blueprint
-          const bpUnique = recipe.uniqueName;
-          const bpCount = ownedCounts.get(bpUnique) || 0;
-          const bpName = primeItem.name + ' Blueprint';
-          const isBpCur = name.toLowerCase() === bpName.toLowerCase() || name.toLowerCase() === 'blueprint' || bpUnique === uniqueName;
-          if (isBpCur) {
-            currentOwned = bpCount;
-            currentRequired = 1;
-          }
-
-          setParts.push({
-            name: bpName,
-            shortName: 'Blueprint',
-            uniqueName: bpUnique,
-            image: imageUrl(bpUnique, 64),
-            count: bpCount,
-            required: 1,
-            isCurrent: isBpCur
-          });
-
-          // 2. Zutaten / Unter-Komponenten
-          for (const ing of recipe.ingredients || []) {
-            const ingUnique = ing.ItemType;
-            if (isRawMaterial(ingUnique)) continue;
-            const subRec = catalog.recipeFor.get(ingUnique);
-            const ingItem = catalog.byUniqueName.get(ingUnique);
-            let targetUnique = ingUnique;
-            let count = (ownedCounts.get(ingUnique) || 0);
-
-            if (subRec) {
-              targetUnique = subRec.uniqueName;
-              count += (ownedCounts.get(subRec.uniqueName) || 0);
-            }
-
-            let partName = ingItem?.name || ingUnique.split('/').pop();
-            if (subRec && !partName.includes('Blueprint')) {
-              partName += ' Blueprint';
-            }
-            const shortName = partName.replace(primeItem.name, '').replace('Blueprint', '').trim() || partName;
-
-            const isCur = name.toLowerCase().includes(shortName.toLowerCase()) || targetUnique === uniqueName || ingUnique === uniqueName;
-            if (isCur) {
-              currentOwned = count;
-              currentRequired = ing.ItemCount || 1;
-            }
-
-            setParts.push({
-              name: partName,
-              shortName: shortName,
-              uniqueName: targetUnique,
-              image: imageUrl(targetUnique, 64),
-              count: count,
-              required: ing.ItemCount || 1,
-              isCurrent: isCur
-            });
-          }
+      for (const t of aufbau.teile) {
+        /* Ein Teil zaehlt in zwei Formen - gebautes Bauteil und Bauplan
+           dafuer. Der Haupt-Bauplan hat nur eine, dort ist ingUnique null. */
+        let count = ownedCounts.get(t.uniqueName) || 0;
+        if (t.ingUnique && t.ingUnique !== t.uniqueName) {
+          count += ownedCounts.get(t.ingUnique) || 0;
         }
-      } else {
-        if (uniqueName) {
-          isCrafted = masteredTypes.has(uniqueName);
-          currentOwned = ownedCounts.get(uniqueName) || 0;
+
+        const isCur = t.istHauptBlueprint
+          ? (klein === t.name.toLowerCase() || klein === 'blueprint' || t.uniqueName === uniqueName)
+          : (klein.includes(t.shortName.toLowerCase())
+             || t.uniqueName === uniqueName || t.ingUnique === uniqueName);
+
+        if (isCur) {
+          currentOwned = count;
+          currentRequired = t.required;
         }
+
+        setParts.push({
+          name: t.name,
+          shortName: t.shortName,
+          uniqueName: t.uniqueName,
+          image: imageUrl(t.uniqueName, 64),
+          count,
+          required: t.required,
+          isCurrent: isCur
+        });
       }
+    } else if (catalog && uniqueName) {
+      isCrafted = masteredTypes.has(uniqueName);
+      currentOwned = ownedCounts.get(uniqueName) || 0;
     }
   } catch (err) {
     console.error('[Relikt] Fehler beim Auflösen des Sets:', err.message);
@@ -4478,6 +4748,9 @@ async function resolveSetDetails(name, uniqueName) {
 /** Erkannter Name -> Anzeige mit Bild, Dukaten, Markt-Kennung und Set-Details. */
 async function describeScanned(name) {
   let image = null, ducats = null, slug = null, uniqueName = null;
+  /* Das Set daneben: der Slug wird hier nur nachgeschlagen, der Preis dazu
+     kommt wie bei den Teilen ueber frischePreise. */
+  let setSlug = null, setName = null;
   try {
     const market = await loadMarketItems();
     const hit = findMarketItem(market, { name });
@@ -4488,6 +4761,14 @@ async function describeScanned(name) {
          der Katalog fuer dieses Teil fuehrt. */
       uniqueName = hit.gameRef || null;
       if (uniqueName) image = imageUrl(uniqueName, 128);
+    }
+    const satz = findMarketSet(market, name);
+    /* Ein Satz, der das Teil selbst IST, sagt nichts Zweites - das waere
+       dieselbe Zahl zweimal. Kommt vor, wenn ein Relikt ausnahmsweise ein
+       Ganzteil auswirft. */
+    if (satz && satz.slug !== slug) {
+      setSlug = satz.slug;
+      setName = satz.i18n?.en?.name || null;
     }
   } catch { /* Name allein ist besser als nichts. */ }
 
@@ -4508,6 +4789,8 @@ async function describeScanned(name) {
        70 % der Relikte Forma, und 47 % aller Vierer-Bildschirme haben
        mindestens eines dabei - das ist kein Randfall. */
     tradeable: !!slug,
+    setSlug,
+    setName,
     isCrafted: setInfo.isCrafted,
     currentOwned: setInfo.currentOwned,
     currentRequired: setInfo.currentRequired,
@@ -4651,6 +4934,21 @@ let frameCache = { at: 0, frame: null };
 /* Die Geometrie des laufenden Durchgangs. showTags ist synchron und haengt an
    einer Fuenfzehn-Sekunden-Uhr - es darf sie nicht selbst nachladen. */
 let letzteGeometrie = null;
+
+/* DAS FELD, SOLANGE DAS DOCK STEHT: linke Kante, Kartenbreite und Spaltenzahl
+   in echten Bildschirmpixeln, dazu der Rahmen, zu dem sie gehoeren. Gesetzt
+   beim ersten Zeichnen - egal ob Platzhalter oder echte Karten -, danach nur
+   noch gelesen, und in hideTags() wieder geloescht.
+
+   Der Grund steht ausfuehrlich in showTags: die Wahl des Geometrie-Modells
+   haengt an einer Zahl aus dem Log, die mitten in die Anzeige hineinfallen
+   kann. Ohne diesen Speicher springt das Dock genau dann zur Seite. */
+let dockGeometrie = null;
+
+/* Rahmen als Zeichenkette - Lage UND Groesse. Nur die Groesse reicht nicht:
+   wer das Spielfenster auf den anderen Monitor zieht, behaelt sie. */
+const rahmenSchluessel = f =>
+  `${Math.round(f.x)},${Math.round(f.y)},${Math.round(f.w)}x${Math.round(f.h)}`;
 /* Wie viele Relikte zuletzt aufgegangen sind. Nur fuer das Dock, das VOR der
    Erkennung erscheint und die Zahl da noch nicht kennen kann: die Gruppe
    bleibt innerhalb einer Mission dieselbe. Sobald das Log sie nennt, gilt
@@ -5351,7 +5649,9 @@ function stopRewardWatch(grund) {
   clearInterval(watchFocusTimer);
   watchFocusTimer = null;
   /* Kein Belohnungsbildschirm mehr in Sicht - dann muss auch niemand mehr
-     Preise auf Vorrat holen. Was bis hierher im Cache gelandet ist, bleibt. */
+     Preise auf Vorrat holen. Was bis hierher im Cache gelandet ist, bleibt.
+     Der Bildervorlauf braucht kein Gegenstueck: er laeuft genau einmal je
+     Programmlauf und ist nach gut zwanzig Sekunden ohnehin durch. */
   stopPrewarm();
   /* Die Zahl der Blicke gehoert dazu. Ohne sie ist "der Waechter lief" nicht
      von "der Waechter hat nie hingesehen" zu unterscheiden - und genau das
@@ -5565,6 +5865,11 @@ function startLogWatcher() {
        Begruendung in prewarmRewardPrices. */
     prewarmRewardPrices().catch(err =>
       console.error('[Preise] Vorlauf fehlgeschlagen:', err.message));
+    /* Dasselbe fuer die Teilebilder der Schilder. Laeuft NEBEN den Preisen und
+       nicht dahinter: ein anderer Host, eine andere Warteschlange - die beiden
+       nehmen einander nichts weg. Nur beim ersten Mal ist ueberhaupt etwas zu
+       tun, danach liegen sie in Chromiums Cache. */
+    prewarmPartImages();
   });
 
   logWatcher.on('relic-reward', ev => {
@@ -5667,12 +5972,31 @@ function startLogWatcher() {
        Fuer die Erkennung ist da nichts mehr zu holen - die Pixel sind weg.
        Aber es MUSS dastehen, warum: sonst sieht dieser Fall aus wie ein
        Fehler der Erkennung, und man sucht ihn an der falschen Stelle. */
-    const frisch = currentRelic && Date.now() - currentRelic.at < 2000;
+    /* BEZUGSPUNKT IST DIE ANKUNFT DER LOGZEILE, NICHT DER ANFANG DER RUNDE.
+       Hier stand `currentRelic.at`, und solange das Log die Runde selbst
+       meldete, war das dasselbe. Seit der Waechter den Bildschirm erkennt,
+       ist es das nicht mehr: die Runde faengt an, wenn die Pixel dastehen,
+       und das Log holt Sekunden spaeter auf. In Kaans Protokoll vom 21.09.
+       waren es 9240 ms - weit ueber der Frist von zwei Sekunden. Der
+       Schub aus dem Schreibpuffer galt damit als normaler Schluss, und die
+       Schilder verschwanden mitten im offenen Bildschirm. */
+    const bezug = currentRelic?.logAt ?? currentRelic?.at;
+    const frisch = currentRelic && Date.now() - bezug < 2000;
     if (frisch) {
-      console.log(`[Relikt #${currentRelic.lauf}] VERPASST: Die Logzeilen kamen erst,`
-                + ` als der Bildschirm schon zu war (${Date.now() - currentRelic.at}ms nach dem Anfang,`
-                + ` im Spiel lagen 15 s dazwischen).`
-                + ` Warframe puffert sein Log, wenn es nicht im Vordergrund laeuft.`);
+      /* ZWEI GRUNDVERSCHIEDENE FAELLE, DIESELBE URSACHE. Hat nur das Log
+         gesprochen, ist der Bildschirm wirklich weg und die Runde verloren.
+         Hat der Waechter ihn gesehen, ist gar nichts verloren - dann belegt
+         derselbe Schwung nur, dass das Log hinterherhinkt. Beides als
+         "VERPASST" zu protokollieren hat beim Nachsehen mehr verdeckt als
+         erklaert: es sah nach einem Ausfall aus, wo alles gelesen war. */
+      console.log(currentRelic.vomWaechter
+        ? `[Relikt #${currentRelic.lauf}] Log gepuffert: Anfang und Ende kamen zusammen`
+          + ` (${Date.now() - currentRelic.at}ms nach dem Waechter). Der Waechter hatte den`
+          + ` Bildschirm laengst - verloren ist nichts.`
+        : `[Relikt #${currentRelic.lauf}] VERPASST: Die Logzeilen kamen erst,`
+          + ` als der Bildschirm schon zu war (${Date.now() - currentRelic.at}ms nach dem Anfang,`
+          + ` im Spiel lagen 15 s dazwischen).`
+          + ` Warframe puffert sein Log, wenn es nicht im Vordergrund laeuft.`);
 
       /* UND DAS IST DER BEWEIS. Bisher wurde er gedruckt und weggeworfen.
          Dabei ist ein verpasster Bildschirm die staerkste Auskunft, die es
@@ -5687,18 +6011,47 @@ function startLogWatcher() {
         console.log('[Waechter] verpasster Bildschirm - ab jetzt wird auch im Vordergrund hingesehen');
       }
     }
-    setCurrentRelic(null, frisch ? 'Bildschirm war schon zu (Log verspaetet)' : 'Belohnungsbildschirm zu');
-    /* Der Waechter bleibt BEWUSST an: in Endlosmissionen folgt gleich die
-       naechste Runde, und ein zweites relic-equipped kommt dafuer nicht - ab
-       Runde 2 stellt das Spiel die Sicherheitsfrage nicht mehr. Wer hier
-       abschaltet, sieht ab der zweiten Runde wieder nichts. Beendet wird er
-       am Missionsende und spaetestens durch seinen eigenen Zeitdeckel. */
-    hideTags();
-    sendToOverlay('relic:closed', {});
-    if (overlayShownForRelic) {
-      overlayShownForRelic = false;
-      hideOverlay();
+    const beenden = grund => {
+      setCurrentRelic(null, grund);
+      /* Der Waechter bleibt BEWUSST an: in Endlosmissionen folgt gleich die
+         naechste Runde, und ein zweites relic-equipped kommt dafuer nicht - ab
+         Runde 2 stellt das Spiel die Sicherheitsfrage nicht mehr. Wer hier
+         abschaltet, sieht ab der zweiten Runde wieder nichts. Beendet wird er
+         am Missionsende und spaetestens durch seinen eigenen Zeitdeckel. */
+      hideTags();
+      sendToOverlay('relic:closed', {});
+      if (overlayShownForRelic) {
+        overlayShownForRelic = false;
+        hideOverlay();
+      }
+    };
+
+    /* DIE SCHLUSS-ZEILE AUS DEMSELBEN SCHWUNG IST KEINE NACHRICHT.
+       Hat der WAECHTER die Runde gemeldet und das Log gerade eben erst
+       aufgeholt, dann standen Anfang und Ende zusammen in der Datei - im
+       Spiel lagen fuenfzehn Sekunden dazwischen, beim Lesen Millisekunden.
+       Der Bildschirm, den der Waechter mit eigenen Augen gesehen hat, ist zu
+       diesem Zeitpunkt noch offen; seine eigene Uhr sagt, wie lange noch.
+
+       Frueher wurde hier trotzdem abgeraeumt, und genau das sah man: die
+       Schilder gingen mitten im offenen Belohnungsbildschirm weg. Jetzt
+       entscheidet die Uhr der Runde - dieselbe, die auch den Deckel in
+       showTags setzt. */
+    const restMs = currentRelic
+      ? (currentRelic.at + (currentRelic.seconds ?? 15) * 1000) - Date.now()
+      : 0;
+    if (frisch && currentRelic?.vomWaechter && restMs > 1000) {
+      const laufend = currentRelic;
+      console.log(`[Relikt #${laufend.lauf}] Schluss-Zeile kam im selben Schwung wie der Anfang`
+                + ` - der Bildschirm steht noch ${Math.round(restMs / 1000)}s.`
+                + ` Abgeraeumt wird nach der Uhr, nicht nach dem Log.`);
+      setTimeout(() => {
+        if (currentRelic === laufend) beenden('Bedenkzeit abgelaufen (Log war gepuffert)');
+      }, restMs + 500);
+      return;
     }
+
+    beenden(frisch ? 'Bildschirm war schon zu (Log verspaetet)' : 'Belohnungsbildschirm zu');
   });
 
   /* ----- Auto-Sync: Inventar nach Spielereignissen aktualisieren ------- */
@@ -5796,7 +6149,10 @@ async function zeigeGelesene(scan, started, { fertig = false } = {}) {
          Netzabruf durch war - obwohl die Zahl auf der Platte lag. Der Dukaten-
          Tab macht es seit jeher so und wirkt deshalb schnell; siehe
          cachedPrice in market.js. Der frische Preis loest ihn gleich ab. */
-      price: alt?.price ?? await cachedPrice(basis.slug)
+      price: alt?.price ?? await cachedPrice(basis.slug),
+      /* Der Satzpreis genauso: er ist eine Nebenangabe und darf die Zeile
+         nicht aufhalten. Steht er auf der Platte, steht er sofort da. */
+      setPrice: alt?.setPrice ?? await cachedPrice(basis.setSlug)
     };
   }));
 
@@ -5842,25 +6198,36 @@ function frischePreise(started) {
     preisBuch.set(started, buch);
   }
 
-  for (const reward of started.rewards) {
-    if (!reward.slug || buch.angefragt.has(reward.slug)) continue;
-    buch.angefragt.add(reward.slug);
+  const anstossen = (slugFeld, preisFeld) => {
+    for (const reward of started.rewards) {
+      const slug = reward[slugFeld];
+      if (!slug || buch.angefragt.has(slug)) continue;
+      buch.angefragt.add(slug);
 
-    const slug = reward.slug;
-    buch.laeuft.push(getPrice(slug).then(price => {
-      if (currentRelic !== started) return;
-      /* Kein Treffer darf einen bereits stehenden - womoeglich veralteten -
-         Preis wieder wegnehmen. Ein alter Preis ist besser als "…". */
-      let geaendert = false;
-      for (const r of started.rewards) {
-        if (r.slug !== slug) continue;
-        if (price != null || r.price == null) { r.price = price; geaendert = true; }
-      }
-      if (!geaendert) return;
-      pushRelic();
-      showTags(started.rewards, started.karten);
-    }).catch(() => { /* Ohne Preis bleibt der Name - der zaehlt. */ }));
-  }
+      buch.laeuft.push(getPrice(slug).then(price => {
+        if (currentRelic !== started) return;
+        /* Kein Treffer darf einen bereits stehenden - womoeglich veralteten -
+           Preis wieder wegnehmen. Ein alter Preis ist besser als "…". */
+        let geaendert = false;
+        for (const r of started.rewards) {
+          if (r[slugFeld] !== slug) continue;
+          if (price != null || r[preisFeld] == null) { r[preisFeld] = price; geaendert = true; }
+        }
+        if (!geaendert) return;
+        pushRelic();
+        showTags(started.rewards, started.karten);
+      }).catch(() => { /* Ohne Preis bleibt der Name - der zaehlt. */ }));
+    }
+  };
+
+  /* ERST ALLE TEILE, DANN ALLE SAETZE - und nicht je Karte beides. Die
+     Warteschlange arbeitet der Reihe nach mit 350 ms Abstand; wer die Saetze
+     dazwischenschiebt, verzoegert den Preis der vierten Karte um vier
+     Abrufe. Der Teilepreis ist die Hauptzahl der Zeile, der Satzpreis die
+     Nebenangabe - in dieser Reihenfolge sollen sie auch eintreffen. */
+  anstossen('slug', 'price');
+  anstossen('setSlug', 'setPrice');
+
   return Promise.all(buch.laeuft);
 }
 
@@ -5894,6 +6261,12 @@ async function handleRelicReward(ev) {
       const laufend = currentRelic;
       console.log(`[Relikt #${laufend.lauf}] Log holt auf - eigener Fund wird nachgetragen`
                 + ` (${Date.now() - laufend.at}ms nach dem Waechter)`);
+
+      /* JETZT erst hat das Log etwas zu dieser Runde gesagt. Der Zeitpunkt
+         zaehlt: kommt die Schluss-Zeile gleich hinterher, stand sie mit
+         dieser Zeile im selben Schwung in der Datei und meint nicht "jetzt",
+         sondern "vor fuenfzehn Sekunden Spielzeit". */
+      laufend.logAt = Date.now();
 
       /* UND DIE KARTENZAHL, falls die Runde sie noch nicht kannte. Seit die
          Erkennung schon auf `relic-screen-open` anlaeuft, ist das der
@@ -5977,7 +6350,14 @@ async function handleRelicReward(ev) {
       lauf,
       seconds: ev.seconds, at: t0,
       own: null, rewards: [], scanning: relicScan, scanError: null,
-      expected, karten
+      expected, karten,
+      /* WER DIE RUNDE GEMELDET HAT, und WANN das Log dazu etwas gesagt hat.
+         Beides zusammen entscheidet spaeter, ob eine Schluss-Zeile aus dem
+         Log eine Nachricht ist oder eine Erinnerung - siehe relic-closed.
+         logAt bleibt null, solange nur der Bildschirm gesprochen hat; der
+         Zweig "Log holt auf" traegt es nach. */
+      vomWaechter: !!ev.vomWaechter,
+      logAt: ev.vomWaechter ? null : t0
     };
     setCurrentRelic(started, `Belohnungsbildschirm #${lauf} auf`);
 
@@ -6026,10 +6406,18 @@ async function handleRelicReward(ev) {
       }
 
       if (own?.slug) {
+        /* Der Satzpreis haengt hinten dran und nicht daneben: er ist die
+           Nebenangabe, und die Leitung gehoert zuerst dem Teilepreis. */
         return getPrice(own.slug).then(price => {
           if (currentRelic !== started) return;
           currentRelic.own.price = price;
           pushRelic();
+          if (!own.setSlug) return;
+          return getPrice(own.setSlug).then(setPrice => {
+            if (currentRelic !== started || setPrice == null) return;
+            currentRelic.own.setPrice = setPrice;
+            pushRelic();
+          });
         });
       }
     }).catch(() => { /* Ohne eigenen Fund bleibt der Bildschirm - der zaehlt. */ });

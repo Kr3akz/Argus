@@ -1283,6 +1283,27 @@
         </div>
       </div>
 
+      <!-- Die gefuehrte Tour, zum Zweiten.
+           Sie laeuft beim ersten Start von selbst und ist danach genau hier
+           wieder zu holen - deshalb zeigt ihre letzte Station auf diese
+           Gruppe. Wer die Tour damals weggeklickt hat, sucht sie in den
+           Einstellungen, und zwar weit oben: eine Hilfe, die man erst finden
+           muss, ist ein zweites Problem und keine Loesung fuer das erste. -->
+      <div class="settings-group" id="guide-settings-group">
+        <div class="settings-group-head">
+          <h3>Guided tour</h3>
+          <p>A walk through every tab, with the piece of the window it is talking
+             about marked as it goes. Runs once by itself on the first start.</p>
+        </div>
+
+        <div class="settings-note settings-note-row" id="guide-settings-row">
+          <span id="guide-settings-text">Takes about a minute. Esc ends it at any point.</span>
+          <div class="about-actions">
+            <button class="btn-sm" id="btn-guide-start">Start the tour</button>
+          </div>
+        </div>
+      </div>
+
       <div class="settings-group">
         <div class="settings-group-head">
           <h3>Global hotkeys</h3>
@@ -2187,6 +2208,10 @@
 <script src="whisper.js"></script>
 <script src="fissure-filter.js"></script>
 <script src="imagefail.js"></script>
+<!-- Vor app.js: die Tour greift auf showTab und die beiden Unteransichten zu,
+     die dort als globale Funktionen entstehen - sie ruft sie aber erst beim
+     Start auf, und der kommt aus app.js. -->
+<script src="guide.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

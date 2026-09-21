@@ -141,6 +141,9 @@ contextBridge.exposeInMainWorld('api', {
   setRelicAutoShow:(on)        => ipcRenderer.invoke('settings:relicAutoShow', on),
   setRelicScan:    (on)        => ipcRenderer.invoke('settings:relicScan', on),
   setRelicTags:    (on)        => ipcRenderer.invoke('settings:relicTags', on),
+  /* Die gefuehrte Tour hat ihr Ende erreicht - gelesen wird der Merker mit
+     getSetupState(), der beim Start ohnehin laeuft. */
+  setGuideSeen:    (on)        => ipcRenderer.invoke('settings:guideSeen', on),
   /* Preisschilder im Spiel - nur das Schilder-Fenster hoert darauf. */
   onTags:          (cb)        => {
     const handler = (_e, data) => cb(data);
@@ -152,6 +155,16 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('tags:hide', handler);
     return () => ipcRenderer.removeListener('tags:hide', handler);
   },
+  /* Teilebilder vorladen. Es muss der Renderer tun und nicht der
+     Hauptprozess: Chromium teilt seinen Plattencache nach Herkunft auf, und
+     nur ein Abruf AUS DIESEM FENSTER landet in derselben Schublade, aus der
+     das Schild seine Bilder spaeter holt. */
+  onTagsPrewarm:   (cb)        => {
+    const handler = (_e, urls) => cb(urls);
+    ipcRenderer.on('tags:prewarm', handler);
+    return () => ipcRenderer.removeListener('tags:prewarm', handler);
+  },
+  tagsPrewarmDone: (zahlen)    => ipcRenderer.send('tags:prewarm-done', zahlen),
   /* Relikt-Belohnungen aus EE.log. Nur der Item-Pfad kommt hier an -
      AccountIds bleiben in logwatch.js und werden dort verworfen. */
   getCurrentRelic: ()          => ipcRenderer.invoke('relic:current'),

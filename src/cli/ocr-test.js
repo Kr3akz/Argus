@@ -17,7 +17,7 @@ import path from 'node:path';
 import { loadRelicTables, allRewardNames } from '../core/relics.js';
 import {
   buildRewardIndex, extractRewards, mergeRewards, scanRewardScreen, stopOcrWorker,
-  panelGeometrie, panelGeometrieGemessen
+  panelGeometrie, panelGeometrieGemessen, spaltenZuordnen
 } from '../core/rewardscan.js';
 import { columnCrops, columnCropsFrom, recallGeometry, rememberGeometry } from '../core/scan-geometry.js';
 import { setDataDir } from '../core/paths.js';
@@ -320,6 +320,67 @@ for (const n of [1, 2, 3]) {
   assert(crops.length === n && soll.every(s => mitten.some(m => Math.abs(m - s) < 2)),
          `Bei ${n} Relikten wird an genau ${n} Stellen gesucht`);
 }
+
+/* ---------------------------------------------------------------------------
+   8e. Eine gelesene Karte darf nie verschwinden - und das Feld nie springen
+
+   Drei Beschwerden aus dem Spielbetrieb, eine Ursache: die Spaltenzahl kommt
+   aus dem Log ("Client got reward info" je Relikt), und die kann falsch sein
+   oder erst mitten in der Anzeige eintreffen. Frueher wurde jede Karte in
+   [0, anzahlSpalten-1] geklemmt - lag eine ausserhalb, fiel sie mit ihrem
+   Nachbarn in dieselbe Spalte und die Entdopplung warf sie weg.
+   --------------------------------------------------------------------------- */
+console.log('\n8e. Test: Karten verschwinden nicht, das Feld springt nicht');
+
+const vierKarten = reiheMit(4);
+for (const gemeldet of [4, 3, 2, 1, 0]) {
+  const g = panelGeometrieGemessen(vierKarten, rahmen1440, geo1440.cardWidth, gemeldet);
+  const mitte = g.links + g.breite * g.anzahlSpalten / 2;
+  assert(g.eintraege.length === 4 && g.anzahlSpalten === 4 && Math.abs(mitte - mitteRahmen) < 1,
+         `Vier Karten bleiben vier, auch wenn das Log ${gemeldet || 'nichts'} meldet`);
+}
+
+/* Eine doppelt gelesene Karte MUSS weiterhin wegfallen - sonst verdeckt sie
+   die Nachbarspalte. Das ist der Fall, fuer den die Entdopplung da ist. */
+const mitDublette = [...vierKarten,
+  { ...vierKarten[1], score: 0.6, name: 'Karte 1, schlechter gelesen' }];
+const entdoppelt = panelGeometrieGemessen(mitDublette, rahmen1440, geo1440.cardWidth, 4);
+assert(entdoppelt.eintraege.length === 4
+       && !entdoppelt.eintraege.some(e => e.index === 4),
+       'Dieselbe Karte zweimal gelesen faellt weiterhin auf die bessere Lesung zusammen');
+
+/* Das eingefrorene Feld: erst drei Karten ohne gemeldete Zahl - so faengt
+   eine vom Waechter gemeldete Runde an -, dann traegt das Log die Vier nach.
+   Ohne das Einfrieren wandert das Dock dabei um eine ganze Kartenbreite. */
+const dreiRechts = vierKarten.slice(1);
+const ersteWahl = panelGeometrie(dreiRechts, rahmen1440.w, undefined);
+const eingefroren = { links: ersteWahl.links, breite: ersteWahl.breite,
+                      anzahlSpalten: ersteWahl.anzahlSpalten };
+const spaeter = spaltenZuordnen(dreiRechts, eingefroren);
+assert(spaeter.links === ersteWahl.links && spaeter.anzahlSpalten === ersteWahl.anzahlSpalten,
+       'Das eingefrorene Feld bleibt, wo es ist');
+const ohneEinfrieren = panelGeometrieGemessen(dreiRechts, rahmen1440, geo1440.cardWidth, 4);
+assert(Math.abs(ohneEinfrieren.links - ersteWahl.links) > kartenBreite * 0.9,
+       `Ohne das Einfrieren waere es um ${Math.round(Math.abs(ohneEinfrieren.links - ersteWahl.links))}`
+     + ' px gesprungen - genau der Sprung, den man im Spiel sieht');
+
+/* Kommt die fehlende linke Karte doch noch, muss das Feld nach links
+   aufgehen - und danach wieder ueber der Reihe sitzen. */
+const nachzuegler = spaltenZuordnen([...dreiRechts, vierKarten[0]], eingefroren);
+const mitteNachher = nachzuegler.links + nachzuegler.breite * nachzuegler.anzahlSpalten / 2;
+assert(nachzuegler.eintraege.length === 4 && nachzuegler.anzahlSpalten === 4
+       && Math.abs(mitteNachher - mitteRahmen) < 1,
+       'Die nachgereichte vierte Karte zieht das Feld auf, statt geschluckt zu werden');
+
+/* Ein Feld, das gar nicht passt, wird NEU ANGESETZT und nicht blosz breiter.
+   Sonst stehen zwar alle Schilder da, aber samt und sonders eine halbe
+   Kartenbreite neben ihren Karten. */
+const falschesFeld = { links: mitteRahmen - kartenBreite * 1.5,
+                       breite: kartenBreite, anzahlSpalten: 3 };
+const neuAngesetzt = spaltenZuordnen(vierKarten, falschesFeld);
+const mitteNeu = neuAngesetzt.links + neuAngesetzt.breite * neuAngesetzt.anzahlSpalten / 2;
+assert(neuAngesetzt.eintraege.length === 4 && Math.abs(mitteNeu - mitteRahmen) < 1,
+       'Ein unpassendes Feld wird aus den Karten neu angesetzt, nicht geflickt');
 
 // ---------------- Test 8: Geometrie merken und wiederfinden ----------------
 console.log('\n9. Test: Gemessene Geometrie ueberlebt den Neustart');
