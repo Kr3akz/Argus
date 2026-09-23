@@ -17,7 +17,7 @@
  *   stehen. Es geht direkt in die Erkennung und landet gar nicht erst auf der
  *   Platte, ausser jemand verlangt es ausdruecklich (siehe ocr-host.ps1).
  */
-import { recognise, warmUp, stop as stopOcrHost, ocrScreen } from './ocr-host.js';
+import { recognise, warmUp, stop as stopOcrHost, ocrScreen, kartenZaehlen } from './ocr-host.js';
 /* median statt Math.min ueber die Kartenabstaende - die Begruendung steht an
    der Funktion selbst in scan-geometry.js. Beide Stellen leiten dieselbe
    Kartenbreite ab und muessen es deshalb gleich tun. */
@@ -654,3 +654,14 @@ export { stopOcrHost as stopOcrWorker };
 
 /** Wie der Erkennungsprozess den Desktop sieht - siehe ocr-host.js. */
 export { ocrScreen };
+
+/**
+ * Wie viele Belohnungskarten stehen da - aus dem Bild, nicht aus dem Log.
+ *
+ * WARUM DAS HIER MIT HERAUSGEHT: Es ist die Gegenprobe zu allem, was diese
+ * Datei tut. Die Erkennung liefert Namen; wie viele es haetten sein muessen,
+ * weiss sie nicht. Ohne diese Zahl ist "drei von vier gelesen" nicht von
+ * "drei von drei gelesen" zu unterscheiden. Das Verfahren steht bei
+ * Get-Kartenzahl in ocr-host.ps1.
+ */
+export { kartenZaehlen };

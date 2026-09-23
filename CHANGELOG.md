@@ -21,6 +21,64 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-09-23
+
+### Changed
+
+- **The reward screen is caught even when Warframe is not in front.** Warframe
+  writes its log file lazily: while the game sits in the background the buffer
+  barely fills, and a line can arrive half a minute after the moment it
+  describes. Measured over sixteen relic cracks, ten of them reached Argus only
+  because it was watching the screen — and in those ten it never learned what
+  *you* had pulled or how many players were in the squad, because both of those
+  live in the log and nowhere else. Windows offers the same lines a second way,
+  without the file and without the delay, and Argus now listens there first.
+  Over four minutes of play the two clocks stayed 2 ms apart.
+
+  The file stays in use, and it has to: only one program on the machine can
+  hold that second channel. If another tool already has it, Argus notices and
+  carries on with the file exactly as before.
+
+- **Less looking at the screen while you play.** Because the log used to arrive
+  late, Argus watched the screen for the reward window instead — 271 captures
+  in a single mission, each one a moment the game's own output could stutter.
+  That watch is now the fallback rather than the main route, and it stands down
+  while the direct channel is delivering. It comes straight back if a reward
+  screen is ever missed: one lost round, not a lost evening.
+
+### Fixed
+
+- **The price tags disappeared three seconds early.** They were timed from the
+  moment the reward screen was announced, but the fifteen-second countdown does
+  not start there — first the game waits for the rest of the squad, and that
+  took 5.4 seconds in the round this was measured on. The clock underneath the
+  cards said three when the tags were already gone. Argus now takes the game's
+  own countdown as it is announced, and only ever extends the deadline: the
+  waiting phase reports a time of its own, and read literally it would have
+  wiped the tags off mid-round.
+
+  This was always true and only became visible now — while the announcement was
+  itself arriving late, it happened to land near the start of the countdown.
+
+- **A two-player round could teach Argus the wrong card width.** The width is
+  measured from the gaps between the names that were read: with four cards
+  there are three gaps and an outlier is outvoted, with two there is one gap and
+  nothing to check it against. One round measured 11% too narrow and handed that
+  on to the next, which cut its columns too tightly. Argus now reads the number
+  of cards off the screen itself — from the bar under the row, which sits in a
+  different place for one, two, three and four cards — instead of inferring it
+  from what it managed to read. A pass that found fewer cards than are on screen
+  no longer counts as complete, and no longer teaches anything.
+
+### Added
+
+- **A diagnostic record for reward screens.** With *relicScanDebug* switched on
+  in `data/config.json`, each reward screen is kept in `data/diag/` as a picture
+  plus a small file saying what Argus made of it — the frame, the geometry it
+  used, how many cards it counted and which names it read. The log alone could
+  not answer that afterwards: it is overwritten on every start. Off by default,
+  capped at thirty screens, and anything you annotate is kept.
+
 ## [1.15.0] - 2026-09-22
 
 ### Added

@@ -30,6 +30,7 @@ import { EventEmitter } from 'node:events';
 import { open, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import * as dbwin from './dbwin.js';
 
 /* ARGUS_EE_LOG zeigt auf eine andere Datei. Gedacht fuer zwei Faelle: eine
    Warframe-Installation mit abweichendem Datenpfad, und der Test der Kette
@@ -41,6 +42,30 @@ export const DEFAULT_LOG_PATH = () =>
 
 /* Schnelle Polling-Rate (150ms) fuer sofortige Reaktion bei Reliktauswahl. */
 const POLL_MS = 150;
+
+/* ---------- Zwei Quellen fuer dieselben Zeilen ----------
+ *
+ * Warframe gibt jede Logzeile GLEICHZEITIG ueber OutputDebugString aus und in
+ * die Datei. Der Debugkanal liefert sofort, die Datei traege - nachgemessen
+ * kamen "Got rewards" und "Relic reward screen shut down" 15 Sekunden
+ * Spielzeit auseinander, aber 1 Millisekunde auseinander in der Datei.
+ *
+ * DER DATEIWEG BLEIBT TROTZDEM. Es kann systemweit nur EINEN Zuhoerer am
+ * Debugkanal geben; laeuft dort schon ein anderes Werkzeug, kommt hier nichts
+ * an - und zwar still. Der Poller ist die Rueckfallebene, die das auffaengt.
+ *
+ * WARUM NACH INHALT ENTPRELLT WIRD UND NICHT NACH ZEITSTEMPEL: Jede Zeile
+ * traegt Warframes Laufzeituhr, und es waere verlockend, alles bis zum
+ * hoechsten vom Debugkanal gesehenen Stand zu verwerfen. Das waere aber genau
+ * dann falsch, wenn es darauf ankommt: hat der Kanal eine Zeile VERPASST -
+ * weil ein anderer Zuhoerer sie abgefangen hat -, laege ihr Zeitstempel unter
+ * dem Stand, und sie ginge endgueltig verloren. Der Inhaltsvergleich kann das
+ * nicht: was der Kanal nie geliefert hat, steht auch nicht in der Menge.
+ *
+ * Jede Zeile wird genau einmal erwartet, also faellt sie beim Treffer wieder
+ * heraus. Die Schranke ist nur die Notbremse fuer den Fall, dass die Datei
+ * eine Zeile nie nachliefert. */
+const GESEHEN_MAX = 5000;
 
 /* Zwischen "gets reward" und "Got rewards" liegen Millisekunden. Ein aelterer
    Fund gehoert zu einer frueheren Mission und wird nicht mehr angezeigt. */
@@ -214,6 +239,14 @@ export class LogWatcher extends EventEmitter {
     this.selectGuard = null;      // Notbremse, siehe armSelectGuard()
     this.busy = false;
     this.lastActivity = 0;          // Zeitstempel des letzten game-activity
+    /* Zeilen, die ueber den Debugkanal kamen und deren Echo in der Datei noch
+       aussteht. Siehe GESEHEN_MAX. */
+    this.gesehen = new Set();
+    this.echos = 0;                 // nur fuer die Bilanz beim Beenden
+    this.ueberDbwin = 0;
+    /* Zeilen, die nur ueber die Datei kamen, OBWOHL der Debugkanal lief. Jede
+       einzelne davon hat der Kanal verpasst - siehe handleLine. */
+    this.verpasst = 0;
   }
 
   /**
@@ -229,7 +262,41 @@ export class LogWatcher extends EventEmitter {
       this.offset = 0;   // Datei kommt vielleicht noch, wenn das Spiel startet
     }
     this.timer = setInterval(() => this.tick(), POLL_MS);
+
+    /* Der Debugkanal obendrauf. Er liefert erst, wenn setGamePids() gesagt
+       hat, welche Prozesse Warframe sind - vorher geht dort gar nichts hinaus,
+       denn der Kanal ist systemweit und traegt auch die Ausgabe fremder
+       Programme. */
+    dbwin.start(zeilen => {
+      for (const zeile of zeilen) {
+        this.ueberDbwin++;
+        if (this.gesehen.size >= GESEHEN_MAX) {
+          /* Aelteste zuerst: Set behaelt die Einfuegereihenfolge. */
+          this.gesehen.delete(this.gesehen.values().next().value);
+        }
+        this.gesehen.add(zeile);
+        this.handleLine(zeile, 'dbwin');
+      }
+    });
+
     this.emit('started', { file: this.file });
+  }
+
+  /**
+   * Welche Prozesse als Warframe gelten.
+   *
+   * Muss aufgerufen werden, sonst bleibt der Debugkanal stumm - das ist
+   * Absicht und keine Anlaufhuerde: er traegt die Debugausgabe JEDES Programms
+   * auf diesem Rechner, und was nicht vom Spiel kommt, soll gar nicht erst zu
+   * Text werden.
+   */
+  setGamePids(pids) {
+    dbwin.setPids(pids);
+  }
+
+  /** Laeuft der Debugkanal, und hoert noch jemand anders mit? */
+  dbwinStatus() {
+    return { aktiv: dbwin.isActive(), fremderZuhoerer: dbwin.otherListener() };
   }
 
   stop() {
@@ -237,6 +304,10 @@ export class LogWatcher extends EventEmitter {
     this.timer = null;
     clearTimeout(this.selectGuard);
     this.selectGuard = null;
+    /* Nicht abgewartet: stop() wird beim Herunterfahren aufgerufen und ist
+       synchron. Der Arbeiter haengt an einem Abbruchfeld im gemeinsamen
+       Speicher und geht von selbst, spaetestens nach einem Warteruf. */
+    dbwin.stop().catch(() => {});
   }
 
   async tick() {
@@ -275,13 +346,30 @@ export class LogWatcher extends EventEmitter {
       const lines = text.split(/\r?\n/);
       this.rest = lines.pop() ?? '';
 
-      for (const line of lines) this.handleLine(line);
+      for (const line of lines) {
+        /* Schon ueber den Debugkanal gekommen? Dann ist das hier das Echo.
+           Der Eintrag faellt dabei heraus - jede Zeile wird genau einmal
+           nachgeliefert, und was bleibt, waere nur noch Ballast. */
+        if (this.gesehen.delete(line)) { this.echos++; continue; }
+        this.handleLine(line, 'datei');
+      }
     } finally {
       await fh.close();
     }
   }
 
-  handleLine(line) {
+  /**
+   * Eine Logzeile auswerten.
+   *
+   * `quelle` ist 'dbwin' oder 'datei' und aendert am Auswerten nichts - eine
+   * Zeile ist eine Zeile. Sie steht hier, weil sie fuer die Fehlersuche der
+   * entscheidende Unterschied ist: kommt eine Meldung ueber die Datei, obwohl
+   * der Debugkanal laeuft, hat er sie verpasst, und dann hoert wahrscheinlich
+   * ein anderes Programm mit.
+   */
+  handleLine(line, quelle = 'datei') {
+    if (quelle === 'datei' && dbwin.isActive()) this.verpasst++;
+
     const equip = RE_EQUIP.exec(line);
     if (equip) {
       this.emit('relic-equipped', {

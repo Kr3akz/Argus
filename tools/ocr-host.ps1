@@ -53,6 +53,8 @@
 #   ->  {"id":7,"rect":{"x":-2560,"y":0,"w":2560,"h":1440}}
 #                                              Rahmen, auf den sich die
 #                                              Anteile beziehen (Spielfenster)
+#   ->  {"id":8,"karten":true}                 nur die Kartenzahl, nicht lesen
+#   <-  {"id":8,"ok":true,"karten":4,"huebe":{"1":52,"2":60.6,"3":46.9,"4":58.1}}
 #   <-  {"id":1,"ok":true,"language":"en-US","region":{...},"lines":[...]}
 #   <-  {"ok":true,"ready":true,"language":"en-US","screen":{...},"dpiAware":true}
 #                                              einmal beim Start
@@ -275,6 +277,133 @@ function Open-ImageFile([string]$Path) {
 # ConvertTo-Json braucht dafuer in Windows PowerShell sowohl -Depth als auch
 # spuerbar Zeit. Hier zaehlt jede Zehntelsekunde.
 #
+# ---------------------------------------------------------------------------
+# Wie viele Belohnungskarten stehen da?
+#
+# WARUM DAS HIER STEHT UND NICHT IN NODE:
+#   Die Antwort steckt in ein paar hundert Pixeln, und die liegen hier schon.
+#   Ein 1440p-Vollbild nach Node zu reichen waeren 14 MB je Blick - fuer eine
+#   Zahl zwischen eins und vier.
+#
+# WAS UNTER DEN KARTEN STEHT:
+#   Kein Balken je Karte, sondern EINE durchgehende Balkenreihe ueber die ganze
+#   Kartenreihe, darunter die Spielernamen. Sie ist in der Reihe ZENTRIERT -
+#   also liegt ihre linke Kante bei jeder Gruppengroesse woanders. Nachgemessen
+#   an 16 Aufnahmen bei 2560x1440:
+#
+#     Karten   Reihe von..bis   nur hier
+#       1       1118..1442      x=1280
+#       2        956..1604      x=1037
+#       3        795..1765      x= 875
+#       4        633..1927      x= 714
+#
+#   Sondiert wird von vier abwaerts; die erste Antwort gewinnt. Steht bei n=4
+#   ein Balken, koennen es keine drei sein.
+#
+# WONACH GESUCHT WIRD - UND WONACH NICHT:
+#   NICHT nach Helligkeit. Hinter den Karten laeuft die Spielszene, und die war
+#   in den Messungen mal 30 und mal 103 hell; jeder feste Schwellwert waere in
+#   der einen Szene blind und in der anderen ueberall fuendig.
+#
+#   Gesucht wird das MUSTER dunkel-hell-dunkel: eine helle Zeilengruppe, die
+#   oben UND unten von deutlich dunkleren eingefasst ist. Beide Raender muessen
+#   dunkler sein - eine Kante allein ist auch ein Fensterrand, ein Lichtsaum
+#   oder die Oberkante einer Textzeile.
+#
+#   Gemessen ergab das: ohne Balken ein Hub von 0 bis 2,9, mit Balken 22,9 bis
+#   75,1. Die Schwelle liegt mitten in dieser Luecke.
+# ---------------------------------------------------------------------------
+
+# Kartenbreite als Anteil der Rahmenbreite - derselbe Wert wie KARTE_ANTEIL in
+# rewardscan.js und DEFAULT_CARD_WIDTH in scan-geometry.js.
+$script:ZAEHLER_KARTE = 0.1264
+# Suchfenster fuer die Balkenreihe, Anteil der Rahmenhoehe. Grosszuegiger als
+# die gemessenen 0,4403..0,4444, damit eine andere Oberflaechengroesse nicht
+# sofort danebenliegt.
+$script:ZAEHLER_Y_VON = 0.4340
+$script:ZAEHLER_Y_BIS = 0.4510
+$script:ZAEHLER_MIN_HUB = 12
+
+function Get-Kartenzahl($Quelle, [System.Drawing.Rectangle]$Frame) {
+  $fw = $Frame.Width; $fh = $Frame.Height
+  if ($fw -lt 320 -or $fh -lt 240) { return $null }
+
+  $yv = [int][Math]::Floor($fh * $script:ZAEHLER_Y_VON)
+  $yb = [int][Math]::Ceiling($fh * $script:ZAEHLER_Y_BIS)
+  $hoehe = $yb - $yv + 1
+  if ($hoehe -lt 8) { return $null }
+
+  # Nur der Streifen: bei 1440p sind das 2560x58 statt 2560x1440.
+  $streifen = $null
+  try {
+    if ($Quelle) {
+      $r = New-Object System.Drawing.Rectangle 0, $yv, $fw, $hoehe
+      $r = [System.Drawing.Rectangle]::Intersect($r, (New-Object System.Drawing.Rectangle 0, 0, $Quelle.Width, $Quelle.Height))
+      if ($r.Width -lt 320 -or $r.Height -lt 8) { return $null }
+      $streifen = $Quelle.Clone($r, $Quelle.PixelFormat)
+    } else {
+      $streifen = Get-ScreenBitmap $Frame.X ($Frame.Y + $yv) $fw $hoehe ''
+    }
+
+    $sw = $streifen.Width; $sh = $streifen.Height
+    $rect = New-Object System.Drawing.Rectangle 0, 0, $sw, $sh
+    $daten = $streifen.LockBits($rect, [System.Drawing.Imaging.ImageLockMode]::ReadOnly,
+                                [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    try {
+      $stride = $daten.Stride
+      $bytes = New-Object byte[] ($stride * $sh)
+      [System.Runtime.InteropServices.Marshal]::Copy($daten.Scan0, $bytes, 0, $bytes.Length)
+    } finally {
+      $streifen.UnlockBits($daten)
+    }
+
+    # Mittlere Helligkeit einer Streifenzeile im Fenster um $cx.
+    $halb = [int][Math]::Max(20, $sw * 0.02)
+    $schritt = [int][Math]::Max(1, [Math]::Floor($halb / 12))
+
+    $huebe = @{}
+    $zahl = 0
+    foreach ($n in 4, 3, 2, 1) {
+      $anteil = if ($n -eq 1) { 0.5 } else { 0.5 - (2 * $n - 1) * $script:ZAEHLER_KARTE / 4 }
+      $cx = [int][Math]::Round($sw * $anteil)
+      if ($cx -lt $halb -or $cx -ge $sw - $halb) { $huebe[$n] = 0.0; continue }
+
+      $zeile = New-Object double[] $sh
+      for ($y = 0; $y -lt $sh; $y++) {
+        $s = 0.0; $c = 0
+        for ($x = $cx - $halb; $x -le $cx + $halb; $x += $schritt) {
+          $i = $y * $stride + $x * 4
+          $s += (77 * $bytes[$i+2] + 150 * $bytes[$i+1] + 29 * $bytes[$i]) -shr 8
+          $c++
+        }
+        $zeile[$y] = if ($c) { $s / $c } else { 0 }
+      }
+
+      # Jede plausible Balkendicke durchprobieren. Nachgemessen sind es 7
+      # Zeilen bei 1440p; 3 bis 10 deckt halbe bis anderthalbfache
+      # Oberflaechengroesse ab.
+      $bester = 0.0
+      for ($dicke = 3; $dicke -le 10; $dicke++) {
+        for ($y = 2; $y + $dicke + 1 -lt $sh; $y++) {
+          $hell = 0.0
+          for ($k = 0; $k -lt $dicke; $k++) { $hell += $zeile[$y + $k] }
+          $hell = $hell / $dicke
+          $oben  = ($zeile[$y - 2] + $zeile[$y - 1]) / 2
+          $unten = ($zeile[$y + $dicke] + $zeile[$y + $dicke + 1]) / 2
+          $hub = [Math]::Min($hell - $oben, $hell - $unten)
+          if ($hub -gt $bester) { $bester = $hub }
+        }
+      }
+      $huebe[$n] = [Math]::Round($bester, 1)
+      if ($zahl -eq 0 -and $bester -ge $script:ZAEHLER_MIN_HUB) { $zahl = $n }
+    }
+
+    return [pscustomobject]@{ karten = $zahl; huebe = $huebe }
+  } finally {
+    if ($streifen) { $streifen.Dispose() }
+  }
+}
+
 # $Scale rechnet die Wortrahmen wieder auf die ECHTE Groesse herunter: gelesen
 # wurde eventuell in einem vergroesserten Bild, aber nach draussen geht nur,
 # wo die Woerter auf dem BILDSCHIRM stehen. region bleibt davon unberuehrt -
@@ -389,6 +518,28 @@ while ($true) {
                   $cand, [System.Windows.Forms.SystemInformation]::VirtualScreen)
         if ($cand.Width -ge 64 -and $cand.Height -ge 64) { $frame = $cand }
       }
+    }
+
+    # --- Nur zaehlen, nicht lesen ----------------------------------------
+    #
+    # Eigener Zweig und nicht Teil der Lesung: die Zahl wird VOR dem ersten
+    # Blick gebraucht (sie sagt, wie viele Karten ueberhaupt zu finden sind),
+    # und sie kostet nur den Streifen statt des ganzen Ausschnitts. Der Rahmen
+    # steht oben schon fest, `source` gilt hier also mit - sonst liesse sich
+    # der Zaehler nie ohne laufendes Spiel pruefen.
+    if ($req.karten) {
+      $z = Get-Kartenzahl $quelle $frame
+      if ($quelle) { $quelle.Dispose() }
+      if ($null -eq $z) {
+        Write-Output (('{{"id":{0},"ok":false,"error":"Rahmen zu klein zum Zaehlen"}}' -f $id))
+      } else {
+        $hb = ($z.huebe.Keys | Sort-Object | ForEach-Object {
+                 '"{0}":{1}' -f $_, $z.huebe[$_].ToString([System.Globalization.CultureInfo]::InvariantCulture)
+               }) -join ','
+        Write-Output (('{{"id":{0},"ok":true,"karten":{1},"huebe":{{{2}}}}}' -f $id, $z.karten, $hb))
+      }
+      [Console]::Out.Flush()
+      continue
     }
 
     $crop = Get-CropRect $frame $top $bottom $left $right

@@ -267,6 +267,61 @@ export async function recognise({ top, bottom, left, right, rect, source, png, s
 }
 
 /**
+ * Wie viele Belohnungskarten stehen auf dem Bildschirm?
+ *
+ * Liefert { ok, karten, huebe } - karten ist 0, wenn keine Balkenreihe zu
+ * finden war. Das heisst NICHT "null Karten", sondern "das ist kein
+ * Belohnungsbildschirm oder er ist noch nicht fertig gezeichnet".
+ *
+ * WARUM DAS EINE EIGENE ANFRAGE IST UND NICHT AUS DER LESUNG FAELLT:
+ *   Die Zahl wird VOR dem ersten Blick gebraucht - sie sagt, wie viele Karten
+ *   ueberhaupt zu finden sind, und erst damit laesst sich ein Durchgang als
+ *   unvollstaendig erkennen. Aus der Lesung kaeme sie zu spaet.
+ *
+ *   Und sie ist billig: gelesen wird nur der Streifen, in dem die Balkenreihe
+ *   steht - bei 1440p 2560x58 statt 2560x1440. Die Begruendung des Verfahrens
+ *   steht bei Get-Kartenzahl in ocr-host.ps1.
+ */
+export async function kartenZaehlen({ rect, source } = {}) {
+  const started = await start();
+  if (!started.ok) return started;
+  if (!proc) return { ok: false, error: 'Text recognition is not reachable' };
+
+  clearIdle();
+
+  const id = nextId++;
+  const req = { id, karten: true };
+  if (usableRect(rect)) {
+    req.rect = { x: Math.round(rect.x), y: Math.round(rect.y),
+                 w: Math.round(rect.w), h: Math.round(rect.h) };
+  }
+  if (source) req.source = source;
+
+  const answer = new Promise(resolve => {
+    const timer = setTimeout(() => {
+      pending.delete(id);
+      teardown('Text recognition is not answering');
+      resolve({ ok: false, error: 'Text recognition is not answering' });
+    }, REQUEST_TIMEOUT_MS);
+    timer.unref?.();
+    pending.set(id, { resolve, timer });
+  });
+
+  try {
+    proc.stdin.write(JSON.stringify(req) + '\n');
+  } catch (err) {
+    const entry = pending.get(id);
+    if (entry) { clearTimeout(entry.timer); pending.delete(id); }
+    teardown(err.message);
+    return { ok: false, error: err.message };
+  }
+
+  const res = await answer;
+  armIdle();
+  return res;
+}
+
+/**
  * Den Prozess vorziehen, ohne schon etwas zu wollen.
  *
  * Aufgerufen, wenn die Reliktauswahl aufgeht: dann steht fest, dass eine

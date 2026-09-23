@@ -78,11 +78,12 @@ import { subsumedSuits } from '../core/helminth.js';
 import { buildVaultIndex, vaultStatus } from '../core/vault.js';
 import {
   scanRewardScreen, buildRewardIndex, mergeRewards, warmUpOcr, stopOcrWorker, rewardScreenVisible,
-  panelGeometrie, panelGeometrieGemessen, spaltenZuordnen, ocrScreen
+  panelGeometrie, panelGeometrieGemessen, spaltenZuordnen, ocrScreen, kartenZaehlen
 } from '../core/rewardscan.js';
 import {
   recallGeometry, rememberGeometry, columnCrops, columnCropsFrom, frameKey, WIDE_BAND
 } from '../core/scan-geometry.js';
+import { archiveScan, pruneArchive } from '../core/scan-archive.js';
 import {
   parseBuildId, fetchBuild, toBuild, loadModMap, saveModMap,
   unknownModIds, mergeNames, USER_AGENT as OF_USER_AGENT
@@ -930,7 +931,25 @@ function showTags(rewards, erwartet = 0) {
 
      Gerechnet ab dem Zeitpunkt des Fundes, nicht ab jetzt: die Preise werden
      einzeln nachgereicht, und jede Nachlieferung ruft hier erneut an. */
-  const endsAt = (currentRelic?.at ?? Date.now()) + (currentRelic?.seconds ?? 15) * 1000 + 2000;
+  /* WENN DAS SPIEL SEINE UHR GENANNT HAT, GILT DIESE.
+
+     Der Fundzeitpunkt ist naemlich NICHT der Beginn der Bedenkzeit. Dazwischen
+     liegt eine Vorphase, in der das Spiel auf die Mitspieler wartet -
+     nachgemessen an einer echten Runde:
+
+       11353,214  OpenVoidProjectionRewardScreenRMI   <- unser Ausloeser
+       11353,220  Initialize timer true   5           <- Vorphase
+       11358,568  Got rewards                         +5,354 s
+       11358,570  Initialize timer nil   15           <- HIER faengt sie an
+       11373,569  Relic reward screen shut down       +15,0 s
+
+     Ab dem Ausloeser gerechnet waeren die Schilder bei 11370,2 verschwunden -
+     3,4 Sekunden zu frueh, und genau das war zu sehen. Frueher fiel es nicht
+     auf: der Ausloeser kam selbst so spaet, dass er ungefaehr auf den Beginn
+     der Bedenkzeit fiel. Seit die Zeilen in Echtzeit ankommen, liegt die
+     Vorphase offen. */
+  const endsAt = currentRelic?.uhrBis
+                 ?? (currentRelic?.at ?? Date.now()) + (currentRelic?.seconds ?? 15) * 1000 + 2000;
   clearTimeout(tagTimer);
   tagTimer = setTimeout(hideTags, Math.max(1000, endsAt - Date.now()));
 }
@@ -940,6 +959,13 @@ function showTags(rewards, erwartet = 0) {
    weg. Ein Dock, das ueber einem laufenden Spiel klebt, ist das Schlimmste,
    was diese Anzeige tun kann; deshalb hat auch hier die Uhr eine Stimme. */
 const SKELETON_MAX_MS = 20000;
+
+/* Obergrenze fuer das Dock, gerechnet ab dem Fund. Nachgemessen dauert eine
+   Runde vom Ausloeser bis zum Schluss rund 20 Sekunden - fuenf Vorphase,
+   fuenfzehn Bedenkzeit. Vierzig laesst reichlich Luft fuer eine langsame
+   Vorphase und ist trotzdem eine Schranke: ein Dock, das ueber einem
+   laufenden Spiel klebt, ist das Schlimmste, was diese Anzeige tun kann. */
+const TAG_MAX_MS = 40000;
 
 /**
  * Das Dock aufstellen, BEVOR irgendetwas gelesen wurde.
@@ -5159,15 +5185,26 @@ async function scanRewardsRepeatedly(stillCurrent, expectedStart = 4, lauf = 0,
      einen tasklist-Aufruf, wenn die Spiel-PIDs gerade kalt sind. Die 200 ms
      Pause laufen ohnehin - der Bildschirm baut sich noch auf -, und in ihnen
      ist die Vorbereitung geschenkt. Davor waere sie vom Blickbudget abgezogen. */
+  /* Die Kartenzahl AUS DEM BILD - mitten in die Anlaufpause gelegt, in der
+     ohnehin gewartet wird. Sie kostet nur den Streifen mit der Balkenreihe,
+     nicht den ganzen Bildschirm, und sie ist da, bevor der erste Blick
+     ueberhaupt losgeht. Siehe kartenZaehlen in rewardscan.js. */
   const vorbereitung = gameFrame()
-    .then(async f => ({ frame: f, ...(await scanLooks(f, expectedStart)) }))
+    .then(async f => ({
+      frame: f,
+      ...(await scanLooks(f, expectedStart)),
+      zaehlung: await kartenZaehlen({ rect: f.rect || undefined }).catch(() => null)
+    }))
     /* Hier wirft nichts - alles darunter faengt selbst. Der Fang steht
        trotzdem: dieses Versprechen wird nicht abgewartet, wenn die Runde
        waehrend der Anlaufpause weiterzieht, und ein unbehandelter Fehlschlag
        waere dann eine Warnung im Protokoll ohne jeden Bezug. */
     .catch(async () => {
       const f = cachedFrame();
-      return { frame: f, ...(await scanLooks(f, expectedStart)) };
+      /* Ohne verlaesslichen Rahmen wird auch nicht gezaehlt: der Zaehler
+         sondiert an festen Anteilen DIESES Rahmens, und ein geratener Rahmen
+         liefert eine geratene Zahl - die waere schlimmer als keine. */
+      return { frame: f, ...(await scanLooks(f, expectedStart)), zaehlung: null };
     });
 
   const deadline = Date.now() + SCAN_BUDGET_MS;
@@ -5197,7 +5234,14 @@ async function scanRewardsRepeatedly(stillCurrent, expectedStart = 4, lauf = 0,
     return null;
   }
 
-  const { frame, geo, looks } = await vorbereitung;
+  const { frame, geo, looks, zaehlung } = await vorbereitung;
+
+  /* Die gezaehlte Kartenzahl, oder 0 wenn keine Balkenreihe gefunden wurde.
+     NULL HEISST NICHT "KEINE KARTEN" - es heisst "hier war nichts zu sehen",
+     etwa weil der Bildschirm noch nicht fertig gezeichnet war oder gar keiner
+     ist. Deshalb faellt der Durchgang dann auf die alten Quellen zurueck,
+     statt mit null Karten zu rechnen. */
+  const gezaehlteZahl = (zaehlung?.ok && zaehlung.karten > 0) ? zaehlung.karten : 0;
   /* Fuer showTags hinterlegen: es ist synchron und soll die Datei nicht
      waehrend der Bedenkzeit noch einmal lesen. Bewusst NICHT aktualisiert,
      wenn mitten im Durchgang neu gemessen wird - eine Messung, die das Dock
@@ -5208,7 +5252,8 @@ async function scanRewardsRepeatedly(stillCurrent, expectedStart = 4, lauf = 0,
             + ` bei ${Math.round(frame.x)},${Math.round(frame.y)}`
             + ` | Geometrie: ${geo.gemessen ? 'gemessen' : 'Standard'}`
             + ` (Karte ${(geo.cardWidth * 100).toFixed(1)} %,`
-            + ` Streifen ${geo.band.top.toFixed(3)}-${geo.band.bottom.toFixed(3)})`);
+            + ` Streifen ${geo.band.top.toFixed(3)}-${geo.band.bottom.toFixed(3)})`
+            + ` | Karten im Bild: ${gezaehlteZahl || 'keine Balkenreihe gefunden'}`);
 
   letzterFundAt = Date.now();
 
@@ -5426,7 +5471,26 @@ async function scanRewardsRepeatedly(stillCurrent, expectedStart = 4, lauf = 0,
      zweiten Fall lernte ausgerechnet der Waechter-Durchgang nie etwas: er
      kennt die Zahl nicht, `expected` steht dann auf vier, und drei gefundene
      Karten galten als unvollstaendig - obwohl es nur drei gab. */
-  const zielzahl = gemeldeteZahl() || (nichtsNeuesMehr ? found : erwarteteZahl());
+  /* DIE GEZAEHLTE ZAHL STEHT VORNE, und das ist der eigentliche Gewinn.
+     Vorher stand hier `gemeldeteZahl() || (nichtsNeuesMehr ? found : ...)`.
+     Die gemeldete Zahl fehlt aber fast immer - nachgemessen in 16 von 16
+     Durchgaengen -, und dann fiel zielzahl auf `found` zurueck. Damit war
+     `found >= zielzahl` IMMER wahr, und die Schutzregel in rememberGeometry
+     ("nur aus einem vollstaendigen Durchgang lernen") konnte nie greifen.
+     Nachgemessen hat genau das eine Duo-Runde eine um 11 % zu schmale
+     Kartenbreite merken lassen.
+
+     Die gezaehlte Zahl bricht diesen Kreis: sie kommt aus dem Bild und nicht
+     aus dem Ergebnis, das sie pruefen soll. */
+  const zielzahl = gezaehlteZahl || gemeldeteZahl() || (nichtsNeuesMehr ? found : erwarteteZahl());
+
+  /* Widerspruch zwischen Bild und Log sagen, statt ihn still zu schlucken:
+     beide koennen recht haben, aber nicht gleichzeitig, und wer das spaeter
+     untersucht, braucht den Hinweis an dieser Stelle. */
+  if (gezaehlteZahl && gemeldeteZahl() && gezaehlteZahl !== gemeldeteZahl()) {
+    console.log(`[Relikt #${lauf}] Kartenzahl uneinig: Bild sagt ${gezaehlteZahl},`
+              + ` Log sagt ${gemeldeteZahl()} - es gilt das Bild`);
+  }
   if (found && found >= zielzahl) {
     /* Und die so ermittelte Zahl merken, damit das Dock der naechsten Runde
        nicht wieder raten muss. Nur wenn nichts gemeldet war - eine Meldung
@@ -5472,6 +5536,44 @@ async function scanRewardsRepeatedly(stillCurrent, expectedStart = 4, lauf = 0,
     console.log(`[Relikt #${lauf}] Beweisaufnahme: ${beweisbild}`
               + ` | ${found} Karte${found === 1 ? '' : 'n'} gelesen`
               + `${found < 4 ? ' - auf dem Bild nachsehen, ob die fehlenden ueberhaupt dastanden' : ''}`);
+
+    /* DAS BEIBLATT - ohne das ist das Bild nur ein Bild.
+       Warum es neben die Aufnahme gehoert und nicht ins Protokoll allein,
+       steht im Kopf von scan-archive.js: argus.log wird bei jedem Start
+       ueberschrieben, das Bild ueberlebt. Nicht abgewartet, aus demselben
+       Grund wie beim Bild - die Bedenkzeit laeuft. */
+    archiveScan(beweisbild, {
+      at: new Date().toISOString(),
+      argus: app.getVersion(),
+      lauf,
+      frame: { quelle: frame.quelle, x: frame.x, y: frame.y, w: frame.w, h: frame.h },
+      geometrie: {
+        gemessen: geo.gemessen,
+        cardWidth: geo.cardWidth,
+        band: geo.band
+      },
+      karten: {
+        erwartet: erwarteteZahl(),
+        gemeldet: gemeldeteZahl() || null,
+        /* Aus dem Bild. Die huebe stehen mit dabei: wenn die Zahl einmal
+           falsch ist, entscheidet sich an ihnen, ob die Schwelle daneben lag
+           oder die Sondierstelle. */
+        gezaehlt: gezaehlteZahl || null,
+        huebe: zaehlung?.huebe ?? null,
+        ziel: zielzahl,
+        gelesen: found
+      },
+      gelesen: (merged?.rewards || []).map(r => ({
+        position: r.position, name: r.name, score: r.score, box: r.box
+      }))
+    })
+      .then(bei => pruneArchive(path.dirname(beweisbild))
+        .then(weg => {
+          if (weg) console.log(`[Relikt #${lauf}] Ablage aufgeraeumt: ${weg} alte Aufnahme(n) weg`);
+          if (bei) console.log(`[Relikt #${lauf}] Beiblatt: ${path.basename(bei)}`
+                             + ` - "soll" von Hand nachtragen, dann bleibt das Paar liegen`);
+        }))
+      .catch(() => { /* Buchfuehrung ist kein Grund, den Durchgang zu stoeren. */ });
   }
 
   return merged || { ok: false, error: lastError || 'Keine Aufnahme moeglich' };
@@ -5576,7 +5678,23 @@ let gamePidCache = { at: 0, pids: [] };
  */
 async function gamePids(maxAgeMs = 60000) {
   if (Date.now() - gamePidCache.at > maxAgeMs) {
-    gamePidCache = { at: Date.now(), pids: await findGameProcessIds().catch(() => []) };
+    const frisch = await findGameProcessIds().catch(() => []);
+    const anders = frisch.length !== gamePidCache.pids.length
+                || frisch.some((p, i) => p !== gamePidCache.pids[i]);
+    gamePidCache = { at: Date.now(), pids: frisch };
+    /* Dem Debugkanal sagen, wessen Ausgabe er durchlassen darf. Er ist
+       systemweit - ohne diese Liste laesst er gar nichts durch, und mit einer
+       veralteten laesst er nach einem Spielneustart nichts mehr durch. Nur bei
+       Aenderung, damit ein Neustart des Spiels im Protokoll sichtbar wird und
+       nicht jede Minute eine Zeile steht. */
+    if (anders && logWatcher) {
+      logWatcher.setGamePids(frisch);
+      /* Ueber den Zustand des Kanals steht hier NICHTS mehr: beim Start kommt
+         diese Zeile womoeglich vor seiner Anmeldung, und dann stuende hier
+         "aus", obwohl er eine Zehntelsekunde spaeter laeuft. Wie es um ihn
+         steht, sagt er selbst - siehe [DBWIN] im Protokoll. */
+      console.log(`[Log] Spielprozesse: ${frisch.join(', ') || 'keine'}`);
+    }
   }
   return gamePidCache.pids;
 }
@@ -5728,7 +5846,26 @@ async function tickRewardWatch() {
      puenktlich" gilt also nur, solange ueberhaupt nie ausgetabbt wurde.
      Ab dem ersten Wechsel in den Hintergrund bleibt der Waechter deshalb bis
      zum Missionsende wach. */
-  if (vorn === false) watchPufferVerdacht = true;
+  /* NUR SOLANGE DER SCHREIBPUFFER UEBERHAUPT EINE ROLLE SPIELT.
+     Der ganze Verdacht steht auf einer Kette: Warframe war im Hintergrund ->
+     der Schreibpuffer der Datei fuellt sich nicht -> die Meldung kommt zu
+     spaet. Kommen die Zeilen ueber den Debugkanal, ist das mittlere Glied weg:
+     der liefert sofort, ob das Spiel vorn steht oder nicht.
+
+     Nachgemessen an 16 Runden ohne Kanal: in 10 davon fand der Waechter den
+     Bildschirm, bevor das Log etwas sagte. Genau diese 10 sollen wegfallen -
+     und mit ihnen ihre Bildschirmzugriffe.
+
+     WAS DAMIT NICHT ABGESICHERT IST: ein anderer Zuhoerer kann sich den Kanal
+     spaeter nehmen, und das faellt hier nicht auf. Dagegen steht die zweite
+     Verdachtsquelle weiter unten - wird tatsaechlich ein Bildschirm verpasst,
+     geht der Waechter wieder an, egal was der Kanal meldet. Ein Fehlschlag
+     kostet dann eine Runde und nicht den Abend. */
+  const kanalTraegt = (() => {
+    const st = logWatcher?.dbwinStatus?.();
+    return !!(st?.aktiv && !st.fremderZuhoerer);
+  })();
+  if (vorn === false && !kanalTraegt) watchPufferVerdacht = true;
   if (vorn !== null) gameWasForeground = vorn;
 
   /* null heisst "nicht feststellbar" - dann lieber hinsehen als verpassen. */
@@ -5958,7 +6095,47 @@ function startLogWatcher() {
       .catch(err => console.error('[Relikt] Ablauf abgebrochen:', err.message));
   });
 
-  logWatcher.on('relic-timer', ev => sendToOverlay('relic:timer', ev));
+  logWatcher.on('relic-timer', ev => {
+    sendToOverlay('relic:timer', ev);
+
+    /* DIE UHR DES SPIELS UEBERNEHMEN.
+       Warum die Schilder sonst zu frueh gehen, steht ausfuehrlich in showTags.
+       Kurz: zwischen unserem Ausloeser und dem Beginn der Bedenkzeit liegt
+       eine Vorphase von rund fuenf Sekunden.
+
+       NUR VERLAENGERN, NIE VERKUERZEN. Es kommen mehrere Zeitangaben: erst
+       "true 5" fuer die Vorphase, dann "nil 15" fuer die Bedenkzeit. Wer
+       jede davon nimmt, wie sie kommt, setzt die Frist zwischendurch auf
+       fuenf Sekunden - und das waere schlimmer als der Fehler, der hier
+       behoben wird. Die Null am Ende kommt ohnehin zusammen mit der
+       Schlusszeile und braucht diesen Weg nicht. */
+    const sek = Number(ev?.seconds);
+    if (!currentRelic || !Number.isFinite(sek) || sek <= 0) return;
+
+    const bis = Date.now() + sek * 1000 + 2000;
+    /* Obergrenze, gerechnet ab dem Fund: eine Zeitangabe aus einem anderen
+       Zusammenhang - im Protokoll standen auch 20 Sekunden - darf das Dock
+       nicht beliebig lange ueber dem Spiel halten. */
+    const deckel = (currentRelic.at ?? Date.now()) + TAG_MAX_MS;
+    const neu = Math.min(bis, deckel);
+
+    /* Der Boden ist die alte Rechnung ab dem Fund, nicht null. Sonst wuerde
+       ausgerechnet die Vorphase ("true 5") die Frist auf sieben Sekunden
+       DRUECKEN - und die Bedenkzeit meldet sich erst nach fuenfeinhalb. Das
+       ginge zwar meistens gut, aber nur weil 5,35 knapp unter 7 liegt; eine
+       etwas langsamere Vorphase haette die Schilder mittendrin abgeraeumt. */
+    const boden = Math.max(
+      currentRelic.uhrBis ?? 0,
+      (currentRelic.at ?? Date.now()) + (currentRelic.seconds ?? 15) * 1000 + 2000
+    );
+    if (neu <= boden) return;
+
+    currentRelic.uhrBis = neu;
+    if (tagTimer) {
+      clearTimeout(tagTimer);
+      tagTimer = setTimeout(hideTags, Math.max(1000, neu - Date.now()));
+    }
+  });
 
   logWatcher.on('relic-closed', () => {
     /* Kommt das Ende UNMITTELBAR nach dem Anfang, war der Bildschirm schon zu,

@@ -1,7 +1,7 @@
 {
   "name": "argus",
   "productName": "Argus",
-  "version": "1.15.0",
+  "version": "1.16.0",
   "description": "Mastery rank planner and live companion for Warframe: world state, inventory, builds and an in-game overlay",
   "type": "module",
   "main": "src/main/main.js",
@@ -31,11 +31,19 @@
     "inventory-test": "node src/cli/inventory-test.js",
     "notif-test": "node src/cli/notif-test.js",
     "relic-test": "node src/cli/relic-test.js",
+    "logquellen-test": "node src/cli/logquellen-test.js",
+    "dbwin-test:app": "electron src/cli/app-test.cjs dbwin-test",
+    "logquellen-test:app": "electron src/cli/app-test.cjs logquellen-test",
+    "karten-test": "node src/cli/karten-test.js",
+    "archive-test": "node src/cli/archive-test.js",
+    "dbwin-test": "node src/cli/dbwin-test.js",
+    "dbwin-probe": "node src/cli/dbwin-probe.js",
     "foundry-test": "node src/cli/foundry-test.js",
     "baro-test": "node src/cli/baro-test.js",
     "vendor-test": "node src/cli/vendor-test.js",
     "ocr-test": "node src/cli/ocr-test.js",
-    "ocr-probe": "node src/cli/ocr-probe.js"
+    "ocr-probe": "node src/cli/ocr-probe.js",
+    "tagfrist-test": "node src/cli/tagfrist-test.js"
   },
   "devDependencies": {
     "electron": "^33.0.0",
