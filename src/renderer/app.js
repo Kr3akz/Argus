@@ -4476,7 +4476,7 @@ function applyDucatPrices(priceMap) {
       if (price && typeof price.min === 'number' && price.min > 0) {
         const ratio = +(it.ducats / price.min).toFixed(1);
         if (price.min >= 15 || ratio < 7.0) {
-          it.tradeAdvice = { advice: 'plat', ratio, label: 'Sell for platinum', reason: `${price.min}p minimum price on warframe.market` };
+          it.tradeAdvice = { advice: 'plat', ratio, label: 'Sell for platinum', reason: `${price.min}p on warframe.market` };
         } else if (ratio >= 10.0) {
           it.tradeAdvice = { advice: 'ducats', ratio, label: 'Prime Junk', reason: `${ratio} ducats per platinum (high melt value)` };
         } else {

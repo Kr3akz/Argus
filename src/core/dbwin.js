@@ -85,7 +85,20 @@ export function isActive() {
   return aktiv;
 }
 
-/** Hat sich beim Anmelden ein anderer Zuhoerer gezeigt? */
+/**
+ * Hoert ein anderes Programm am Kanal mit?
+ *
+ * Gesetzt, wenn beim Anmelden Puffer oder Ereignisse schon da waren. Der
+ * haeufigste Fall ist eine ZWEITE Argus-Instanz - die Veroeffentlichung neben
+ * dem Entwicklungsstand -, und dann stimmt die Meldung: beide teilen sich die
+ * Zeilen nach Zufall.
+ *
+ * Es gab hier einmal den Versuch, den Verdacht wieder zu loeschen, sobald
+ * Zeilen ankommen - unter der Annahme, die Meldung sei ein Nachhall der eben
+ * beendeten Instanz. Die Annahme war falsch, und die Regel haette das Gegenteil
+ * bewirkt: bei einem ECHTEN Mitbewerber kommen sehr wohl Zeilen an, nur eben
+ * die Haelfte. Der Verdacht waere genau dann verschwunden, wenn er zutrifft.
+ */
 export function otherListener() {
   return belegtGemeldet;
 }

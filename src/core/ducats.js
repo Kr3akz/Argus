@@ -73,7 +73,7 @@ export function getTradeAdvice(ducats, price) {
       advice: 'plat',
       ratio,
       label: 'Sell for platinum',
-      reason: `${price.min}p minimum price on warframe.market`
+      reason: `${price.min}p on warframe.market`
     };
   }
   if (ratio >= 10.0) {

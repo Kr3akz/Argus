@@ -5241,7 +5241,76 @@ async function scanRewardsRepeatedly(stillCurrent, expectedStart = 4, lauf = 0,
      etwa weil der Bildschirm noch nicht fertig gezeichnet war oder gar keiner
      ist. Deshalb faellt der Durchgang dann auf die alten Quellen zurueck,
      statt mit null Karten zu rechnen. */
-  const gezaehlteZahl = (zaehlung?.ok && zaehlung.karten > 0) ? zaehlung.karten : 0;
+  let gezaehlteZahl = (zaehlung?.ok && zaehlung.karten > 0) ? zaehlung.karten : 0;
+  let zaehlungHuebe = zaehlung?.huebe ?? null;
+
+  /* DIE GEZAEHLTE ZAHL IST AB HIER DIE ZAHL DER RUNDE.
+     Damit stimmt alles, was daran haengt, und zwar VOM ERSTEN BLICK AN:
+
+       - die Abbruchbedingung der Blickschleife (`>= erwarteteZahl()`) hoert
+         auf, wenn wirklich alles gelesen ist, und hoert NICHT auf, solange
+         etwas fehlt;
+       - das Dock wird fuer die richtige Zahl Spalten aufgestellt, statt mit
+         den gelesenen Karten mitzuwachsen und dabei seitlich zu wandern;
+       - `complete` weiter unten sagt endlich etwas.
+
+     Bisher trug diese Zahl allein das Log, und zwar auf einem Umweg: beim
+     Ausloesen steht sie nie ("Mitspieler: ?" in allen nachgemessenen Runden),
+     weil die Mitspielerzeilen erst danach eintreffen. Nachgetragen wird sie
+     spaeter - aber nur, wenn der Waechter zuerst ausgeloest hat; loest das Log
+     selbst aus, folgt kein zweites Ereignis mehr, und die Zahl bleibt 0.
+     Gemessen am 24.09. kam der Nachtrag 1389 ms nach dem Ausloeser.
+
+     Ohne Zahl faellt alles auf die Annahme "vier" zurueck. Bei einer Solo-
+     oder Duo-Runde heisst das: bis zum Zeitablauf nach Karten suchen, die es
+     nicht gibt. Aus dem Bild steht die Zahl frueher und unabhaengig davon,
+     welcher Melder zuerst war. */
+  const zahlUebernehmen = () => {
+    if (!gezaehlteZahl || !runde || runde.karten === gezaehlteZahl) return;
+    const vorher = runde.karten || 0;
+    runde.karten = gezaehlteZahl;
+    runde.expected = gezaehlteZahl;
+    /* Fuer den Platzhalter der NAECHSTEN Runde - in Endlosmissionen steht er,
+       bevor hier wieder gezaehlt werden kann. */
+    letzteKartenzahl = gezaehlteZahl;
+    if (vorher) {
+      console.log(`[Relikt #${lauf}] Kartenzahl berichtigt: ${vorher} -> ${gezaehlteZahl} (aus dem Bild)`);
+    }
+  };
+  zahlUebernehmen();
+
+  /**
+   * NOCH EINMAL ZAEHLEN, SOLANGE NICHTS GEFUNDEN WURDE.
+   *
+   * Der erste Versuch faellt in die Anlaufpause, also rund 200 ms nach dem
+   * Ausloeser - und der Ausloeser ist seit dem Umstieg auf den Debugkanal die
+   * NETZMELDUNG, nicht der fertige Bildschirm. Nachgemessen am 24.09.:
+   *
+   *   +205 ms   Karten im Bild: keine Balkenreihe gefunden
+   *   +741 ms   Blick 1 (Spalten):   0 Treffer
+   *   +936 ms   Blick 2 (Schmalband): 0 Treffer
+   *   +1301 ms  Blick 3 (Spalten 3x): 2 Treffer
+   *
+   * Zu diesem Zeitpunkt war schlicht noch nichts gezeichnet. Der Zaehler hat
+   * das richtig gemeldet - er hat es nur nie wieder versucht, und damit fiel
+   * die Runde auf die Annahme "vier" zurueck.
+   *
+   * An den 20 gesammelten Aufnahmen konnte das nicht auffallen: dort kam der
+   * Ausloeser aus der Datei und damit spaet genug.
+   *
+   * Der Blick kostet nur den Streifen mit der Balkenreihe, nicht den ganzen
+   * Bildschirm. Wiederholt wird nur, solange die Zahl fehlt - sobald sie
+   * steht, ist Schluss.
+   */
+  const nachzaehlen = async () => {
+    if (gezaehlteZahl) return;
+    const z = await kartenZaehlen({ rect: frame.rect || undefined }).catch(() => null);
+    if (!z?.ok || !(z.karten > 0)) return;
+    gezaehlteZahl = z.karten;
+    zaehlungHuebe = z.huebe ?? null;
+    console.log(`[Relikt #${lauf}] Karten im Bild: ${gezaehlteZahl} (beim Nachzaehlen)`);
+    zahlUebernehmen();
+  };
   /* Fuer showTags hinterlegen: es ist synchron und soll die Datei nicht
      waehrend der Bedenkzeit noch einmal lesen. Bewusst NICHT aktualisiert,
      wenn mitten im Durchgang neu gemessen wird - eine Messung, die das Dock
@@ -5276,6 +5345,10 @@ async function scanRewardsRepeatedly(stillCurrent, expectedStart = 4, lauf = 0,
   }
 
   while (stillCurrent()) {
+    /* Fehlt die Kartenzahl noch, hier nachholen - der Bildschirm kann sich
+       seit dem letzten Versuch fertig gezeichnet haben. Siehe nachzaehlen(). */
+    await nachzaehlen();
+
     /* Der Reihe nach durch die Blickweisen, danach wieder von vorn: was beim
        ersten Durchgang am halb aufgebauten Bildschirm scheiterte, kann beim
        zweiten schon dastehen.
@@ -5452,11 +5525,51 @@ async function scanRewardsRepeatedly(stillCurrent, expectedStart = 4, lauf = 0,
   }
 
   const found = merged ? merged.rewards.length : 0;
+
+  /* WAR DER DURCHGANG VOLLSTAENDIG?
+     Die Frage liess sich frueher gar nicht stellen: ohne unabhaengige Zahl
+     war "zwei von zwei" nicht von "zwei von vier" zu unterscheiden, und beides
+     sah im Protokoll wie ein Erfolg aus. Mit der gezaehlten Zahl steht es da.
+
+     Gesagt wird es auch dann, wenn nichts weiter passiert - wer spaeter eine
+     Aufnahme aus data/diag/ ansieht, soll im Protokoll finden, ob Argus das
+     Fehlen ueberhaupt bemerkt hat. */
+  const unvollstaendig = gezaehlteZahl > 0 && found > 0 && found < gezaehlteZahl;
+
   console.log(`[Relikt #${lauf}] Erkennung: `
             + (merged
-                ? `${found} Treffer (${gemeldeteZahl() ? `erwartet ${gemeldeteZahl()}` : 'Zahl nicht gemeldet'})`
+                ? `${found} Treffer (`
+                  + (gezaehlteZahl ? `${gezaehlteZahl} im Bild gezaehlt`
+                     : gemeldeteZahl() ? `erwartet ${gemeldeteZahl()}`
+                     : 'Zahl unbekannt')
+                  + ')'
                 : `nichts gefunden${lastError ? ` - ${lastError}` : ''}`)
-            + ` | ${attempts} Versuch${attempts === 1 ? '' : 'e'}`);
+            + ` | ${attempts} Versuch${attempts === 1 ? '' : 'e'}`
+            + (unvollstaendig ? ' | UNVOLLSTAENDIG' : ''));
+
+  if (unvollstaendig) {
+    console.log(`[Relikt #${lauf}] ${gezaehlteZahl - found} Karte(n) nicht gelesen`
+              + ` - die Schilder zeigen nur, was sicher ist`
+              + (relicScanDebug ? ' (Aufnahme liegt in data/diag/)'
+                                : ' (relicScanDebug einschalten, um die Aufnahme zu sichern)'));
+  }
+
+  /* DER FALL, DER GAR NICHT VORKOMMEN DARF.
+     Mehr Karten gelesen als gezaehlt heisst: der Zaehler lag daneben. Er kann
+     das nicht selbst merken - er meldet eine Zahl, und wer ihm glaubt, hoert
+     danach auf zu suchen. Die Erkennung ist hier die Gegenprobe, und nur an
+     dieser Stelle treffen beide aufeinander.
+
+     Folgenlos bleibt es trotzdem: gelesen ist gelesen, die Karten werden
+     angezeigt. Es gehoert aber ins Protokoll, denn es ist der einzige Hinweis
+     darauf, dass an der Balkenerkennung etwas nicht stimmt - an 16 Aufnahmen
+     ist sie 16-mal richtig gewesen, und wenn sich das aendert, faellt es hier
+     auf und nirgends sonst. */
+  if (gezaehlteZahl > 0 && found > gezaehlteZahl) {
+    console.log(`[Relikt #${lauf}] KARTENZAEHLER DANEBEN: ${found} gelesen,`
+              + ` aber nur ${gezaehlteZahl} im Bild gezaehlt`
+              + ` (Huebe ${JSON.stringify(zaehlungHuebe)})`);
+  }
 
   /* AUS DEM GELUNGENEN DURCHGANG LERNEN. Jetzt - und nur jetzt - steht fest,
      wo die Karten auf DIESEM Bildschirm wirklich stehen. Beim naechsten
@@ -5559,7 +5672,7 @@ async function scanRewardsRepeatedly(stillCurrent, expectedStart = 4, lauf = 0,
            falsch ist, entscheidet sich an ihnen, ob die Schwelle daneben lag
            oder die Sondierstelle. */
         gezaehlt: gezaehlteZahl || null,
-        huebe: zaehlung?.huebe ?? null,
+        huebe: zaehlungHuebe,
         ziel: zielzahl,
         gelesen: found
       },

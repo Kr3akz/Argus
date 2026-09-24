@@ -21,6 +21,32 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.16.1] - 2026-09-24
+
+### Fixed
+
+- **A single silly offer could set the price of a whole item.** Argus asks
+  warframe.market for the five cheapest offers and showed the lowest of them.
+  For an established part that is exactly right — the cheapest is what you
+  would pay. For a part that came out yesterday, five offers is the entire
+  market, and one of them being wrong decides everything: measured on 24 Sep
+  2026, Corufell Prime Receiver was going for around 45 platinum and appeared
+  in Argus as 5. The median sat at 50 the whole time; nobody had asked it.
+
+  An offer is now ignored when it is both less than half the median **and** at
+  least ten platinum below it. Both conditions, because the ratio alone is
+  useless on cheap parts — one platinum against a median of three is the
+  market, not a typo — and ten platinum is where being wrong starts to cost
+  anything. Of 1,844 cached prices this changes 35, and leaves every genuine
+  bargain standing.
+
+- **The reward cards were counted before they were drawn.** Since the reward
+  screen is now noticed the moment the game announces it, that moment is
+  roughly a second before there is anything on screen to look at. The count
+  happened once, found nothing, and the round fell back to assuming four — so
+  a solo or two-player crack kept searching for cards that were not there. It
+  now counts again on each pass until it finds the row.
+
 ## [1.16.0] - 2026-09-23
 
 ### Changed

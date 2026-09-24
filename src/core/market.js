@@ -233,6 +233,36 @@ function schedulePriceSave() {
  * Steht niemand im Spiel, faellt die Auswertung auf alle Angebote zurueck und
  * sagt das ueber online: false.
  */
+/* Wie weit unter dem Median ein Angebot liegen darf, um noch als Preis zu
+   gelten. Darunter ist es kein guenstiges Angebot mehr, sondern ein
+   Vertipper, ein Lockangebot oder ein Scherz.
+
+   WARUM GERADE DIE HAELFTE: bei gaengigen Teilen liegt das billigste Angebot
+   dicht am Median - nachgemessen Nikana Prime Blueprint 7 gegen 8, Trinity
+   Prime Systems 10 gegen 10. Ein echtes Schnaeppchen von 30 oder 40 Prozent
+   unter dem Median ueberlebt diese Schranke also bequem. Was sie faengt, ist
+   die Groessenordnung daneben. */
+const AUSREISSER_ANTEIL = 0.5;
+
+/* ... UND mindestens so viel Platin darunter liegen muss.
+
+   BEIDE BEDINGUNGEN, nicht eine. Das Verhaeltnis allein ist bei billigen
+   Teilen unbrauchbar: nachgezaehlt im Zwischenspeicher liegen 91 von 1844
+   Eintraegen unter der halben Median-Marke, und die meisten davon voellig zu
+   Recht - Quassus Prime Blueprint mit 1 gegen Median 3, Hikou Prime Pouch mit
+   4 gegen 10. Bei einem Drei-Platin-Teil ist ein Ein-Platin-Angebot der
+   Markt und kein Vertipper.
+
+   Zehn Platin ist die Grenze, ab der ein Irrtum beim Handeln ueberhaupt
+   wehtut. Darunter kostet ein falscher Preis so wenig, dass die Regel mehr
+   Schaden anrichtet als der Fehler. */
+const AUSREISSER_ABSTAND = 10;
+
+/* Nur fuer src/cli/preis-test.js. Die Regel entscheidet ueber jeden
+   angezeigten Preis, und sie laesst sich ohne Netz und ohne Spiel pruefen -
+   also gehoert sie geprueft. */
+export { summarise as summariseForTest };
+
 function summarise(orders) {
   const sell = (orders.sell || []).filter(o => o.type === 'sell' || !o.type);
   const inGame = sell.filter(o => o.user?.status === 'ingame');
@@ -242,10 +272,39 @@ function summarise(orders) {
   if (!prices.length) return null;
 
   const mid = Math.floor(prices.length / 2);
+  const median = prices.length % 2
+    ? prices[mid]
+    : Math.round((prices[mid - 1] + prices[mid]) / 2);
+
+  /* AUSREISSER NACH UNTEN WEGLASSEN.
+   *
+   * Der Abruf holt die fuenf billigsten Angebote. Bei einem eingefuehrten Teil
+   * liegen die dicht beieinander, und das billigste ist der Kurs. Bei einem
+   * FRISCHEN Teil sind es fuenf Angebote insgesamt - und ein einziges
+   * verrutschtes darunter bestimmt dann allein, was hier herauskommt.
+   *
+   * Nachgemessen am 24.09., einen Tag nach dem Erscheinen: Corufell Prime
+   * Receiver stand auf warframe.market bei rund 45 Platin und wurde in Argus
+   * mit 5 angezeigt. Der Median lag bei 50 - er hatte die Antwort die ganze
+   * Zeit, sie wurde nur nicht benutzt.
+   *
+   * Der Median ueberlebt diese Regel immer (er liegt nie unter seiner eigenen
+   * Haelfte), es bleibt also stets etwas uebrig. */
+  const grenze = Math.min(median * AUSREISSER_ANTEIL, median - AUSREISSER_ABSTAND);
+  const ernst = prices.filter(p => p >= grenze);
+
   return {
-    min: prices[0],
-    median: prices.length % 2 ? prices[mid] : Math.round((prices[mid - 1] + prices[mid]) / 2),
-    offers: prices.length,
+    /* Das billigste Angebot, das ernst gemeint sein kann. Heisst weiterhin
+       min, weil es genau das beantwortet, wozu es an 59 Stellen gelesen wird:
+       was das Teil gerade bringt. Der rohe Tiefstwert steht daneben, damit
+       ein seltsamer Preis nachvollziehbar bleibt. */
+    min: ernst[0],
+    median,
+    offers: ernst.length,
+    /* Nur gesetzt, wenn wirklich etwas wegfiel - sonst ist es Rauschen in
+       jedem zweiten Zwischenspeichereintrag. */
+    ...(ernst.length < prices.length ? { verworfen: prices.length - ernst.length,
+                                         tiefstes: prices[0] } : {}),
     online: inGame.length > 0
   };
 }
