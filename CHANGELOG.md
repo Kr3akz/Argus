@@ -21,6 +21,30 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.16.2] - 2026-09-28
+
+### Fixed
+
+- **The price tags opened seconds early, sat there loading, and sometimes
+  showed only two or three of four cards.** Since 1.16.0 Argus hears about the
+  reward screen the instant the game announces it — but that announcement comes
+  *before* a waiting phase in which the game holds the screen until the whole
+  squad is ready. Solo that phase is about a second. In a public Void Cascade
+  run it was measured at 5.6 seconds: thirteen looks at a screen with nothing on
+  it, placeholders loading the whole time, and a card counter that mistook
+  something in the middle of the waiting screen for the row under the cards —
+  so the dock was laid out too narrow for the cards that finally came.
+
+  The round now starts when the game says the rewards are there, not when it
+  announces they are coming. That moment also brings the squad size and your own
+  reward along, both of which were missing before. Measured on the first run
+  after the change: one look instead of fourteen, tags standing after 1.1
+  seconds instead of 6.4, and the right number of slots from the start.
+
+  The card count also has to hold up twice in a row, and only counts once a card
+  has actually been read, so the waiting screen cannot fool it again even when a
+  round is opened some other way.
+
 ## [1.16.1] - 2026-09-24
 
 ### Fixed

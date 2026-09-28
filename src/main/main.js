@@ -5241,8 +5241,11 @@ async function scanRewardsRepeatedly(stillCurrent, expectedStart = 4, lauf = 0,
      etwa weil der Bildschirm noch nicht fertig gezeichnet war oder gar keiner
      ist. Deshalb faellt der Durchgang dann auf die alten Quellen zurueck,
      statt mit null Karten zu rechnen. */
-  let gezaehlteZahl = (zaehlung?.ok && zaehlung.karten > 0) ? zaehlung.karten : 0;
-  let zaehlungHuebe = zaehlung?.huebe ?? null;
+  /* Die BESTAETIGTE Zahl. Eine einzelne Zaehlung gilt nur vorlaeufig - siehe
+     nachzaehlen() fuer die zwei Bedingungen, unter denen sie gilt. */
+  let gezaehlteZahl = 0;
+  let zaehlungHuebe = null;
+  let vorlaeufig = (zaehlung?.ok && zaehlung.karten > 0) ? zaehlung.karten : 0;
 
   /* DIE GEZAEHLTE ZAHL IST AB HIER DIE ZAHL DER RUNDE.
      Damit stimmt alles, was daran haengt, und zwar VOM ERSTEN BLICK AN:
@@ -5279,37 +5282,52 @@ async function scanRewardsRepeatedly(stillCurrent, expectedStart = 4, lauf = 0,
   };
   zahlUebernehmen();
 
-  /**
-   * NOCH EINMAL ZAEHLEN, SOLANGE NICHTS GEFUNDEN WURDE.
+  /* Nachgezaehlt wird zu Beginn jedes Schleifendurchgangs. Der erste Versuch
+     faellt in die Anlaufpause, und bis v1.16.1 wurde er nie wiederholt: am
+     24.09. meldete er "keine Balkenreihe", weil noch nichts gezeichnet war,
+     und die Runde fiel auf die Annahme "vier" zurueck. Die Wiederholung hat
+     das behoben - und dabei eine neue Falle geoeffnet, die unten steht. */
+  /* EINE ZAEHLUNG ALLEIN REICHT NICHT - nachgemessen am 28.09. in Void Cascade.
    *
-   * Der erste Versuch faellt in die Anlaufpause, also rund 200 ms nach dem
-   * Ausloeser - und der Ausloeser ist seit dem Umstieg auf den Debugkanal die
-   * NETZMELDUNG, nicht der fertige Bildschirm. Nachgemessen am 24.09.:
+   * Der Zaehler hat in vier Runden dreimal zu wenig gemeldet: 1 statt 2,
+   * 1 statt 3, 3 statt 4. Zwei Ursachen sind im Spiel, und die Daten trennen
+   * sie nicht sauber:
    *
-   *   +205 ms   Karten im Bild: keine Balkenreihe gefunden
-   *   +741 ms   Blick 1 (Spalten):   0 Treffer
-   *   +936 ms   Blick 2 (Schmalband): 0 Treffer
-   *   +1301 ms  Blick 3 (Spalten 3x): 2 Treffer
+   *   - WARTEPHASE. Vor den Karten zeigt das Spiel etwas in der Bildmitte,
+   *     das dem Balkenmuster aehnelt. In Runde 3 meldete der Zaehler "1" bei
+   *     +227 ms - und die naechsten dreizehn Blicke fanden 5,4 Sekunden lang
+   *     keine einzige Karte. Da war also noch nichts, und trotzdem ein Hub
+   *     von 20,2 in der Mitte.
+   *   - AUFZIEHEN. In Runde 4 schlugen Mitte UND innere Stellen an, nur die
+   *     aeusserste nicht - das sieht eher nach einer Reihe aus, die gerade
+   *     von innen nach aussen gezeichnet wird.
    *
-   * Zu diesem Zeitpunkt war schlicht noch nichts gezeichnet. Der Zaehler hat
-   * das richtig gemeldet - er hat es nur nie wieder versucht, und damit fiel
-   * die Runde auf die Annahme "vier" zurueck.
+   * Deshalb zwei Bedingungen, jede gegen einen der beiden Faelle:
    *
-   * An den 20 gesammelten Aufnahmen konnte das nicht auffallen: dort kam der
-   * Ausloeser aus der Datei und damit spaet genug.
+   *   1. Es wurde schon mindestens EINE Karte gelesen. Das schliesst die
+   *      Wartephase aus: dort liest die Erkennung nichts, egal was der
+   *      Zaehler meint. Die Zahl wird dabei nicht zu spaet bekannt - sie
+   *      entscheidet ueber den Abbruch, und abgebrochen wird ohnehin erst,
+   *      wenn gelesen wurde.
+   *   2. Zwei Zaehlungen hintereinander sagen dasselbe. Das schliesst die
+   *      halb aufgezogene Reihe aus: die waechst zwischen zwei Zaehlungen.
    *
-   * Der Blick kostet nur den Streifen mit der Balkenreihe, nicht den ganzen
-   * Bildschirm. Wiederholt wird nur, solange die Zahl fehlt - sobald sie
-   * steht, ist Schluss.
-   */
+   * Seit die Runde erst bei "Got rewards" startet, sollte die Wartephase
+   * ohnehin vorbei sein. Die Bedingungen bleiben trotzdem: der Waechter kann
+   * eine Runde auch frueher aufmachen, und er sieht dieselbe Wartephase. */
   const nachzaehlen = async () => {
     if (gezaehlteZahl) return;
+    if (!merged?.rewards?.length) return;
     const z = await kartenZaehlen({ rect: frame.rect || undefined }).catch(() => null);
-    if (!z?.ok || !(z.karten > 0)) return;
-    gezaehlteZahl = z.karten;
-    zaehlungHuebe = z.huebe ?? null;
-    console.log(`[Relikt #${lauf}] Karten im Bild: ${gezaehlteZahl} (beim Nachzaehlen)`);
-    zahlUebernehmen();
+    const n = (z?.ok && z.karten > 0) ? z.karten : 0;
+    if (n && n === vorlaeufig) {
+      gezaehlteZahl = n;
+      zaehlungHuebe = z.huebe ?? null;
+      console.log(`[Relikt #${lauf}] Karten im Bild: ${n} (zweimal gleich gezaehlt)`);
+      zahlUebernehmen();
+      return;
+    }
+    vorlaeufig = n;
   };
   /* Fuer showTags hinterlegen: es ist synchron und soll die Datei nicht
      waehrend der Bedenkzeit noch einmal lesen. Bewusst NICHT aktualisiert,
@@ -5322,7 +5340,10 @@ async function scanRewardsRepeatedly(stillCurrent, expectedStart = 4, lauf = 0,
             + ` | Geometrie: ${geo.gemessen ? 'gemessen' : 'Standard'}`
             + ` (Karte ${(geo.cardWidth * 100).toFixed(1)} %,`
             + ` Streifen ${geo.band.top.toFixed(3)}-${geo.band.bottom.toFixed(3)})`
-            + ` | Karten im Bild: ${gezaehlteZahl || 'keine Balkenreihe gefunden'}`);
+            /* "vorlaeufig", weil eine einzelne Zaehlung hier noch nichts gilt -
+               bestaetigt wird sie erst in nachzaehlen(). Stuende hier nur die
+               Zahl, laese sich das Protokoll wie ein Befund. */
+            + ` | Karten im Bild: ${vorlaeufig ? `${vorlaeufig} (vorlaeufig)` : 'keine Balkenreihe gefunden'}`);
 
   letzterFundAt = Date.now();
 
@@ -6135,9 +6156,32 @@ function startLogWatcher() {
       pushRecommendedRelics();
     }
 
-    handleRelicReward(ev).catch(err => {
+    /* AB HIER STEHEN DIE KARTEN - also erst jetzt Dock und Erkennung.
+       Warum nicht schon bei der Netzmeldung davor, steht im Behandler von
+       relic-screen-open: dazwischen liegt eine Wartephase von bis zu 5,6 s.
+
+       Die Mitspielerzahl kommt mit diesem Ereignis, also bekommt das Dock
+       gleich die richtige Breite, statt mit der Zahl der letzten Runde
+       aufzugehen und dann zu springen. 0 heisst "unbekannt" - dann bleibt es
+       bei der alten Annahme. */
+    const gemeldet = Math.min(4, Math.max(0, ev?.players || 0));
+    if (gemeldet) letzteKartenzahl = gemeldet;
+
+    const starten = () => handleRelicReward(ev).catch(err => {
       console.error('[Relikt] Ablauf abgebrochen:', err.message);
     });
+
+    /* Das Dock zuerst und abgewartet: es steht in wenigen Millisekunden, die
+       Erkennung braucht bis zu ihrem ersten Namen ein paar hundert. Und
+       showSkeletonTags weicht einer laufenden Runde bewusst aus - also muss
+       es VOR dem Start kommen, nicht danach. */
+    if (relicTags && relicScan && !(currentRelic && Date.now() - currentRelic.at < 20000)) {
+      showSkeletonTags()
+        .catch(err => console.error('[Relikt] Dock konnte nicht vorab gestellt werden:', err.message))
+        .finally(starten);
+    } else {
+      starten();
+    }
   });
 
   /**
@@ -6181,31 +6225,34 @@ function startLogWatcher() {
        Runde 2 kein neues relic-equipped. Genau dort lag das Loch. */
     startRewardWatch();
 
-    /* Das Dock ZUERST und abgewartet: es steht in wenigen Millisekunden, und
-       die Erkennung braucht bis zu ihrem ersten Namen ein paar hundert. Danach
-       laeuft die Runde, und showSkeletonTags wuerde ohnehin abbrechen - es
-       weicht einer laufenden Runde bewusst aus. Nebenbei waermt es den
-       Fensterrahmen vor, den die Erkennung gleich auch braucht. */
-    await showSkeletonTags().catch(err =>
-      console.error('[Relikt] Dock konnte nicht vorab gestellt werden:', err.message));
+    /* HIER STARTET KEINE RUNDE MEHR - nur die Vorbereitung.
 
-    /* Ohne Erkennung gaebe es nichts, was die Platzhalter je fuellt - dann
-       lieber gar keine Runde aufmachen. */
-    if (!relicScan) return;
+       Bis v1.16 ging von dieser Meldung die ganze Runde aus: erst das Dock mit
+       Platzhaltern, dann die Erkennung. Das war richtig, solange sie aus der
+       traegen Datei kam und damit ohnehin spaet. Seit die Zeilen ueber den
+       Debugkanal in Echtzeit eintreffen, kommt sie VOR einer Wartephase, in
+       der das Spiel auf die Mitspieler wartet - und die ist nicht kurz.
+       Nachgemessen am 28.09. in Void Cascade:
 
-    /* Laeuft schon eine Runde, ist das Log doch schneller gewesen oder der
-       Waechter hat gemeldet - dann nicht dazwischenfunken.
-       ABER NUR, WENN SIE FRISCH IST. currentRelic wird erst durch "Bildschirm
-       zu" geraeumt, und genau diese Zeile kann im Schreibpuffer haengen. Eine
-       Runde, deren Countdown von fuenfzehn Sekunden laengst abgelaufen ist,
-       ist keine laufende Runde mehr, sondern ein Rest - und duerfte die
-       naechste sonst blockieren. Dieselbe Zwanzig-Sekunden-Grenze wie im
-       Zweig "Log holt auf". */
-    if (currentRelic && Date.now() - currentRelic.at < 20000) return;
+         +0,000 s   Runde startet (diese Meldung)
+         +0,227 s   Kartenzaehler meldet 1 - FALSCH, noch nichts gezeichnet
+         +0,3..5,1  Blick 1 bis 13: 0 Treffer
+         +5,634 s   "Got rewards" - HIER kommen die Karten
+         +6,357 s   Blick 14: 3 Treffer
 
-    console.log('[Relikt] Bildschirm offen laut Log - Erkennung startet, ohne auf den Fund zu warten');
-    handleRelicReward({ uniqueName: null, players: 0, seconds: 15, vomWaechter: true })
-      .catch(err => console.error('[Relikt] Ablauf abgebrochen:', err.message));
+       Fuenfeinhalb Sekunden Platzhalter, die "laden" und nie etwas zeigen;
+       dreizehn Blicke, darunter die teuren, auf einen leeren Bildschirm; und
+       ein Kartenzaehler, der in der Wartephase etwas in der Bildmitte fuer
+       einen Balken haelt. Alle drei kamen von diesem einen Startpunkt.
+
+       Neulich waren es nur rund 1 s Wartephase - sie haengt an der Gruppe, in
+       einer oeffentlichen Void-Cascade-Runde ist sie lang. Der Startpunkt
+       muss also dort liegen, wo die Karten WIRKLICH stehen, nicht davor: bei
+       "Got rewards" (relic-reward). Dort bringt das Ereignis ausserdem gleich
+       die Mitspielerzahl und den eigenen Fund mit, die hier beide fehlten.
+
+       Was hier bleibt, ist, was die Zeit bis dahin sinnvoll nutzt: die
+       Texterkennung vorwaermen und den Waechter aufstellen. */
   });
 
   logWatcher.on('relic-timer', ev => {
