@@ -56,12 +56,14 @@ export function queued(task) {
 
 /** Fehler mit Statuscode und - wo vorhanden - der Feldliste des Servers. */
 export class WfmError extends Error {
-  constructor(message, { status = 0, fields = null, body = null } = {}) {
+  constructor(message, { status = 0, fields = null, body = null, retryAfter = null } = {}) {
     super(message);
     this.name = 'WfmError';
     this.status = status;
     this.fields = fields;
     this.body = body;
+    /* Sekunden bis zum naechsten Versuch, wenn der Server es sagt (429). */
+    this.retryAfter = retryAfter;
   }
 }
 
@@ -177,8 +179,14 @@ export async function request(path, { method = 'GET', body = null, auth = false,
   try { json = text ? JSON.parse(text) : null; } catch { /* HTML-Fehlerseite */ }
 
   if (!res.ok) {
-    const { message, fields } = describeError(res.status, json);
-    throw new WfmError(message, { status: res.status, fields, body: json });
+    /* 429 kommt nicht von warframe.market selbst, sondern von Cloudflare davor
+       (Fehler 1015) - mit einer Problem-Seite statt { error }. Die Wartezeit
+       steht nur im Kopf. */
+    const retryAfter = Number(res.headers.get('retry-after')) || null;
+    const { message, fields } = res.status === 429
+      ? { message: `warframe.market is rate limiting requests${retryAfter ? ` - try again in ${retryAfter} s` : ''}`, fields: null }
+      : describeError(res.status, json);
+    throw new WfmError(message, { status: res.status, fields, body: json, retryAfter });
   }
 
   if (raw) return { json, res };

@@ -38,20 +38,52 @@ function arrow(stat, other) {
   return `<span class="rv-cmp ${better ? 'is-up' : 'is-down'}">${better ? '▲' : '▼'}</span>`;
 }
 
+/* "A-" -> "grade-a": dieselben Farbklassen wie im Riven-Reiter. */
+const gradeClass = letter => 'grade-' + String(letter || 'f').charAt(0).toLowerCase();
+
 /* Die Werte auf Rang 8: so zeigt sie der Umwandeln-Bildschirm mit "Show
-   ranked", und so wird gehandelt. Der eigene Rang steht unten im Fuss. */
+   ranked", und so wird gehandelt. Der eigene Rang steht unten im Fuss.
+   Der Buchstabe am Ende sagt, ob die Waffe diesen Wert ueberhaupt will -
+   berechnet im Hauptprozess (riven-wants.js). */
 function statRows(view, other) {
-  return view.stats.map(s => {
+  return view.stats.map((s, i) => {
     const pct = Math.round(s.quality * 100);
+    const g = view.rating?.stats?.[i] || null;
     return `
-      <div class="rv-stat ${s.curse ? 'is-curse' : 'is-buff'}">
+      <div class="rv-stat ${s.curse ? 'is-curse' : 'is-buff'}${g ? ' fit-' + g.fit : ''}">
         <span class="rv-val">${esc(s.maxText)}</span>
         <span class="rv-label ${s.element ? 'el-' + esc(s.element) : ''}">${esc(s.label)}</span>
         ${arrow(s, other)}
         <span class="rv-roll ${tier(pct)}"><i style="width:${Math.max(pct, 3)}%"></i></span>
         <span class="rv-pct">${pct}%</span>
+        ${g ? `<span class="rv-letter ${gradeClass(g.letter)}">${esc(g.letter)}</span>` : '<span></span>'}
       </div>`;
   }).join('');
+}
+
+/* Was die Waffe am Markt traegt. Nur im linken Feld - es ist dieselbe
+   Waffe, rechts stuende dieselbe Zeile noch einmal. */
+function wantsRows(view) {
+  const w = view.rating?.wants;
+  if (!w) return '';
+  const here = new Set(view.stats.map((s, i) => `${s.curse ? '-' : '+'}${view.rating.stats?.[i]?.slug}`));
+  const chip = (x, sign, cls) => `<span class="rv-chip ${cls}${here.has(sign + x.slug) ? ' is-here' : ''}">${esc(x.label)}</span>`;
+  const pos = [...(w.best || []).map(x => chip(x, '+', 'is-best')), ...(w.good || []).map(x => chip(x, '+', 'is-good'))].join('');
+  const neg = (w.harmless || []).map(x => chip(x, '-', 'is-harmless')).join('');
+  return `
+    <div class="rv-wants">
+      ${pos ? `<div class="rv-want-row"><span class="rv-want-k">Wanted</span>${pos}</div>` : ''}
+      ${neg ? `<div class="rv-want-row"><span class="rv-want-k">OK as −</span>${neg}</div>` : ''}
+    </div>`;
+}
+
+/* Die Note im Kopf eines Felds. Gestrichelt, solange sie nur auf dem Mittel
+   der Waffenklasse beruht - die Marktwuensche der Waffe kommen dann noch. */
+function gradeBadge(view) {
+  const g = view?.rating;
+  if (!g) return '';
+  return `<span class="rv-grade ${gradeClass(g.letter)}${g.source === 'market' ? '' : ' is-estimate'}">`
+       + `<b>${esc(g.letter)}</b><small>${esc(g.word)}</small></span>`;
 }
 
 /* `other` ist nur beim neuen Wurf gesetzt: verglichen wird immer "neu gegen
@@ -61,6 +93,7 @@ function panelHtml(label, view, other, { note = null, busy = false, cost = null 
     <div class="rv-head">
       <span class="rv-tag">${esc(label)}</span>
       ${cost ? `<span class="rv-cost">${esc(cost)}</span>` : ''}
+      ${gradeBadge(view)}
     </div>`;
   if (!view) {
     return head + `<div class="rv-empty ${busy ? 'is-busy' : ''}">${esc(note || '')}</div>`;
@@ -77,6 +110,7 @@ function panelHtml(label, view, other, { note = null, busy = false, cost = null 
       ${view.shownOn ? `<span class="rv-on">on ${esc(view.shownOn.name)} · ×${Number(view.weapon.disposition.toFixed(2))}</span>` : ''}
     </div>
     <div class="rv-stats">${statRows(view, other)}</div>
+    ${other ? '' : wantsRows(view)}
     <div class="rv-foot">
       <span title="Values shown at rank ${view.maxRank}">R${view.rank}/${view.maxRank}${view.rank < view.maxRank ? ` · shown at R${view.maxRank}` : ''}</span>
       <span>⟳ ${view.rerolls}</span>

@@ -58,7 +58,7 @@ const RIVEN_PATH = '/Upgrades/Mods/Randomized/';
    1.073.741.824, ueber alle 46 Werte in Kaans Rivens. */
 export const ROLL_SPAN = 2 ** 30;
 const ROLL_LOW = 0.9;
-const ROLL_HIGH = 1.1;
+export const ROLL_HIGH = 1.1;
 
 /* F nach Zusammensetzung, alle am 2026-09-29 gemessen. In Klammern der
    Bereich, den die Rundung der Anzeige offenlaesst:
@@ -79,7 +79,9 @@ const ROLL_HIGH = 1.1;
    das, 5,0 ergaebe -52,1%, die Mitte des Rang-0-Bereichs -51,9%. Auf Rang 0
    ist der negative Wert nur 3 bis 6 % gross, eine Nachkommastelle liess dort
    rund 1 % offen. */
-const FACTOR = {
+/* Exportiert fuer riven-market.js: dort prueft es, ob die Werte einer Auktion
+   zu ihrem Rang passen koennen. */
+export const FACTOR = {
   buff: { 2: 9.9, 3: 7.5 },
   curseLift: 1.25,
   curse: { 2: 4.95, 3: 7.5 },

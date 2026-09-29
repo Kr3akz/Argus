@@ -4869,6 +4869,8 @@ async function toggleTrackedRelic(id) {
 function renderDucatsRelicPlan() {
   const container = $('ducats-catalog');
   if (!container) return;
+  /* Das Kartenraster der Teile gilt hier nicht - siehe renderDucatsCatalog. */
+  container.classList.remove('is-parts');
 
   const query = ($('ducat-search')?.value || '').trim().toLowerCase();
   const all = ducatsData?.relicPlan || [];
@@ -5021,6 +5023,7 @@ async function loadBaroOffer() {
 function renderBaroOffer() {
   const box = $('ducats-catalog');
   if (!box) return;
+  box.classList.remove('is-parts');
 
   if (!baroData) {
     box.innerHTML = `
@@ -5367,39 +5370,36 @@ function renderDucatsCatalog() {
     return;
   }
 
+  /* HOCHKANT, IN DREI BEREICHEN - jeder mit festem Platz fuer das, was er
+     sagt, damit die Karten eines Rasters sich lesen wie eine Tabelle:
+       1. Bildflaeche: oben eine Leiste mit dem Zustand links (gevaultet, Set)
+          und dem Besitz rechts, darunter das Teil gross.
+       2. Werte, auf dunklerem Grund: der Name und drei gleich breite Zellen -
+          Dukaten, Platin, Dukaten je Platin samt Empfehlung.
+       3. Verkauf: die Auswahl fuer Baro.
+     Die Seltenheit steckt in der Farbe der Dukatenzahl (Bronze, Silber, Gold
+     wie die Filter darueber), nicht in einem Leuchten hinter dem Bild. */
+  container.classList.add('is-parts');
   container.innerHTML = list.slice(0, 150).map(it => {
     const qty = sellQuantities.get(it.slug) || 0;
     const isSelected = qty > 0;
     const rarityClass = it.rarity ? `rarity-${it.rarity.toLowerCase()}` : 'rarity-common';
 
-    // Platin-Anzeige
-    let priceHtml = '';
-    if (it.price && typeof it.price.min === 'number') {
-      priceHtml = `
-        <div class="ducat-plat-tag" title="Cheapest price (in game: ${it.price.online ? 'yes' : 'no'})">
-          <img class="currency-ic" src="assets/icons/currency/platinum.png" alt="Platin">
-          <b>${it.price.min}p</b>
-          <span class="plat-med">Med. ${it.price.median || it.price.min}p</span>
-        </div>
-      `;
-    } else if (isFetchingDucatPrices) {
-      priceHtml = `<div class="ducat-plat-tag plat-loading">loading …</div>`;
-    } else {
-      priceHtml = `<div class="ducat-plat-tag plat-none" title="No offer on warframe.market">-</div>`;
-    }
+    // Platin-Zelle
+    const plat = it.price && typeof it.price.min === 'number'
+      ? { v: `<img class="currency-ic" src="assets/icons/currency/platinum.png" alt="">${it.price.min}`,
+          k: `med ${it.price.median || it.price.min}`,
+          tip: `Cheapest offer on warframe.market (in game: ${it.price.online ? 'yes' : 'no'}) · median ${it.price.median || it.price.min}p` }
+      : isFetchingDucatPrices
+        ? { v: '…', k: 'loading', tip: 'Fetching the price' }
+        : { v: '–', k: 'no offers', tip: 'No offer on warframe.market' };
 
-    // Trade-Advice Badge
-    let adviceHtml = '';
-    if (it.tradeAdvice && it.tradeAdvice.advice !== 'unknown') {
-      const adv = it.tradeAdvice;
-      if (adv.advice === 'ducats') {
-        adviceHtml = `<span class="trade-chip chip-junk" title="${esc(adv.reason)}"><span class="chip-dot"></span>Junk (${adv.ratio} duc/p)</span>`;
-      } else if (adv.advice === 'plat') {
-        adviceHtml = `<span class="trade-chip chip-plat" title="${esc(adv.reason)}"><span class="chip-dot"></span>Market (${adv.ratio} duc/p)</span>`;
-      } else {
-        adviceHtml = `<span class="trade-chip chip-neutral" title="${esc(adv.reason)}"><span class="chip-dot"></span>Fair (${adv.ratio} duc/p)</span>`;
-      }
-    }
+    // Verhaeltnis-Zelle: Dukaten je Platin, beschriftet mit der Empfehlung
+    const ADVICE = { ducats: ['is-junk', 'Junk'], plat: ['is-market', 'Market'], balanced: ['is-fair', 'Fair'] };
+    const adv = it.tradeAdvice && ADVICE[it.tradeAdvice.advice];
+    const ratio = adv
+      ? { v: String(it.tradeAdvice.ratio), k: adv[1], cls: adv[0], tip: `${it.tradeAdvice.label} — ${it.tradeAdvice.reason}` }
+      : { v: '–', k: 'duc/p', cls: '', tip: 'Needs a price' };
 
     /* Der Zusammenhang, in dem das Teil steht - und damit der Grund, es NICHT
        einzuschmelzen. Gevaultet heisst: fuer 15 Dukaten weggeben und fuer
@@ -5423,52 +5423,55 @@ function renderDucatsCatalog() {
         : ''
     ].join('');
 
-    // Inventar-Besitz-Badge
-    /* KURZ, WEIL DIE ZEILE ENG IST. "Owned: 2x (1 dup.)" stand neben dem
-       Elternnamen in einer Zeile, die bei langen Namen nicht mehr aufging -
-       beide brachen um, und die Karte wuchs gegenueber ihren Nachbarn.
-       Ausgeschrieben steht es jetzt im Tooltip, wo es nichts verdraengt. */
-    const ownedHtml = it.count != null ? `
-      <span class="ducat-owned-badge ${it.count > 1 ? 'has-dups' : ''}"
-            title="You own ${it.count}${it.count > 1 ? ` — ${it.count - 1} of them spare` : ''}">
-        ×${it.count}${it.count > 1 ? ` <small>${it.count - 1} dup</small>` : ''}
+    /* Besitz, rechts in derselben Leiste wie der Zustand. Erst ab zwei Stueck:
+       im eigenen Inventar besitzt man jedes Teil mindestens einmal, und die
+       Auswahl unten sagt "0/1" ohnehin - ein "x1" auf fast jeder Karte waere
+       nur Rauschen. */
+    const ownedHtml = it.count > 1 ? `
+      <span class="ducat-owned-badge has-dups"
+            title="You own ${it.count} — ${it.count - 1} of them spare">
+        ×${it.count} <small>${it.count - 1} dup</small>
       </span>
     ` : '';
 
     return `
       <div class="ducat-card ${isSelected ? 'selected' : ''} ${rarityClass}">
-        <div class="ducat-card-left">
-          <img class="mat-icon" src="${esc(it.image || 'assets/icons/relic.png')}" alt=""
+        <div class="ducat-card-art">
+          <div class="ducat-art-bar">
+            <div class="ducat-art-tags">${kontextHtml}</div>
+            ${ownedHtml}
+          </div>
+          <img class="ducat-art-img" src="${esc(it.image || 'assets/icons/relic.png')}" alt="" loading="lazy"
                data-fail-src="assets/icons/relic.png">
         </div>
 
-        <div class="ducat-card-body">
-          <div class="ducat-card-title-row">
-            <b class="ducat-item-name" title="${esc(it.name)}">${esc(it.name)}</b>
-          </div>
-          <div class="ducat-card-sub">
-            <span class="ducat-parent">${esc(it.parentItem || 'Prime')}</span>
-            ${ownedHtml}
-          </div>
-          <div class="ducat-card-badges">
-            <span class="ducat-badge ducat-val-badge">
-              <img class="currency-ic ducat-ic" src="assets/icons/ducats.png" alt="Ducats">
-              <b>${it.ducats}</b> <small>duc.</small>
-            </span>
-            ${priceHtml}
-            ${adviceHtml}
-            ${kontextHtml}
+        <div class="ducat-card-info">
+          <b class="ducat-item-name" title="${esc(it.name)}">${esc(it.name)}</b>
+          <div class="ducat-stats">
+            <div class="ducat-stat is-duc" title="${esc(`${it.rarity || 'Common'} part · ${it.ducats} ducats at Baro Ki'Teer`)}">
+              <span class="ducat-stat-v"><img class="currency-ic ducat-ic" src="assets/icons/ducats.png" alt="">${it.ducats}</span>
+              <span class="ducat-stat-k">ducats</span>
+            </div>
+            <div class="ducat-stat is-plat" title="${esc(plat.tip)}">
+              <span class="ducat-stat-v">${plat.v}</span>
+              <span class="ducat-stat-k">${plat.k}</span>
+            </div>
+            <div class="ducat-stat is-ratio ${ratio.cls}" title="${esc(ratio.tip)}">
+              <span class="ducat-stat-v">${ratio.v}<small>duc/p</small></span>
+              <span class="ducat-stat-k">${ratio.k}</span>
+            </div>
           </div>
         </div>
 
-        <div class="ducat-card-right">
+        <div class="ducat-card-foot">
+          <span class="ducat-foot-k">Sell</span>
           <div class="ducat-card-counter">
             <button class="ducat-btn-cnt" data-dec="${esc(it.slug)}" title="Decrease quantity">-</button>
             <span class="ducat-cnt-num ${qty > 0 ? 'active' : ''}">${qty}${it.count != null ? `<small>/${it.count}</small>` : ''}</span>
             <button class="ducat-btn-cnt" data-inc="${esc(it.slug)}" title="Increase quantity">+</button>
           </div>
           ${it.count != null && it.count > 0 ? `
-            <button class="btn-max-cnt ${qty === it.count ? 'is-max' : ''}" data-max="${esc(it.slug)}" title="Auf maximale Inventarmenge setzen">
+            <button class="btn-max-cnt ${qty === it.count ? 'is-max' : ''}" data-max="${esc(it.slug)}" title="Select every copy you own">
               MAX
             </button>
           ` : ''}
@@ -9026,14 +9029,23 @@ if (window.api.onInventoryStale) {
 
 /* ---------------- Rivens ---------------- */
 /*
- * Die Karten rechnet der Hauptprozess (core/rivens.js), hier wird nur
- * gezeichnet und geordnet. Eigener Aufruf wie die Schmiede, siehe rivens:get
- * in main.js.
+ * Drei Unterreiter: die eigenen Rivens mit Note (Unveiled), die mit Aufgabe
+ * und die ungeoeffneten (Veiled), und die Suche auf warframe.market (Riven
+ * finder).
+ *
+ * Karten, Noten und Wuensche rechnet der Hauptprozess (core/rivens.js,
+ * core/riven-wants.js) - hier wird gezeichnet, gefiltert und geordnet.
+ * Marktwuensche je Waffe kommen im Hintergrund nach; jede fertige Waffe
+ * meldet sich ueber onRivensChanged, dann werden die Noten neu geholt.
  */
 let rivenData = null;
-let rivenSort = ['name-asc'];
+let rivenSort = ['grade-desc'];
+let rivenPane = 'unveiled';
+let rivenKind = 'all';
+let rivenQuery = '';
 
 const RIVEN_SORT_OPTIONS = [
+  ['grade-desc',   'Grade (best first)',            'Grade'],
   ['name-asc',     'Weapon (A–Z)',                  'Weapon'],
   ['roll-desc',    'Average roll of the positives', 'Roll'],
   ['rerolls-desc', 'Rerolls (most first)',          'Rerolls'],
@@ -9042,19 +9054,55 @@ const RIVEN_SORT_OPTIONS = [
 
 const byRivenName = (a, b) => a.fullName.localeCompare(b.fullName, 'en');
 const RIVEN_AXES = {
+  'grade-desc':   (a, b) => (b.rating?.score ?? 0) - (a.rating?.score ?? 0),
   'name-asc':     byRivenName,
   'roll-desc':    (a, b) => b.avgQuality - a.avgQuality,
   'rerolls-desc': (a, b) => b.rerolls - a.rerolls,
   'rank-desc':    (a, b) => b.rank - a.rank
 };
 
+/* Die Klassen so, wie sie im Filter stehen - in der Reihenfolge des Spiels. */
+const RIVEN_KIND_ORDER = ['Rifle', 'Shotgun', 'Pistol', 'Melee', 'Archgun', 'Kitgun', 'Zaw', 'Companion Weapon'];
+const RIVEN_KIND_LABEL = { Archgun: 'Arch-gun', 'Companion Weapon': 'Companion' };
+
+/* Wie die Klassen in Saetzen heissen: "what rifle rivens sell with". */
+const RIVEN_CLASS_WORD = {
+  rifle: 'rifle', shotgun: 'shotgun', pistol: 'pistol', melee: 'melee',
+  kitgun: 'kitgun', zaw: 'zaw', archgun: 'arch-gun'
+};
+
 if ($('btn-riven-refresh')) $('btn-riven-refresh').innerHTML = Icon.refresh(15) + '<span>Fetch inventory</span>';
+
+/* ---------- Unterreiter ---------- */
+
+function showRivenPane(key) {
+  rivenPane = key;
+  document.querySelectorAll('.riven-pane').forEach(p =>
+    p.classList.toggle('active', p.dataset.rivenPane === key));
+  document.querySelectorAll('#riven-nav .ws-navtab').forEach(t =>
+    t.classList.toggle('active', t.dataset.rivenGo === key));
+  if (key === 'finder') initRivenFinder();
+}
+
+$('riven-nav')?.addEventListener('click', e => {
+  const btn = e.target.closest('[data-riven-go]');
+  if (btn) showRivenPane(btn.dataset.rivenGo);
+});
 
 async function loadRivensTab(force = false) {
   if (rivenData && !force) return renderRivens();
   const res = await window.api.getRivens();
   if (res.ok) { rivenData = res.data; renderRivens(); }
   else showRivenState(res.code, res.error);
+}
+
+/* Ein neuer Marktstand fuer eine Waffe: Noten still neu holen. Der Filter,
+   die Suche und der offene Unterreiter bleiben, wie sie sind. */
+if (window.api.onRivensChanged) {
+  window.api.onRivensChanged(() => {
+    if (rivenData && $('tab-rivens')?.classList.contains('active')) loadRivensTab(true);
+    else rivenData = null;
+  });
 }
 
 function showRivenState(code, text) {
@@ -9069,6 +9117,8 @@ function showRivenState(code, text) {
     <div class="inv-state-icon">${Icon.warning(30)}</div>
     <b>${esc(code === 'empty' ? 'No inventory loaded yet' : 'Cannot read your rivens right now')}</b>
     <p>${esc(erklaerung)}</p>`;
+  /* Der Finder braucht kein Inventar - die Verschleierten schon. */
+  $('riven-veiled').innerHTML = '<p class="hint">Your veiled rivens show up here once the inventory has been fetched.</p>';
 }
 
 function renderRivens() {
@@ -9076,6 +9126,10 @@ function renderRivens() {
   if (!d) return;
   $('riven-state').classList.add('hidden');
   $('riven-body').classList.remove('hidden');
+
+  const unopened = d.unrevealed.reduce((n, u) => n + u.count, 0);
+  $('riven-count-unveiled').textContent = nf(d.unveiled.length);
+  $('riven-count-veiled').textContent = nf(d.veiled.length + unopened);
 
   /* Was sich nicht lesen liess, wird genannt - still weglassen hiesse, einen
      Riven zu unterschlagen. */
@@ -9086,43 +9140,108 @@ function renderRivens() {
       + d.unresolved.map(u => `${u.weapon || u.type.split('/').pop()} (${u.reason})`).join(', ');
   }
 
-  const unopened = d.unrevealed.reduce((n, u) => n + u.count, 0);
-  const parts = [`${d.unveiled.length} riven${d.unveiled.length === 1 ? '' : 's'}`];
-  if (d.veiled.length) parts.push(`${d.veiled.length} veiled`);
-  if (unopened) parts.push(`${unopened} not yet revealed`);
-  /* Der Stand des Dokuments, nicht der des Lesens - siehe inventory.js. */
-  const at = d.syncedAt || d.fetchedAt;
-  if (at) parts.push(`as of ${new Date(at).toLocaleString('en-GB',
-    { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`);
-  const unchecked = d.unveiled.some(r => !r.verified);
-  $('riven-meta').innerHTML = esc(parts.join(' · '))
-    + (unchecked ? ' · <span class="riven-unver">~</span> computed, not yet checked against a card in the game' : '');
-
+  renderRivenMeta();
+  renderRivenKinds();
   SortPick.mount('riven-sort-wrap', {
     options: RIVEN_SORT_OPTIONS,
     value: rivenSort,
-    fallback: 'name-asc',
+    fallback: 'grade-desc',
     onChange: keys => { rivenSort = keys; renderRivenGrid(); }
   });
   renderRivenGrid();
   renderVeiledRivens();
 }
 
+function renderRivenMeta() {
+  const d = rivenData;
+  const parts = [`${d.unveiled.length} riven${d.unveiled.length === 1 ? '' : 's'}`];
+  /* Der Stand des Dokuments, nicht der des Lesens - siehe inventory.js. */
+  const at = d.syncedAt || d.fetchedAt;
+  if (at) parts.push(`as of ${new Date(at).toLocaleString('en-GB',
+    { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`);
+
+  /* Woher die Noten kommen. Solange der Nachlader laeuft, steht dort, dass
+     noch etwas kommt - sonst wirkt eine Klassen-Note wie das letzte Wort. */
+  const rated = d.unveiled.filter(r => r.rating);
+  const market = rated.filter(r => r.rating.source === 'market').length;
+  const waiting = rated.filter(r => r.rating.source !== 'market' && r.rating.slug && r.rating.thin == null).length;
+  if (rated.length) {
+    parts.push(market === rated.length
+      ? 'grades from warframe.market'
+      : `grades from warframe.market for ${market} of ${rated.length}${waiting ? ` · ${waiting} still loading` : ''}`);
+  }
+
+  const unchecked = d.unveiled.some(r => !r.verified);
+  $('riven-meta').innerHTML = esc(parts.join(' · '))
+    + (unchecked ? ' · <span class="riven-unver">~</span> computed, not yet checked against a card in the game' : '');
+}
+
+/* Filter nach Klasse - nur die, die es im Bestand gibt, mit Anzahl. */
+function renderRivenKinds() {
+  const counts = new Map();
+  for (const r of rivenData.unveiled) counts.set(r.kind, (counts.get(r.kind) || 0) + 1);
+  if (rivenKind !== 'all' && !counts.has(rivenKind)) rivenKind = 'all';
+  const kinds = [...counts.keys()].sort((a, b) =>
+    (RIVEN_KIND_ORDER.indexOf(a) + 99) % 99 - (RIVEN_KIND_ORDER.indexOf(b) + 99) % 99 || a.localeCompare(b));
+  const chip = (key, label, n) =>
+    `<button class="filter-chip${rivenKind === key ? ' active' : ''}" data-kind="${esc(key)}">${esc(label)}${n != null ? ` <b>${nf(n)}</b>` : ''}</button>`;
+  $('riven-kinds').innerHTML = chip('all', 'All', null)
+    + kinds.map(k => chip(k, RIVEN_KIND_LABEL[k] || k, counts.get(k))).join('');
+}
+
+$('riven-kinds')?.addEventListener('click', e => {
+  const b = e.target.closest('[data-kind]');
+  if (!b) return;
+  rivenKind = b.dataset.kind;
+  renderRivenKinds();
+  renderRivenGrid();
+});
+
+$('riven-search')?.addEventListener('input', e => {
+  rivenQuery = e.target.value.trim().toLowerCase();
+  renderRivenGrid();
+});
+
+function rivenMatches(r) {
+  if (rivenKind !== 'all' && r.kind !== rivenKind) return false;
+  if (!rivenQuery) return true;
+  const hay = [r.fullName, r.kind, ...r.stats.map(s => s.label)].join(' ').toLowerCase();
+  return rivenQuery.split(/\s+/).every(w => hay.includes(w));
+}
+
 function renderRivenGrid() {
-  const list = [...(rivenData?.unveiled || [])];
+  const all = rivenData?.unveiled || [];
+  const list = all.filter(rivenMatches);
   const cmp = SortPick.chain(rivenSort, RIVEN_AXES, byRivenName);
   if (cmp) list.sort(cmp);
   $('riven-grid').innerHTML = list.length
     ? list.map(rivenCardHtml).join('')
-    : '<p class="hint">No unveiled rivens on this account.</p>';
+    : `<p class="hint">${all.length ? 'No riven matches this filter.' : 'No unveiled rivens on this account.'}</p>`;
 }
 
-/* Farbstufe fuer den Wurf. Die Grenzen sind eine Lesehilfe, keine Wertung, ob
-   der Wert zur Waffe passt. */
-const rivenTier = pct => pct >= 80 ? 'q-top' : pct >= 50 ? 'q-mid' : pct >= 20 ? 'q-low' : 'q-bottom';
+/* ---------- Karten ---------- */
 
-function rivenStatHtml(r, s) {
+/* Farbstufe fuer den Wurf. Die Grenzen sind eine Lesehilfe - ob der Wert zur
+   Waffe passt, sagt der Buchstabe daneben. */
+const rivenTier = pct => pct >= 80 ? 'q-top' : pct >= 50 ? 'q-mid' : pct >= 20 ? 'q-low' : 'q-bottom';
+/* "A-" -> "grade-a": die Farbe haengt nur am Buchstaben. */
+const gradeClass = letter => 'grade-' + String(letter || 'f').charAt(0).toLowerCase();
+
+/* Was der Buchstabe an einem Wert sagt, in einem Satz. */
+function statFitText(fit, curse, weapon) {
+  if (!curse) {
+    if (fit === 'best') return `One of the stats ${weapon} rivens sell with most`;
+    if (fit === 'good') return `Often found on the pricier ${weapon} rivens`;
+    return `Rarely on the pricier ${weapon} rivens`;
+  }
+  if (fit === 'harmless') return `A negative that barely matters on ${weapon}`;
+  if (fit === 'best' || fit === 'good') return `This negative hits a stat ${weapon} rivens want`;
+  return 'A negative that costs a little';
+}
+
+function rivenStatHtml(r, s, i) {
   const pct = Math.round(s.quality * 100);
+  const g = r.rating?.stats?.[i] || null;
   const tip = [
     s.label,
     r.rank < r.maxRank ? `At rank ${r.maxRank}: ${s.maxText}` : null,
@@ -9130,69 +9249,144 @@ function rivenStatHtml(r, s) {
     s.curse ? '100% is the mildest this negative can roll' : '100% is the best this stat can roll',
     s.verified ? null : 'Computed, not yet checked against a card in the game'
   ].filter(Boolean).join('\n');
+  const letterTip = g ? `${statFitText(g.fit, s.curse, r.weapon.name)}\nRoll: ${pct}% of the best possible` : '';
   return `
-    <div class="riven-stat ${s.curse ? 'is-curse' : 'is-buff'}" title="${esc(tip)}">
+    <div class="riven-stat ${s.curse ? 'is-curse' : 'is-buff'}${g ? ' fit-' + g.fit : ''}" title="${esc(tip)}">
       <span class="riven-val">${esc(s.text)}</span>
       <span class="riven-label ${s.element ? 'el-' + esc(s.element) : ''}">${esc(s.label)}${s.verified ? '' : ' <span class="riven-unver">~</span>'}</span>
       <span class="riven-roll ${rivenTier(pct)}"><i style="width:${Math.max(pct, 3)}%"></i></span>
       <span class="riven-pct">${pct}%</span>
+      ${g ? `<span class="riven-letter ${gradeClass(g.letter)}" title="${esc(letterTip)}">${esc(g.letter)}</span>` : '<span></span>'}
+    </div>`;
+}
+
+/* Die Erklaerung zur Note: woher die Wuensche kommen. */
+function gradeTip(r) {
+  const g = r.rating;
+  if (!g) return '';
+  const cls = RIVEN_CLASS_WORD[g.cls] || g.cls;
+  const best = (g.wants?.best || []).map(w => w.label).join(', ');
+  let src;
+  if (g.source === 'market') {
+    const when = g.fetchedAt ? new Date(g.fetchedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : null;
+    src = `Based on ${nf(g.sample)} auctions on warframe.market${when ? ` (${when})` : ''}: `
+        + `the priciest quarter${g.topFrom ? ` (from ${nf(g.topFrom)}p)` : ''} mostly carries ${best || 'nothing in particular'}.`;
+  } else if (g.thin != null) {
+    src = `Only ${nf(g.thin)} usable auctions for ${r.weapon.name} on warframe.market, so this uses what ${cls} rivens in general sell with (${best}).`;
+  } else if (g.slug) {
+    src = `No market data for ${r.weapon.name} yet - until it arrives, this uses what ${cls} rivens in general sell with (${best}).`;
+  } else {
+    src = `warframe.market does not list ${r.weapon.name}, so this uses what ${cls} rivens in general sell with (${best}).`;
+  }
+  return `${g.letter} · ${g.word} · ${Math.round(g.score * 100)} of 100\n${src}\n`
+       + 'Which stats a weapon wants counts for more than how well they rolled.';
+}
+
+/* Was die Waffe am Markt traegt - gewuenschte positive und unschaedliche
+   negative Werte. Was davon auf DIESEM Riven steht, ist hervorgehoben. */
+function rivenWantsHtml(r) {
+  const g = r.rating;
+  if (!g?.wants) return '';
+  const here = new Set((g.stats || []).map((s, i) => `${r.stats[i]?.curse ? '-' : '+'}${s.slug}`));
+  const chip = (w, sign, cls) =>
+    `<span class="rw-chip ${cls}${here.has(sign + w.slug) ? ' is-here' : ''}" title="${esc(`${Math.round((w.share || 0) * 100)}% of the priciest ${r.weapon.name} rivens`)}">${esc(w.label)}</span>`;
+  const pos = [...(g.wants.best || []).map(w => chip(w, '+', 'is-best')),
+               ...(g.wants.good || []).map(w => chip(w, '+', 'is-good'))].join('');
+  const neg = (g.wants.harmless || []).map(w => chip(w, '-', 'is-harmless')).join('');
+  return `
+    <div class="riven-wants">
+      ${pos ? `<div class="rw-row"><span class="rw-k">Wanted</span>${pos}</div>` : ''}
+      ${neg ? `<div class="rw-row"><span class="rw-k">OK as −</span>${neg}</div>` : ''}
     </div>`;
 }
 
 function rivenCardHtml(r) {
-  const pol = r.polarity ? Icon.polarity(r.polarity.glyph, 13) : '';
+  const pol = r.polarity ? Icon.polarity(r.polarity.glyph, 12) : '';
   const avg = Math.round(r.avgQuality * 100);
   /* Der Export fuehrt die Disposition als float32 - 0.85 kommt als
      0.85000002 an. Zwei Stellen reichen, das Spiel zeigt ohnehin nur Punkte. */
   const disp = Number(r.weapon.disposition.toFixed(2));
+  const g = r.rating;
+  /* Kopf: wer es ist (Waffe, Name, Art) links, wie gut rechts. Alles, was
+     man zum Handeln oder Einbauen nachschlaegt, steht unten im Fuss. */
   return `
-    <div class="riven-card">
+    <div class="riven-card" data-riven="${esc(r.id)}">
       <div class="riven-head">
         ${r.image ? `<img class="riven-img" src="${esc(r.image)}" alt="" loading="lazy">` : '<span class="riven-img"></span>'}
         <div class="riven-title">
           <b>${esc(r.weapon.name)}</b>
           <span class="riven-name">${esc(r.name || '')}</span>
+          <span class="riven-kind">${esc(RIVEN_KIND_LABEL[r.kind] || r.kind)} riven · MR ${r.mr ?? '?'}</span>
         </div>
-        <span class="riven-drain" title="${esc(r.polarity ? r.polarity.label + ' polarity' : 'Capacity')}">${r.drain}${pol}</span>
+        ${g ? `<span class="riven-grade ${gradeClass(g.letter)}${g.source === 'market' ? '' : ' is-estimate'}" title="${esc(gradeTip(r))}">
+                 <b>${esc(g.letter)}</b><small>${esc(g.word)}</small></span>` : ''}
       </div>
-      <div class="riven-stats">${r.stats.map(s => rivenStatHtml(r, s)).join('')}</div>
+      <div class="riven-stats">${r.stats.map((s, i) => rivenStatHtml(r, s, i)).join('')}</div>
+      ${rivenWantsHtml(r)}
       <div class="riven-foot">
-        <span>${esc(r.kind)}</span>
-        <span>MR ${r.mr ?? '?'}</span>
         <span title="Rank ${r.rank} of ${r.maxRank}">R${r.rank}/${r.maxRank}</span>
         <span title="Times this riven was cycled">⟳ ${nf(r.rerolls)}</span>
+        <span class="riven-drain" title="${esc(r.polarity ? `Capacity · ${r.polarity.label} polarity` : 'Capacity')}">${r.drain}${pol}</span>
         <span title="${esc(r.weapon.fresh
           ? 'Disposition: how strongly rivens roll on this weapon'
           : 'Disposition from the local catalog - the current one could not be fetched, so every value on this card may be off')}">×${disp}${r.weapon.fresh ? '' : ' <span class="riven-unver">~</span>'}</span>
         <span class="riven-avg" title="Average roll of the positive stats">avg ${avg}%</span>
+        ${g?.slug ? `<button class="riven-similar" data-similar="${esc(r.id)}" title="Search warframe.market for rivens like this one">${Icon.search(12)}<span>Similar</span></button>` : ''}
       </div>
     </div>`;
 }
 
+$('riven-grid')?.addEventListener('click', e => {
+  const b = e.target.closest('[data-similar]');
+  if (!b) return;
+  const r = rivenData?.unveiled.find(x => String(x.id) === b.dataset.similar);
+  if (r) findSimilarRivens(r);
+});
+
+/* ---------- Verschleierte ---------- */
+
 function renderVeiledRivens() {
   const d = rivenData;
-  const wrap = $('riven-veiled-wrap');
-  const hasAny = d.veiled.length || d.unrevealed.length;
-  wrap.classList.toggle('hidden', !hasAny);
-  if (!hasAny) return;
+  const box = $('riven-veiled');
+  if (!d.veiled.length && !d.unrevealed.length) {
+    box.innerHTML = '<p class="hint">No veiled or unrevealed rivens in your last inventory fetch.</p>';
+    return;
+  }
 
-  const cards = d.veiled.map(v => {
-    const req = v.challenge.required || 0;
-    const pct = req ? Math.min(100, Math.round(v.challenge.progress / req * 100)) : 0;
-    return `
-      <div class="riven-veil">
-        <b>${esc(v.kind)} Riven</b>
-        <p>${esc(v.challenge.text || 'Unknown challenge')}</p>
-        <div class="riven-veil-prog"><i style="width:${pct}%"></i></div>
-        <span class="riven-veil-count">${nf(v.challenge.progress)} / ${nf(req)}</span>
-      </div>`;
-  }).join('');
+  /* Gleiche Aufgaben stehen zusammen - "Pick up 7 Syndicate Medallions" auf
+     drei Nahkampf-Rivens ist eine Aufgabe, nicht drei. */
+  const groups = new Map();
+  for (const v of d.veiled) {
+    const text = v.challenge.text || 'Unknown challenge';
+    const g = groups.get(text) || { text, items: [] };
+    g.items.push(v);
+    groups.set(text, g);
+  }
+  const challenges = [...groups.values()].sort((a, b) => b.items.length - a.items.length || a.text.localeCompare(b.text)).map(g => `
+    <div class="veil-group">
+      <div class="veil-group-head"><b>${esc(g.text)}</b>${g.items.length > 1 ? `<span>×${g.items.length}</span>` : ''}</div>
+      ${g.items.map(v => {
+        const req = v.challenge.required || 0;
+        const pct = req ? Math.min(100, Math.round(v.challenge.progress / req * 100)) : 0;
+        return `
+          <div class="veil-row">
+            <b>${esc(v.kind)} Riven</b>
+            <span class="riven-veil-prog"><i style="width:${pct}%"></i></span>
+            <span class="riven-veil-count">${nf(v.challenge.progress)} / ${nf(req)}</span>
+          </div>`;
+      }).join('')}
+    </div>`).join('');
 
-  const chips = d.unrevealed.map(u =>
-    `<span class="riven-unopened"><b>${nf(u.count)}×</b> ${esc(u.kind)}</span>`).join('');
-  $('riven-veiled').innerHTML = cards + (chips
-    ? `<div class="riven-unopened-row"><span>Not yet revealed</span>${chips}</div>`
-    : '');
+  const unrevealed = d.unrevealed.map(u => `
+    <div class="veil-unrev">
+      <b>${esc(u.kind)} Riven Mod</b>
+      <p>Reveal it in the game's Mods screen to see its challenge.</p>
+      <span class="veil-unrev-count">×${nf(u.count)}</span>
+    </div>`).join('');
+
+  box.innerHTML =
+    (challenges ? `<h3 class="riven-subhead">Challenges</h3><div class="veil-groups">${challenges}</div>` : '')
+    + (unrevealed ? `<h3 class="riven-subhead">Not yet revealed</h3><div class="veil-unrev-grid">${unrevealed}</div>` : '');
 }
 
 if ($('btn-riven-refresh')) $('btn-riven-refresh').onclick = async () => {
@@ -9219,6 +9413,401 @@ if ($('btn-riven-refresh')) $('btn-riven-refresh').onclick = async () => {
   }
   if (typeof refreshScanLogLine === 'function') refreshScanLogLine();
 };
+
+/* ---------------- Riven-Finder ----------------
+ *
+ * Sucht Riven-Auktionen auf warframe.market. Die Suche dort ist streng
+ * gedrosselt (rund zehn je Minute, siehe wfm-auctions.js) - deshalb sucht
+ * der Finder nur auf Knopfdruck, nie beim Tippen.
+ */
+let finderRef = null;          // { weapons, classes }
+let finderLoading = null;
+let finderWeapon = null;       // { slug, name, cls, image }
+let finderWants = null;        // Antwort von getRivenWants
+let finderRiven = null;        // eigener Riven fuer "Similar", oder null
+const finderSel = { pos: [null, null, null], neg: null };
+let finderResults = null;
+
+async function initRivenFinder() {
+  if (finderRef) return finderRef;
+  if (!finderLoading) {
+    $('rf-status').textContent = 'Loading the weapon list …';
+    finderLoading = window.api.getRivenFinderRef().then(res => {
+      finderLoading = null;
+      if (!res?.ok) {
+        $('rf-status').textContent = res?.error || 'Could not load the weapon list.';
+        return null;
+      }
+      finderRef = res;
+      $('rf-status').textContent = '';
+      renderFinderAttrs();
+      renderFinderWants();
+      return finderRef;
+    });
+  }
+  return finderLoading;
+}
+
+/* ---------- Waffe ---------- */
+
+function finderSuggest(query) {
+  const box = $('rf-suggest');
+  const q = query.trim().toLowerCase();
+  if (!finderRef || !q) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+  const starts = [], inner = [];
+  for (const w of finderRef.weapons) {
+    const n = w.name.toLowerCase();
+    if (n.startsWith(q)) starts.push(w);
+    else if (n.includes(q)) inner.push(w);
+  }
+  const list = [...starts, ...inner].slice(0, 12);
+  box.innerHTML = list.length
+    ? list.map((w, i) => `
+        <button class="rf-sug${i === 0 ? ' is-active' : ''}" data-weapon="${esc(w.slug)}">
+          ${w.image ? `<img src="${esc(w.image)}" alt="">` : '<span class="rf-sug-img"></span>'}
+          <span>${esc(w.name)}</span><small>${esc(RIVEN_CLASS_WORD[w.cls] || w.cls)}</small>
+        </button>`).join('')
+    : '<p class="rf-sug-empty">No weapon with that name has rivens.</p>';
+  box.classList.remove('hidden');
+}
+
+$('rf-weapon')?.addEventListener('input', e => finderSuggest(e.target.value));
+$('rf-weapon')?.addEventListener('focus', e => { initRivenFinder(); finderSuggest(e.target.value); });
+$('rf-weapon')?.addEventListener('keydown', e => {
+  const box = $('rf-suggest');
+  const items = [...box.querySelectorAll('.rf-sug')];
+  const at = items.findIndex(b => b.classList.contains('is-active'));
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    if (!items.length) return;
+    e.preventDefault();
+    const next = (at + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+    items.forEach((b, i) => b.classList.toggle('is-active', i === next));
+  } else if (e.key === 'Enter') {
+    if (at >= 0) { e.preventDefault(); selectFinderWeapon(items[at].dataset.weapon); }
+  } else if (e.key === 'Escape') {
+    box.classList.add('hidden');
+  }
+});
+$('rf-suggest')?.addEventListener('mousedown', e => {
+  /* mousedown statt click: sonst nimmt das blur des Felds die Liste weg,
+     bevor der Klick ankommt. */
+  const b = e.target.closest('[data-weapon]');
+  if (!b) return;
+  e.preventDefault();
+  selectFinderWeapon(b.dataset.weapon);
+});
+$('rf-weapon')?.addEventListener('blur', () => setTimeout(() => $('rf-suggest')?.classList.add('hidden'), 120));
+
+async function selectFinderWeapon(slug, { keepStats = false } = {}) {
+  await initRivenFinder();
+  const w = finderRef?.weapons.find(x => x.slug === slug);
+  if (!w) return;
+  const changed = finderWeapon?.slug !== w.slug;
+  finderWeapon = w;
+  $('rf-weapon').value = w.name;
+  $('rf-suggest').classList.add('hidden');
+  if (changed && !keepStats) {
+    /* Andere Klasse, andere Werte: was hier nicht geht, faellt raus. */
+    const allowed = new Set((finderRef.classes[w.cls] || []).map(a => a.slug));
+    finderSel.pos = finderSel.pos.map(s => (s && allowed.has(s) ? s : null));
+    if (finderSel.neg && !['has', 'none'].includes(finderSel.neg) && !allowed.has(finderSel.neg)) finderSel.neg = null;
+    finderRiven = null;
+  }
+  renderFinderAttrs();
+  finderWants = null;
+  renderFinderWants();
+  const res = await window.api.getRivenWants(w.slug);
+  if (finderWeapon?.slug !== w.slug) return;
+  finderWants = res?.ok ? res : null;
+  renderFinderWants();
+}
+
+/* Die Wuensche der gewaehlten Waffe als Chips in EINER Zeile - ein Klick
+   legt den Wert in den naechsten freien Platz darueber, ein zweiter nimmt
+   ihn wieder heraus. Was gerade gewaehlt ist, leuchtet. */
+function renderFinderWants() {
+  const box = $('rf-wants');
+  if (!box) return;
+  if (!finderWeapon) {
+    box.innerHTML = '<span class="rf-hint">Pick a weapon to see which stats its rivens sell with.</span>';
+    return;
+  }
+  if (!finderWants) {
+    box.innerHTML = `<span class="rf-hint">Checking what ${esc(finderWeapon.name)} rivens sell with …</span>`;
+    return;
+  }
+  const w = finderWants.wants;
+  const picked = new Set(finderSel.pos.filter(Boolean));
+  const chip = (x, kind) => {
+    const on = kind === 'is-harmless' ? finderSel.neg === x.slug : picked.has(x.slug);
+    return `<button type="button" class="rw-chip ${kind}${on ? ' is-here' : ''}" data-want="${esc(x.slug)}" data-kind="${kind}"
+      title="${esc(`${Math.round((x.share || 0) * 100)}% of the priciest ${finderWeapon.name} rivens`)}">${esc(x.label)}</button>`;
+  };
+  const group = (label, list, kind) => list?.length
+    ? `<span class="rf-want-group"><span class="rf-want-k">${label}</span>${list.map(x => chip(x, kind)).join('')}</span>`
+    : '';
+  const cls = RIVEN_CLASS_WORD[finderWants.cls] || finderWants.cls;
+  const src = finderWants.source === 'market'
+    ? `From ${nf(finderWants.sample)} auctions on warframe.market - the priciest quarter${finderWants.topFrom ? ` starts at ${nf(finderWants.topFrom)}p` : ''}.`
+    : finderWants.thin != null
+      ? `Too few auctions for ${esc(finderWeapon.name)} - this is what ${cls} rivens in general sell with.`
+      : `No market data yet - this is what ${cls} rivens in general sell with.${finderWants.note ? ` (${esc(finderWants.note)})` : ''}`;
+  box.innerHTML = `
+    <div class="rf-want-chips">
+      ${group('Best', w.best, 'is-best')}
+      ${group('Good', w.good, 'is-good')}
+      ${group('OK as −', w.harmless, 'is-harmless')}
+      ${(w.best || []).length ? '<button type="button" class="btn-sm" id="rf-use-best">Search with the best</button>' : ''}
+    </div>
+    <span class="rf-want-src">${src}</span>`;
+}
+
+$('rf-wants')?.addEventListener('click', e => {
+  if (e.target.closest('#rf-use-best')) {
+    const best = (finderWants?.wants?.best || []).map(x => x.slug);
+    finderSel.pos = [best[0] || null, best[1] || null, best[2] || null];
+    renderFinderAttrs();
+    renderFinderWants();
+    runRivenSearch();
+    return;
+  }
+  const chip = e.target.closest('[data-want]');
+  if (!chip) return;
+  const slug = chip.dataset.want;
+  if (chip.dataset.kind === 'is-harmless') {
+    finderSel.neg = finderSel.neg === slug ? null : slug;
+  } else if (finderSel.pos.includes(slug)) {
+    finderSel.pos = finderSel.pos.map(s => (s === slug ? null : s));
+  } else {
+    const free = finderSel.pos.indexOf(null);
+    if (free >= 0) finderSel.pos[free] = slug;
+    else finderSel.pos = [finderSel.pos[1], finderSel.pos[2], slug];
+  }
+  renderFinderAttrs();
+  renderFinderWants();
+});
+
+/* ---------- Werte ----------
+   Vier Plaetze nebeneinander: drei positive, ein negativer. Ein belegter
+   Platz nimmt die Farbe seiner Richtung an - so sieht man auf einen Blick,
+   wonach gesucht wird, ohne die Auswahlfelder einzeln zu lesen. */
+
+function renderFinderAttrs() {
+  const box = $('rf-attrs');
+  if (!box) return;
+  const cls = finderWeapon?.cls || 'rifle';
+  const attrs = finderRef?.classes?.[cls] || [];
+  const off = finderRef ? '' : ' disabled';
+  const opt = (a, sel) => `<option value="${esc(a.slug)}"${sel === a.slug ? ' selected' : ''}>${esc(a.label)}</option>`;
+  const posSlot = i => {
+    const taken = new Set(finderSel.pos.filter((s, j) => s && j !== i));
+    return `
+      <label class="rf-slot is-pos${finderSel.pos[i] ? ' is-set' : ''}"><span class="rf-sign">+</span>
+        <select data-pos="${i}"${off}>
+          <option value="">Any positive</option>
+          ${attrs.filter(a => a.positive && !taken.has(a.slug)).map(a => opt(a, finderSel.pos[i])).join('')}
+        </select></label>`;
+  };
+  box.innerHTML = [0, 1, 2].map(posSlot).join('') + `
+    <label class="rf-slot is-neg${finderSel.neg ? ' is-set' : ''}"><span class="rf-sign">−</span>
+      <select data-neg${off}>
+        <option value=""${!finderSel.neg ? ' selected' : ''}>Any negative, or none</option>
+        <option value="has"${finderSel.neg === 'has' ? ' selected' : ''}>Must have a negative</option>
+        <option value="none"${finderSel.neg === 'none' ? ' selected' : ''}>No negative</option>
+        ${attrs.filter(a => a.negative && !finderSel.pos.includes(a.slug)).map(a => opt(a, finderSel.neg)).join('')}
+      </select></label>`;
+}
+
+$('rf-attrs')?.addEventListener('change', e => {
+  const sel = e.target.closest('select');
+  if (!sel) return;
+  if (sel.dataset.pos != null) finderSel.pos[Number(sel.dataset.pos)] = sel.value || null;
+  else finderSel.neg = sel.value || null;
+  renderFinderAttrs();
+  renderFinderWants();
+});
+
+/* Die zwei Umschalter sind Filter-Chips wie ueberall in Argus, keine
+   Kontrollkaestchen. */
+['rf-online', 'rf-hide1p'].forEach(id => $(id)?.addEventListener('click', e => {
+  const b = e.currentTarget;
+  const on = !b.classList.contains('active');
+  b.classList.toggle('active', on);
+  b.setAttribute('aria-pressed', String(on));
+}));
+const finderToggle = id => !!$(id)?.classList.contains('active');
+
+/* Enter in einem Zahlenfeld sucht - wie der Knopf. */
+$('rf-price-min')?.closest('.rf-filters')?.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.matches('input')) { e.preventDefault(); runRivenSearch(); }
+});
+
+/* ---------- Eigener Riven als Vorlage ---------- */
+
+async function findSimilarRivens(r) {
+  showRivenPane('finder');
+  await initRivenFinder();
+  if (!finderRef || !r.rating?.slug) return;
+  /* Gesucht wird mit den Werten, die die Waffe will - die bestimmen den
+     Preis. Die Aehnlichkeit rechnet danach mit ALLEN Werten des Rivens. */
+  const pos = r.stats.map((s, i) => ({ s, g: r.rating.stats[i] })).filter(x => !x.s.curse);
+  const wanted = pos.filter(x => x.g && x.g.fit !== 'neutral').map(x => x.g.slug);
+  const pick = (wanted.length ? wanted : pos.map(x => x.g?.slug)).filter(Boolean).slice(0, 3);
+  finderSel.pos = [pick[0] || null, pick[1] || null, pick[2] || null];
+  finderSel.neg = null;
+  await selectFinderWeapon(r.rating.slug, { keepStats: true });
+  finderRiven = r;
+  renderFinderRef();
+  runRivenSearch();
+}
+
+function renderFinderRef() {
+  const box = $('rf-ref');
+  $('rf-sim-row').classList.toggle('hidden', !finderRiven);
+  if (!finderRiven) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+  box.classList.remove('hidden');
+  box.innerHTML = `
+    <span>Comparing with your <b>${esc(finderRiven.fullName)}</b> -
+      ${esc(finderRiven.stats.map(s => `${s.maxText} ${s.label}`).join(', '))}</span>
+    <button class="btn-sm" id="rf-ref-clear">${Icon.close(12)}<span>Stop comparing</span></button>`;
+}
+
+$('rf-ref')?.addEventListener('click', e => {
+  if (!e.target.closest('#rf-ref-clear')) return;
+  finderRiven = null;
+  renderFinderRef();
+  if (finderResults) renderFinderResults();
+});
+
+/* ---------- Suche ---------- */
+
+const numOrNull = id => { const v = $(id)?.value; return v === '' || v == null ? null : Number(v); };
+
+async function runRivenSearch() {
+  if (!finderWeapon) {
+    $('rf-status').textContent = 'Pick a weapon first.';
+    $('rf-weapon').focus();
+    return;
+  }
+  const btn = $('rf-search');
+  btn.disabled = true;
+  $('rf-status').textContent = 'Searching warframe.market …';
+  const ref = finderRiven
+    ? { pos: finderRiven.rating.stats.filter((s, i) => !finderRiven.stats[i].curse).map(s => s.slug).filter(Boolean),
+        neg: finderRiven.rating.stats.find((s, i) => finderRiven.stats[i].curse)?.slug || null }
+    : null;
+  const res = await window.api.searchRivens({
+    weapon: finderWeapon.slug,
+    positive: finderSel.pos.filter(Boolean),
+    negative: finderSel.neg,
+    priceMin: numOrNull('rf-price-min'),
+    priceMax: numOrNull('rf-price-max'),
+    rerollsMin: numOrNull('rf-rr-min'),
+    rerollsMax: numOrNull('rf-rr-max'),
+    similarityMin: finderRiven ? numOrNull('rf-sim-min') : null,
+    onlineOnly: finderToggle('rf-online'),
+    hideOnePlat: finderToggle('rf-hide1p'),
+    reference: ref
+  });
+  btn.disabled = false;
+  if (!res?.ok) {
+    finderResults = null;
+    $('rf-results').innerHTML = '';
+    $('rf-status').textContent = res?.rateLimited
+      ? 'warframe.market is limiting searches right now - wait a minute and search again.'
+      : (res?.error || 'The search failed.');
+    return;
+  }
+  finderResults = res;
+  $('rf-status').textContent = res.total
+    ? `${nf(res.total)} auction${res.total === 1 ? '' : 's'}${res.total > res.offers.length ? `, showing the first ${res.offers.length}` : ''}`
+      + (res.fromServer >= 500 ? ' · warframe.market returns at most 500 per search' : '')
+    : '';
+  renderFinderResults();
+}
+
+$('rf-search')?.addEventListener('click', runRivenSearch);
+
+/* Der Rang einer Auktion, und was mit ihren Werten passiert ist - siehe
+   shapeFinderOffers: hochgerechnet, schon auf Rang 8 eingetragen, oder nicht
+   pruefbar und deshalb wie eingetragen. */
+function rankHint(o) {
+  const r = o.rank;
+  if (r == null || r >= 8) return `<span title="Rank ${r ?? '?'}">R${r ?? '?'}</span>`;
+  if (o.scale === 'scaled') {
+    return `<span title="${esc(`Listed at rank ${r} - the values above are what it has at rank 8`)}">R${r} · shown at R8</span>`;
+  }
+  if (o.scale === 'maxed') {
+    return `<span class="rf-rank-note" title="${esc(`Listed at rank ${r}, but these values are only possible at rank 8 - the seller copied them from a maxed card. Shown as listed.`)}">R${r} · values as at R8</span>`;
+  }
+  return `<span title="Shown as listed">R${r}</span>`;
+}
+
+function finderOfferHtml(o) {
+  const weapon = finderRef?.weapons.find(w => w.slug === finderResults.weapon.slug)?.name || finderResults.weapon.name;
+  const status = o.owner?.status || 'offline';
+  const statusText = status === 'ingame' ? 'in game' : status;
+  /* Die Werte stehen auf Rang 8, damit Angebote verschiedener Raenge
+     vergleichbar sind; eingestellt ist der Riven vielleicht niedriger. */
+  const stats = o.stats.map(s => `
+    <div class="rf-stat ${s.positive ? 'is-pos' : 'is-neg'} fit-${esc(s.fit)}"${s.listed ? ` title="${esc(`Listed at rank ${o.rank}: ${s.listed}`)}"` : ''}>
+      <span class="rf-stat-val">${esc(s.text)}</span><span>${esc(s.label)}</span>
+    </div>`).join('');
+  const pol = o.polarity ? (Icon.polarity(o.polarity, 12) || esc(o.polarity)) : '';
+  return `
+    <div class="rf-offer" data-offer="${esc(o.id)}">
+      <div class="rf-offer-top">
+        <span class="rf-price">${platImg}<b>${o.price != null ? nf(o.price) : '–'}</b>
+          <small>${o.buyout ? 'buyout' : o.topBid != null ? `top bid ${nf(o.topBid)}p` : 'starting bid'}</small></span>
+        ${o.similarity != null ? `<span class="rf-sim ${o.similarity >= 75 ? 'is-high' : o.similarity >= 50 ? 'is-mid' : ''}">${o.similarity}% match</span>` : ''}
+      </div>
+      <div class="rf-offer-name">${esc(weapon)} <span>${esc(o.name || '')}</span></div>
+      <div class="rf-offer-stats">${stats}</div>
+      <div class="rf-offer-meta">
+        <span>MR ${o.mr ?? '?'}</span>
+        ${rankHint(o)}
+        <span title="Times cycled">⟳ ${nf(o.rerolls)}</span>
+        ${pol ? `<span class="rf-pol" title="${esc(o.polarity)} polarity">${pol}</span>` : ''}
+      </div>
+      <div class="rf-offer-foot">
+        <span class="offer-status status-${esc(status)}" title="${esc(statusText)}"></span>
+        <span class="rf-owner">${esc(o.owner?.name || '?')}<small>${o.owner?.reputation != null ? ` · rep ${nf(o.owner.reputation)}` : ''}</small></span>
+        <button class="btn-sm" data-act="copy" title="Copies a whisper for the game chat">${Icon.copy(12)}<span>Whisper</span></button>
+        <button class="btn-sm" data-act="open" title="Open this auction on warframe.market">${Icon.link(12)}</button>
+      </div>
+    </div>`;
+}
+
+function renderFinderResults() {
+  const box = $('rf-results');
+  const res = finderResults;
+  if (!res) { box.innerHTML = ''; return; }
+  if (!res.offers.length) {
+    box.innerHTML = '<p class="hint">No auction matches. Loosen a filter - price and "online" cut the most.</p>';
+    return;
+  }
+  box.innerHTML = res.offers.map(finderOfferHtml).join('');
+}
+
+$('rf-results')?.addEventListener('click', async e => {
+  const btn = e.target.closest('[data-act]');
+  const card = e.target.closest('[data-offer]');
+  if (!btn || !card || !finderResults) return;
+  const o = finderResults.offers.find(x => x.id === card.dataset.offer);
+  if (!o) return;
+  if (btn.dataset.act === 'open') {
+    window.api.openExternal(o.url).catch(() => {});
+    return;
+  }
+  const text = Whisper.auction(o, finderResults.weapon.name);
+  try {
+    await navigator.clipboard.writeText(text);
+    btn.innerHTML = Icon.check ? Icon.check(12) + '<span>Copied</span>' : '<span>Copied</span>';
+    setTimeout(() => { btn.innerHTML = Icon.copy(12) + '<span>Whisper</span>'; }, 1600);
+  } catch {
+    btn.innerHTML = '<span>Copy failed</span>';
+  }
+});
 
 
 /* ---------------- Material Klick Verlinkung zum Farm-Guide ---------------- */

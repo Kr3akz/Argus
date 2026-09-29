@@ -1171,20 +1171,95 @@
         <button class="btn" id="btn-riven-refresh">Fetch inventory</button>
       </div>
 
-      <div class="inv-notice hidden" id="riven-notice"></div>
-      <div class="inv-state hidden" id="riven-state"></div>
+      <!-- Drei Unterreiter wie in den Einstellungen: die eigenen Rivens mit
+           Noten, die verschleierten, und die Suche auf warframe.market. Der
+           Finder braucht kein Inventar - er steht auch ohne Abruf. -->
+      <div class="ws-nav riven-nav" id="riven-nav">
+        <button class="ws-navtab active" data-riven-go="unveiled">Unveiled <b id="riven-count-unveiled">0</b></button>
+        <button class="ws-navtab" data-riven-go="veiled">Veiled <b id="riven-count-veiled">0</b></button>
+        <button class="ws-navtab" data-riven-go="finder">Riven finder</button>
+      </div>
 
-      <div class="hidden" id="riven-body">
-        <div class="inv-meta-row">
+      <!-- ---- Unterreiter: Unveiled ---- -->
+      <div class="riven-pane active" data-riven-pane="unveiled">
+        <div class="inv-notice hidden" id="riven-notice"></div>
+        <div class="inv-state hidden" id="riven-state"></div>
+
+        <div class="hidden" id="riven-body">
+          <div class="ducats-filter-row riven-toolbar">
+            <div class="searchbox flex-search">
+              <span class="ic" data-icon="search"></span>
+              <input type="text" id="riven-search" placeholder="Search weapon or stat … e.g. Torid, Multishot" autocomplete="off">
+            </div>
+            <div class="ducats-filter-badges" id="riven-kinds"></div>
+            <div class="ducats-sort-wrap" id="riven-sort-wrap"></div>
+          </div>
           <div class="inv-meta" id="riven-meta"></div>
-          <div class="ducats-sort-wrap" id="riven-sort-wrap"></div>
+          <div class="riven-grid" id="riven-grid"></div>
         </div>
-        <div class="riven-grid" id="riven-grid"></div>
+      </div>
 
-        <div class="riven-veiled-wrap hidden" id="riven-veiled-wrap">
-          <h3 class="riven-subhead">Veiled</h3>
-          <div class="riven-veiled" id="riven-veiled"></div>
+      <!-- ---- Unterreiter: Veiled ---- -->
+      <div class="riven-pane" data-riven-pane="veiled">
+        <div class="riven-veiled" id="riven-veiled"></div>
+      </div>
+
+      <!-- ---- Unterreiter: Riven finder ----
+           EIN Bedienfeld, von oben nach unten in der Reihenfolge, in der man
+           es ausfuellt: Waffe, Werte, was die Waffe am Markt traegt, Filter.
+           Jede Zeile hat links dieselbe Beschriftungsspalte - so steht alles
+           in einer Flucht, und der eine Knopf, der etwas tut, steht oben
+           rechts neben der Waffe. Darunter die Ergebnisse. -->
+      <div class="riven-pane" data-riven-pane="finder">
+        <div class="rf-panel">
+          <div class="rf-row">
+            <span class="rf-k">Weapon</span>
+            <div class="rf-v rf-weapon-row">
+              <div class="searchbox rf-weapon">
+                <span class="ic" data-icon="search"></span>
+                <input type="text" id="rf-weapon" placeholder="Type a weapon name … e.g. Torid, Rubico, Nikana" autocomplete="off" spellcheck="false">
+                <div class="rf-suggest hidden" id="rf-suggest"></div>
+              </div>
+              <button class="btn btn-primary" id="rf-search">Search warframe.market</button>
+            </div>
+          </div>
+
+          <div class="rf-row">
+            <span class="rf-k">Stats</span>
+            <div class="rf-v rf-attrs" id="rf-attrs"></div>
+          </div>
+
+          <!-- Was die Waffe am Markt traegt - ein Klick legt den Wert in den
+               naechsten freien Platz darueber. -->
+          <div class="rf-row">
+            <span class="rf-k">Sells with</span>
+            <div class="rf-v rf-wants" id="rf-wants"></div>
+          </div>
+
+          <div class="rf-row">
+            <span class="rf-k">Filters</span>
+            <div class="rf-v rf-filters">
+              <label class="rf-num"><span>Price</span>
+                <input type="number" id="rf-price-min" min="0" placeholder="min"><i>–</i>
+                <input type="number" id="rf-price-max" min="0" placeholder="max"></label>
+              <label class="rf-num"><span>Rerolls</span>
+                <input type="number" id="rf-rr-min" min="0" placeholder="min"><i>–</i>
+                <input type="number" id="rf-rr-max" min="0" placeholder="max"></label>
+              <label class="rf-num hidden" id="rf-sim-row"><span>Match</span>
+                <input type="number" id="rf-sim-min" min="0" max="100" placeholder="min"><i>%</i></label>
+              <span class="rf-toggles">
+                <button type="button" class="filter-chip active" id="rf-online" aria-pressed="true">Online or in game</button>
+                <button type="button" class="filter-chip active" id="rf-hide1p" aria-pressed="true">Hide 1p offers</button>
+              </span>
+            </div>
+          </div>
         </div>
+
+        <!-- Kommt die Suche von einem eigenen Riven, steht hier, mit welchem
+             verglichen wird. -->
+        <div class="rf-ref hidden" id="rf-ref"></div>
+        <div class="rf-resbar"><span class="rf-status" id="rf-status"></span></div>
+        <div class="rf-results" id="rf-results"></div>
       </div>
     </section>
 

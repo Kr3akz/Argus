@@ -36,8 +36,102 @@ const slugName = list => (list || []).map(e => ({
   slug: e.slug,
   name: e.i18n?.en?.name || e.slug,
   gameRef: e.gameRef || null,
-  group: e.group || null
+  group: e.group || null,
+  /* Nur bei Riven-Waffen: rifle | shotgun | pistol | melee | kitgun | zaw.
+     Arch-Guns stehen als group "archgun" mit rivenType "rifle". */
+  rivenType: e.rivenType || null
 }));
+
+/* ------------------------ Suche: eigene Spur ------------------------
+
+   DIE SUCHE IST GEDROSSELT, und zwar deutlich strenger als der Rest der API.
+   Nachgemessen am 2026-09-29: nach 10 bis 11 Suchen antwortete Cloudflare mit
+   429 (Fehler 1015) - einmal nach 16 Sekunden dichter Folge mit
+   "retry-after: 13", einmal mit 3 Sekunden Abstand nach 31 Sekunden mit
+   "retry-after: 60". Der Abstand hilft also nicht, es zaehlt die Menge je
+   Minute. Mit 7 Sekunden Abstand liefen danach sechs Suchen glatt durch.
+
+   Und die Sperre trifft nicht nur Argus: sie gilt fuer die Adresse, also auch
+   fuer den Browser, mit dem jemand gerade auf warframe.market handelt.
+
+   Deshalb laeuft jede Suche durch dieses Budget: hoechstens 8 je Minute fuer
+   das, was jemand ausgeloest hat (Finder, Angebotsliste), und hoechstens 5 fuer
+   das, was Argus nebenher nachlaedt (Marktwuensche je Waffe, riven-market.js).
+   Ausgeloestes geht vor. Kommt trotzdem ein 429 - der Browser zaehlt mit -,
+   ruht die Spur, so lange der Server es sagt. */
+const SEARCH_WINDOW_MS = 60 * 1000;
+const SEARCH_BUDGET = { user: 8, background: 5 };
+
+let searchStamps = [];
+let searchBlockedUntil = 0;
+let searchSeq = 0;
+const searchWaiting = [];
+let searchTimer = null;
+
+function pumpSearch() {
+  searchTimer = null;
+  if (!searchWaiting.length) return;
+  const now = Date.now();
+  searchStamps = searchStamps.filter(t => now - t < SEARCH_WINDOW_MS);
+  /* Ausgeloestes zuerst, innerhalb derselben Stufe der Reihe nach. */
+  searchWaiting.sort((a, b) => (a.priority === 'user' ? 0 : 1) - (b.priority === 'user' ? 0 : 1) || a.seq - b.seq);
+  const next = searchWaiting[0];
+  const budget = SEARCH_BUDGET[next.priority] ?? SEARCH_BUDGET.background;
+
+  let wait = 0;
+  if (now < searchBlockedUntil) wait = searchBlockedUntil - now;
+  else if (searchStamps.length >= budget) {
+    /* Warten, bis so viele alte Stempel aus dem Fenster gefallen sind, dass
+       wieder einer frei ist. */
+    wait = SEARCH_WINDOW_MS - (now - searchStamps[searchStamps.length - budget]) + 50;
+  }
+  if (wait > 0) {
+    searchTimer = setTimeout(pumpSearch, wait);
+    return;
+  }
+  searchWaiting.shift();
+  searchStamps.push(now);
+  next.resolve();
+  if (searchWaiting.length) searchTimer = setTimeout(pumpSearch, 0);
+}
+
+function acquireSearch(priority) {
+  return new Promise(resolve => {
+    searchWaiting.push({ priority, seq: searchSeq++, resolve });
+    if (!searchTimer) searchTimer = setTimeout(pumpSearch, 0);
+  });
+}
+
+/** Wie lange eine Suche gerade warten muesste - fuer die Oberflaeche. */
+export function searchLaneState() {
+  const now = Date.now();
+  return {
+    blockedFor: Math.max(0, Math.ceil((searchBlockedUntil - now) / 1000)),
+    used: searchStamps.filter(t => now - t < SEARCH_WINDOW_MS).length,
+    waiting: searchWaiting.length
+  };
+}
+
+/**
+ * Eine Auktionssuche durch die Spur. Ein 429 wird EINMAL nach der genannten
+ * Wartezeit wiederholt; kommt dann noch einer, geht der Fehler an den Aufrufer.
+ *
+ * @param params    URLSearchParams oder Objekt fuer v1/auctions/search
+ * @param priority  'user' | 'background'
+ */
+export async function searchAuctions(params, { priority = 'user' } = {}) {
+  const qs = params instanceof URLSearchParams ? params : new URLSearchParams(params);
+  for (let attempt = 0; ; attempt++) {
+    await acquireSearch(priority);
+    try {
+      return await request(`v1/auctions/search?${qs}`);
+    } catch (err) {
+      if (err?.status !== 429 || attempt >= 1) throw err;
+      searchBlockedUntil = Date.now() + (err.retryAfter || 60) * 1000 + 1000;
+      console.warn(`[Markt] Auktionssuche gedrosselt - Pause ${err.retryAfter || 60} s`);
+    }
+  }
+}
 
 /**
  * Waffen, Attribute, Ephemera und Quirks - alles, was ein Auktionsformular
@@ -174,7 +268,7 @@ export async function auctionOffers({
   params.set('sort_by', sort === 'price-desc' ? 'price_desc' : 'price_asc');
   if (directSellOnly) params.set('buyout_policy', 'direct');
 
-  const raw = await request(`v1/auctions/search?${params}`);
+  const raw = await searchAuctions(params, { priority: 'user' });
   let list = (raw?.auctions || []).map(decorate).filter(Boolean)
     .filter(a => !a.closed && a.visible);
 
@@ -187,6 +281,37 @@ export async function auctionOffers({
   else list.sort((a, b) => price(a) - price(b));
 
   return { offers: list.slice(0, limit), total: list.length };
+}
+
+/**
+ * Riven-Auktionen mit Werten suchen - fuer den Riven-Finder.
+ *
+ * Was der Server filtern kann, filtert er (nachgemessen am 2026-09-29 an der
+ * Torid): positive_stats und negative_stats mit Liste, "has" oder "none",
+ * re_rolls_min/max, buyout_policy=direct. Er liefert hoechstens 500 Treffer.
+ * Preis, Online-Status und 1-Platin-Angebote filtert der Aufrufer - dafuer
+ * gibt es keine Parameter, und eine zweite Suche kostet Budget.
+ *
+ * @param weapon     slug der Waffe
+ * @param positive   bis zu drei slugs, die der Riven positiv tragen muss
+ * @param negative   slug | 'has' | 'none' | null
+ * @returns die geschmueckten Auktionen, offen und sichtbar
+ */
+export async function rivenSearch({
+  weapon, positive = [], negative = null, rerollsMin = null, rerollsMax = null,
+  directOnly = false, sort = 'price_asc', priority = 'user'
+} = {}) {
+  if (!weapon) return [];
+  const params = new URLSearchParams({ type: 'riven', weapon_url_name: weapon, sort_by: sort });
+  const pos = [...new Set(positive.filter(Boolean))].slice(0, 3);
+  if (pos.length) params.set('positive_stats', pos.join(','));
+  if (negative) params.set('negative_stats', negative);
+  if (Number.isFinite(rerollsMin)) params.set('re_rolls_min', String(rerollsMin));
+  if (Number.isFinite(rerollsMax)) params.set('re_rolls_max', String(rerollsMax));
+  if (directOnly) params.set('buyout_policy', 'direct');
+
+  const raw = await searchAuctions(params, { priority });
+  return (raw?.auctions || []).map(decorate).filter(Boolean).filter(a => !a.closed && a.visible);
 }
 
 export async function getAuction(id) {

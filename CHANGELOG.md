@@ -21,6 +21,71 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.18.0] - 2026-09-30
+
+### Added
+
+- **Grades for your rivens.** Every riven now gets a grade from S to F, and
+  every stat on it a letter of its own. What counts most is whether the weapon
+  *wants* that stat — and that comes from the market, not from guesswork: for
+  each weapon Argus looks at the priciest quarter of its riven auctions on
+  warframe.market and notes which stats they carry. Torid rivens sell with Crit
+  chance, Crit damage and Multishot; a Vectis riven may happily lose Magazine
+  capacity, because the gun holds one round anyway. How well a stat rolled
+  counts too, but less — a wanted stat with a poor roll beats a perfect one
+  nobody looks for. Each card lists what its weapon wants and which negatives
+  barely matter, with the ones on that riven highlighted; hovering the grade
+  says where it comes from.
+
+  The market data is fetched once a week per weapon, slowly and in the
+  background. Until it has arrived — or offline — a weapon is graded by what
+  rivens of its class sell with in general, measured across 22 weapons; those
+  grades are grey and marked with a *~*.
+
+- **A riven finder.** Search riven auctions on warframe.market by weapon, up to
+  three positive stats and a negative (or *must have one* / *none*), with price,
+  rerolls, online status and a switch for 1p placeholder offers. The weapon's
+  wanted stats are one click away. Values are shown at rank 8, so a rank-0
+  offer compares with a maxed one — unless the seller already typed in the
+  rank-8 values, which more than a quarter of low-rank listings do; Argus
+  checks every offer against what a riven can reach on that weapon and leaves
+  those as they are. *Similar* on any of your rivens opens the
+  finder with that riven's wanted stats and ranks the results by how many of
+  its stats they share. Copy a whisper or open the auction on warframe.market.
+
+- **Grades on the cycle screen.** The panels that compare your current and new
+  roll now show the grade of both, a letter on every stat, and which stats the
+  weapon wants.
+
+### Changed
+
+- **The Rivens tab has three parts:** Unveiled, with search, a filter by weapon
+  class and sorting by grade; Veiled, with challenges grouped and the rivens you
+  have not revealed yet by type; and the Riven finder.
+
+- **Bigger pictures in Baro Ki'Teer.** In *My prime inventory* and the *Full
+  prime catalogue*, every part is now a wider card in three parts: its picture
+  large on top, tinted from the top-left corner in bronze, silver or gold by
+  rarity, with *Vaulted* and the set status above it on the left and how
+  many you own on the right; then, on a darker strip, the name and three
+  values side by side — ducats (coloured bronze, silver or gold by rarity),
+  platinum, and ducats per platinum labelled *Junk*, *Market* or *Fair*;
+  and at the bottom the picker for selling. A faint outline holds each card
+  together. The gold buttons and the notice above them are flat now — the
+  same look as the rest of Argus.
+
+- **Auction searches share a budget.** warframe.market allows only about ten
+  auction searches a minute — one more and it locks out your whole address for
+  up to a minute, your browser included. Argus now keeps below that across the
+  finder, the comparable auctions in Trading and its own background loading,
+  and waits as long as the site asks if a lock happens anyway.
+
+### Fixed
+
+- **A prime part picked for Baro now looks picked.** The rarity tint was drawn
+  over the selection, so a selected card looked almost like any other. It now
+  turns gold: a gold tint and a gold outline around the whole card.
+
 ## [1.17.0] - 2026-09-29
 
 ### Added

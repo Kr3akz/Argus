@@ -51,5 +51,25 @@ const Whisper = {
   /** Was der Knopf sagt - dieselbe Richtung, kuerzer. */
   label(offer) {
     return offer?.type === 'sell' ? 'Copy buy message' : 'Copy sell message';
+  },
+
+  /**
+   * Dieselbe Zeile fuer eine Riven-Auktion aus dem Finder.
+   *
+   * Eine Auktion gibt es nur einmal, also steht der volle Name dabei - die
+   * Waffe allein ("Torid") passt auf jeden Riven dieses Verkaeufers. Ohne
+   * Sofortkauf gibt es keinen Preis, den man zusagen koennte; dann fragt die
+   * Zeile, statt einen Startpreis als Angebot auszugeben.
+   *
+   * @param offer   Ergebnis aus rivens:finder-search  { owner, name, price, buyout }
+   * @param weapon  Name der Waffe
+   */
+  auction(offer, weapon) {
+    if (!offer) return '';
+    const name = [weapon, offer.name].filter(Boolean).join(' ');
+    const head = `/w ${offer.owner?.name ?? '?'} Hi! I want to buy your riven "${name}"`;
+    return offer.buyout && offer.price != null
+      ? `${head} for ${offer.price} platinum. (warframe.market)`
+      : `${head} - are you still taking offers? (warframe.market)`;
   }
 };

@@ -128,7 +128,9 @@ export function buildInventoryDucats(inventory, catalog, market, priceCache = {}
           ducats,
           rarity: getRarity(ducats),
           count,
-          image: imageUrl(uniqueName, 128) || (m.i18n?.en?.thumb ? `https://warframe.market/static/assets/${m.i18n.en.thumb}` : null),
+          /* 256 statt 128: die Teilekarte zeigt das Bild gross (rund 104 Punkte,
+             auf einem Bildschirm mit Skalierung mehr Pixel). */
+          image: imageUrl(uniqueName, 256) || (m.i18n?.en?.thumb ? `https://warframe.market/static/assets/${m.i18n.en.thumb}` : null),
           price,
           tradeAdvice
         });
@@ -367,7 +369,7 @@ export function buildDucatsCatalog(catalog, market, priceCache = {}) {
       parentItem: getParentPrimeName(name),
       ducats,
       rarity: getRarity(ducats),
-      image: uniqueName ? imageUrl(uniqueName, 128) : (m.i18n?.en?.thumb ? `https://warframe.market/static/assets/${m.i18n.en.thumb}` : null),
+      image: uniqueName ? imageUrl(uniqueName, 256) : (m.i18n?.en?.thumb ? `https://warframe.market/static/assets/${m.i18n.en.thumb}` : null),
       price,
       tradeAdvice
     });

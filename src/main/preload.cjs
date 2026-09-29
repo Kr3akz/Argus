@@ -52,6 +52,17 @@ contextBridge.exposeInMainWorld('api', {
   getFoundry:      ()          => ipcRenderer.invoke('foundry:get'),
   /* Die Rivens: nur aus der lokalen Inventardatei, wie die Schmiede. */
   getRivens:       ()          => ipcRenderer.invoke('rivens:get'),
+  /* Marktwuensche je Waffe kommen im Hintergrund nach - dann meldet sich
+     dieser Kanal, und der Reiter holt die Noten neu. */
+  onRivensChanged: (cb)        => {
+    const handler = (_e, info) => cb(info);
+    ipcRenderer.on('rivens:changed', handler);
+    return () => ipcRenderer.removeListener('rivens:changed', handler);
+  },
+  /* Riven-Finder: Auswahllisten, Wuensche einer Waffe, Suche. */
+  getRivenFinderRef: ()        => ipcRenderer.invoke('rivens:finder-ref'),
+  getRivenWants:   (slug)      => ipcRenderer.invoke('rivens:wants', slug),
+  searchRivens:    (opts)      => ipcRenderer.invoke('rivens:finder-search', opts),
   /* Die Bauketten haengen am Katalog, nicht am Inventar - deshalb ein
      eigener Kanal: sie stehen auch, bevor je etwas abgerufen wurde. */
   getCraftChains:  ()          => ipcRenderer.invoke('foundry:chains'),

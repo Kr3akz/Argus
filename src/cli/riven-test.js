@@ -7,7 +7,9 @@
  * Teil 1 und 2 laufen ohne Daten auf der Platte: die Messpunkte stehen hier
  * drin, abgelesen am 2026-09-29 aus Screenshots von Kaans Mod-Bildschirm und
  * gegen die Fingerprints derselben Rivens gestellt. Teil 3 rechnet das echte
- * Inventar durch, wenn eins da ist.
+ * Inventar durch, wenn eins da ist. Teil 4 prueft Wuensche und Noten
+ * (riven-wants.js) an Marktanteilen, die am 2026-09-29 gemessen wurden -
+ * ebenfalls ohne Netz.
  */
 import { computeStat, rivenName, buildRivens } from '../core/rivens.js';
 
@@ -270,6 +272,166 @@ if (inventory && catalog) {
   for (const v of view.veiled) console.log(`    ${v.kind} Riven, verschleiert: ${v.challenge.text} (${v.challenge.progress}/${v.challenge.required})`);
   console.log(`    ungeoeffnet: ${view.unrevealed.map(u => `${u.count}x ${u.kind}`).join(', ') || 'keine'}`);
   console.log('  (~ = enthaelt gerechnete, noch nicht an einer Karte abgelesene Werte)');
+}
+
+/* ------------------------------------------------------------------------
+   Teil 4: Wuensche und Noten (riven-wants.js). Die Anteile sind am
+   2026-09-29 gemessen - je Waffe eine Suche auf warframe.market, nach Preis
+   absteigend, davon das teuerste Viertel. Laeuft ohne Netz.
+   ------------------------------------------------------------------------ */
+console.log('\n=== Teil 4: Wuensche und Noten ===');
+{
+  const W = await import('../core/riven-wants.js');
+  const slugs = list => list.map(w => w.slug).join(',');
+
+  /* Gemessene Anteile: Waffe -> erwartete Einteilung. */
+  const MEASURED = [
+    { name: 'Torid', shares: { negBase: 107,
+        pos: { critical_chance: 0.92, critical_damage: 0.89, multishot: 0.81, 'base_damage_/_melee_damage': 0.11, toxin_damage: 0.04 },
+        neg: { zoom: 0.33, magazine_capacity: 0.19, recoil: 0.17, damage_vs_infested: 0.09 } },
+      best: 'critical_chance,critical_damage,multishot', good: '', harmless: 'zoom,magazine_capacity,recoil' },
+    { name: 'Hate', shares: { negBase: 120,
+        pos: { critical_damage: 0.84, 'fire_rate_/_attack_speed': 0.51, critical_chance: 0.48, range: 0.39,
+               'base_damage_/_melee_damage': 0.19, electric_damage: 0.16 },
+        neg: { critical_chance_on_slide_attack: 0.21, finisher_damage: 0.2, slash_damage: 0.15, channeling_efficiency: 0.14,
+               damage_vs_infested: 0.12, combo_duration: 0.05 } },
+      best: 'critical_damage,fire_rate_/_attack_speed,critical_chance', good: 'range,base_damage_/_melee_damage',
+      harmless: 'critical_chance_on_slide_attack,finisher_damage,slash_damage,channeling_efficiency,damage_vs_infested' },
+    /* Vectis: ein Schuss im Magazin - weniger Magazin tut ihr nicht weh, und
+       genau das zeigt der Markt mit 52 %. */
+    { name: 'Vectis', shares: { negBase: 115,
+        pos: { critical_damage: 0.82, critical_chance: 0.75, multishot: 0.75, 'base_damage_/_melee_damage': 0.3, heat_damage: 0.17 },
+        neg: { magazine_capacity: 0.52, zoom: 0.16, impact_damage: 0.1, damage_vs_infested: 0.07 } },
+      best: 'critical_damage,critical_chance,multishot', good: 'base_damage_/_melee_damage,heat_damage',
+      harmless: 'magazine_capacity,zoom,impact_damage' },
+    /* Galariak Prime: duenner Markt, flache Anteile - eine feste Grenze von
+       45 % liesse ihr gar nichts Gewuenschtes. */
+    { name: 'Galariak Prime', shares: { negBase: 24,
+        pos: { 'base_damage_/_melee_damage': 0.39, critical_damage: 0.35, critical_chance: 0.29,
+               'fire_rate_/_attack_speed': 0.23, range: 0.23, damage_vs_grineer: 0.16 },
+        neg: { critical_chance_on_slide_attack: 0.29, puncture_damage: 0.21, channeling_efficiency: 0.13, impact_damage: 0.13 } },
+      best: 'base_damage_/_melee_damage,critical_damage,critical_chance',
+      good: 'fire_rate_/_attack_speed,range,damage_vs_grineer',
+      harmless: 'critical_chance_on_slide_attack,puncture_damage,channeling_efficiency,impact_damage' },
+    { name: 'Ocucor', shares: { negBase: 118,
+        pos: { multishot: 0.91, critical_damage: 0.82, toxin_damage: 0.54, critical_chance: 0.24, 'base_damage_/_melee_damage': 0.2 },
+        neg: { zoom: 0.16, puncture_damage: 0.15, recoil: 0.14, slash_damage: 0.13, projectile_speed: 0.13, impact_damage: 0.11 } },
+      best: 'multishot,critical_damage,toxin_damage', good: 'critical_chance,base_damage_/_melee_damage',
+      harmless: 'zoom,puncture_damage,recoil,slash_damage,projectile_speed' },
+  ];
+  for (const m of MEASURED) {
+    const w = W.classifyShares(m.shares);
+    ok(`${m.name}: gewuenscht`, slugs(w.best) === m.best, slugs(w.best));
+    ok(`${m.name}: auch gut`, slugs(w.good) === m.good, slugs(w.good));
+    ok(`${m.name}: unschaedlich negativ`, slugs(w.harmless) === m.harmless, slugs(w.harmless));
+  }
+
+  /* Aus rohen Auktionen: die teuren tragen CC/CD/MS, die billigen Beliebiges.
+     Dazu ein Scherzpreis mit Schrottwerten - er darf nicht in die Spitze. */
+  const auctions = [];
+  for (let i = 0; i < 30; i++) auctions.push({ price: 2000 + i * 50, pos: ['critical_chance', 'critical_damage', 'multishot'], neg: ['zoom'] });
+  for (let i = 0; i < 90; i++) auctions.push({ price: 30 + i, pos: ['heat_damage', 'reload_speed'], neg: ['critical_chance'] });
+  auctions.push({ price: 888888, pos: ['reload_speed', 'ammo_maximum'], neg: ['multishot'] });
+  auctions.push({ price: 1, pos: ['zoom'], neg: [] });
+  const d = W.deriveWants(auctions);
+  ok('aus Auktionen: das Teure gewinnt', slugs(d.best) === 'critical_chance,critical_damage,multishot', slugs(d.best));
+  ok('Scherzpreis und 1p fliegen raus', d.sample === 120, `${d.sample} bereinigt`);
+  ok('negativ auf Gewuenschtem ist nie unschaedlich', !d.harmless.some(w => w.slug === 'critical_chance'), slugs(d.harmless));
+  ok('zu wenig Auktionen heisst duenn', W.deriveWants(auctions.slice(0, 12)).thin === true);
+
+  /* Tags aus dem Fingerprint - Nahkampf fuehrt Schaden und Fraktion unter
+     eigenen Tags (Hate: WeaponMeleeDamageMod, WeaponMeleeFactionDamageGrineer). */
+  ok('Nahkampf-Schaden', W.tagToSlug('WeaponMeleeDamageMod') === 'base_damage_/_melee_damage');
+  ok('Nahkampf-Fraktion', W.tagToSlug('WeaponMeleeFactionDamageGrineer') === 'damage_vs_grineer');
+  ok('Feuerrate heisst im Nahkampf Angriffstempo', W.attrLabel('fire_rate_/_attack_speed', 'melee') === 'Attack speed'
+     && W.attrLabel('fire_rate_/_attack_speed', 'rifle') === 'Fire rate');
+  ok('Klasse: Arch-Gun ueber die Gruppe', W.rivenClass('Rifle', { group: 'archgun', rivenType: 'rifle' }) === 'archgun');
+  ok('Klasse: Begleiterwaffe ueber den Riven-Typ', W.rivenClass('Companion Weapon', { rivenType: 'melee' }) === 'melee');
+
+  /* Auktionswerte, wie warframe.market sie fuehrt (17.000 Werte gesichtet). */
+  const fmt = [
+    ['damage_vs_grineer', 1.46, 'x1.46'], ['damage_vs_infested', 0.72, 'x0.72'], ['zoom', -61.7, '-61.7%'],
+    ['critical_chance', 118.8, '+118.8%'], ['combo_duration', 6, '+6s'], ['punch_through', 2.3, '+2.3'],
+    ['recoil', -72.7, '-72.7%'], ['range', 1.4, '+1.4']
+  ];
+  for (const [slug, v, want] of fmt) ok(`Auktionswert ${slug} ${v}`, W.formatAuctionValue(slug, v) === want, W.formatAuctionValue(slug, v));
+
+  /* Jede Klasse hat Wuensche, und jeder slug gibt es. */
+  const known = new Set(W.RIVEN_ATTRS.map(a => a.slug));
+  for (const [cls, s] of Object.entries(W.CLASS_SHARES)) {
+    const w = W.classWants(cls);
+    ok(`Klasse ${cls}: mindestens zwei gewuenschte`, w.best.length >= 2, slugs(w.best));
+    ok(`Klasse ${cls}: nur bekannte Werte`, [...Object.keys(s.pos), ...Object.keys(s.neg)].every(k => known.has(k)));
+  }
+
+  /* Noten an Kaans Rivens, mit den gemessenen Wuenschen der Waffe. */
+  const torid = W.classifyShares(MEASURED[0].shares);
+  const stat = (tag, quality, curse = false) => ({ tag, quality, curse });
+  const g1 = W.gradeRiven([stat('WeaponCritDamageMod', 0.02), stat('WeaponFireIterationsMod', 0.52), stat('WeaponCritChanceMod', 0.37)], torid);
+  ok('Torid CD/MS/CC ohne Negativ: A-', g1.letter === 'A-', `${g1.letter} ${g1.score}`);
+  const g2 = W.gradeRiven([stat('WeaponCritDamageMod', 0.9), stat('WeaponFireIterationsMod', 0.9), stat('WeaponCritChanceMod', 0.9),
+                           stat('WeaponZoomFovMod', 0.5, true)], torid);
+  ok('drei gewuenschte, gut gewuerfelt, unschaedliches Negativ: S', g2.letter === 'S', `${g2.letter} ${g2.score}`);
+  const baza = W.classWants('rifle');
+  const g3 = W.gradeRiven([stat('WeaponReloadSpeedMod', 0.1), stat('WeaponClipMaxMod', 0.44), stat('WeaponZoomFovMod', 0.74, true)], baza);
+  ok('nichts Gewuenschtes: F', g3.letter === 'F', `${g3.letter} ${g3.score}`);
+  const g4 = W.gradeRiven([stat('WeaponCritDamageMod', 0.9), stat('WeaponFireIterationsMod', 0.9),
+                           stat('WeaponCritChanceMod', 0.5, true)], torid);
+  ok('Negativ auf Gewuenschtem kostet', g4.score < W.gradeRiven([stat('WeaponCritDamageMod', 0.9), stat('WeaponFireIterationsMod', 0.9)], torid).score,
+     `${g4.letter} ${g4.score}`);
+  ok('Buchstabe je Wert: gewuenscht vor ungewuenscht',
+     g1.stats.every(s => s.fit === 'best') && g3.stats[0].fit === 'neutral' && g3.stats[2].fit === 'harmless');
+
+  /* Auktionswerte auf Rang 8: ein Torid-Riven auf Rang 0 stand am 2026-09-29
+     mit +14.9% Critical Damage auf warframe.market - auf Rang 8 das Neunfache. */
+  const atMax = (slug, v, r) => W.formatAuctionValue(slug, W.auctionValueAtMax(slug, v, r));
+  ok('Rang 0 -> Rang 8', atMax('critical_damage', 14.9, 0) === '+134.1%', atMax('critical_damage', 14.9, 0));
+  ok('Faktor: nur der Aufschlag waechst', atMax('damage_vs_grineer', 1.05, 0) === 'x1.45', atMax('damage_vs_grineer', 1.05, 0));
+  ok('Rang 8 bleibt', atMax('zoom', -61.7, 8) === '-61.7%');
+
+  /* Finder: Filter, die warframe.market nicht kann, und die Aehnlichkeit. */
+  const { shapeFinderOffers } = await import('../core/riven-market.js');
+  const auction = (id, price, status, attrs, rank = 8) => ({
+    id, buyoutPrice: price, startingPrice: price, owner: { name: id, status, reputation: 1 },
+    item: { name: 'crita-satitis', modRank: rank, reRolls: 3, attributes: attrs.map(([slug, value, positive = true]) => ({ slug, value, positive })) }
+  });
+  const raw = [
+    auction('a', 1, 'ingame', [['critical_chance', 150], ['multishot', 100]]),
+    auction('b', 900, 'offline', [['critical_chance', 150], ['critical_damage', 100], ['zoom', -40, false]]),
+    auction('c', 500, 'online', [['critical_chance', 150], ['critical_damage', 100], ['multishot', 90], ['zoom', -40, false]]),
+    auction('d', 300, 'ingame', [['critical_chance', 150], ['heat_damage', 90]])
+  ];
+  const ref = { pos: ['critical_chance', 'critical_damage', 'multishot'], neg: 'zoom' };
+  const shaped = shapeFinderOffers(raw, { cls: 'rifle', wants: torid, opts: { onlineOnly: true, hideOnePlat: true, reference: ref } });
+  ok('online und ohne 1p', shaped.offers.map(o => o.id).join(',') === 'c,d', shaped.offers.map(o => o.id).join(','));
+  ok('Aehnlichkeit: alle vier Werte gleich', shaped.offers[0].similarity === 100, String(shaped.offers[0].similarity));
+  ok('Aehnlichkeit: einer von vier', shaped.offers[1].similarity === 25, String(shaped.offers[1].similarity));
+  ok('Werte passen zur Waffe', shaped.offers[0].stats.find(s => s.slug === 'zoom').fit === 'harmless'
+     && shaped.offers[1].stats.find(s => s.slug === 'heat_damage').fit === 'neutral');
+  const cheap = shapeFinderOffers(raw, { cls: 'rifle', wants: torid, opts: { priceMax: 600 } });
+  ok('ohne Vorlage nach Preis, Preisgrenze', cheap.offers.map(o => o.id).join(',') === 'a,d,c', cheap.offers.map(o => o.id).join(','));
+  ok('Name wie im Spiel', cheap.offers[0].name === 'Crita-satitis', cheap.offers[0].name);
+
+  /* Rang 0 mit abgetippten Rang-8-Werten. Beide Auktionen standen am
+     2026-09-29 unter der Torid; die Basiswerte sind die der Gewehr-Vorlage
+     aus Teil 1, die Disposition die der Torid (1,3). */
+  const { auctionMaxima } = await import('../core/riven-market.js');
+  const rifleTpl = { upgradeEntries: [
+    { tag: 'WeaponCritChanceMod', upgradeValues: [{ value: 0.016666001 }] },
+    { tag: 'WeaponCritDamageMod', upgradeValues: [{ value: 0.013333 }] },
+    { tag: 'WeaponFireIterationsMod', upgradeValues: [{ value: 0.0099999998 }] }
+  ] };
+  const byUniqueName = new Map([['/Lotus/Upgrades/Mods/Randomized/LotusRifleRandomModRare', rifleTpl]]);
+  const maxima = auctionMaxima('rifle', byUniqueName, 1.3);
+  const real = auction('r0', 3999, 'ingame', [['critical_damage', 14.9], ['multishot', 12.3], ['critical_chance', 20.7], ['recoil', 10.4, false]], 0);
+  const typed = auction('r8', 10000, 'ingame', [['critical_chance', 199.8], ['critical_damage', 159.4], ['multishot', 104.9], ['damage_vs_grineer', 0.58, false]], 0);
+  const both = shapeFinderOffers([real, typed], { cls: 'rifle', wants: torid, maxima, opts: {} }).offers;
+  const cd = o => o.stats.find(s => s.slug === 'critical_damage').text;
+  const cc = o => o.stats.find(s => s.slug === 'critical_chance').text;
+  ok('echte Rang-0-Werte werden hochgerechnet', both[0].scale === 'scaled' && cd(both[0]) === '+134.1%', `${both[0].scale} ${cd(both[0])}`);
+  ok('abgetippte Rang-8-Werte bleiben, wie sie sind', both[1].scale === 'maxed' && cc(both[1]) === '+199.8%', `${both[1].scale} ${cc(both[1])}`);
+  const blind = shapeFinderOffers([real], { cls: 'rifle', wants: torid, opts: {} }).offers[0];
+  ok('ohne Vorlage wird nicht hochgerechnet', blind.scale === 'unknown' && cd(blind) === '+14.9%', `${blind.scale} ${cd(blind)}`);
 }
 
 console.log(failures ? `\n${failures} Fehler.` : '\nAlles gruen.');

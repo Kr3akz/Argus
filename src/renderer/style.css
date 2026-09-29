@@ -3371,9 +3371,10 @@ select option { background: #161b25; color: var(--text); }
   margin-bottom: 16px;
   transition: all .2s ease;
 }
+/* Ein Hinweis ist ein Zustand: Kante links statt Rahmen. */
 .ducats-status-bar.bar-warning {
-  background: rgba(210, 153, 34, 0.12);
-  border: 1px solid rgba(210, 153, 34, 0.3);
+  background: linear-gradient(90deg, rgb(var(--t-bronze) / .16), rgb(var(--t-bronze) / .05));
+  box-shadow: inset 2px 0 0 rgb(var(--t-gold) / .8);
   color: #e3b341;
 }
 .status-dot {
@@ -3408,9 +3409,11 @@ select option { background: #161b25; color: var(--text); }
   }
 }
 
+/* Flach wie alle Karten: der Ton kommt aus dem Verlauf, nicht aus einem Rand.
+   (Hier standen Randfarben auf einer Variable, die es nie gab - sie wurden
+   nie gezeichnet und sind weg, damit sie niemand versehentlich "repariert".) */
 .ducats-stat-card {
   background: var(--surface);
-  border: 1px solid var(--border);
   border-radius: var(--r-md);
   padding: 14px 16px;
   display: flex;
@@ -3420,27 +3423,22 @@ select option { background: #161b25; color: var(--text); }
   height: 100%;
   min-height: 88px;
   box-sizing: border-box;
-  transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+  transition: transform .15s ease, box-shadow .15s ease;
 }
 .ducats-stat-card:hover {
   transform: translateY(-2px);
-  border-color: rgba(255, 255, 255, 0.15);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
 }
 .ducats-stat-card.card-primary {
-  border-color: rgba(240, 184, 73, 0.35);
   background: linear-gradient(135deg, rgba(240, 184, 73, 0.08) 0%, var(--surface) 100%);
 }
 .ducats-stat-card.card-plat {
-  border-color: rgba(88, 166, 255, 0.35);
   background: linear-gradient(135deg, rgba(88, 166, 255, 0.08) 0%, var(--surface) 100%);
 }
 .ducats-stat-card.card-inv {
-  border-color: rgba(240, 184, 73, 0.25);
   background: linear-gradient(135deg, rgba(240, 184, 73, 0.05) 0%, var(--surface) 100%);
 }
 .ducats-stat-card.card-baro {
-  border-color: rgba(210, 153, 34, 0.25);
   background: linear-gradient(135deg, rgba(210, 153, 34, 0.05) 0%, var(--surface) 100%);
 }
 
@@ -3586,23 +3584,22 @@ select option { background: #161b25; color: var(--text); }
   gap: 8px;
   flex-wrap: wrap;
 }
+/* Goldene Aktion: getoente Flaeche, kein Rahmen - wie die Knoepfe sonst. */
 .btn-action {
-  background: rgba(240, 184, 73, 0.12);
+  background: rgb(var(--t-gold) / .14);
   color: var(--gold);
-  border: 1px solid rgba(240, 184, 73, 0.3);
-  transition: all .15s ease;
+  border: none;
+  transition: background .15s ease, color .15s ease;
 }
 .btn-action:hover {
-  background: rgba(240, 184, 73, 0.25);
-  color: #fff;
-  border-color: var(--gold);
+  background: rgb(var(--t-gold) / .24);
+  color: #ffd98a;
 }
 .btn-action.active {
   background: var(--gold);
   color: #0d1117;
   font-weight: 750;
-  border-color: var(--gold);
-  box-shadow: 0 0 14px rgba(240, 184, 73, 0.4);
+  box-shadow: 0 0 14px rgb(var(--t-gold) / .4);
 }
 
 .ducats-filter-row {
@@ -3833,155 +3830,164 @@ select option { background: #161b25; color: var(--text); }
   padding-right: 6px;
 }
 
-/* Item Card */
+/* Teilekarten - hochkant, in drei Bereichen.
+   Das Raster gilt nur fuer "My prime inventory" und "Full prime catalogue":
+   der Relikt-Planer und Baros Angebot zeichnen in denselben Behaelter und
+   bringen ihre eigene Ordnung mit (renderDucatsCatalog setzt is-parts).
+   Mindestens 260 Punkte breit - schmaler stehen Zustand, Besitz und die drei
+   Werte nicht mehr sauber nebeneinander. Die Hoehe waechst mit dem Fenster. */
+.ducats-catalog-list.is-parts {
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  max-height: max(520px, calc(100vh - 330px));
+}
+
+/* Item Card
+   Drei Bereiche, getrennt durch Flaeche und Linie: das Bild auf der
+   Kartenflaeche, Werte und Verkauf darunter auf dunklerem Grund. Dazu eine
+   dezente Kontur um die ganze Karte. */
 .ducat-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--r-md);
+  background-color: var(--surface);
+  overflow: hidden;
+  transition: background-color .15s ease;
+}
+/* Die Kontur als eigene Ebene UEBER dem Inhalt: ein Rand oder eine
+   Innenkontur der Karte selbst laege unter den dunklen Flaechen von Werten
+   und Verkauf und waere nur um das Bild herum zu sehen. */
+.ducat-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 1px solid rgba(255, 255, 255, .07);
+  pointer-events: none;
+  transition: border-color .15s ease;
+}
+.ducat-card:hover { background-color: var(--surface-2); }
+.ducat-card:hover::after { border-color: rgba(255, 255, 255, .13); }
+/* Zum Verkauf gewaehlt: goldener Hauch in der Flaeche und die Kontur in
+   Gold - kein Balken, der die Karte einseitig macht. */
+.ducat-card.selected { background-color: rgb(var(--t-gold) / .07); }
+.ducat-card.selected::after,
+.ducat-card.selected:hover::after { border-color: rgb(var(--t-gold) / .6); }
+
+/* 1. Bildflaeche: oben die Leiste, darunter das Teil. Die Seltenheit ist ein
+   Schimmer aus der Ecke oben links - nur hier, die Werte darunter bleiben
+   auf ihrem ruhigen, dunklen Grund. Dieselben Toene wie die Filter Gold,
+   Silber, Bronze und die Dukatenzahl der Karte. */
+.ducat-card.rarity-rare     { --rarity: 240 184 73; }
+.ducat-card.rarity-uncommon { --rarity: 200 210 225; }
+.ducat-card.rarity-common   { --rarity: 218 130 70; }
+.ducat-card-art {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 10px 12px;
+  background: radial-gradient(120% 100% at 0% 0%, rgb(var(--rarity, 218 130 70) / .15), transparent 60%);
+}
+.ducat-art-bar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  padding: 10px 12px;
-  position: relative;
-  transition: all .15s ease;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  min-height: 20px;
 }
-.ducat-card:hover {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.15);
-}
-.ducat-card.selected {
-  background: rgba(240, 184, 73, 0.09);
-  border-color: rgba(240, 184, 73, 0.4);
-  box-shadow: inset 0 0 0 1px rgba(240, 184, 73, 0.2);
-}
-/* Seltenheit als getoente Flaeche statt als Kante. Die Dukatenzahl auf der
-   Karte traegt denselben Ton - zusammen ergibt das eine Karte, die ihre Stufe
-   zeigt, ohne dass ein Balken sie anschreit. */
-.ducat-card.rarity-rare {
-  background:
-    radial-gradient(120% 100% at 0% 0%, rgb(var(--t-gold) / .11), transparent 58%),
-    var(--surface);
-  box-shadow: inset 0 0 0 1px rgb(var(--t-gold) / .18);
-}
-.ducat-card.rarity-uncommon {
-  background:
-    radial-gradient(120% 100% at 0% 0%, rgb(var(--t-silver) / .11), transparent 58%),
-    var(--surface);
-  box-shadow: inset 0 0 0 1px rgb(var(--t-silver) / .16);
-}
-.ducat-card.rarity-common {
-  background:
-    radial-gradient(120% 100% at 0% 0%, rgb(var(--t-bronze) / .10), transparent 58%),
-    var(--surface);
-  box-shadow: inset 0 0 0 1px rgb(var(--t-bronze) / .16);
-}
-
-.ducat-card-left {
-  flex-shrink: 0;
-}
-.ducat-card-left .mat-icon {
-  width: 38px;
-  height: 38px;
+.ducat-art-tags { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.ducat-art-img {
+  width: 112px;
+  height: 112px;
   object-fit: contain;
-  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, .5));
 }
 
-.ducat-card-body {
-  flex: 1;
-  min-width: 0;
+/* 2. Werte: dunklerer Grund, eine Linie darueber. */
+.ducat-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 11px 12px 12px;
+  border-top: 1px solid rgba(255, 255, 255, .06);
+  background: rgba(0, 0, 0, .22);
 }
+/* Eine Zeile: bei dieser Kartenbreite passt auch "Caliban Prime Neuroptics
+   Blueprint" hinein, und die Werte stehen in jeder Karte auf derselben Hoehe.
+   Was doch zu lang ist, steht ganz im Tooltip. */
 .ducat-item-name {
-  font-size: 13px;
-  font-weight: 650;
-  color: var(--text);
   display: block;
   overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text);
   white-space: nowrap;
-}
-/* EINE ZEILE, DIE EINE ZEILE BLEIBT.
-   Hier standen Elternname und Besitzabzeichen nebeneinander, beide ohne
-   Bremse: bei einem langen Namen ("Caliban Prime Systems Blueprint") brach
-   der Name auf zwei Zeilen um UND das Abzeichen gleich mit, und die Karte
-   wurde hoeher als ihre Nachbarn im Raster. Der Name kuerzt jetzt mit
-   Ellipse - er steht ohnehin noch einmal ausgeschrieben in der Zeile
-   darueber -, das Abzeichen bricht gar nicht mehr um. */
-.ducat-card-sub {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  font-size: 11px;
-  color: var(--text-3);
-  margin-top: 1px;
-}
-.ducat-parent {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .ducat-owned-badge {
   flex: none;
   white-space: nowrap;
   color: var(--text-2);
   background: rgba(255, 255, 255, 0.06);
-  padding: 1px 5px;
+  padding: 1px 6px;
   border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
-.ducat-owned-badge small { opacity: .8; }
+.ducat-owned-badge small { opacity: .8; font-weight: 500; }
 .ducat-owned-badge.has-dups {
   color: #7ee787;
   background: rgba(46, 160, 67, 0.15);
 }
 
-.ducat-card-badges {
+/* Drei gleich breite Zellen: Dukaten | Platin | Dukaten je Platin. Oben die
+   Zahl, darunter was sie ist - in jeder Karte an derselben Stelle. */
+.ducat-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.ducat-stat {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-top: 6px;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 0 10px;
 }
-.ducat-badge {
-  font-size: 11.5px;
+.ducat-stat:first-child { padding-left: 0; }
+.ducat-stat + .ducat-stat { border-left: 1px solid rgba(255, 255, 255, .06); }
+.ducat-stat-v {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 14px;
   font-weight: 700;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
-.ducat-val-badge {
-  color: var(--gold);
-  background: rgba(240, 184, 73, 0.12);
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-
-.ducat-plat-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11.5px;
-  color: #79c0ff;
-  background: rgba(88, 166, 255, 0.1);
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-.ducat-plat-tag b {
-  color: #58a6ff;
-}
-.plat-med {
-  font-size: 10px;
-  color: var(--text-3);
-}
-.plat-loading {
-  color: var(--text-3);
+.ducat-stat-v small { margin-left: 1px; font-size: 10px; font-weight: 500; color: var(--text-3); }
+.ducat-stat-k {
   font-size: 10.5px;
-}
-.plat-none {
   color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+/* Die Dukatenzahl in der Farbe der Seltenheit - dieselben Toene wie die
+   Filter Gold, Silber, Bronze darueber. */
+.ducat-card.rarity-rare     .ducat-stat.is-duc .ducat-stat-v { color: var(--gold); }
+.ducat-card.rarity-uncommon .ducat-stat.is-duc .ducat-stat-v { color: #e6edf3; }
+.ducat-card.rarity-common   .ducat-stat.is-duc .ducat-stat-v { color: #ff9b5e; }
+.ducat-stat.is-plat .ducat-stat-v { color: #79c0ff; }
+/* Die Empfehlung als Beschriftung des Verhaeltnisses, in ihrer Farbe. */
+.ducat-stat.is-ratio.is-junk .ducat-stat-k   { color: #7ee787; font-weight: 600; }
+.ducat-stat.is-ratio.is-market .ducat-stat-k { color: #79c0ff; font-weight: 600; }
+.ducat-stat.is-ratio.is-fair .ducat-stat-k   { color: var(--text-2); font-weight: 600; }
 
 .trade-chip {
   font-size: 10.5px;
@@ -4014,26 +4020,37 @@ select option { background: #161b25; color: var(--text); }
   color: var(--gold);
 }
 
-/* Card Controls */
-.ducat-card-right {
+/* 3. Verkauf: die Auswahl fuer Baro, auf demselben dunklen Grund wie die
+   Werte, durch eine Linie abgesetzt. */
+.ducat-card-foot {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-  flex-shrink: 0;
+  align-items: center;
+  gap: 10px;
+  margin-top: auto;
+  padding: 9px 12px 10px;
+  border-top: 1px solid rgba(255, 255, 255, .05);
+  background: rgba(0, 0, 0, .22);
 }
+.ducat-foot-k {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.ducat-card-foot .btn-max-cnt { margin-left: auto; }
 .ducat-card-counter {
   display: flex;
   align-items: center;
   gap: 3px;
-  background: var(--surface-3);
-  border-radius: 6px;
+  background: var(--surface-2);
+  border-radius: 7px;
   padding: 2px;
 }
 .ducat-btn-cnt {
   width: 24px;
   height: 24px;
-  border-radius: 4px;
+  border-radius: 5px;
   background: var(--surface-2);
   border: none;
   color: var(--text);
@@ -4042,23 +4059,22 @@ select option { background: #161b25; color: var(--text); }
   cursor: pointer;
   display: grid;
   place-items: center;
-  transition: all .15s ease;
+  transition: background .15s ease, color .15s ease;
 }
 .ducat-btn-cnt:hover {
   background: var(--accent);
   color: #000;
 }
 .ducat-cnt-num {
-  min-width: 28px;
+  min-width: 30px;
   text-align: center;
   font-size: 12px;
   font-weight: 700;
   color: var(--text-3);
   padding: 0 4px;
+  font-variant-numeric: tabular-nums;
 }
-.ducat-cnt-num.active {
-  color: var(--gold);
-}
+.ducat-cnt-num.active { color: var(--gold); }
 .ducat-cnt-num small {
   font-size: 10px;
   font-weight: 500;
@@ -4066,24 +4082,23 @@ select option { background: #161b25; color: var(--text); }
 }
 
 .btn-max-cnt {
-  background: transparent;
-  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, .05);
+  border: none;
   color: var(--text-3);
   font-size: 10px;
   font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 4px;
+  padding: 4px 8px;
+  border-radius: 5px;
   cursor: pointer;
-  transition: all .15s ease;
+  transition: background .15s ease, color .15s ease;
 }
 .btn-max-cnt:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.1);
   color: var(--text);
 }
 .btn-max-cnt.is-max {
-  background: rgba(240, 184, 73, 0.15);
+  background: rgb(var(--t-gold) / .16);
   color: var(--gold);
-  border-color: rgba(240, 184, 73, 0.35);
 }
 
 /* Empty State */
@@ -11047,52 +11062,60 @@ body.guide-on .app-toast { pointer-events: none; }
 
 /* ---------------- Rivens ---------------- */
 /*
- * Eigene Karten statt der Mod-Karte aus dem Builds-Reiter: die lebt von den
- * Rahmenbildern je Seltenheit, und fuer Rivens gibt es keins. Violett wie im
- * Spiel, sonst dieselben Flaechen wie ueberall.
+ * DIESELBE SPRACHE WIE DER REST: flache Flaechen ohne Rahmen. Farbe traegt
+ * eine Karte als Schimmer aus der Ecke (wie die Seltenheit der Teilekarten),
+ * einen Zustand als Kante links (wie Baros Einkaufszettel), und eine Marke als
+ * getoente Flaeche mit farbiger Schrift (wie die Handels-Chips) - nie als
+ * Linie drumherum. Das Violett ist das der Rivens im Spiel.
  */
 .riven-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+  gap: 14px;
 }
 
 .riven-card {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px 14px 10px;
+  gap: 12px;
+  padding: 15px 16px 12px;
   border-radius: var(--r-md);
-  border: 1px solid rgb(var(--t-riven) / .22);
-  background: linear-gradient(180deg, rgb(var(--t-riven) / .10), var(--surface) 60%);
+  background:
+    radial-gradient(120% 90% at 0% 0%, rgb(var(--t-riven) / .10), transparent 55%),
+    var(--surface);
+  transition: background-color .2s var(--ease);
 }
 
-.riven-head { display: flex; align-items: center; gap: 10px; }
-.riven-img { width: 44px; height: 44px; object-fit: contain; flex-shrink: 0; }
-.riven-title { display: flex; flex-direction: column; flex: 1; min-width: 0; }
-.riven-title b { font-size: 14px; font-weight: 600; }
+.riven-head { display: flex; align-items: center; gap: 12px; }
+/* Das Bild auf einer dunklen Kachel, wie auf den Karten im Mastery-Reiter. */
+.riven-img {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  object-fit: contain;
+  padding: 5px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, .25);
+}
+.riven-title { display: flex; flex-direction: column; flex: 1; min-width: 0; gap: 1px; }
+.riven-title b { font-size: 14.5px; font-weight: 600; }
 .riven-name { font-size: 12.5px; color: rgb(var(--t-riven)); }
-
-.riven-drain {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 2px 7px;
-  border-radius: 999px;
-  background: var(--surface-2);
-  color: var(--text-2);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
+.riven-kind {
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-3);
 }
-.riven-drain svg { width: 13px; height: 13px; }
 
-.riven-stats { display: flex; flex-direction: column; gap: 5px; }
+.riven-stats { display: flex; flex-direction: column; gap: 6px; }
 
-/* Wert, Name, Balken, Prozent - feste Spalten, damit die Balken aller
-   Karten in einer Flucht stehen. */
+/* Wert, Name, Balken, Prozent, Buchstabe - feste Spalten, damit die Balken
+   aller Karten in einer Flucht stehen. */
 .riven-stat {
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr) 56px 32px;
+  grid-template-columns: 64px minmax(0, 1fr) 48px 30px 24px;
   align-items: center;
   gap: 8px;
   font-size: 12.5px;
@@ -11117,47 +11140,398 @@ body.guide-on .app-toast { pointer-events: none; }
 .riven-label.el-electricity { color: #c7a4ff; }
 .riven-label.el-toxin       { color: #7ee787; }
 
+/* Gewuenschte Werte heben sich ab, der Rest tritt zurueck. */
+.riven-stat.is-buff.fit-best .riven-label { color: var(--text); font-weight: 600; }
+.riven-stat.is-buff.fit-neutral .riven-label { color: var(--text-3); }
+
+/* margin-top: auto - in einer Reihe sind alle Karten so hoch wie die hoechste;
+   der Fuss gehoert dann an den unteren Rand, nicht mitten in die Karte. */
 .riven-foot {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 10px;
-  padding-top: 8px;
-  border-top: 1px solid var(--surface-2);
+  align-items: center;
+  gap: 4px 12px;
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, .05);
   font-size: 11.5px;
   color: var(--text-3);
+  font-variant-numeric: tabular-nums;
 }
+.riven-drain { display: inline-flex; align-items: center; gap: 3px; }
+.riven-drain svg { width: 12px; height: 12px; }
 .riven-avg { margin-left: auto; color: var(--text-2); }
-
-.riven-subhead { margin: 26px 0 10px; font-size: 14px; font-weight: 600; }
-.riven-veiled {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 12px;
+.riven-similar {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
 }
-.riven-veil {
+.riven-similar:hover { text-decoration: underline; }
+
+/* ---------- Noten ----------
+   Die Farbe haengt nur am Buchstaben: S golden, A gruen, B blau, C grau,
+   D orange, F rot. Dieselben Klassen fuer die Note des Rivens, den Buchstaben
+   an jedem Wert und die Felder beim Umwandeln. */
+.grade-s { color: var(--gold); }
+.grade-a { color: var(--green); }
+.grade-b { color: #5fc8ff; }
+.grade-c { color: #b9b4d6; }
+.grade-d { color: #ff9f5a; }
+.grade-f { color: var(--red); }
+
+.riven-grade {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 50px;
+  padding: 7px 8px 6px;
+  border-radius: 12px;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  line-height: 1;
+  cursor: help;
+  flex-shrink: 0;
+}
+.riven-grade b { font-size: 19px; font-weight: 800; letter-spacing: -.02em; }
+.riven-grade small {
+  margin-top: 4px;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  opacity: .85;
+}
+/* Geschaetzt aus dem Mittel der Klasse statt vom Markt der Waffe: die
+   Flaeche bleibt grau, die Schlange ist Argus' Zeichen fuer "gerechnet". */
+.riven-grade.is-estimate { background: var(--surface-2); }
+.riven-grade.is-estimate small::before { content: '~ '; }
+
+.riven-letter {
+  justify-self: end;
+  min-width: 22px;
+  padding: 2px 3px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 800;
+  text-align: center;
+  background: color-mix(in srgb, currentColor 15%, transparent);
+  cursor: help;
+}
+
+/* ---------- Was die Waffe will ----------
+   Eine vertiefte Flaeche in der Karte, darin Marken wie die Handels-Chips:
+   ein Punkt in der Farbe der Richtung (gruen gewuenscht, rot unschaedlich
+   negativ), und leuchtend gefuellt, was auf diesem Riven steht. */
+.riven-wants {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 12px 14px;
-  border-radius: var(--r-md);
-  border: 1px dashed rgb(var(--t-riven) / .3);
-  background: var(--surface);
+  padding: 9px 10px;
+  border-radius: var(--r-sm);
+  background: rgba(0, 0, 0, .18);
 }
-.riven-veil p { font-size: 12.5px; color: var(--text-2); line-height: 1.5; }
-.riven-veil-prog { height: 5px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
-.riven-veil-prog i { display: block; height: 100%; background: rgb(var(--t-riven)); }
-.riven-veil-count { font-size: 11.5px; color: var(--text-3); }
-
-.riven-unopened-row {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
+.rw-row { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.rw-k {
+  width: 58px;
+  flex-shrink: 0;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
   color: var(--text-3);
 }
-.riven-unopened { padding: 3px 10px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); }
+.rw-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border: none;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, .05);
+  color: var(--text-3);
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.rw-chip::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: .9;
+}
+.rw-chip.is-best::before, .rw-chip.is-good::before { background: var(--green); }
+.rw-chip.is-good::before { opacity: .5; }
+.rw-chip.is-harmless::before { background: var(--red); opacity: .75; }
+.rw-chip.is-best { color: var(--text-2); }
+.rw-chip.is-here.is-best, .rw-chip.is-here.is-good { background: rgb(var(--t-green) / .15); color: #7ee787; }
+.rw-chip.is-here.is-harmless { background: rgb(var(--t-red) / .14); color: #ff9d9d; }
+button.rw-chip { cursor: pointer; transition: background .15s var(--ease), color .15s var(--ease); }
+button.rw-chip:hover { background: rgba(255, 255, 255, .1); color: var(--text); }
+button.rw-chip.is-here:hover { filter: brightness(1.15); }
+
+/* ---------- Unterreiter ---------- */
+.riven-nav { margin: 14px 0 6px; }
+.riven-pane { display: none; }
+.riven-pane.active { display: block; animation: fade .2s var(--ease); }
+.riven-toolbar { margin-top: 8px; }
+.riven-toolbar .searchbox { margin-bottom: 0; }
+.riven-toolbar .filter-chip b { font-weight: 700; color: var(--text-3); margin-left: 2px; }
+.riven-toolbar .filter-chip.active b { color: var(--text-2); }
+#riven-meta { margin-bottom: 12px; }
+.riven-subhead { margin: 26px 0 10px; font-size: 14px; font-weight: 600; }
+.riven-veiled > .riven-subhead:first-child { margin-top: 14px; }
+
+/* ---------- Verschleierte ----------
+   Eine Aufgabe ist ein Zustand "laeuft noch" - deshalb die violette Kante
+   links, wie ein offener Posten auf Baros Zettel. */
+.veil-groups { display: flex; flex-direction: column; gap: 8px; }
+.veil-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  box-shadow: inset 2px 0 0 rgb(var(--t-riven) / .7);
+}
+.veil-group-head { display: flex; align-items: baseline; gap: 8px; font-size: 13px; }
+.veil-group-head b { font-weight: 600; }
+.veil-group-head span {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgb(var(--t-riven) / .15);
+  color: rgb(var(--t-riven));
+  font-size: 10.5px;
+  font-weight: 700;
+}
+.veil-row {
+  display: grid;
+  grid-template-columns: 170px minmax(80px, 260px) auto;
+  align-items: center;
+  gap: 12px;
+  font-size: 12.5px;
+}
+.veil-row b { font-weight: 600; color: var(--text-2); }
+.riven-veil-prog { height: 5px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.riven-veil-prog i { display: block; height: 100%; background: rgb(var(--t-riven)); }
+.riven-veil-count { font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+
+.veil-unrev-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 10px;
+}
+.veil-unrev {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 14px;
+  border-radius: var(--r-md);
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgb(var(--t-riven) / .10), transparent 60%),
+    var(--surface);
+  text-align: center;
+}
+.veil-unrev b { font-size: 13px; font-weight: 600; }
+.veil-unrev p { font-size: 12px; color: var(--text-3); line-height: 1.45; }
+.veil-unrev-count {
+  padding: 1px 8px;
+  border-radius: 4px;
+  background: rgb(var(--t-riven) / .15);
+  color: rgb(var(--t-riven));
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* ---------- Riven-Finder ----------
+   Ein Bedienfeld mit fester Beschriftungsspalte: Waffe, Werte, was die
+   Waffe am Markt traegt, Filter - in der Reihenfolge, in der man es
+   ausfuellt, und alles in einer Flucht. */
+.rf-panel {
+  margin-top: 10px;
+  padding: 4px 18px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.rf-row {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0;
+}
+.rf-row + .rf-row { border-top: 1px solid rgba(255, 255, 255, .05); }
+.rf-k {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.rf-v { min-width: 0; }
+
+.rf-weapon-row { display: flex; align-items: center; gap: 12px; }
+.rf-weapon { position: relative; flex: 1; margin-bottom: 0; }
+.rf-weapon input { padding-top: 11px; padding-bottom: 11px; background: var(--surface-2); }
+.rf-suggest {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 6px;
+  border-radius: var(--r-md);
+  background: #161b25;
+  box-shadow: var(--shadow-lg);
+}
+.rf-sug {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.rf-sug img, .rf-sug-img { width: 28px; height: 28px; object-fit: contain; flex-shrink: 0; }
+.rf-sug small { margin-left: auto; font-size: 11px; color: var(--text-3); text-transform: capitalize; }
+.rf-sug:hover, .rf-sug.is-active { background: var(--surface-2); }
+.rf-sug-empty { padding: 8px 10px; font-size: 12px; color: var(--text-3); }
+
+/* Vier Plaetze nebeneinander; ein belegter nimmt die Farbe seiner Richtung
+   an - als Flaeche, nicht als Rand. */
+.rf-attrs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 1100px) { .rf-attrs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.rf-slot {
+  display: flex;
+  align-items: center;
+  padding-left: 12px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  transition: background .15s var(--ease);
+}
+.rf-sign { width: 10px; flex-shrink: 0; font-size: 14px; font-weight: 800; color: var(--text-3); }
+.rf-slot select { padding: 10px 10px 10px 8px; background: transparent; font-size: 12.5px; }
+.rf-slot select:focus { box-shadow: none; }
+.rf-slot:focus-within { box-shadow: 0 0 0 2px var(--accent-sf); }
+.rf-slot.is-pos.is-set { background: rgb(var(--t-green) / .12); }
+.rf-slot.is-pos.is-set .rf-sign { color: var(--green); }
+.rf-slot.is-neg.is-set { background: rgb(var(--t-red) / .12); }
+.rf-slot.is-neg.is-set .rf-sign { color: var(--red); }
+
+.rf-wants { display: flex; flex-direction: column; gap: 6px; }
+.rf-want-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; }
+.rf-want-group { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 5px; }
+.rf-want-k { margin-right: 2px; font-size: 11px; color: var(--text-3); }
+.rf-want-chips .btn-sm { margin-left: auto; }
+.rf-want-src, .rf-hint { font-size: 11.5px; line-height: 1.5; color: var(--text-3); }
+
+.rf-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px; }
+.rf-num { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-3); }
+.rf-num > span { margin-right: 2px; }
+.rf-num input { width: 74px; padding: 7px 10px; background: var(--surface-2); font-size: 12.5px; }
+.rf-num i { font-style: normal; color: var(--text-3); }
+.rf-toggles { display: inline-flex; gap: 6px; margin-left: auto; }
+
+/* Vergleich mit einem eigenen Riven: ein Zustand, also die Kante links. */
+.rf-ref {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: var(--r-sm);
+  background: linear-gradient(90deg, rgb(var(--t-riven) / .12), var(--surface) 60%);
+  box-shadow: inset 2px 0 0 rgb(var(--t-riven) / .8);
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.rf-ref b { color: var(--text); }
+
+.rf-resbar { display: flex; align-items: center; min-height: 18px; margin: 16px 0 10px; }
+.rf-status { font-size: 12px; color: var(--text-3); }
+#rf-search:disabled { opacity: .5; cursor: progress; }
+
+.rf-results {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+.rf-offer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 13px 15px 11px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  transition: background .2s var(--ease);
+}
+.rf-offer:hover { background: var(--surface-2); }
+.rf-offer-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.rf-price { display: inline-flex; align-items: baseline; gap: 5px; font-size: 16px; }
+.rf-price .currency-ic { align-self: center; }
+.rf-price b { font-weight: 700; color: var(--gold); font-variant-numeric: tabular-nums; }
+.rf-price small { font-size: 11px; font-weight: 500; color: var(--text-3); }
+.rf-sim {
+  padding: 1px 7px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, .06);
+  color: var(--text-3);
+  font-size: 10.5px;
+  font-weight: 650;
+}
+.rf-sim.is-mid { background: rgb(var(--t-gold) / .14); color: var(--gold); }
+.rf-sim.is-high { background: rgb(var(--t-green) / .15); color: #7ee787; }
+.rf-offer-name { font-size: 13px; font-weight: 600; }
+.rf-offer-name span { font-weight: 500; color: rgb(var(--t-riven)); }
+.rf-offer-stats { display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; }
+.rf-stat { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 8px; color: var(--text-3); }
+.rf-stat-val { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.rf-stat.is-pos .rf-stat-val { color: #7ee787; }
+.rf-stat.is-neg .rf-stat-val { color: #ff8f8f; }
+.rf-stat.is-pos.fit-best span:last-child { color: var(--text); font-weight: 600; }
+.rf-stat.is-pos.fit-good span:last-child { color: var(--text-2); }
+.rf-stat.is-neg.fit-best span:last-child, .rf-stat.is-neg.fit-good span:last-child { color: #ff8f8f; }
+.rf-offer-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11.5px; color: var(--text-3); }
+.rf-rank-note { color: var(--gold); cursor: help; }
+.rf-pol { display: inline-flex; align-items: center; text-transform: capitalize; }
+.rf-pol svg { width: 12px; height: 12px; }
+.rf-offer-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 9px;
+  border-top: 1px solid rgba(255, 255, 255, .05);
+}
+.rf-owner {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.rf-owner small { color: var(--text-3); }
 
 /* ---------------- Riven-Overlay (Umwandeln-Bildschirm) ---------------- */
 /*
@@ -11190,7 +11564,11 @@ body.riven-window {
 .rv-left  { left: 2.5%; }
 .rv-right { right: 2.5%; }
 
-.rv-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.rv-head { display: flex; align-items: center; gap: 8px; }
+/* Preis und Note rechts - der Preis nur beim neuen Wurf. */
+.rv-head .rv-cost { margin-left: auto; }
+.rv-head .rv-grade { margin-left: auto; }
+.rv-head .rv-cost + .rv-grade { margin-left: 4px; }
 .rv-tag {
   font-size: 10.5px;
   font-weight: 700;
@@ -11207,7 +11585,7 @@ body.riven-window {
 .rv-stats { display: flex; flex-direction: column; gap: 5px; }
 .rv-stat {
   display: grid;
-  grid-template-columns: 58px minmax(0, 1fr) 14px 44px 30px;
+  grid-template-columns: 58px minmax(0, 1fr) 14px 44px 30px 22px;
   align-items: center;
   gap: 7px;
 }
@@ -11270,6 +11648,65 @@ body.riven-window {
 /* Unter dem Namen: fuer welche Variante der Bildschirm rechnet - nur wenn
    es nicht die Grundwaffe des Rivens ist (Scourge-Riven auf Scourge Prime). */
 .rv-on { font-size: 11px; color: var(--text-3); }
+
+/* Note und Buchstaben - dieselben Farben wie im Riven-Reiter (.grade-*). */
+.rv-grade {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, currentColor 15%, transparent);
+  line-height: 1.2;
+}
+.rv-grade b { font-size: 14px; font-weight: 800; }
+.rv-grade small { font-size: 8.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+/* Wie im Reiter: geschaetzt heisst graue Flaeche und die Schlange davor. */
+.rv-grade.is-estimate { background: var(--surface-2); }
+.rv-grade.is-estimate small::before { content: '~ '; }
+.rv-letter {
+  justify-self: end;
+  min-width: 20px;
+  padding: 1px 3px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 800;
+  text-align: center;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+.rv-stat.is-buff.fit-neutral .rv-label { color: var(--text-3); }
+.rv-stat.is-buff.fit-best .rv-label { color: var(--text); }
+
+.rv-wants { display: flex; flex-direction: column; gap: 4px; }
+.rv-want-row { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.rv-want-k {
+  width: 52px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+/* Dieselben Marken wie im Reiter (.rw-chip): Punkt in der Farbe der
+   Richtung, gefuellt, was auf dem Riven steht - ohne Rand. */
+.rv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, .06);
+  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 600;
+}
+.rv-chip::before { content: ''; width: 5px; height: 5px; border-radius: 50%; }
+.rv-chip.is-best::before, .rv-chip.is-good::before { background: var(--green); }
+.rv-chip.is-good::before { opacity: .5; }
+.rv-chip.is-harmless::before { background: var(--red); opacity: .75; }
+.rv-chip.is-best { color: var(--text-2); }
+.rv-chip.is-here.is-best, .rv-chip.is-here.is-good { background: rgb(var(--t-green) / .16); color: #7ee787; }
+.rv-chip.is-here.is-harmless { background: rgb(var(--t-red) / .15); color: #ff9d9d; }
 
 /* ---------------- Relikt-Empfehlung (Auswahlbildschirm) ---------------- */
 /*

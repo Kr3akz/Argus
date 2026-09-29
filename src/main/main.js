@@ -75,6 +75,8 @@ import { buildBaseSets } from '../core/basesets.js';
 import { foundryQueue } from '../core/foundry.js';
 import { buildRivens, rivenView, rivensForShownWeapon } from '../core/rivens.js';
 import { loadDispositions } from '../core/dispositions.js';
+import { RIVEN_ATTRS, rivenClass, labelWants } from '../core/riven-wants.js';
+import * as rivenMarket from '../core/riven-market.js';
 import { scanRivenInWorker, pickCurrent, pickNewRoll } from '../core/riven-scan.js';
 import { buildRelicPick, eraFromScreen } from '../core/relic-pick.js';
 import { recognise } from '../core/ocr-host.js';
@@ -1933,9 +1935,14 @@ const EXTERNAL_ALLOWED = [
    Muster laesst nichts anderes durch als genau diesen Pfad im eigenen
    Repository - kein Nutzername, kein Umweg ueber eine andere Domain. */
 const RELEASE_URL_RE = /^https:\/\/github\.com\/Kr3akz\/Argus\/releases(\/tag\/v[\w.+-]+)?$/;
+/* Und eine Auktion aus dem Riven-Finder - nur die Seite einer Auktion, die
+   Kennung ist eine 24-stellige Hex-Zahl. */
+const AUCTION_URL_RE = /^https:\/\/warframe\.market\/auction\/[0-9a-f]{24}$/;
 ipcMain.handle('shell:open', async (_e, url) => {
   const target = String(url);
-  if (!EXTERNAL_ALLOWED.includes(target) && !RELEASE_URL_RE.test(target)) return { ok: false };
+  if (!EXTERNAL_ALLOWED.includes(target) && !RELEASE_URL_RE.test(target) && !AUCTION_URL_RE.test(target)) {
+    return { ok: false };
+  }
   await shell.openExternal(target);
   return { ok: true };
 });
@@ -3667,20 +3674,158 @@ ipcMain.handle('rivens:get', async () => {
     const { inventory, fetchedAt, syncedAt } = await loadInventory({ refresh: false });
     const dispositions = await loadDispositions().catch(() => null);
     const view = buildRivens(inventory, cache.catalog, { dispositions });
+
+    /* Die Noten. Die Waffenliste von warframe.market braucht es fuer die
+       Zuordnung; ohne sie (offline, erster Start) gilt das Mittel der Klasse. */
+    /* Hoechstens vier Sekunden: haengt das Netz beim allerersten Mal, stehen
+       die Karten lieber mit Klassen-Noten da als gar nicht. */
+    const marketList = await withTimeout(rivenMarket.rivenWeapons(), 4000, []);
+    const cachedAll = await rivenMarket.allCachedWants().catch(() => ({}));
+    const unveiled = view.unveiled.map(r => ({
+      ...r,
+      image: r.weapon.uniqueName ? imageUrl(r.weapon.uniqueName, 128) : null,
+      rating: rateRiven(r, marketList, cachedAll)
+    }));
+
+    /* Was noch fehlt oder aelter als eine Woche ist, kommt im Hintergrund nach
+       - langsam, siehe riven-market.js. Jede fertige Waffe meldet sich ueber
+       rivens:changed, der Reiter zeichnet dann neu. */
+    rivenMarket.ensureWants(unveiled.map(r => r.rating.slug).filter(Boolean));
+
     return {
       ok: true,
       data: {
         ...view,
-        unveiled: view.unveiled.map(r => ({
-          ...r,
-          image: r.weapon.uniqueName ? imageUrl(r.weapon.uniqueName, 128) : null
-        })),
+        unveiled,
         fetchedAt,
         syncedAt: syncedAt || null
       }
     };
   } catch (err) {
     return { ok: false, code: err.code || 'empty', error: err.message };
+  }
+});
+
+/* ----------------------------- Riven-Noten -----------------------------
+
+   Welche Werte eine Waffe will, kommt vom Markt (riven-market.js, eine Woche
+   gespeichert) und ohne Marktdaten aus dem gemessenen Mittel der Klasse
+   (riven-wants.js). Gerechnet wird dort - hier wird nur zusammengetragen und
+   weitergereicht. */
+
+const rateRiven = (view, marketList, cachedAll) => rivenMarket.rateRiven(view, marketList, cachedAll);
+
+/* Ein Versprechen mit Frist: was bis dahin nicht da ist, gilt als fallback. */
+const withTimeout = (promise, ms, fallback) => Promise.race([
+  Promise.resolve(promise).catch(() => fallback),
+  new Promise(r => setTimeout(() => r(fallback), ms))
+]);
+
+/* Nach einer nachgeladenen Waffe: Reiter neu zeichnen lassen und, falls genau
+   diese Waffe gerade auf dem Umwandeln-Bildschirm liegt, das Overlay auch.
+
+   Der Reiter hoechstens alle 15 Sekunden: der Nachlader liefert beim ersten
+   Mal rund alle zwoelf Sekunden eine Waffe, drei Minuten lang - jedes
+   Neuzeichnen nimmt einen offenen Tooltip weg und laesst das Raster springen. */
+const RIVENS_CHANGED_GAP_MS = 15 * 1000;
+let rivenChangedAt = 0;
+let rivenChangedTimer = null;
+rivenMarket.onWantsLoaded(slug => {
+  if (!rivenChangedTimer) {
+    const wait = Math.max(600, RIVENS_CHANGED_GAP_MS - (Date.now() - rivenChangedAt));
+    rivenChangedTimer = setTimeout(() => {
+      rivenChangedTimer = null;
+      rivenChangedAt = Date.now();
+      sendToMain('rivens:changed', {});
+    }, wait);
+  }
+  if (rivenSession && rivenSession.marketSlug === slug) republishRiven();
+});
+
+/** Alles, was der Finder zur Auswahl braucht. */
+ipcMain.handle('rivens:finder-ref', async () => {
+  try {
+    if (!cache.catalog) await ensureData({ refresh: false });
+    const list = await rivenMarket.rivenWeapons();
+    if (!list.length) return { ok: false, error: 'Could not load the riven weapon list from warframe.market.' };
+    const classes = {};
+    const weapons = list.map(w => {
+      const cls = rivenClass(null, w);
+      classes[cls] ||= rivenMarket.classAttributes(cls, cache.catalog?.byUniqueName);
+      const known = w.gameRef && cache.catalog?.byUniqueName.get(w.gameRef);
+      return { slug: w.slug, name: w.name, cls, image: known ? imageUrl(w.gameRef, 128) : null };
+    }).sort((a, b) => a.name.localeCompare(b.name, 'en'));
+    return { ok: true, weapons, classes };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+/**
+ * Die Wuensche fuer eine Waffe im Finder. Fehlt der Marktstand, wird er
+ * geholt - vorrangig, jemand wartet darauf. Scheitert das, gilt die Klasse.
+ */
+ipcMain.handle('rivens:wants', async (_e, slug) => {
+  try {
+    const list = await rivenMarket.rivenWeapons();
+    const market = list.find(w => w.slug === slug);
+    if (!market) return { ok: false, error: 'Unknown weapon.' };
+    const cls = rivenClass(null, market);
+    let cached = await rivenMarket.cachedWants(slug);
+    let note = null;
+    if (!cached) {
+      try { cached = await rivenMarket.fetchWants(slug, { priority: 'user' }); }
+      catch (err) { note = err.message; }
+    } else if (cached.stale) {
+      rivenMarket.ensureWants([slug]);
+    }
+    const w = rivenMarket.wantsFor(cls, cached);
+    return { ok: true, slug, cls, wants: labelWants(w.wants, cls), source: w.source,
+             sample: w.sample ?? null, topFrom: w.topFrom ?? null, thin: w.thin ?? null, note };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+const ATTR_SLUGS = new Set(RIVEN_ATTRS.map(a => a.slug));
+const finiteOrNull = v => (v === '' || v == null || !Number.isFinite(Number(v))) ? null : Number(v);
+
+/**
+ * Riven-Auktionen suchen. Der Server filtert Waffe, Werte und Umwandlungen
+ * (wfm-auctions.js, rivenSearch); was er nicht kann - Preis, Online-Status,
+ * 1-Platin-Angebote, Aehnlichkeit - erledigt shapeFinderOffers danach.
+ */
+ipcMain.handle('rivens:finder-search', async (_e, opts = {}) => {
+  try {
+    const list = await rivenMarket.rivenWeapons();
+    const market = list.find(w => w.slug === opts.weapon);
+    if (!market) return { ok: false, error: 'Pick a weapon first.' };
+    const cls = rivenClass(null, market);
+
+    const positive = (opts.positive || []).filter(s => ATTR_SLUGS.has(s)).slice(0, 3);
+    const negative = opts.negative === 'has' || opts.negative === 'none' || ATTR_SLUGS.has(opts.negative)
+      ? opts.negative : null;
+    const raw = await wfmAuctions.rivenSearch({
+      weapon: market.slug, positive, negative,
+      rerollsMin: finiteOrNull(opts.rerollsMin), rerollsMax: finiteOrNull(opts.rerollsMax),
+      sort: 'price_asc', priority: 'user'
+    });
+
+    const { wants } = rivenMarket.wantsFor(cls, await rivenMarket.cachedWants(market.slug));
+    /* Fuer die Pruefung, ob Werte auf Rang 8 hochgerechnet werden duerfen: die
+       Riven-Vorlagen aus dem Katalog und die Disposition aus der Waffenliste. */
+    if (!cache.catalog) await ensureData({ refresh: false }).catch(() => {});
+    const maxima = rivenMarket.auctionMaxima(cls, cache.catalog?.byUniqueName, market.disposition);
+    const { total, offers } = rivenMarket.shapeFinderOffers(raw, { cls, wants, maxima, opts });
+    return {
+      ok: true,
+      weapon: { slug: market.slug, name: market.name, cls },
+      total,
+      fromServer: raw.length,
+      offers
+    };
+  } catch (err) {
+    return { ok: false, error: err.message, rateLimited: err?.status === 429 };
   }
 });
 
@@ -3899,13 +4044,19 @@ function rivenOverlayView(fp, template, s) {
   if (!res.view) return null;
   const v = res.view;
   const pic = v.shownOn?.uniqueName || v.weapon.uniqueName;
-  return { ...v, image: pic ? imageUrl(pic, 128) : null };
+  /* Die Note wie im Reiter - mit den Wuenschen der Waffe, soweit gespeichert. */
+  const rating = rateRiven(v, s.marketList || [], s.wantsCache || {});
+  return { ...v, image: pic ? imageUrl(pic, 128) : null, rating };
 }
 
 /** Den Stand der Sitzung ins Fenster schicken. */
 function publishRiven(phase, message = null) {
   const s = rivenSession;
   if (!s) return;
+  /* Gemerkt fuer republishRiven: kommen die Marktwuensche der Waffe erst
+     waehrend der Sitzung an, wird derselbe Stand mit Note neu gezeigt. */
+  s.lastPhase = phase;
+  s.lastMessage = message;
   showRivenOverlay({
     phase,
     message,
@@ -3918,6 +4069,40 @@ function publishRiven(phase, message = null) {
        bei einem Riven, der erst nach dem letzten Inventarabruf dazukam. */
     unknownRiven: !s.template
   }).catch(err => console.warn('[Riven] Overlay nicht gezeigt:', err.message));
+}
+
+/* Dieselbe Phase noch einmal, mit frisch gelesenen Wuenschen. */
+async function republishRiven() {
+  const s = rivenSession;
+  if (!s || !s.marketSlug) return;
+  const cached = await rivenMarket.cachedWants(s.marketSlug).catch(() => null);
+  if (s !== rivenSession) return;
+  s.wantsCache = cached ? { [s.marketSlug]: cached } : {};
+  publishRiven(s.lastPhase || 'ready', s.lastMessage ?? null);
+}
+
+/**
+ * Welche Waffe von warframe.market zu diesem Riven gehoert, und ihre
+ * gespeicherten Wuensche. Fehlen sie, werden sie geholt - vorrangig, denn
+ * wer gerade umwandelt, schaut hin. Bis sie da sind, gilt die Klasse.
+ */
+async function prepareRivenRating(s) {
+  /* Nach dem ersten Mal liegt die Liste auf der Platte und ist sofort da. Nur
+     ganz ohne sie wird gewartet - und dann hoechstens 1,5 s: das Overlay kommt
+     lieber mit der Klassen-Note als zu spaet. */
+  s.marketList = await withTimeout(rivenMarket.rivenWeapons(), 1500, []);
+  const market = rivenMarket.weaponForPath(s.marketList, s.compat);
+  s.marketSlug = market?.slug || null;
+  if (!s.marketSlug) return;
+  const cached = await rivenMarket.cachedWants(s.marketSlug).catch(() => null);
+  s.wantsCache = cached ? { [s.marketSlug]: cached } : {};
+  if (!cached) {
+    rivenMarket.fetchWants(s.marketSlug, { priority: 'user' })
+      .then(() => { if (rivenSession === s) republishRiven(); })
+      .catch(err => console.warn('[Riven] Marktwuensche nicht geholt:', err.message));
+  } else if (cached.stale) {
+    rivenMarket.ensureWants([s.marketSlug]);
+  }
 }
 
 /**
@@ -3965,8 +4150,13 @@ async function onRivenCycle(ev) {
       template: first?.template || null,
       lim: candidates.length === 1 ? (first.fp.lim ?? null) : null,
       currentFp: first?.fp || null, nextFp: null, currents: new Map(),
-      kuva: null, stale: false
+      kuva: null, stale: false,
+      marketList: null, marketSlug: null, wantsCache: {}
     };
+    /* Aus dem Speicher: die Waffenliste liegt nach dem ersten Mal in der Datei,
+       das kostet hier keine Wartezeit. */
+    if (rivenSession.compat) await prepareRivenRating(rivenSession);
+    if (token !== rivenToken || !rivenSession) return;
     publishRiven('open');
     if (!rivenSession.compat) return;
 
