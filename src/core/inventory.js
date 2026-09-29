@@ -19,8 +19,7 @@
  * WAS DAS KOSTET:
  *   Der Blob liegt nur nach einem Zonenwechsel im Speicher - Dojo oder Relais
  *   und zurueck aufs Schiff, oder ein frischer Login. Ohne das findet der Scan
- *   nichts und der Zwischenspeicher bleibt stehen. Dieselbe Einschraenkung
- *   dokumentiert AlecaFrame fuer sich.
+ *   nichts und der Zwischenspeicher bleibt stehen.
  *
  * ALLES ODER NICHTS:
  *   Im Heap liegen neben der vollstaendigen Kopie auch angeschnittene Reste.

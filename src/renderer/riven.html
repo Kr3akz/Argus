@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' https://cdn.jsdelivr.net data:; style-src 'self' 'unsafe-inline';">
+  <title>Argus Riven</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<!--
+  Riven-Overlay auf dem Umwandeln-Bildschirm.
+
+  Ein durchsichtiges, klickdurchlaessiges Fenster ueber dem Spielfenster, wie
+  bei den Preisschildern. Links der Wurf, der gerade gilt, rechts der neue -
+  jeweils mit den Werten, die das Spiel zeigt, und wie gut jeder gewuerfelt
+  ist. Die Ansichten rechnet der Hauptprozess; hier wird nur gezeichnet.
+-->
+<body class="riven-window">
+  <div class="rv-panel rv-left hidden" id="rv-current"></div>
+  <div class="rv-panel rv-right hidden" id="rv-next"></div>
+  <script src="icons.js"></script>
+  <script src="riven.js"></script>
+</body>
+</html>

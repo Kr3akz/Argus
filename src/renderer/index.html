@@ -200,6 +200,16 @@
           </div>
         </button>
 
+        <!-- Direkt hinter dem Inventar: die Rivens kommen aus denselben Daten,
+             brauchen aber eine eigene Ansicht - jeder ist ein Einzelstueck. -->
+        <button class="nav-item" data-tab="rivens">
+          <span class="nav-icon" data-icon="riven"></span>
+          <div class="nav-tooltip">
+            <b>Rivens</b>
+            <span>Your rivens and how well they rolled</span>
+          </div>
+        </button>
+
         <button class="nav-item" data-tab="ducats">
           <span class="nav-icon" data-icon="relic"></span>
           <div class="nav-tooltip">
@@ -1145,6 +1155,39 @@
       </div>
     </section>
 
+    <!-- ---------------- Rivens ---------------- -->
+    <!--
+      Jeder Riven ist ein Einzelstueck mit eigenen Werten - deshalb Karten und
+      keine Zeilen. Die Zahlen rechnet core/rivens.js aus dem Inventar, so wie
+      die Karte im Spiel sie zeigt; daneben steht, wie gut jeder Wert
+      gewuerfelt ist.
+    -->
+    <section id="tab-rivens" class="tabpane">
+      <div class="section-head section-head-row">
+        <div>
+          <h2>Rivens</h2>
+          <p>Every riven you own with the stats the game shows, and how well each stat rolled</p>
+        </div>
+        <button class="btn" id="btn-riven-refresh">Fetch inventory</button>
+      </div>
+
+      <div class="inv-notice hidden" id="riven-notice"></div>
+      <div class="inv-state hidden" id="riven-state"></div>
+
+      <div class="hidden" id="riven-body">
+        <div class="inv-meta-row">
+          <div class="inv-meta" id="riven-meta"></div>
+          <div class="ducats-sort-wrap" id="riven-sort-wrap"></div>
+        </div>
+        <div class="riven-grid" id="riven-grid"></div>
+
+        <div class="riven-veiled-wrap hidden" id="riven-veiled-wrap">
+          <h3 class="riven-subhead">Veiled</h3>
+          <div class="riven-veiled" id="riven-veiled"></div>
+        </div>
+      </div>
+    </section>
+
     <!-- ---------------- 7. Builds ---------------- -->
     <!--
       ZWEI ANSICHTEN, EIN TAB. Oben das ARSENAL: jedes Item, zu dem ein Build
@@ -1237,19 +1280,27 @@
     <section id="tab-settings" class="tabpane">
       <div class="section-head">
         <h2>Settings</h2>
-        <p>Version, hotkeys and notifications</p>
+        <p>Hotkeys, overlays, notifications, inventory access and version</p>
       </div>
 
-      <!-- Zwei Spalten, damit alles ohne Scrollen auf den Schirm passt.
-           Links die beiden kurzen Gruppen, rechts die lange Liste der
-           Benachrichtigungen - das gleicht die Hoehen ungefaehr aus. -->
-      <div class="settings-cols">
+      <!-- Unterreiter statt einer langen Seite. Sechs Gruppen untereinander
+           waren eine Suche; jetzt steht jede Frage unter ihrem Namen. Bauart
+           wie die Unterseiten der Weltlage (.ws-navtab). -->
+      <div class="ws-nav set-nav" id="set-nav">
+        <button class="ws-navtab active" data-set-go="general">General</button>
+        <button class="ws-navtab" data-set-go="overlays">Overlays</button>
+        <button class="ws-navtab" data-set-go="notifications">Notifications</button>
+        <button class="ws-navtab" data-set-go="inventory">Inventory</button>
+        <button class="ws-navtab" data-set-go="about">About</button>
+      </div>
+
+      <!-- ---- Unterreiter: About ---- -->
+      <div class="set-pane settings-cols" data-set-pane="about">
       <div class="settings-col">
 
-      <!-- Version, Herkunft und Updates. Steht oben, weil es die Frage
-           beantwortet, mit der man in die Einstellungen geht, wenn etwas
-           nicht so aussieht wie im Changelog: "welche Fassung laeuft hier
-           eigentlich?" -->
+      <!-- Version, Herkunft und Updates - die Frage, mit der man hierher kommt,
+           wenn etwas nicht so aussieht wie im Changelog: "welche Fassung laeuft
+           hier eigentlich?" -->
       <div class="settings-group">
         <div class="settings-group-head">
           <h3>About Argus</h3>
@@ -1283,6 +1334,85 @@
         </div>
       </div>
 
+      </div>
+      <div class="settings-col">
+
+      <!-- Woher die Daten kommen. Jede Zeile ist eine Quelle, die Argus
+           tatsaechlich abfragt oder mitbringt - nichts, was nur einmal
+           nachgesehen wurde. Die Adressen stehen in EXTERNAL_ALLOWED in
+           main.js; eine Zeile ohne Adresse dort oeffnet nichts. -->
+      <div class="settings-group">
+        <div class="settings-group-head">
+          <h3>Where the data comes from</h3>
+          <p>Argus is unofficial and not affiliated with Digital Extremes. Everything it
+             shows is built from these sources.</p>
+        </div>
+
+        <div class="credit-list" id="credit-list">
+          <span>Prices &amp; orders</span>
+          <a data-ext="https://warframe.market">warframe.market</a>
+
+          <span>Game data &amp; images</span>
+          <a data-ext="https://github.com/Aericio/warframe-exports-data"
+             title="DE's Public Export, mirrored as plain JSON">DE Public Export</a>
+
+          <span>Drop tables</span>
+          <a data-ext="https://www.warframe.com/droptables"
+             title="Read through the mirror at drops.warframestat.us">DE drop tables</a>
+
+          <span>Items, vaulting &amp; release dates</span>
+          <a data-ext="https://docs.warframestat.us">warframestat.us</a>
+
+          <span>World state &amp; cycles</span>
+          <a data-ext="https://tenno.tools">tenno.tools</a>
+
+          <span>Mod card images</span>
+          <a data-ext="https://wiki.warframe.com">Warframe Wiki</a>
+
+          <span>Build imports</span>
+          <a data-ext="https://overframe.gg">overframe.gg</a>
+
+          <span>Profile &amp; mastery</span>
+          <b>Your public Warframe profile</b>
+
+          <span>Inventory, rivens &amp; whispers</span>
+          <b>The running game, on this PC</b>
+
+          <span>Text recognition</span>
+          <b>Windows' built-in OCR</b>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <div class="settings-group-head">
+          <h3>Project</h3>
+        </div>
+
+        <div class="credit-list">
+          <span>Made by</span>
+          <b>Kr3akz</b>
+
+          <span>Source code</span>
+          <a data-ext="https://github.com/Kr3akz/Argus">GitHub</a>
+
+          <span>License</span>
+          <a data-ext="https://github.com/Kr3akz/Argus/blob/main/LICENSE">GPL-3.0-or-later</a>
+
+          <span>Releases</span>
+          <a data-ext="https://github.com/Kr3akz/Argus/releases">All versions</a>
+
+          <span>Bugs &amp; ideas</span>
+          <a data-ext="https://github.com/Kr3akz/Argus/issues">GitHub issues</a>
+        </div>
+      </div>
+
+      </div>
+      </div>
+
+      <!-- ---- Unterreiter: General ---- -->
+      <div class="set-pane settings-cols active" data-set-pane="general">
+      <div class="settings-col">
+
       <!-- Die gefuehrte Tour, zum Zweiten.
            Sie laeuft beim ersten Start von selbst und ist danach genau hier
            wieder zu holen - deshalb zeigt ihre letzte Station auf diese
@@ -1303,6 +1433,9 @@
           </div>
         </div>
       </div>
+
+      </div>
+      <div class="settings-col">
 
       <div class="settings-group">
         <div class="settings-group-head">
@@ -1339,6 +1472,12 @@
 
         <div id="hk-status" class="settings-note hidden"></div>
       </div>
+
+      </div>
+      </div>
+
+      <!-- ---- Unterreiter: Inventory ---- -->
+      <div class="set-pane set-pane-single" data-set-pane="inventory">
 
       <!-- Der Schalter, auf den die Fehlermeldung des Inventar-Abrufs verweist.
            Eigene Gruppe, weil es hier nicht um Bequemlichkeit geht, sondern um
@@ -1386,7 +1525,9 @@
       </div>
 
       </div>
-      <div class="settings-col">
+
+      <!-- ---- Unterreiter: Overlays ---- -->
+      <div class="set-pane set-pane-single" data-set-pane="overlays">
 
       <!-- Eigene Gruppe, weil hier zusammensteht, was ueber dem Spiel liegt.
            Verstreut zwischen den Benachrichtigungen war "wie werde ich das
@@ -1395,6 +1536,16 @@
         <div class="settings-group-head">
           <h3>Overlays</h3>
           <p>Everything Argus draws on top of the running game</p>
+        </div>
+
+        <!-- Der Rundgang durch die Felder im Spiel: Lage und Groesse, auf einer
+             Buehne im Seitenverhaeltnis des Spielfensters (overlay-layout.js). -->
+        <div class="settings-note settings-note-row">
+          <span>Walk through the in-game panels one by one and set where each sits and how
+                large it is. Changes apply right away.</span>
+          <div class="about-actions">
+            <button class="btn-sm" id="btn-overlay-layout">Arrange overlays</button>
+          </div>
         </div>
 
         <label class="setting-row">
@@ -1443,12 +1594,51 @@
           <input type="checkbox" id="set-relic-scan" class="toggle-checkbox">
           <span class="toggle-switch"></span>
         </label>
+
+        <!-- Haengt NICHT am Overlay-Schalter oben: ein eigenes Fenster wie die
+             Preisschilder. Dafuer am Speicherzugriff - siehe Beschreibung. -->
+        <label class="setting-row">
+          <div class="setting-info">
+            <b>Compare riven rolls while cycling</b>
+            <span>On the cycle screen, shows your current roll on the left and the new one on
+                  the right, with how well each stat rolled. The rolls are read from the
+                  running game, so this needs inventory access switched on. The panels are
+                  click-through; the cursor hotkey brings the mouse to them so you can drag
+                  them somewhere else.</span>
+          </div>
+          <input type="checkbox" id="set-riven-overlay" class="toggle-checkbox">
+          <span class="toggle-switch"></span>
+        </label>
+
+        <!-- Ebenfalls ein eigenes Fenster und damit unabhaengig vom Overlay-
+             Schalter oben. Es ersetzt das Aufspringen des grossen Overlays
+             bei der Reliktauswahl. -->
+        <label class="setting-row">
+          <div class="setting-info">
+            <b>Recommend a relic on the selection screen</b>
+            <span>When you choose a relic for a fissure, lists the relics you own by what a
+                  crack is worth on average, in the top right corner of the game. Between rounds
+                  of an endless mission the game log names the fissure's era; from the star chart
+                  Argus reads it off the selection screen (only with <i>Read the rewards off the
+                  screen</i> switched on) and shows the best relics of each era until it knows.
+                  The cursor hotkey brings the mouse to the panel to filter by hand or drag it
+                  somewhere else. Otherwise it is click-through and steps aside while you are in
+                  another window.</span>
+          </div>
+          <input type="checkbox" id="set-relic-pick" class="toggle-checkbox">
+          <span class="toggle-switch"></span>
+        </label>
       </div>
+
+      </div>
+
+      <!-- ---- Unterreiter: Notifications ---- -->
+      <div class="set-pane set-pane-single" data-set-pane="notifications">
 
       <div class="settings-group">
         <div class="settings-group-head">
           <h3>Notifications</h3>
-          <p>Argus checks for new void fissures every 45 seconds</p>
+          <p>New void fissures, checked every 45 seconds, and whispers in game</p>
         </div>
 
         <label class="setting-row">
@@ -1457,6 +1647,28 @@
             <span>Reports new fissures that match your selection</span>
           </div>
           <input type="checkbox" id="set-notif-enabled" class="toggle-checkbox">
+          <span class="toggle-switch"></span>
+        </label>
+
+        <label class="setting-row">
+          <div class="setting-info">
+            <b>In-game whispers</b>
+            <span>Reports when someone starts a new whisper conversation with you. Only the
+                  first message of each conversation is reported. To read what it says, Argus
+                  looks it up in the game's memory, without sending anything anywhere.</span>
+          </div>
+          <input type="checkbox" id="set-whisper-enabled" class="toggle-checkbox">
+          <span class="toggle-switch"></span>
+        </label>
+
+        <label class="setting-row">
+          <div class="setting-info">
+            <b>Only warframe.market whispers</b>
+            <span>Stays quiet unless the message was copied from warframe.market, so a
+                  notification means a buyer or seller for one of your orders. If the text
+                  can't be read, you still get notified.</span>
+          </div>
+          <input type="checkbox" id="set-whisper-market" class="toggle-checkbox">
           <span class="toggle-switch"></span>
         </label>
 
@@ -1485,7 +1697,6 @@
         </div>
       </div>
 
-      </div>
       </div>
     </section>
 
@@ -2212,6 +2423,7 @@
      die dort als globale Funktionen entstehen - sie ruft sie aber erst beim
      Start auf, und der kommt aus app.js. -->
 <script src="guide.js"></script>
+<script src="overlay-layout.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

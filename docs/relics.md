@@ -9,8 +9,8 @@
 ## When the recommendation appears
 
 Before the reward screen there is the *other* screen: the grid of your own relics, where
-you pick the one to take in. Argus shows what each of them is worth there — and **only
-there**. It appears when you:
+you pick the one to take in. Argus puts a panel over it with your relics ranked by what a
+crack is worth on average — and **only there**. It appears when you:
 
 - open the **relic segment in your orbiter** to refine relics,
 - pick a relic when **starting a void fissure** from the star chart,
@@ -32,37 +32,185 @@ consoles pulled up the relic recommendation over screens that had nothing to do 
 relics. It bought 29 milliseconds — the log shows `PopulateInventoryGrid` arriving that
 soon after the console — and it has been removed.
 
-It closes when the input filter leaves the menu, and at the latest five minutes on,
-whether or not the game said anything. An overlay stuck over a running game is the worst
-thing it could do, so the clock has a vote.
+It closes when the input filter leaves the menu, when you pick a relic (the game asks for
+confirmation, and that dialog is the signal), and at the latest five minutes on, whether
+or not the game said anything. Between rounds the game
+gives you a clock of its own — 20 seconds, announced 61 to 72 ms after the screen opens
+(four rounds measured) — and then that clock decides instead, plus two seconds. A panel
+stuck over a running game is the worst thing it could do, so the clock has a vote.
+
+### Its own window
+
+The panel is a window of its own, built like the riven panels on the cycle screen:
+transparent, **click-through**, not focusable, laid over the game window wherever that
+is — on the second monitor at `x = -2560` too. It used to be the big overlay window that
+jumped up here, with cycles, fissures and goals that mean nothing on this screen, and at
+a spot that had nothing to do with where the game was. That no longer happens; if you have
+the overlay open anyway, it still highlights the relic selection as before. The panel has
+its own switch under **Settings**.
+
+It also leaves with the game. Warframe logs `WM_ACTIVATEAPP 0` when another window takes
+the foreground and `WM_ACTIVATEAPP 1` when it gets it back — 118 such lines in one
+evening, strictly alternating, seven of them while a selection was open. Without this the
+panel, which sits above everything, would have stayed on top of whatever you switched
+to; now it hides and comes back as long as the selection is still open.
+
+It has to be quick, and how quick is measured. Over six picks, the time from the screen
+opening to choosing a relic was **1.1 to 2.8 seconds**; the game itself finished building
+the screen 89 to 367 ms after the log line (23 openings — around 90 ms between rounds,
+around 300 ms from the star chart or the orbiter). A panel that needed a second would miss
+half the picks. So the window is created hidden at start, like the price-tag window, and
+shown the moment the numbers are ready — nothing waits for the game to finish drawing,
+because the panel sits at the edge and not on the grid that is building up.
+
+Only if the numbers take longer than 150 ms — the first time after a start, with the
+catalogue, market list and drop tables still cold — does it show *Reading your relics…*
+first. Anything shorter would just flicker.
+
+Each row shows the relic with its refinement and how many you have, what one crack is
+worth on average in platinum and ducats, and the best part in it. The numbers are the
+relic planner's, so the two never disagree. A **≥** in front of the platinum value means
+prices are known for less than 90 % of the drop chance, so the value is a lower bound — the
+same threshold at which the planner warns.
+
+### Where it sits, and filtering by hand
+
+The panel sits in the **top right corner** of the game, ten points from both edges. Its
+first position — on the height of the riven panels, a fifth of the way down — read as
+"somewhere in the middle" in the first test, so it moved to the edge.
+
+The **cursor hotkey** (`Ctrl+E` unless you changed it) brings the mouse to the panel, the
+same key that takes the cursor into the overlay window. While the selection screen is
+open, the key belongs to the panel; the overlay gets it back afterwards. In that mode:
+
+- **Chips** filter the list: *Auto* (whatever the log or the screen said), *All*, one per
+  era, and *★ Starred* for the relics you starred in the planner. The choice holds for this
+  selection; the next one starts on *Auto* again.
+- **Drag the title** to move the panel. The position is kept as a fraction of the game
+  window, so it stays in the same place of the picture after a resolution change, and it
+  survives a restart. **Double-click the title** to send it back to the corner.
+- The panel takes clicks **only while the cursor is on it**; everywhere else they keep
+  going to the game, the same trick the overlay's title bar uses. The window never takes
+  focus, so Warframe stays in front and there is nothing to click back into.
+
+Press the key again, or pick a relic, and it is click-through as before.
 
 ### It shows the era the fissure actually takes
 
-A Lith fissure takes a Lith relic. The game knows that and greys out the rest; the list
-beside it used to show all of yours, so you were filtering in your head against a screen
-that had already done it. Now the era chip is set for you, and the heading says which
-fissure it came from. An **Omnia** fissure accepts any era, so there the answer is *all* —
-that is the right answer, not a missing one.
+A Lith fissure takes a Lith relic. The game knows that and greys out the rest, so a list
+of all of yours would have you filtering in your head against a screen that had already
+done it. When the fissure is known, the panel shows only relics that fit and names the
+fissure in its heading. An **Omnia** fissure accepts any era, so there the answer is
+*all* — that is the right answer, not a missing one.
 
-Working out which fissure you are in takes two sources, because neither one is enough:
-`EE.log` names the mission you picked only by its internal id, and the world state names
-the same place only by planet and node. A node table joins them.
+**Where it comes from depends on the way in.** Argus tells the three apart by what the log
+wrote just before the selection opened — measured on all 23 openings of 28 and 29 Sep,
+none left over:
+
+| way in | what comes just before | era from |
+|---|---|---|
+| relic segment in the orbiter | `UIConsoleTrigger::Open()`, 22–41 ms earlier | none — refining, so every era in one list |
+| between rounds | `Relic reward screen shut down`, 60–68 ms earlier | the log, see below |
+| star chart | the map's input filter was the last one set | **the screen** |
+
+**On the star chart the log is too late.** The game opens the selection first and writes
+the mission into the log only *after* you pick: measured on two fissures, 0.8 and 0.9
+seconds after the confirmation. Nothing before that gives it away either — the last node
+the cursor passed over before the Axi selection was Nakki; the fissure was on Hydron, and
+in a later test the last ones were Maroo's Bazaar and Wahiba. So Argus reads the era off
+the selection screen itself, and only with *Read the rewards off the screen* switched on.
+
+**What the screen shows**, measured on three captures from the first test (2560×1440,
+English client):
+
+- Under *VOID RELICS/REFINEMENT* at the top left, the era has a line of its own:
+  `LITH ERA`, `NEO ERA`.
+- Next to it a counter, `COLLECTED 75/202`. 202 is exactly the number of Lith relics in the
+  drop tables; the Neo screen said `62/196`, and there are 196 Neo relics. The second number
+  is how many relics the screen lists.
+- The grid holds cards of that one era only (`Lith G14 Relic`).
+
+**And when it can be read.** The screen fades in. About 0.45 s after it opened, everything
+was still half transparent: cards and counter could already be read, the small era line
+could not; by 0.7 s it was there. The first version waited for that line — so for about
+half a second the panel stood there with every era and then jumped to the right one, which
+is exactly what the first test complained about.
+
+So now there are three pieces of evidence, in this order:
+
+1. The line `<era> ERA`. It *is* the answer.
+2. The counter: if the screen lists more than half of all relics, it shows every era —
+   Omnia. (An Omnia screen has not been captured yet; this follows from what the counter
+   demonstrably counts for Lith and Neo.)
+3. The cards — but for a single era **only with the counter as proof** that the screen
+   lists one era. Without it the visible cards might be the first row of an Omnia grid
+   that happens to start with one era. Cards of two eras, on the other hand, always mean
+   every era.
+
+While fading in, the text recognition misreads the pale cards (`Lit%`, `Liti`, `Lfth` for
+*Lith*), so at the start of a card a word one letter off still counts — only for the long
+names and only with the same first letter; `With …` is not a Lith card, `Liii` is left
+out. A counter that cannot be right (`75/2020`, one digit too many) is ignored instead of
+turning the screen into Omnia. The panel's own text and the overlay window are left out
+of the reading, or they would read themselves.
+
+**The panel waits for the answer.** Argus starts looking the moment the game reports the
+screen built (`LoadingCompleteEnd`) and looks again every 80 ms — a look at a somewhat
+smaller top left area took 26 to 45 ms in the first test. Until the era is decided the
+panel stays hidden, so it appears once, already filtered; going by the captures, the cards
+and counter are readable from about 0.45 s after the screen opens, while the game's own
+screen is still fading in. If nothing is decided
+within 1.2 seconds, it shows **the best relics of each era**, two per era, instead of one
+ranking across all of them: a single list would put Lith relics on top while the screen
+only offers Axi. Every later selection in the same mission knows the era from the log.
+
+What was read is written to `argus.log`, with the number of looks and the time since the
+screen opened. With `relicScanDebug` switched on, the first reading of a session is kept as
+a capture in `data/diag/auswahl-*.png` together with what was read, plus up to two more
+when a reading finds nothing — never more than six such captures in the folder.
+
+That is where the log line the game writes as a mission **loads** comes in:
 
 ```
-Set squad mission: {"name":"SolNode75", ... }   ← EE.log: the id
-            SolNode75  ->  Cervantes (Earth)    ← the node table
-            Cervantes (Earth)  ->  Lith         ← the world state's fissure list
+Client loaded {"difficulty":"","voidTier":"VoidT6","quest":"","name":"SolNode232_ActiveMission"} with MissionInfo:
 ```
+
+It is needed because the line for the squad's target does not last: 2.9 seconds after
+it, as the mission starts, the game logs that you left the matchmaking squad, and that
+cleared the fissure. Between rounds of an endless fissure — exactly where the selection
+comes back every few minutes — the era was therefore never known. The loading line comes
+after that and holds until you are back in your ship or load somewhere else; a place
+without `voidTier`, such as a relay, clears it.
+
+`voidTier` names the era directly — `VoidT1` to `VoidT6` for Lith, Meso, Neo, Axi,
+Requiem and Omnia, the same numbering as in the relics' own item paths. Measured: `VoidT4`
+on *Hydron (Sedna) – Axi Fissure* with an Axi relic equipped, `VoidT6` on
+*Tuvul Commons (Zariman) – Omnia Fissure*.
+
+The node is still read, for the heading and the Steel Path mark. It used to be the only
+source, joined to the world state through a node table:
+
+```
+Set squad mission: {"difficulty":"","voidTier":"VoidT4","quest":"","name":"SolNode195_ActiveMission"}
+            SolNode195  ->  Hydron (Sedna)      ← the node table
+            Hydron (Sedna)  ->  Axi             ← the world state's fissure list
+```
+
+Two things went wrong with that for fissures. The name carries `_ActiveMission`, which
+the node table does not know, so a fissure mission never resolved; node ids never contain
+an underscore (452 of 452), so everything from the first one on is now cut off. And the
+world state had to be reachable. Now the era comes from the log and the world state only
+adds the rest — if it cannot be reached, the filter still works.
 
 The id is used rather than the mission title standing next to it in the log, because that
 title is in **the language the game is set to**. The ids are not: `SolNode75` is the same
 everywhere. Three prefixes occur in practice — `SolNode`, `SettlementNode` and
 `CrewBattleNode` for Railjack — and all three are covered.
 
-Your own click on an era chip always wins from then until you start the next fissure. A
-mission that is not a fissure filters nothing, and if the node cannot be resolved at all
-nothing is filtered either — a list cut down for a reason nobody can see is worse than a
-long one.
+In the overlay window, your own click on an era chip always wins from then until you
+start the next fissure. A mission that is not a fissure filters nothing, and if neither
+the log nor the node says which fissure it is, nothing is filtered either — a list cut
+down for a reason nobody can see is worse than a long one.
 
 ## The reward screen
 

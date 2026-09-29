@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' https://cdn.jsdelivr.net data:; style-src 'self' 'unsafe-inline';">
+  <title>Argus Relic Pick</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<!--
+  Relikt-Empfehlung auf dem Auswahlbildschirm.
+
+  Ein durchsichtiges, klickdurchlaessiges Fenster ueber dem Spielfenster, wie
+  beim Riven-Overlay. Darin ein Feld am Rand: die eigenen Relikte, geordnet
+  nach dem, was ein Oeffnen im Schnitt bringt. Ausgewaehlt wird im
+  Hauptprozess (src/core/relic-pick.js); hier wird nur gezeichnet.
+-->
+<body class="relic-pick-window">
+  <div class="rp-panel hidden" id="rp-panel"></div>
+  <script src="imagefail.js"></script>
+  <script src="icons.js"></script>
+  <script src="relic-pick.js"></script>
+</body>
+</html>

@@ -50,7 +50,9 @@ function flattenExport(json) {
   return out;
 }
 
-async function fetchExport(name) {
+/* Exportiert fuer dispositions.js: das braucht eine einzelne Datei frisch,
+   nicht den ganzen Katalog. */
+export async function fetchExport(name) {
   const res = await fetch(`${CDN}/${name}_en.json`);
   if (!res.ok) throw new Error(`${name}: HTTP ${res.status}`);
   return flattenExport(await res.json());

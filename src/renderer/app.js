@@ -96,6 +96,8 @@ window.api.onOverlayChanged(syncOverlayBadge);
 window.api.overlayState().then(syncOverlayBadge).catch(() => {});
 
 /* ---------------- Sidebar Navigation ---------------- */
+const TABS_WITHOUT_HERO = new Set(['rivens']);
+
 function showTab(name) {
   if (typeof cancelHotkeyCapture === 'function') cancelHotkeyCapture();
   /* Mastery Manager und Farm-Ziele sind ein Reiter mit zwei Modi. Aeltere
@@ -105,6 +107,9 @@ function showTab(name) {
   if (name === 'dashboard') { name = 'mastery'; masteryMode = 'manager'; }
   document.querySelectorAll('.nav-item').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
   document.querySelectorAll('.tabpane').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
+  /* Die Profilkarte oben gehoert zu allem, was am Konto haengt. Die Rivens
+     sind Einzelstuecke zum Durchsehen - dort nimmt sie nur Platz weg. */
+  document.querySelector('.hero')?.classList.toggle('hidden', TABS_WITHOUT_HERO.has(name));
 
   if (name === 'mastery') {
     if (!checklistCache.length) loadChecklist();
@@ -117,6 +122,7 @@ function showTab(name) {
   if (name === 'farmguide') reloadFarmTab();
   if (name === 'ducats') loadDucats();
   if (name === 'inventory') loadInventoryTab();
+  if (name === 'rivens') loadRivensTab();
   if (name === 'trading') { initTradingEvents(); loadTrading(); }
   if (name === 'settings') loadSettingsTab();
 }
@@ -8997,6 +9003,9 @@ if (window.api.onInventoryUpdated) {
        selbst an, wenn ihr Stand aus einer alten Woche stammt; hier kommt die
        Antwort darauf an. */
     if ($('tab-weekly')?.classList.contains('active')) loadWeekly(true);
+    /* Die Rivens haben ihren eigenen Aufruf, lesen aber dieselbe Datei. */
+    rivenData = null;
+    if ($('tab-rivens')?.classList.contains('active')) loadRivensTab();
   });
 }
 
@@ -9014,6 +9023,202 @@ if (window.api.onInventoryStale) {
     }
   });
 }
+
+/* ---------------- Rivens ---------------- */
+/*
+ * Die Karten rechnet der Hauptprozess (core/rivens.js), hier wird nur
+ * gezeichnet und geordnet. Eigener Aufruf wie die Schmiede, siehe rivens:get
+ * in main.js.
+ */
+let rivenData = null;
+let rivenSort = ['name-asc'];
+
+const RIVEN_SORT_OPTIONS = [
+  ['name-asc',     'Weapon (A–Z)',                  'Weapon'],
+  ['roll-desc',    'Average roll of the positives', 'Roll'],
+  ['rerolls-desc', 'Rerolls (most first)',          'Rerolls'],
+  ['rank-desc',    'Rank (highest first)',          'Rank']
+];
+
+const byRivenName = (a, b) => a.fullName.localeCompare(b.fullName, 'en');
+const RIVEN_AXES = {
+  'name-asc':     byRivenName,
+  'roll-desc':    (a, b) => b.avgQuality - a.avgQuality,
+  'rerolls-desc': (a, b) => b.rerolls - a.rerolls,
+  'rank-desc':    (a, b) => b.rank - a.rank
+};
+
+if ($('btn-riven-refresh')) $('btn-riven-refresh').innerHTML = Icon.refresh(15) + '<span>Fetch inventory</span>';
+
+async function loadRivensTab(force = false) {
+  if (rivenData && !force) return renderRivens();
+  const res = await window.api.getRivens();
+  if (res.ok) { rivenData = res.data; renderRivens(); }
+  else showRivenState(res.code, res.error);
+}
+
+function showRivenState(code, text) {
+  $('riven-body').classList.add('hidden');
+  const box = $('riven-state');
+  box.classList.remove('hidden');
+  const erklaerung = code === 'empty'
+    ? 'There is no inventory data yet. Start Warframe, log in, travel to a relay '
+    + 'or your dojo and back to your ship, then press "Fetch inventory".'
+    : text;
+  box.innerHTML = `
+    <div class="inv-state-icon">${Icon.warning(30)}</div>
+    <b>${esc(code === 'empty' ? 'No inventory loaded yet' : 'Cannot read your rivens right now')}</b>
+    <p>${esc(erklaerung)}</p>`;
+}
+
+function renderRivens() {
+  const d = rivenData;
+  if (!d) return;
+  $('riven-state').classList.add('hidden');
+  $('riven-body').classList.remove('hidden');
+
+  /* Was sich nicht lesen liess, wird genannt - still weglassen hiesse, einen
+     Riven zu unterschlagen. */
+  const notice = $('riven-notice');
+  notice.classList.toggle('hidden', !d.unresolved?.length);
+  if (d.unresolved?.length) {
+    notice.textContent = `Could not read ${d.unresolved.length} riven${d.unresolved.length === 1 ? '' : 's'}: `
+      + d.unresolved.map(u => `${u.weapon || u.type.split('/').pop()} (${u.reason})`).join(', ');
+  }
+
+  const unopened = d.unrevealed.reduce((n, u) => n + u.count, 0);
+  const parts = [`${d.unveiled.length} riven${d.unveiled.length === 1 ? '' : 's'}`];
+  if (d.veiled.length) parts.push(`${d.veiled.length} veiled`);
+  if (unopened) parts.push(`${unopened} not yet revealed`);
+  /* Der Stand des Dokuments, nicht der des Lesens - siehe inventory.js. */
+  const at = d.syncedAt || d.fetchedAt;
+  if (at) parts.push(`as of ${new Date(at).toLocaleString('en-GB',
+    { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`);
+  const unchecked = d.unveiled.some(r => !r.verified);
+  $('riven-meta').innerHTML = esc(parts.join(' · '))
+    + (unchecked ? ' · <span class="riven-unver">~</span> computed, not yet checked against a card in the game' : '');
+
+  SortPick.mount('riven-sort-wrap', {
+    options: RIVEN_SORT_OPTIONS,
+    value: rivenSort,
+    fallback: 'name-asc',
+    onChange: keys => { rivenSort = keys; renderRivenGrid(); }
+  });
+  renderRivenGrid();
+  renderVeiledRivens();
+}
+
+function renderRivenGrid() {
+  const list = [...(rivenData?.unveiled || [])];
+  const cmp = SortPick.chain(rivenSort, RIVEN_AXES, byRivenName);
+  if (cmp) list.sort(cmp);
+  $('riven-grid').innerHTML = list.length
+    ? list.map(rivenCardHtml).join('')
+    : '<p class="hint">No unveiled rivens on this account.</p>';
+}
+
+/* Farbstufe fuer den Wurf. Die Grenzen sind eine Lesehilfe, keine Wertung, ob
+   der Wert zur Waffe passt. */
+const rivenTier = pct => pct >= 80 ? 'q-top' : pct >= 50 ? 'q-mid' : pct >= 20 ? 'q-low' : 'q-bottom';
+
+function rivenStatHtml(r, s) {
+  const pct = Math.round(s.quality * 100);
+  const tip = [
+    s.label,
+    r.rank < r.maxRank ? `At rank ${r.maxRank}: ${s.maxText}` : null,
+    `Possible at rank ${r.maxRank}: ${s.rangeText[0]} to ${s.rangeText[1]}`,
+    s.curse ? '100% is the mildest this negative can roll' : '100% is the best this stat can roll',
+    s.verified ? null : 'Computed, not yet checked against a card in the game'
+  ].filter(Boolean).join('\n');
+  return `
+    <div class="riven-stat ${s.curse ? 'is-curse' : 'is-buff'}" title="${esc(tip)}">
+      <span class="riven-val">${esc(s.text)}</span>
+      <span class="riven-label ${s.element ? 'el-' + esc(s.element) : ''}">${esc(s.label)}${s.verified ? '' : ' <span class="riven-unver">~</span>'}</span>
+      <span class="riven-roll ${rivenTier(pct)}"><i style="width:${Math.max(pct, 3)}%"></i></span>
+      <span class="riven-pct">${pct}%</span>
+    </div>`;
+}
+
+function rivenCardHtml(r) {
+  const pol = r.polarity ? Icon.polarity(r.polarity.glyph, 13) : '';
+  const avg = Math.round(r.avgQuality * 100);
+  /* Der Export fuehrt die Disposition als float32 - 0.85 kommt als
+     0.85000002 an. Zwei Stellen reichen, das Spiel zeigt ohnehin nur Punkte. */
+  const disp = Number(r.weapon.disposition.toFixed(2));
+  return `
+    <div class="riven-card">
+      <div class="riven-head">
+        ${r.image ? `<img class="riven-img" src="${esc(r.image)}" alt="" loading="lazy">` : '<span class="riven-img"></span>'}
+        <div class="riven-title">
+          <b>${esc(r.weapon.name)}</b>
+          <span class="riven-name">${esc(r.name || '')}</span>
+        </div>
+        <span class="riven-drain" title="${esc(r.polarity ? r.polarity.label + ' polarity' : 'Capacity')}">${r.drain}${pol}</span>
+      </div>
+      <div class="riven-stats">${r.stats.map(s => rivenStatHtml(r, s)).join('')}</div>
+      <div class="riven-foot">
+        <span>${esc(r.kind)}</span>
+        <span>MR ${r.mr ?? '?'}</span>
+        <span title="Rank ${r.rank} of ${r.maxRank}">R${r.rank}/${r.maxRank}</span>
+        <span title="Times this riven was cycled">⟳ ${nf(r.rerolls)}</span>
+        <span title="${esc(r.weapon.fresh
+          ? 'Disposition: how strongly rivens roll on this weapon'
+          : 'Disposition from the local catalog - the current one could not be fetched, so every value on this card may be off')}">×${disp}${r.weapon.fresh ? '' : ' <span class="riven-unver">~</span>'}</span>
+        <span class="riven-avg" title="Average roll of the positive stats">avg ${avg}%</span>
+      </div>
+    </div>`;
+}
+
+function renderVeiledRivens() {
+  const d = rivenData;
+  const wrap = $('riven-veiled-wrap');
+  const hasAny = d.veiled.length || d.unrevealed.length;
+  wrap.classList.toggle('hidden', !hasAny);
+  if (!hasAny) return;
+
+  const cards = d.veiled.map(v => {
+    const req = v.challenge.required || 0;
+    const pct = req ? Math.min(100, Math.round(v.challenge.progress / req * 100)) : 0;
+    return `
+      <div class="riven-veil">
+        <b>${esc(v.kind)} Riven</b>
+        <p>${esc(v.challenge.text || 'Unknown challenge')}</p>
+        <div class="riven-veil-prog"><i style="width:${pct}%"></i></div>
+        <span class="riven-veil-count">${nf(v.challenge.progress)} / ${nf(req)}</span>
+      </div>`;
+  }).join('');
+
+  const chips = d.unrevealed.map(u =>
+    `<span class="riven-unopened"><b>${nf(u.count)}×</b> ${esc(u.kind)}</span>`).join('');
+  $('riven-veiled').innerHTML = cards + (chips
+    ? `<div class="riven-unopened-row"><span>Not yet revealed</span>${chips}</div>`
+    : '');
+}
+
+if ($('btn-riven-refresh')) $('btn-riven-refresh').onclick = async () => {
+  const btn = $('btn-riven-refresh');
+  btn.disabled = true;
+  btn.innerHTML = Icon.refresh(15) + '<span>Searching game memory …</span>';
+
+  const res = await window.api.refreshInventory();
+
+  btn.disabled = false;
+  btn.innerHTML = Icon.refresh(15) + '<span>Fetch inventory</span>';
+
+  if (res.ok) {
+    /* Derselbe Abruf wie im Inventar-Tab - dessen Stand gleich mitnehmen. */
+    inventoryData = res.data;
+    await loadRivensTab(true);
+  } else if (rivenData) {
+    /* Ein alter Stand bleibt stehen, der Grund kommt darueber. */
+    const n = $('riven-notice');
+    n.classList.remove('hidden');
+    n.textContent = res.error || 'Could not fetch the inventory.';
+  } else {
+    showRivenState(res.code, res.error);
+  }
+  if (typeof refreshScanLogLine === 'function') refreshScanLogLine();
+};
 
 
 /* ---------------- Material Klick Verlinkung zum Farm-Guide ---------------- */
@@ -9320,6 +9525,8 @@ function showInAppToast({ title, body, type }) {
     if (type === 'foundry') {
       showTab('mastery');
       setMasteryMode('foundry');
+    } else if (type === 'whisper') {
+      showTab('trading');
     } else {
       showTab('worldstate');
       showWsPane('fissures');
@@ -9335,8 +9542,10 @@ function showInAppToast({ title, body, type }) {
 window.api.onNotificationEvent(data => {
   showInAppToast(data);
   /* Die Riss-Liste neu zu zeichnen ergibt nur bei einem Riss Sinn - ein
-     fertiger Bau aendert dort nichts. */
-  if (data?.type !== 'foundry' && worldStateCache) renderFissures(worldStateCache.fissures || []);
+     fertiger Bau oder eine Fluesternachricht aendert dort nichts. */
+  if ((data?.type === 'fissure' || data?.type === 'test') && worldStateCache) {
+    renderFissures(worldStateCache.fissures || []);
+  }
 });
 
 window.api.onNavigateTab((tab, subpane) => {
@@ -12258,6 +12467,15 @@ function renderNotifToggles() {
   if ($('set-notif-enabled')) $('set-notif-enabled').checked = on;
   if ($('set-notif-sound'))   $('set-notif-sound').checked   = s.sound !== false;
   if ($('set-notif-toast'))   $('set-notif-toast').checked   = s.desktopToast !== false;
+
+  const w = s.whispers || {};
+  if ($('set-whisper-enabled')) $('set-whisper-enabled').checked = !!w.enabled;
+  if ($('set-whisper-market'))  $('set-whisper-market').checked  = w.marketOnly !== false;
+  /* Der Filter haengt am Hauptschalter - sichtbar bleiben, aber ausgegraut,
+     wie die Overlay-Zeilen darueber. */
+  const marketRow = $('set-whisper-market')?.closest('.setting-row');
+  if (marketRow) marketRow.classList.toggle('is-disabled', !w.enabled);
+  if ($('set-whisper-market')) $('set-whisper-market').disabled = !w.enabled;
 }
 
 /* Eigener Schalter, eigene Ablage: das Einblenden bei Relikt-Funden haengt am
@@ -12301,6 +12519,46 @@ $('set-relic-tags')?.addEventListener('change', e => {
   window.api.setRelicTags(e.target.checked).catch(() => {});
 });
 
+$('set-riven-overlay')?.addEventListener('change', e => {
+  window.api.setRivenOverlay(e.target.checked).catch(() => {});
+});
+
+$('set-relic-pick')?.addEventListener('change', e => {
+  window.api.setRelicPickOverlay(e.target.checked).catch(() => {});
+});
+
+/* Unterreiter der Einstellungen. Wie die Unterseiten der Weltlage: eine
+   Klasse umschalten, nichts neu laden - geladen wird beim Betreten des
+   Reiters (loadSettingsTab), und das deckt alle fuenf ab. */
+function showSettingsPane(key) {
+  document.querySelectorAll('.set-pane').forEach(p =>
+    p.classList.toggle('active', p.dataset.setPane === key));
+  document.querySelectorAll('#set-nav .ws-navtab').forEach(t =>
+    t.classList.toggle('active', t.dataset.setGo === key));
+  document.querySelector('.main-content')?.scrollTo({ top: 0 });
+}
+window.showSettingsPane = showSettingsPane;
+
+$('set-nav')?.addEventListener('click', e => {
+  const btn = e.target.closest('[data-set-go]');
+  if (btn) showSettingsPane(btn.dataset.setGo);
+});
+
+/* Die Quellen unter About. Geoeffnet wird im Browser - aber nur, was der
+   Hauptprozess auf seiner Liste hat (EXTERNAL_ALLOWED). */
+$('tab-settings')?.addEventListener('click', e => {
+  const link = e.target.closest('a[data-ext]');
+  if (!link) return;
+  e.preventDefault();
+  window.api.openExternal(link.dataset.ext).catch(() => {});
+});
+
+/* Der Rundgang durch Lage und Groesse der Felder im Spiel - er holt sich
+   seinen Stand selbst (overlay-layout.js). */
+$('btn-overlay-layout')?.addEventListener('click', () => {
+  if (typeof OverlayLayout !== 'undefined') OverlayLayout.open();
+});
+
 async function saveNotifToggles() {
   const enabled = $('set-notif-enabled').checked;
   /* Ein Schalter, zwei Ebenen: enabled und fissures.enabled hingen schon im
@@ -12309,7 +12567,11 @@ async function saveNotifToggles() {
     enabled,
     sound: $('set-notif-sound').checked,
     desktopToast: $('set-notif-toast').checked,
-    fissures: { enabled }
+    fissures: { enabled },
+    whispers: {
+      enabled: $('set-whisper-enabled')?.checked ?? false,
+      marketOnly: $('set-whisper-market')?.checked ?? true
+    }
   });
   if (res.ok) {
     notificationSettings = res.data;
@@ -12318,7 +12580,8 @@ async function saveNotifToggles() {
   }
 }
 
-['set-notif-enabled', 'set-notif-sound', 'set-notif-toast'].forEach(id => {
+['set-notif-enabled', 'set-notif-sound', 'set-notif-toast',
+ 'set-whisper-enabled', 'set-whisper-market'].forEach(id => {
   $(id)?.addEventListener('change', saveNotifToggles);
 });
 
@@ -12375,6 +12638,8 @@ async function loadSettingsTab() {
       hotkeyState = res.hotkeys;
       if (res.notifications) notificationSettings = res.notifications;
       renderRelicToggle(res.relicAutoShow, res.relicScan, res.relicTags);
+      if ($('set-riven-overlay')) $('set-riven-overlay').checked = res.rivenOverlay !== false;
+      if ($('set-relic-pick')) $('set-relic-pick').checked = res.relicPickOverlay !== false;
 
       const overlayOn = res.overlayEnabled !== false;
       if ($('set-overlay-enabled')) $('set-overlay-enabled').checked = overlayOn;

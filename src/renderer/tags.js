@@ -180,9 +180,18 @@ function render(tags, panel) {
      standen, waren einen Wimpernschlag weg und dann wieder da. */
   const schonDa = !!box.querySelector('.tag-panel');
 
+  /* GROESSE, OHNE DIE SPALTEN ZU VERSCHIEBEN. Waechst das Dock einfach mit,
+     stuende jede Spalte ein Stueck neben ihrer Karte - bei vier Karten und
+     130 % die aeussere um fast eine halbe Kartenbreite. Deshalb wird es um
+     denselben Faktor schmaler angelegt und dann vergroessert: aussen bleibt
+     es genau so breit wie die Karten, innen wird der Inhalt groesser. */
+  const s = Number.isFinite(panel.scale) && panel.scale > 0 ? panel.scale : 1;
+  const breite = panel.width / s;
+  const links = panel.left + (panel.width - breite) / 2;
+
   box.innerHTML =
-    `<div class="tag-panel${schonDa ? ' schon-da' : ''}" style="left:${Math.round(panel.left)}px;` +
-    ` top:${Math.round(panel.top)}px; width:${Math.round(panel.width)}px;` +
+    `<div class="tag-panel${schonDa ? ' schon-da' : ''}" style="left:${Math.round(links)}px;` +
+    ` top:${Math.round(panel.top)}px; width:${Math.round(breite)}px; --ov-scale:${s};` +
     ` grid-template-columns: repeat(${panel.anzahlSpalten}, 1fr)">` +
     spalten +
     /* Die FORM der Lasche steht im Stylesheet als Maske - dieses SVG traegt

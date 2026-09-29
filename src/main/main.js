@@ -18,7 +18,7 @@ import { app, BrowserWindow, ipcMain, globalShortcut, shell, Notification, scree
 import path from 'node:path';
 import os from 'node:os';
 import { existsSync, mkdirSync, renameSync, cpSync, createWriteStream } from 'node:fs';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile, readdir } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -36,7 +36,7 @@ import { loadMods, POLARITIES, RARITY_LABELS, searchMods, isAuraMod, isExilusMod
 import { evaluateBuild, combineBuilds, orokinTypeFor } from '../core/builds.js';
 import { indexArcanes, searchArcanes, arcaneSlotCount, maxArcaneRank, isArcaneName } from '../core/arcanes.js';
 import { fetchWorldState } from '../core/worldstate.js';
-import { loadSolNodes, fissureForNode } from '../core/solnodes.js';
+import { loadSolNodes, fissureForNode, nodeName } from '../core/solnodes.js';
 import { annotateWeekly, kahlAnker, inventarStand } from '../core/weekly.js';
 import { searchResourceGuides, RESOURCE_CATEGORIES } from '../core/farming.js';
 import { getMiningGuide } from '../core/mining.js';
@@ -51,8 +51,9 @@ import { loadDropTables, sourcesFor } from '../core/droptables.js';
 import { loadCardImages, cardUrl } from '../core/cards.js';
 import { upgradeDetails } from '../core/upgrade-details.js';
 import { matchesFissureFilter } from '../core/fissure-filter.js';
-import { captureForeground, restoreForeground, bringToForeground, moveCursorIntoWindow, foregroundPid, gameWindowRect } from '../core/foreground.js';
+import { captureForeground, restoreForeground, bringToForeground, moveCursorIntoWindow, moveCursor, foregroundPid, gameWindowRect } from '../core/foreground.js';
 import { LogWatcher } from '../core/logwatch.js';
+import { readWhisperInWorker, isMarketWhisper } from '../core/whispers.js';
 import { loadMarketItems, findMarketItem, findMarketSet, getPrice, getPrices, getRankedPrices,
          cachedPrice, priceKey, prewarmPrices, stopPrewarm, marketImage, marketSubIcon } from '../core/market.js';
 /* Handelsteil: Anmeldung, Orders, Auktionen und das lokale Handelsbuch.
@@ -72,6 +73,11 @@ import {
 } from '../core/relics.js';
 import { buildBaseSets } from '../core/basesets.js';
 import { foundryQueue } from '../core/foundry.js';
+import { buildRivens, rivenView, rivensForShownWeapon } from '../core/rivens.js';
+import { loadDispositions } from '../core/dispositions.js';
+import { scanRivenInWorker, pickCurrent, pickNewRoll } from '../core/riven-scan.js';
+import { buildRelicPick, eraFromScreen } from '../core/relic-pick.js';
+import { recognise } from '../core/ocr-host.js';
 import { buildCraftChains, inventoryXP, mergeXP } from '../core/craftchains.js';
 import { buildBaroOffer } from '../core/baro.js';
 import { subsumedSuits } from '../core/helminth.js';
@@ -81,7 +87,7 @@ import {
   panelGeometrie, panelGeometrieGemessen, spaltenZuordnen, ocrScreen, kartenZaehlen
 } from '../core/rewardscan.js';
 import {
-  recallGeometry, rememberGeometry, columnCrops, columnCropsFrom, frameKey, WIDE_BAND
+  recallGeometry, rememberGeometry, columnCrops, columnCropsFrom, frameKey, WIDE_BAND, DEFAULT_CARD_WIDTH
 } from '../core/scan-geometry.js';
 import { archiveScan, pruneArchive } from '../core/scan-archive.js';
 import {
@@ -129,6 +135,12 @@ let lastAutoSyncAt = 0;
 let relicScan = true;
 /* Preisschilder direkt im Spiel, unter den vier Karten. */
 let relicTags = true;
+/* Riven-Overlay auf dem Umwandeln-Bildschirm. Braucht zusaetzlich den
+   Speicherzugriff (inventoryScan) - der neue Wurf steht nirgends sonst. */
+let rivenOverlay = true;
+/* Relikt-Empfehlung auf dem Auswahlbildschirm, in einem eigenen Fenster.
+   Ersetzt das Aufspringen des grossen Overlays bei der Reliktauswahl. */
+let relicPickOverlay = true;
 /* Beweisaufnahme bei Fehlschlag - siehe scanRewardsRepeatedly. Nur ueber
    data/config.json einschaltbar, weil es ein Werkzeug zur Fehlersuche ist und
    keine Einstellung, die jemand im Betrieb braucht. */
@@ -149,13 +161,25 @@ let tagTimer = null;
    Bildschirmhoehe - so sitzt es auf 1080p wie auf 1440p an derselben Stelle
    des Bildes. 0.23 platziert die Karten mit reichlich Platz unter allen
    vier Spielernamen.
-   Ueber data/config.json feinjustierbar, ohne dass es dafuer einen Schalter
-   in der Oberflaeche braucht. */
+   Einstellbar im Rundgang "Arrange overlays" (overlay-layout:set). */
 let relicTagOffset = 0.23;
+/* Groesse der Felder im Spiel, 1 = wie gezeichnet. Eine Zahl je Fenster,
+   eingestellt im selben Rundgang. Gerechnet wird im jeweiligen Renderer -
+   hier steht nur der Wert. */
+let relicTagScale = 1;
+const OVERLAY_SCALE_MIN = 0.6;
+const OVERLAY_SCALE_MAX = 1.6;
+const clampOverlayScale = v => Number.isFinite(v)
+  ? Math.min(OVERLAY_SCALE_MAX, Math.max(OVERLAY_SCALE_MIN, Math.round(v * 100) / 100))
+  : 1;
+/* Linke obere Ecke als Anteil des Spielfensters, oder null fuer die
+   eingebaute Lage. Dieselbe Form fuer jedes Feld, das man ziehen kann. */
+const cleanPos = p => p && Number.isFinite(p.x) && Number.isFinite(p.y)
+  ? { x: Math.min(1, Math.max(0, p.x)), y: Math.min(1, Math.max(0, p.y)) }
+  : null;
 /* Nur ein selbst eingeblendetes Overlay wird danach auch selbst wieder
    ausgeblendet - wer es vorher offen hatte, soll es behalten. */
 let overlayShownForRelic = false;
-let overlayShownForRelicSelect = false;
 /* Der zuletzt gemeldete Fund. Das Overlay-Fenster entsteht oft erst, WEIL
    dieser Fund kam - eine Nachricht an ein Fenster, dessen Renderer noch laedt,
    verpufft. Deshalb wird der Stand hier gehalten und beim Start abgefragt. */
@@ -322,6 +346,10 @@ function createWindow() {
     overlayWin = null;
     if (tagWin && !tagWin.isDestroyed()) tagWin.destroy();
     tagWin = null;
+    if (rivenWin && !rivenWin.isDestroyed()) rivenWin.destroy();
+    rivenWin = null;
+    if (relicPickWin && !relicPickWin.isDestroyed()) relicPickWin.destroy();
+    relicPickWin = null;
   });
 
   // Externe Links im echten Browser oeffnen, nicht in der App.
@@ -393,7 +421,7 @@ const HOTKEY_ACTIONS = {
   overlay:  () => toggleOverlay(),
   /* Holt den Mauszeiger ins Overlay und wieder zurueck ins Spiel. Eine Taste
      und keine Maustaste: globalShortcut kennt nur Tastatur. */
-  interact: () => setInteracting(!interacting),
+  interact: () => toggleInteract(),
   /* Holt das Hauptfenster nach vorn - und nur das. Kein Umschalter: wer aus
      dem Spiel heraus nach dem Planer greift, will ihn sehen, nicht raten, ob
      der zweite Druck ihn gerade wieder wegnimmt. Zurueck ins Spiel fuehrt
@@ -483,6 +511,11 @@ async function loadOverlayPrefs() {
     if (typeof cfg.relicAutoShow === 'boolean') relicAutoShow = cfg.relicAutoShow;
     if (typeof cfg.relicScan === 'boolean') relicScan = cfg.relicScan;
     if (typeof cfg.relicTags === 'boolean') relicTags = cfg.relicTags;
+    if (typeof cfg.rivenOverlay === 'boolean') rivenOverlay = cfg.rivenOverlay;
+    if (typeof cfg.relicPickOverlay === 'boolean') relicPickOverlay = cfg.relicPickOverlay;
+    if (Number.isFinite(cfg.relicPickPos?.x) && Number.isFinite(cfg.relicPickPos?.y)) {
+      relicPickPos = { x: cfg.relicPickPos.x, y: cfg.relicPickPos.y };
+    }
     if (typeof cfg.relicScanDebug === 'boolean') relicScanDebug = cfg.relicScanDebug;
     if (typeof cfg.relicWatch === 'boolean') relicWatch = cfg.relicWatch;
     if (Number.isFinite(cfg.relicTagOffset)) {
@@ -490,6 +523,10 @@ async function loadOverlayPrefs() {
          Schilder aus dem Bild. */
       relicTagOffset = Math.min(0.33, Math.max(0, cfg.relicTagOffset));
     }
+    if (Number.isFinite(cfg.relicTagScale)) relicTagScale = clampOverlayScale(cfg.relicTagScale);
+    if (Number.isFinite(cfg.relicPickScale)) relicPickScale = clampOverlayScale(cfg.relicPickScale);
+    if (Number.isFinite(cfg.rivenScale)) rivenScale = clampOverlayScale(cfg.rivenScale);
+    rivenPos = { current: cleanPos(cfg.rivenPos?.current), next: cleanPos(cfg.rivenPos?.next) };
     if (Number.isFinite(cfg.overlayOpacity)) overlayOpacity = clampOpacity(cfg.overlayOpacity);
     if (cfg.overlayBounds) overlayBounds = cfg.overlayBounds;
     if (typeof cfg.updateCheck === 'boolean') updateCheckEnabled = cfg.updateCheck;
@@ -848,7 +885,8 @@ function showTags(rewards, erwartet = 0) {
     top,
     width: spalte * geo.anzahlSpalten,
     spalte,
-    anzahlSpalten: geo.anzahlSpalten
+    anzahlSpalten: geo.anzahlSpalten,
+    scale: relicTagScale
   };
 
   /* Nur die behaltenen Eintraege: doppelt gelesene Karten hat die Geometrie
@@ -1022,7 +1060,8 @@ async function showSkeletonTags() {
     top:  (unten - frame.y) * fy + Math.round(dip.height * relicTagOffset),
     width: spalte * anzahl,
     spalte,
-    anzahlSpalten: anzahl
+    anzahlSpalten: anzahl,
+    scale: relicTagScale
   };
 
   /* UND DASSELBE FELD FUER DIE ECHTEN KARTEN. Die Platzhalter stehen hier
@@ -1877,7 +1916,17 @@ ipcMain.handle('setup:setAutoSync', async (_e, on) => {
  */
 const EXTERNAL_ALLOWED = [
   'https://www.warframe.com/api/user-data',
-  'https://github.com/Kr3akz/Argus'
+  'https://github.com/Kr3akz/Argus',
+  /* Einstellungen -> About: das eigene Projekt und die Datenquellen. */
+  'https://github.com/Kr3akz/Argus/blob/main/LICENSE',
+  'https://github.com/Kr3akz/Argus/issues',
+  'https://warframe.market',
+  'https://github.com/Aericio/warframe-exports-data',
+  'https://www.warframe.com/droptables',
+  'https://docs.warframestat.us',
+  'https://tenno.tools',
+  'https://wiki.warframe.com',
+  'https://overframe.gg'
 ];
 /* Die Release-Seiten sind die eine Ausnahme von der festen Liste: ihre
    Adresse traegt die Versionsnummer und steht deshalb nicht vorher fest. Das
@@ -2576,6 +2625,9 @@ async function describeRecommendedRelics() {
     image: r.image,
     expPlat: r.expPlat,
     expDucats: r.expDucats,
+    /* Unter 1 ist expPlat nur eine Untergrenze - die Relikt-Empfehlung sagt
+       das dazu (siehe relic-pick.js). */
+    pricedShare: r.pricedShare,
     bestPlat: r.bestPlat,
     bestDucats: r.bestDucats,
     /* Die sechs Belohnungen wandern mit ins Overlay. Sie kosten hier nichts -
@@ -3598,6 +3650,923 @@ ipcMain.handle('foundry:get', async () => {
     /* "Noch nie abgerufen" ist auch hier ein Zustand, kein Fehler. */
     return { ok: false, code: err.code || 'empty', error: err.message };
   }
+});
+
+/**
+ * Die Rivens fuer ihren eigenen Reiter.
+ *
+ * Wie die Schmiede ein eigener Aufruf und nicht Teil von inventory:get: der
+ * Inventar-Aufruf zieht Marktliste, Preise und Relikttabellen nach, die hier
+ * nichts zu suchen haben. Das Inventar kommt nur von der Platte, kein
+ * Speicherzugriff. Ins Netz geht hoechstens einmal am Tag der Abruf der
+ * Dispositionen (siehe dispositions.js) - scheitert er, gilt der letzte Stand.
+ */
+ipcMain.handle('rivens:get', async () => {
+  try {
+    if (!cache.catalog) await ensureData({ refresh: false });
+    const { inventory, fetchedAt, syncedAt } = await loadInventory({ refresh: false });
+    const dispositions = await loadDispositions().catch(() => null);
+    const view = buildRivens(inventory, cache.catalog, { dispositions });
+    return {
+      ok: true,
+      data: {
+        ...view,
+        unveiled: view.unveiled.map(r => ({
+          ...r,
+          image: r.weapon.uniqueName ? imageUrl(r.weapon.uniqueName, 128) : null
+        })),
+        fetchedAt,
+        syncedAt: syncedAt || null
+      }
+    };
+  } catch (err) {
+    return { ok: false, code: err.code || 'empty', error: err.message };
+  }
+});
+
+/* ======================================================================
+   Riven-Overlay: alter und neuer Wurf auf dem Umwandeln-Bildschirm.
+
+   Den Ablauf liefert riven-cycle.js aus dem Log, die Werte riven-scan.js
+   aus dem Speicher des Spiels, gerechnet wird mit rivens.js - genau wie im
+   Reiter. Ohne Speicherzugriff (inventoryScan) bleibt es aus: der neue Wurf
+   steht nirgends sonst.
+   ====================================================================== */
+let rivenWin = null;
+let rivenSession = null;
+/* Jede Sitzung bekommt eine Nummer. Eine Suche, die zurueckkommt, nachdem
+   der Bildschirm zu ist oder ein anderer Riven aufliegt, wird verworfen. */
+let rivenToken = 0;
+
+/* Nach dem Wurf: wann nachgesehen wird. Die Antwort des Servers steht nicht
+   im Log (siehe riven-cycle.js), also wird gesucht, bis sie da ist. Eine
+   Suche dauert gemessen 1 bis 2 Sekunden; zusammen reicht das gut zehn
+   Sekunden weit. */
+const RIVEN_POLL_DELAYS_MS = [300, 700, 1000, 1500, 2000, 3000];
+
+/* Nach einer Wahl kurz warten, bis das Spiel den gewaehlten Stand
+   uebernommen hat - erst dann sagt die Suche, was jetzt gilt. */
+const RIVEN_AFTER_CHOICE_MS = 1500;
+
+const pause = ms => new Promise(r => setTimeout(r, ms));
+
+function createRivenWindow(bounds) {
+  rivenWin = new BrowserWindow({
+    x: Math.round(bounds.x), y: Math.round(bounds.y),
+    width: Math.round(bounds.width), height: Math.round(bounds.height),
+    transparent: true,
+    backgroundColor: '#00000000',
+    frame: false,
+    show: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    focusable: false,
+    hasShadow: false,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    title: 'Argus Riven',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  });
+  /* Wie die Preisschilder: das Fenster liegt ueber Knoepfen, die man
+     druecken will, und darf keinen Klick abfangen. */
+  rivenWin.setIgnoreMouseEvents(true);
+  rivenWin.setAlwaysOnTop(true, 'screen-saver');
+  rivenWin.loadFile(path.join(__dirname, '../renderer/riven.html'));
+  if (process.env.ARGUS_DEVTOOLS) rivenWin.webContents.openDevTools({ mode: 'detach' });
+  rivenWin.on('closed', () => { rivenWin = null; });
+}
+
+/* Was die Felder zuletzt zeigen sollten - gebraucht, um sie nach einer
+   geaenderten Lage oder beim Umschalten des Bedienmodus neu zu zeichnen,
+   ohne auf den naechsten Wurf zu warten. */
+let rivenShown = null;
+/* Lage der beiden Felder (current = links, next = rechts), jeweils linke
+   obere Ecke als Anteil des Spielfensters oder null fuer die eingebaute
+   Lage am Rand. Und ihre gemeinsame Groesse. Beides aus config.json. */
+let rivenPos = { current: null, next: null };
+let rivenScale = 1;
+/* Bedienmodus wie bei der Relikt-Empfehlung: Strg+E, solange die Felder
+   dastehen - dann lassen sie sich an der Kopfzeile ziehen. */
+let rivenInteractive = false;
+/* Wo das linke Feld steht, in Punkten innerhalb seines Fensters (vom
+   Renderer gemeldet) - dorthin holt der Bedienmodus den Zeiger. */
+let rivenRect = null;
+
+/* Der Stand fuer den Renderer: was die Sitzung sagt, dazu Lage, Groesse und
+   Bedienmodus. Erst beim Senden zusammengesetzt, damit ein Neuzeichnen immer
+   die aktuelle Lage traegt. */
+const rivenPayload = () => rivenShown && {
+  ...rivenShown,
+  layout: { pos: rivenPos, scale: rivenScale },
+  interactive: rivenInteractive,
+  hotkey: hotkeys.interact || ''
+};
+
+async function showRivenOverlay(state) {
+  rivenShown = state;
+  const dip = frameToDip(await gameFrame());
+  if (!rivenWin || rivenWin.isDestroyed()) {
+    createRivenWindow(dip);
+  } else {
+    rivenWin.setBounds({ x: Math.round(dip.x), y: Math.round(dip.y),
+                         width: Math.round(dip.width), height: Math.round(dip.height) });
+  }
+  const send = () => {
+    if (rivenWin && !rivenWin.isDestroyed()) rivenWin.webContents.send('riven:overlay', rivenPayload());
+  };
+  if (rivenWin.webContents.isLoading()) rivenWin.webContents.once('did-finish-load', send);
+  else send();
+  if (!rivenWin.isVisible()) rivenWin.showInactive();
+}
+
+/* Dieselben Felder noch einmal zeichnen - nach einer neuen Lage aus dem
+   Rundgang oder einem Wechsel des Bedienmodus. */
+function redrawRiven() {
+  if (!rivenShown || !rivenWin || rivenWin.isDestroyed()) return;
+  rivenWin.webContents.send('riven:overlay', rivenPayload());
+}
+
+function hideRivenOverlay() {
+  setRivenInteractive(false);
+  rivenShown = null;
+  if (rivenWin && !rivenWin.isDestroyed() && rivenWin.isVisible()) rivenWin.hide();
+}
+
+/* ---------- Bedienmodus der Riven-Felder ----------
+
+   Genau wie bei der Relikt-Empfehlung (siehe dort): durchlaessig mit
+   Mausbewegungen, der Renderer meldet, wann der Zeiger auf einem Feld steht,
+   und nur dann nimmt das Fenster Klicks an. Fokussierbar wird es nicht -
+   Warframe bleibt vorn. */
+
+function rivenVisible() {
+  return !!rivenShown && !!rivenWin && !rivenWin.isDestroyed() && rivenWin.isVisible();
+}
+
+function setRivenInteractive(on) {
+  const next = !!on && rivenVisible();
+  const changed = next !== rivenInteractive;
+  rivenInteractive = next;
+  if (!rivenWin || rivenWin.isDestroyed()) return next;
+
+  if (next) rivenWin.setIgnoreMouseEvents(true, { forward: true });
+  else rivenWin.setIgnoreMouseEvents(true);
+
+  if (changed) {
+    rivenWin.webContents.send('riven:interactive', next);
+    redrawRiven();
+    if (next) cursorToRiven();
+  }
+  return next;
+}
+
+/* Den Zeiger an die Kopfzeile des linken Feldes - es sei denn, er steht
+   schon auf einem der beiden. */
+function cursorToRiven() {
+  if (!rivenRect || !rivenWin || rivenWin.isDestroyed()) return;
+  const b = rivenWin.getBounds();
+  const feld = { x: b.x + rivenRect.x, y: b.y + rivenRect.y, w: rivenRect.w, h: rivenRect.h };
+  const zeiger = screen.getCursorScreenPoint();
+  if (zeiger.x >= b.x && zeiger.x <= b.x + b.width && zeiger.y >= b.y && zeiger.y <= b.y + b.height &&
+      zeiger.x >= feld.x && zeiger.x <= feld.x + feld.w && zeiger.y >= feld.y && zeiger.y <= feld.y + feld.h) return;
+  const ziel = { x: Math.round(feld.x + feld.w / 2), y: Math.round(feld.y + 14) };
+  let p = ziel;
+  try { if (typeof screen.dipToScreenPoint === 'function') p = screen.dipToScreenPoint(ziel); } catch { /* DIP */ }
+  moveCursor(p.x, p.y);
+}
+
+const vomRiven = e => !!rivenWin && !rivenWin.isDestroyed() && e.sender === rivenWin.webContents;
+
+ipcMain.on('riven:hover', (e, over) => {
+  if (!vomRiven(e) || !rivenInteractive) return;
+  if (over) rivenWin.setIgnoreMouseEvents(false);
+  else rivenWin.setIgnoreMouseEvents(true, { forward: true });
+});
+
+ipcMain.on('riven:rect', (e, r) => {
+  if (!vomRiven(e)) return;
+  if (r && [r.x, r.y, r.w, r.h].every(Number.isFinite) && r.w > 0 && r.h > 0) {
+    rivenRect = { x: r.x, y: r.y, w: r.w, h: r.h };
+  }
+});
+
+ipcMain.on('riven:move', (e, which, pos) => {
+  if (!vomRiven(e) || (which !== 'current' && which !== 'next')) return;
+  rivenPos = { ...rivenPos, [which]: cleanPos(pos) };
+  loadConfig().then(cfg => saveConfig({ ...cfg, rivenPos })).catch(() => {});
+  /* Zurueck an den Rand: neu zeichnen, damit der Renderer die Lage vergisst. */
+  if (!pos) redrawRiven();
+});
+
+/**
+ * Welcher Riven liegt auf dem Tisch? Die Rivens aus dem gespeicherten
+ * Inventar, die zur gezeigten Waffe passen - die Regel steht bei
+ * rivensForShownWeapon in rivens.js (der Bildschirm zeigt bei einer Familie
+ * die Variante, die man besitzt, etwa Scourge Prime fuer einen Scourge-Riven).
+ *
+ * Mehrere Kandidaten heissen mehrere Rivens derselben Familie. Welcher auf
+ * dem Tisch liegt, zeigt sich beim ersten Wurf: nur er bekommt einen neuen
+ * Stand (siehe onRivenCycle, 'roll').
+ */
+async function rivenCandidates(shownPath, dispositions) {
+  let inventory = null;
+  try { ({ inventory } = await loadInventory({ refresh: false })); } catch { /* ohne */ }
+
+  const rivens = [];
+  for (const u of inventory?.Upgrades || []) {
+    if (!String(u.ItemType || '').includes('/Randomized/')) continue;
+    let fp;
+    try { fp = JSON.parse(u.UpgradeFingerprint); } catch { continue; }
+    if (!fp?.compat) continue;
+    rivens.push({ fp, template: cache.catalog?.byUniqueName.get(u.ItemType) || null });
+  }
+
+  const nameOf = p => dispositions?.weapons?.[p]?.[0] || cache.catalog?.byUniqueName.get(p)?.name || null;
+  return rivensForShownWeapon(shownPath, rivens, nameOf);
+}
+
+function rivenOverlayView(fp, template, s) {
+  if (!fp || !template) return null;
+  const res = rivenView(fp, template, cache.catalog, { dispositions: s.dispositions, showOn: s.shownPath });
+  if (!res.view) return null;
+  const v = res.view;
+  const pic = v.shownOn?.uniqueName || v.weapon.uniqueName;
+  return { ...v, image: pic ? imageUrl(pic, 128) : null };
+}
+
+/** Den Stand der Sitzung ins Fenster schicken. */
+function publishRiven(phase, message = null) {
+  const s = rivenSession;
+  if (!s) return;
+  showRivenOverlay({
+    phase,
+    message,
+    kuva: s.kuva ?? null,
+    current: rivenOverlayView(s.currentFp, s.template, s),
+    next: rivenOverlayView(s.nextFp, s.template, s),
+    /* Mehr als ein Riven dieser Familie - welcher es ist, zeigt der Wurf. */
+    ambiguous: s.candidates.length > 1 && s.lim == null ? s.candidates.length : 0,
+    /* Ohne Vorlage lassen sich die Zahlen nicht rechnen - das passiert nur
+       bei einem Riven, der erst nach dem letzten Inventarabruf dazukam. */
+    unknownRiven: !s.template
+  }).catch(err => console.warn('[Riven] Overlay nicht gezeigt:', err.message));
+}
+
+/**
+ * Den Stand VOR dem naechsten Wurf je Kandidat merken. Nach dem Wurf geht
+ * das nicht mehr: dann hat der neue Stand die meisten Umwandlungen und
+ * saehe selbst wie der aktuelle aus.
+ */
+function rememberCurrents(s, list) {
+  s.currents = new Map();
+  for (const c of s.candidates) {
+    const cur = pickCurrent(list, { lim: c.fp.lim ?? null });
+    if (cur) s.currents.set(c.fp.lim, cur);
+  }
+  const mine = s.lim != null ? s.currents.get(s.lim) : s.currents.get(s.candidates[0]?.fp.lim);
+  if (mine) s.currentFp = mine;
+}
+
+async function onRivenCycle(ev) {
+  if (ev.type === 'close') {
+    rivenToken++;
+    rivenSession = null;
+    hideRivenOverlay();
+    return;
+  }
+
+  if (ev.type === 'open') {
+    rivenToken++;
+    rivenSession = null;
+    if (!rivenOverlay || !ev.weaponPath) return;
+    const cfg = await loadConfig();
+    if (cfg.inventoryScan !== true) return;
+
+    const token = rivenToken;
+    if (!cache.catalog) await ensureData({ refresh: false });
+    const dispositions = await loadDispositions().catch(() => null);
+    const candidates = await rivenCandidates(ev.weaponPath, dispositions);
+    if (token !== rivenToken) return;
+
+    const first = candidates[0] || null;
+    /* Erst der Stand aus dem Inventar - sofort da. Danach der aus dem
+       Speicher: das Inventar kann aelter sein als die letzte Umwandlung. */
+    rivenSession = {
+      token, shownPath: ev.weaponPath, dispositions, candidates,
+      compat: first?.fp.compat || null,
+      template: first?.template || null,
+      lim: candidates.length === 1 ? (first.fp.lim ?? null) : null,
+      currentFp: first?.fp || null, nextFp: null, currents: new Map(),
+      kuva: null, stale: false
+    };
+    publishRiven('open');
+    if (!rivenSession.compat) return;
+
+    const res = await scanRivenInWorker(rivenSession.compat);
+    if (token !== rivenToken || !rivenSession) return;
+    if (res.ok) {
+      rememberCurrents(rivenSession, res.fingerprints);
+      console.log('[Riven] Stand gelesen:', res.stats);
+    } else {
+      console.warn('[Riven] Speicher nicht gelesen:', res.code, res.message);
+    }
+    publishRiven('ready', res.ok ? null : 'Could not read the game memory.');
+    return;
+  }
+
+  const s = rivenSession;
+  if (!s || !s.compat) return;
+  const token = s.token;
+
+  if (ev.type === 'roll') {
+    s.nextFp = null;
+    s.kuva = ev.kuva ?? null;
+    publishRiven('rolling');
+
+    for (const delay of RIVEN_POLL_DELAYS_MS) {
+      await pause(delay);
+      if (token !== rivenToken) return;
+      const res = await scanRivenInWorker(s.compat);
+      if (token !== rivenToken) return;
+      if (!res.ok) continue;
+      /* Nach einer Wahl im selben Bildschirm ist offen, welcher Stand gilt -
+         dann entscheidet die erste Suche nach dem Wurf. */
+      if (s.stale || !s.currents.size) { rememberCurrents(s, res.fingerprints); s.stale = false; }
+
+      /* Nur der Riven auf dem Tisch hat jetzt einen neuen Stand - bei
+         mehreren Kandidaten verraet er sich genau damit. */
+      for (const c of s.candidates) {
+        if (s.lim != null && c.fp.lim !== s.lim) continue;
+        const cur = s.currents.get(c.fp.lim) || c.fp;
+        const next = pickNewRoll(res.fingerprints, cur);
+        if (!next) continue;
+        s.lim = c.fp.lim ?? null;
+        s.template = c.template;
+        s.currentFp = cur;
+        s.nextFp = next;
+        console.log('[Riven] Neuer Wurf gefunden:', res.stats);
+        publishRiven('rolled');
+        return;
+      }
+    }
+    publishRiven('missing', 'The new roll did not show up in the game memory.');
+    return;
+  }
+
+  if (ev.type === 'choice') {
+    /* Welche Seite gewaehlt wurde, sagt das Log nicht. Beide stehen weiter
+       da, bis das Spiel den Bildschirm schliesst - meist sofort. Bleibt er
+       offen, wird nachgelesen, was jetzt gilt. */
+    s.stale = true;
+    publishRiven('chosen');
+    await pause(RIVEN_AFTER_CHOICE_MS);
+    if (token !== rivenToken) return;
+    const res = await scanRivenInWorker(s.compat);
+    if (token !== rivenToken || !res.ok) return;
+    rememberCurrents(s, res.fingerprints);
+    s.nextFp = null;
+    s.stale = false;
+    publishRiven('ready');
+  }
+}
+
+/* ======================================================================
+   Relikt-Empfehlung: eigenes Fenster auf dem Auswahlbildschirm.
+
+   Gebaut wie das Riven-Overlay: ein durchsichtiges, klickdurchlaessiges
+   Fenster ueber dem Spielfenster, darin ein Feld an fester Stelle. Bis
+   hierher sprang bei der Reliktauswahl das GROSSE Overlay auf - mit Zyklen,
+   Rissen und Zielen, von denen auf diesem Bildschirm nichts zaehlt, und an
+   einer Stelle, die mit dem Spielfenster nichts zu tun hat.
+
+   Aufgehen und Schliessen meldet logwatch.js (relic-select-open/-closed),
+   die Zahlen kommen aus describeRecommendedRelics wie im Planer, was davon
+   gezeigt wird, entscheidet relic-pick.js.
+
+   WIE SCHNELL ES STEHEN MUSS, ist nachgemessen (EE.log vom 28./29.09.2026):
+     - zwischen Aufgehen und Wahl lagen bei Kaan 1,1 bis 2,8 s (sechs Wahlen)
+     - das Spiel ist 89 bis 367 ms nach der Zeile fertig aufgebaut
+       (LoadingCompleteEnd, 23 Auswahlen; zwischen zwei Runden um 90 ms, von
+       der Sternenkarte und im Schiff um 300 ms)
+   Ein Feld, das eine Sekunde braucht, kaeme also zur Haelfte der Wahlen zu
+   spaet. Deshalb liegt das Fenster ab dem Start versteckt bereit wie das der
+   Preisschilder, und es wird gezeigt, sobald die Zahlen da sind - ohne
+   eigene Wartezeit. Auf das Ende des Aufbaus zu warten, braeuchte es nicht:
+   das Feld steht am Rand, nicht auf dem Raster, das sich gerade aufbaut.
+
+   DREI QUELLEN FUER DIE AERA, in dieser Rangfolge: von Hand gewaehlt (Chips
+   im Bedienmodus), vom Bildschirm gelesen (nur von der Sternenkarte, siehe
+   readRelicPickEra), aus dem Log (Riss der laufenden Mission). Die Konsole
+   im Schiff hat keinen Riss und zeigt alle Aeren.
+
+   BEDIENMODUS: dasselbe Kuerzel wie der Zeigermodus des Overlays holt die
+   Maus ans Feld. Dann nimmt es Klicks an - Filter-Chips, Verschieben an der
+   Kopfzeile - aber NUR dort, wo es steht: ueberall sonst gehen Klicks weiter
+   ans Spiel (setIgnoreMouseEvents mit forward, wie beim Overlay-Titel).
+   Fokussierbar wird das Fenster dabei nicht - so bleibt Warframe vorn, und
+   niemand muss nach dem Filtern erst wieder ins Spiel klicken.
+   ====================================================================== */
+let relicPickWin = null;
+/* Jede Auswahl bekommt eine Nummer, wie beim Riven-Overlay: was erst nach
+   dem Schliessen zurueckkommt, wird verworfen, statt ein Feld ueber ein
+   Spiel zu stellen, in dem es keine Auswahl mehr gibt. */
+let relicPickToken = 0;
+let relicPickOpen = false;
+/* Die laufende Auswahl: woher sie kam (via), was vom Bildschirm gelesen
+   wurde, was von Hand gewaehlt ist - und die Zahlen, einmal gerechnet. Gilt
+   fuer genau eine Auswahl; die naechste faengt leer an. */
+let relicPickSel = null;
+/* Bedienmodus - siehe oben. */
+let relicPickInteractive = false;
+/* Wo das Feld steht: linke obere Ecke als Anteil des Spielfensters, oder
+   null fuer die Ecke oben rechts. Ueberlebt den Neustart (config.json). */
+let relicPickPos = null;
+/* Groesse des Feldes, 1 = wie gezeichnet (Rundgang "Arrange overlays"). */
+let relicPickScale = 1;
+/* Wo das Feld gerade steht, in Punkten innerhalb seines Fensters - vom
+   Renderer gemeldet. Gebraucht fuer den Zeiger im Bedienmodus und dafuer,
+   dass der Blick auf den Bildschirm das Feld nicht selbst vorliest. */
+let relicPickRect = null;
+/* Beweisaufnahmen der Auswahl in dieser Sitzung (nur mit relicScanDebug). */
+let relicPickShots = 0;
+
+/* Die Filter, die das Feld von Hand kennt - dieselben wie die Chips im
+   Reliktabschnitt des Overlays. */
+const RELIC_PICK_FILTERS = new Set(['all', 'tracked', 'Lith', 'Meso', 'Neo', 'Axi', 'Requiem']);
+
+/* Der Blick auf den Bildschirm, sobald das Spiel ihn fertig meldet
+   (relic-select-ready), dann alle 80 ms wieder, bis die Aera feststeht.
+
+   NACHGEMESSEN an Kaans erstem Test (29.09.2026, drei Auswahlen von der
+   Sternenkarte): ein Blick 150 ms nach "fertig" fand zweimal nichts, der
+   naechste 600 ms spaeter jedesmal die Aera - der Bildschirm blendet sich
+   ein, und die kleine Aera-Zeile wird erst spaet lesbar. Seitdem zaehlen
+   auch Karten und Zaehler (siehe eraFromScreen), die sich frueher lesen
+   lassen, und geschaut wird dicht statt zweimal. Ein Blick auf den alten,
+   etwas kleineren Ausschnitt kostete warm 26 bis 45 ms; wie lange der jetzige
+   braucht, steht nach dem naechsten Lauf im Protokoll. */
+const RELIC_PICK_LOOK_GAP_MS = 80;
+/* So lange nach dem Aufgehen wird gelesen. Laenger lohnt nicht: bei Kaan
+   fiel die Wahl nach 1,1 bis 2,8 s. */
+const RELIC_PICK_READ_MS = 2000;
+/* So lange haelt das Feld still, solange die Aera noch gelesen wird - danach
+   erscheint es ungefiltert (die besten jeder Aera), statt gar nicht. */
+const RELIC_PICK_HOLD_MS = 1200;
+/* Gelesen wird oben links bis ein Stueck in die erste Kartenreihe hinein:
+   Aera-Zeile (bei 1440p y=156), Zaehler (x=1020..1290) und die Namen der
+   ersten Karten (y=414..459) - Lagen aus Kaans Aufnahmen, als Anteile mit
+   Luft nach allen Seiten. */
+const RELIC_PICK_ERA_CROP = { top: 0, bottom: 0.4, left: 0, right: 0.55 };
+/* Hoechstens so viele Beweisaufnahmen der Auswahl liegen in data/diag. Ein
+   Vollbild wiegt rund 7 MB, und es geht um EIN Bildschirmlayout. */
+const RELIC_PICK_DIAG_MAX = 6;
+/* Was das Feld zeigen SOLL. Gesendet wird immer dieser Stand und nicht der,
+   mit dem ein Aufruf losgelaufen ist: die Suche nach dem Spielfenster kann
+   dauern, und ein spaet zurueckkehrender "wird gelesen"-Aufruf duerfte die
+   fertige Liste sonst wieder ueberschreiben. */
+let relicPickShown = null;
+/* Ob Warframe vorn ist, nach seiner eigenen Meldung im Log (game-focus, siehe
+   RE_ACTIVATE in logwatch.js). Solange nichts gemeldet ist, gilt es als vorn:
+   lieber ein Feld zu viel als eines, das nie erscheint. */
+let gameInFront = true;
+
+/* Erst ab hier zeigt das Feld "wird gelesen". Mit warmen Daten dauert der
+   Aufbau Millisekunden, und ein Ladezustand, der nur aufblitzt, ist Unruhe
+   ohne Nachricht. Beim ersten Mal nach dem Start - Katalog, Marktliste und
+   Droptabellen kalt - dauert es spuerbar laenger, und dann soll man sehen,
+   dass etwas kommt. */
+const RELIC_PICK_BUSY_MS = 150;
+
+function createRelicPickWindow(bounds = frameToDip(cachedFrame())) {
+  relicPickWin = new BrowserWindow({
+    x: Math.round(bounds.x), y: Math.round(bounds.y),
+    width: Math.round(bounds.width), height: Math.round(bounds.height),
+    transparent: true,
+    backgroundColor: '#00000000',
+    frame: false,
+    show: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    focusable: false,
+    hasShadow: false,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    title: 'Argus Relic Pick',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  });
+  /* Das Feld liegt ueber einem Bildschirm, auf dem man klickt - es darf
+     keinen einzigen Klick abfangen. */
+  relicPickWin.setIgnoreMouseEvents(true);
+  relicPickWin.setAlwaysOnTop(true, 'screen-saver');
+  relicPickWin.loadFile(path.join(__dirname, '../renderer/relic-pick.html'));
+  if (process.env.ARGUS_DEVTOOLS) relicPickWin.webContents.openDevTools({ mode: 'detach' });
+  relicPickWin.on('closed', () => { relicPickWin = null; });
+  return relicPickWin;
+}
+
+/**
+ * Das Feld zeigen - ueber dem Spielfenster, wo auch immer das gerade steht.
+ *
+ * show() und nicht showInactive(): das Fenster ist focusable: false und kann
+ * den Fokus gar nicht nehmen, waehrend showInactive() ein durchsichtiges
+ * Fenster unter Windows unsichtbar liess (nachgemessen an den Preisschildern,
+ * siehe showTags).
+ */
+async function showRelicPick(view, token) {
+  if (token !== relicPickToken || !relicPickOpen) return;
+  relicPickShown = view;
+
+  const dip = frameToDip(await gameFrame());
+  /* Waehrend nach dem Spielfenster gesucht wurde, kann die Auswahl schon zu
+     sein - dann nicht mehr hinstellen. */
+  if (token !== relicPickToken || !relicPickOpen) return;
+
+  if (!relicPickWin || relicPickWin.isDestroyed()) {
+    createRelicPickWindow(dip);
+  } else {
+    const ist = relicPickWin.getBounds();
+    if (Math.abs(ist.x - dip.x) > 2 || Math.abs(ist.y - dip.y) > 2 ||
+        Math.abs(ist.width - dip.width) > 2 || Math.abs(ist.height - dip.height) > 2) {
+      relicPickWin.setBounds({ x: Math.round(dip.x), y: Math.round(dip.y),
+                               width: Math.round(dip.width), height: Math.round(dip.height) });
+    }
+  }
+
+  const send = () => {
+    if (!relicPickWin || relicPickWin.isDestroyed()) return;
+    if (token !== relicPickToken || !relicPickOpen) return;
+    relicPickWin.webContents.send('relic-pick:overlay', relicPickShown);
+  };
+  if (relicPickWin.webContents.isLoading()) relicPickWin.webContents.once('did-finish-load', send);
+  else send();
+  /* Ist das Spiel gerade hinten, steht der Inhalt bereit und kommt mit dem
+     Spiel zurueck (siehe setGameInFront). */
+  if (!relicPickWin.isVisible() && gameInFront) relicPickWin.show();
+}
+
+/**
+ * Warframe hat den Vordergrund verloren oder zurueckbekommen.
+ *
+ * Das Feld liegt 'screen-saver'-hoch ueber allem. Waehrend eines Abstechers
+ * in ein anderes Fenster stuende es dort mitten drin - bis die Auswahl zugeht,
+ * und im Schiff kann das die fuenf Minuten der Notbremse dauern. Also geht es
+ * mit dem Spiel und kommt mit ihm wieder, solange die Auswahl offen ist.
+ */
+function setGameInFront(active) {
+  gameInFront = active;
+  /* Die Riven-Felder bleiben stehen (sie gehen mit dem Bildschirm), aber
+     ihr Bedienmodus endet - sonst faengt ein Feld im anderen Fenster Klicks. */
+  if (!active) setRivenInteractive(false);
+  if (!relicPickWin || relicPickWin.isDestroyed()) return;
+  if (!active) {
+    /* Der Bedienmodus endet mit: ein verstecktes Feld, das beim Wiederkommen
+       Klicks faengt, waere eine Falle. */
+    setRelicPickInteractive(false);
+    if (relicPickWin.isVisible()) relicPickWin.hide();
+    return;
+  }
+  if (relicPickOpen && relicPickShown && relicPickOverlay) {
+    showRelicPick(relicPickShown, relicPickToken)
+      .catch(err => console.warn('[Relikt] Empfehlung nicht wieder gezeigt:', err.message));
+  }
+}
+
+function hideRelicPick() {
+  relicPickShown = null;
+  if (!relicPickWin || relicPickWin.isDestroyed()) return;
+  /* Erst leeren, dann verstecken - sonst steht beim naechsten Aufgehen fuer
+     einen Augenblick die Liste der vorigen Auswahl da. */
+  relicPickWin.webContents.send('relic-pick:overlay', null);
+  if (relicPickWin.isVisible()) relicPickWin.hide();
+}
+
+/**
+ * Welche Aera das Feld zeigt, und woher sie kommt - siehe DREI QUELLEN oben.
+ * 'all' heisst alle Aeren in einer Liste, null "nicht bekannt".
+ */
+function relicPickTier(sel) {
+  if (sel?.manual) return { tier: sel.manual, source: 'manual' };
+  if (sel?.screen?.tier) return { tier: sel.screen.tier, source: 'screen' };
+  if (currentFissure?.tier) return { tier: currentFissure.tier, source: 'log' };
+  if (sel?.via === 'console') return { tier: 'all', source: 'console' };
+  return { tier: null, source: null };
+}
+
+/**
+ * Was das Feld gerade zeigen soll - gerechnet wie im Planer. Die Zahlen
+ * kommen einmal je Auswahl (relicPickSel.data); ein Klick auf einen Filter
+ * waehlt nur neu aus, statt Inventar und Preise noch einmal zu lesen.
+ */
+async function relicPickView() {
+  const sel = relicPickSel;
+  const data = await (sel?.data || describeRecommendedRelics());
+  const { tier, source } = relicPickTier(sel);
+  const view = buildRelicPick(data.relics, { tier, traces: data.traces });
+  return {
+    ...view,
+    source,
+    manual: sel?.manual || null,
+    /* Was "Auto" zeigen wuerde - fuer die Beschriftung des Chips. */
+    auto: relicPickTier(sel ? { ...sel, manual: null } : null).tier,
+    via: sel?.via || null,
+    fissure: currentFissure
+      ? { tier: currentFissure.tier, node: currentFissure.node || null, isHard: !!currentFissure.isHard }
+      : null,
+    pos: relicPickPos,
+    scale: relicPickScale,
+    interactive: relicPickInteractive,
+    hotkey: hotkeys.interact || ''
+  };
+}
+
+async function openRelicPick(relics = null, via = null) {
+  const token = ++relicPickToken;
+  relicPickOpen = true;
+  relicPickSel = { token, via, openedAt: Date.now(), data: relics || describeRecommendedRelics(),
+                   screen: null, manual: null, held: false };
+  relicPickSel.data.catch(() => {});   // gemeldet wird beim Aufbau darunter
+  if (!relicPickOverlay) return;
+
+  /* STILLHALTEN, solange die Aera vom Bildschirm kommt. Von der Sternenkarte
+     kennt das Log den Riss nicht, und das Feld stuende sonst erst mit allen
+     Aeren da und sprang dann auf die richtige um - Kaan hat genau das nach
+     dem ersten Test als Stoerung gemeldet. Jetzt erscheint es erst mit der
+     Aera. Nach den Aufnahmen jenes Tests lesen sich Karten und Zaehler ab
+     rund 0,45 s nach dem Aufgehen - das Spiel selbst blendet sich in der Zeit
+     noch ein. Findet sich bis RELIC_PICK_HOLD_MS nichts, kommt die
+     ungefilterte Liste doch. */
+  if (via === 'map' && relicScan && !currentFissure?.tier) {
+    const sel = relicPickSel;
+    sel.held = true;
+    setTimeout(() => {
+      if (token !== relicPickToken || !sel.held) return;
+      sel.held = false;
+      console.log('[Relikt] Aera nicht rechtzeitig gelesen - Feld erscheint ungefiltert');
+      refreshRelicPick();
+    }, RELIC_PICK_HOLD_MS);
+    return;
+  }
+
+  const busy = setTimeout(() => {
+    showRelicPick({ busy: true, pos: relicPickPos, scale: relicPickScale }, token)
+      .catch(err => console.warn('[Relikt] Empfehlung nicht gezeigt:', err.message));
+  }, RELIC_PICK_BUSY_MS);
+  try {
+    const view = await relicPickView();
+    clearTimeout(busy);
+    await showRelicPick(view, token);
+    if (token === relicPickToken) {
+      console.log(`[Relikt] Empfehlung steht: ${view.rows.length} von ${view.total}`,
+                  `(${view.mode}${view.tier ? ' ' + view.tier : ''}, via ${via || '?'})`);
+    }
+  } catch (err) {
+    clearTimeout(busy);
+    console.warn('[Relikt] Empfehlung nicht gezeigt:', err.message);
+    /* Nur das eigene Feld abraeumen - eine neuere Auswahl hat ihr eigenes. */
+    if (token === relicPickToken) hideRelicPick();
+  }
+}
+
+function closeRelicPick() {
+  relicPickToken++;
+  relicPickOpen = false;
+  relicPickSel = null;
+  setRelicPickInteractive(false);
+  hideRelicPick();
+}
+
+/**
+ * Den Stand neu rechnen, waehrend das Feld steht - wenn sich der Riss
+ * aendert, die Aera vom Bildschirm kommt oder jemand einen Filter waehlt.
+ * Ohne offene Auswahl gibt es nichts zu tun: das Feld wird beim naechsten
+ * Aufgehen ohnehin frisch gerechnet.
+ */
+function refreshRelicPick() {
+  if (!relicPickOpen || !relicPickOverlay || relicPickSel?.held) return;
+  const token = relicPickToken;
+  relicPickView()
+    .then(view => showRelicPick(view, token))
+    .catch(err => console.warn('[Relikt] Empfehlung nicht aktualisiert:', err.message));
+}
+
+/* ---------- Die Aera vom Bildschirm (Sternenkarte) ---------- */
+
+/**
+ * Rechtecke in Bildschirmpixeln, deren Woerter beim Lesen nicht zaehlen: das
+ * eigene Feld und das Overlay-Fenster. Beide nennen selbst Aeren - das Feld
+ * im Modus "unbekannt" sogar alle - und wuerden sich sonst selbst vorlesen.
+ */
+function relicPickExclusions() {
+  const rects = [];
+  const inPixel = r => {
+    try {
+      if (typeof screen.dipToScreenRect === 'function') return screen.dipToScreenRect(null, r);
+    } catch { /* Rueckfall darunter */ }
+    return r;
+  };
+  if (relicPickRect && relicPickWin && !relicPickWin.isDestroyed()) {
+    const b = relicPickWin.getBounds();
+    rects.push(inPixel({ x: Math.round(b.x + relicPickRect.x), y: Math.round(b.y + relicPickRect.y),
+                         width: Math.round(relicPickRect.w), height: Math.round(relicPickRect.h) }));
+  }
+  if (overlayVisible()) rects.push(inPixel(overlayWin.getBounds()));
+  return rects.map(r => ({ x: r.x, y: r.y, w: r.width, h: r.height }));
+}
+
+/**
+ * Auf der Sternenkarte die Aera vom Bildschirm lesen.
+ *
+ * Nur dort: zwischen den Runden nennt das Log die Aera schon, und in der
+ * Konsole im Schiff gibt es keinen Riss. Und nur mit eingeschalteter
+ * Bildschirmerkennung (relicScan) - wer die aus hat, hat entschieden, dass
+ * Argus nicht auf seinen Bildschirm sieht.
+ */
+async function readRelicPickEra() {
+  const sel = relicPickSel;
+  if (!sel || sel.via !== 'map' || !relicPickOverlay || !relicScan) return;
+  const token = sel.token;
+  const allRelics = cache.relicTables?.relics?.length || undefined;
+
+  /* Das Feld wieder freigeben - mit dem, was bis dahin feststeht. */
+  const release = () => {
+    if (!sel.held) return;
+    sel.held = false;
+    refreshRelicPick();
+  };
+
+  let blicke = 0, frame = null, found = null;
+  while (Date.now() - sel.openedAt < RELIC_PICK_READ_MS) {
+    if (token !== relicPickToken || sel.manual) { release(); return; }
+
+    frame = await gameFrame();
+    const res = await recognise({ ...RELIC_PICK_ERA_CROP, rect: frame.rect || undefined });
+    blicke++;
+    if (token !== relicPickToken) return;
+    if (!res.ok) {
+      console.warn('[Relikt] Aera nicht lesbar:', res.error);
+      release();
+      return;
+    }
+
+    found = eraFromScreen(res, { exclude: relicPickExclusions(), allRelics });
+    if (found.tier) {
+      sel.screen = found;
+      sel.held = false;
+      console.log(`[Relikt] Aera vom Bildschirm: ${found.tier} (${found.why})`
+                + ` nach ${blicke} Blick${blicke === 1 ? '' : 'en'}, ${Date.now() - sel.openedAt} ms nach dem Aufgehen`);
+      refreshRelicPick();
+      keepSelectionShot(frame, found).catch(() => {});
+      return;
+    }
+    await pause(RELIC_PICK_LOOK_GAP_MS);
+  }
+
+  console.log(`[Relikt] Aera vom Bildschirm: keine nach ${blicke} Blicken`
+            + (found ? ` (${found.why}${found.labels.length ? ` | Zeilen: ${found.labels.join(' / ')}` : ''}`
+                     + `${found.cards.length ? ` | Karten: ${found.cards.join(' ')}` : ''}`
+                     + `${found.count != null ? ` | Zaehler: ${found.count}` : ''})` : ''));
+  release();
+  if (frame && found) keepSelectionShot(frame, found).catch(() => {});
+}
+
+/**
+ * Beweisaufnahme des Auswahlbildschirms - nur mit relicScanDebug.
+ *
+ * Wie die Anzeige der Aera wirklich aussieht, ist noch nicht gemessen (siehe
+ * eraFromScreen). Eine Aufnahme samt dem, was gelesen wurde, ist das
+ * Pruefstueck dafuer: eine je Sitzung, dazu eine je Fehlschlag, und nie mehr
+ * als RELIC_PICK_DIAG_MAX im Ordner.
+ */
+async function keepSelectionShot(frame, found) {
+  if (!relicScanDebug) return;
+  if (relicPickShots >= 3 || (relicPickShots >= 1 && found.tier)) return;
+  const dir = dataFile('diag');
+  const vorhanden = await readdir(dir).catch(() => []);
+  if (vorhanden.filter(n => /^auswahl-.*\.png$/i.test(n)).length >= RELIC_PICK_DIAG_MAX) return;
+  relicPickShots++;
+
+  const bild = dataFile('diag', `auswahl-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.png`);
+  const res = await recognise({ rect: frame.rect || undefined, png: bild });
+  await archiveScan(bild, {
+    at: new Date().toISOString(),
+    argus: app.getVersion(),
+    art: 'Reliktauswahl',
+    frame: { quelle: frame.quelle, x: frame.x, y: frame.y, w: frame.w, h: frame.h },
+    ausschnitt: RELIC_PICK_ERA_CROP,
+    gelesen: { tier: found.tier, why: found.why, labels: found.labels, cards: found.cards, count: found.count },
+    zeilen: (res.ok ? res.lines || [] : []).map(l => l.text).slice(0, 120)
+  });
+  console.log('[Relikt] Beweisaufnahme der Auswahl:', bild);
+}
+
+/* ---------- Bedienmodus ---------- */
+
+function relicPickVisible() {
+  return relicPickOpen && relicPickOverlay && !!relicPickWin && !relicPickWin.isDestroyed()
+      && relicPickWin.isVisible();
+}
+
+/**
+ * Bedienmodus ein oder aus. Nur fuer ein Feld, das gerade dasteht - wie beim
+ * Overlay soll das Kuerzel nichts von selbst einblenden.
+ */
+function setRelicPickInteractive(on) {
+  const next = !!on && relicPickVisible();
+  const changed = next !== relicPickInteractive;
+  relicPickInteractive = next;
+  if (!relicPickWin || relicPickWin.isDestroyed()) return next;
+
+  /* An: durchlaessig mit Mausbewegungen - der Renderer meldet, wann der
+     Zeiger auf dem Feld steht, und nur dann nimmt das Fenster Klicks an
+     (relic-pick:hover). Aus: ganz durchlaessig, wie immer. */
+  if (next) relicPickWin.setIgnoreMouseEvents(true, { forward: true });
+  else relicPickWin.setIgnoreMouseEvents(true);
+
+  if (changed) {
+    relicPickWin.webContents.send('relic-pick:interactive', next);
+    if (next) cursorToRelicPick();
+  }
+  return next;
+}
+
+/* Den Zeiger an die Kopfzeile des Feldes holen - es sei denn, er steht schon
+   darauf. Das ist das "die Maus hervorholen" des Overlays, nur ohne dem Spiel
+   den Fokus zu nehmen. */
+function cursorToRelicPick() {
+  if (!relicPickRect || !relicPickWin || relicPickWin.isDestroyed()) return;
+  const b = relicPickWin.getBounds();
+  const feld = { x: b.x + relicPickRect.x, y: b.y + relicPickRect.y, w: relicPickRect.w, h: relicPickRect.h };
+  const zeiger = screen.getCursorScreenPoint();
+  if (zeiger.x >= feld.x && zeiger.x <= feld.x + feld.w &&
+      zeiger.y >= feld.y && zeiger.y <= feld.y + feld.h) return;
+  const ziel = { x: Math.round(feld.x + feld.w / 2), y: Math.round(feld.y + 16) };
+  let p = ziel;
+  try { if (typeof screen.dipToScreenPoint === 'function') p = screen.dipToScreenPoint(ziel); } catch { /* DIP */ }
+  moveCursor(p.x, p.y);
+}
+
+/**
+ * Das Kuerzel fuer den Zeigermodus. Stehen gerade die Riven-Felder oder die
+ * Relikt-Empfehlung da, gehoert es ihnen - dort will man in dem Moment
+ * verschieben oder filtern, nicht das Overlay bedienen. Beide zugleich gibt
+ * es nicht: es sind zwei verschiedene Bildschirme. Sonst wie immer das
+ * Overlay.
+ */
+function toggleInteract() {
+  if (rivenInteractive) { setRivenInteractive(false); return; }
+  if (rivenVisible()) { setRivenInteractive(true); return; }
+  if (relicPickInteractive) { setRelicPickInteractive(false); return; }
+  if (relicPickVisible()) { setRelicPickInteractive(true); return; }
+  setInteracting(!interacting);
+}
+
+/* Nachrichten aus dem Feld. Nur von genau diesem Fenster angenommen. */
+const vomFeld = e => !!relicPickWin && !relicPickWin.isDestroyed() && e.sender === relicPickWin.webContents;
+
+ipcMain.on('relic-pick:hover', (e, over) => {
+  if (!vomFeld(e) || !relicPickInteractive) return;
+  if (over) relicPickWin.setIgnoreMouseEvents(false);
+  else relicPickWin.setIgnoreMouseEvents(true, { forward: true });
+});
+
+ipcMain.on('relic-pick:rect', (e, r) => {
+  if (!vomFeld(e)) return;
+  if (r && [r.x, r.y, r.w, r.h].every(Number.isFinite) && r.w > 0 && r.h > 0) {
+    relicPickRect = { x: r.x, y: r.y, w: r.w, h: r.h };
+  }
+});
+
+ipcMain.on('relic-pick:filter', (e, value) => {
+  if (!vomFeld(e) || !relicPickSel) return;
+  relicPickSel.manual = RELIC_PICK_FILTERS.has(value) ? value : null;
+  refreshRelicPick();
+});
+
+ipcMain.on('relic-pick:move', (e, pos) => {
+  if (!vomFeld(e)) return;
+  const ok = pos && Number.isFinite(pos.x) && Number.isFinite(pos.y);
+  const anteil = v => Math.min(1, Math.max(0, v));
+  relicPickPos = ok ? { x: anteil(pos.x), y: anteil(pos.y) } : null;
+  loadConfig().then(cfg => saveConfig({ ...cfg, relicPickPos })).catch(() => {});
+  /* Zurueck in die Ecke: neu zeichnen, damit der Renderer die gemerkte Lage
+     vergisst. Beim Ziehen steht das Feld schon da, wo es hingehoert. */
+  if (!ok) refreshRelicPick();
 });
 
 /**
@@ -4856,11 +5825,13 @@ function setCurrentFissure(f) {
      denselben Filter dreimal neu aufzudruecken, auch wenn jemand ihn
      zwischendurch von Hand umgestellt hat. */
   if ((currentFissure?.node || null) === (next?.node || null)
-   && (currentFissure?.tier || null) === (next?.tier || null)) return;
+   && (currentFissure?.tier || null) === (next?.tier || null)
+   && !!currentFissure?.isHard === !!next?.isHard) return;
 
   currentFissure = next;
-  console.log('[Riss]', next ? `${next.tier} auf ${next.node}` : 'keiner');
+  console.log('[Riss]', next ? `${next.tier} auf ${next.node || 'unbekanntem Knoten'}` : 'keiner');
   sendToOverlay('relic:fissure', currentFissure);
+  refreshRelicPick();
 }
 
 /**
@@ -6075,24 +7046,73 @@ function pushRecommendedRelics() {
 function startLogWatcher() {
   logWatcher = new LogWatcher();
 
-  /* Welcher Riss gewaehlt wurde - noch BEVOR die Reliktauswahl aufgeht. Auf der
-     Sternenkarte kommt erst die Mission und dann das Relikt; wenn der
-     Auswahlbildschirm da ist, steht die Aera also schon fest. */
-  logWatcher.on('squad-mission', async ev => {
-    if (!ev?.node) { setCurrentFissure(null); return; }
-    setCurrentFissure(await resolveFissureForNode(ev.node));
+  /* Der Umwandeln-Bildschirm fuer Rivens - siehe riven-cycle.js und den
+     Abschnitt Riven-Overlay weiter oben. */
+  logWatcher.on('riven-cycle', ev => {
+    onRivenCycle(ev).catch(err => console.error('[Riven] Overlay-Ablauf:', err.message));
   });
 
-  logWatcher.on('relic-select-open', async () => {
-    try {
-      /* Nur merken, was das Overlay auch WIRKLICH aufgemacht hat. Stand es
-         schon offen, gehoert es dem Nutzer - dann darf das Ende der
-         Reliktauswahl es ihm nicht unter den Haenden wegziehen. */
-      if (relicAutoShow && !overlayVisible()) {
-        overlayShownForRelicSelect = true;
-        showOverlay();
-      }
+  /* Jemand fluestert - eine NEUE Unterhaltung, siehe RE_WHISPER_TAB. */
+  logWatcher.on('whisper', ev => {
+    notifyWhisper(ev.from).catch(err =>
+      console.error('[Fluestern] Benachrichtigung fehlgeschlagen:', err.message));
+  });
 
+  /* Welcher Riss gewaehlt wurde, und in welchem man steht. Hier stand "noch
+     BEVOR die Reliktauswahl aufgeht" - im Log stimmt das nicht: von der
+     Sternenkarte kommt die Mission erst NACH der Wahl (siehe RE_SQUAD_MISSION
+     in logwatch.js). Fuer die Auswahl zwischen zwei Runden steht sie dagegen
+     fest, seit die geladene Mission mitgelesen wird (RE_MISSION_LOADED).
+
+     DIE AERA AUS DEM LOG GILT. voidTier ist die Angabe des Spiels selbst; die
+     Rissliste des Weltzustands liefert nur noch den Rest (Knotenname,
+     Stahlpfad) und darf fehlen. Ohne voidTier bleibt es beim alten Weg ueber
+     die Rissliste - aber nur fuer das Ziel der Gruppe, nie fuer eine geladene
+     Mission: die ohne voidTier ist keine Rissmission.
+
+     Die Nummer faengt Antworten ab, die sich ueberholt haben: der Weltzustand
+     kann eine Weile brauchen, und das Verlassen der Gruppe beim Start kommt
+     nur 2,9 s nach dem Ziel - eine spaete Antwort auf das Ziel darf das
+     nicht wieder ueberschreiben. */
+  let missionSeq = 0;
+  logWatcher.on('squad-mission', async ev => {
+    const seq = ++missionSeq;
+    if (!ev?.tier && (ev?.loaded || !ev?.name)) { setCurrentFissure(null); return; }
+
+    const found = await resolveFissureForNode(ev.tier ? ev.node : ev.name);
+    if (seq !== missionSeq) return;
+    if (!ev.tier) { setCurrentFissure(found); return; }
+
+    /* Passt die Rissliste nicht zur Aera aus dem Log, gehoert der Eintrag zu
+       einem anderen Riss auf demselben Knoten - dann nur den Namen nehmen. */
+    const same = found && found.tier === ev.tier ? found : null;
+    setCurrentFissure({
+      ...(same || {}),
+      tier: ev.tier,
+      node: found?.node || nodeName(ev.node) || null
+    });
+  });
+
+  logWatcher.on('relic-select-open', async ev => {
+    /* Die Empfehlung hat ihr eigenes Fenster (siehe openRelicPick) und kommt
+       zuerst: bis zur Wahl vergehen gemessen nur 1,1 bis 2,8 s.
+
+       DAS GROSSE OVERLAY SPRINGT DAFUER NICHT MEHR AUF. Hier stand bis
+       v1.16 "relicAutoShow && !overlayVisible() -> showOverlay()": das ganze
+       Fenster mit Zyklen, Rissen und Zielen, nur um seinen Reliktabschnitt
+       zu zeigen. Der Schalter dazu heisst "Show the overlay on a relic
+       reward" und meint den Belohnungsbildschirm - bei der Auswahl war das
+       Aufspringen eine Beigabe, die jetzt das eigene Fenster uebernimmt.
+       Wer das Overlay ohnehin offen hat, sieht dort weiter die Auswahl
+       hervorgehoben (relic:select-open unten).
+
+       Die Liste wird EINMAL gerechnet und an beide gereicht - als erstes,
+       vor dem Anlauf der Texterkennung und der Marktliste darunter. */
+    const relics = describeRecommendedRelics();
+    relics.catch(() => {});   // gemeldet wird unten und in openRelicPick
+    openRelicPick(relics, ev?.via || null).catch(err => console.error('[Relikt] Empfehlung:', err.message));
+
+    try {
       /* Wer ein Relikt waehlt, oeffnet es gleich darauf. Der Anlauf der
          Texterkennung faellt damit in eine Zeit, in der niemand darauf wartet -
          statt in die 15 Sekunden Bedenkzeit auf dem Belohnungsbildschirm. */
@@ -6105,22 +7125,25 @@ function startLogWatcher() {
          hinein. Hier kostet sie niemanden etwas. */
       loadMarketItems().catch(() => {});
 
-      const data = await describeRecommendedRelics();
-      sendToOverlay('relic:select-open', data);
+      sendToOverlay('relic:select-open', await relics);
     } catch (err) {
       console.error('[Relikt] Fehler bei Reliktauswahl-Ereignis:', err.message);
     }
   });
 
-  logWatcher.on('relic-select-closed', () => {
-    sendToOverlay('relic:select-closed', {});
-    if (overlayShownForRelicSelect) {
-      overlayShownForRelicSelect = false;
-      if (!overlayShownForRelic && !interacting && overlayVisible()) {
-        hideOverlay();
-      }
-    }
+  /* Der Auswahlbildschirm ist fertig gezeichnet - jetzt laesst sich die Aera
+     ablesen, falls das Log sie nicht kennt (siehe readRelicPickEra). */
+  logWatcher.on('relic-select-ready', () => {
+    readRelicPickEra().catch(err => console.warn('[Relikt] Aera nicht gelesen:', err.message));
   });
+
+  logWatcher.on('relic-select-closed', () => {
+    closeRelicPick();
+    sendToOverlay('relic:select-closed', {});
+  });
+
+  /* Warframe vorn oder hinten - bisher nur fuer die Relikt-Empfehlung. */
+  logWatcher.on('game-focus', ev => setGameInFront(!!ev.active));
 
   /* Eingelegt ist noch nicht verbraucht - die Sicherheitsfrage sagt es selbst
      ("It will be consumed if you seal the Void Fissure and extract"). Deshalb
@@ -6830,7 +7853,91 @@ async function handleRelicReward(ev) {
 ipcMain.handle('settings:get', async () => {
   const st = await store.load();
   return { ok: true, hotkeys: { ...hotkeys }, notifications: st.notifications,
-           overlayEnabled, relicAutoShow, relicScan, relicTags };
+           overlayEnabled, relicAutoShow, relicScan, relicTags, rivenOverlay, relicPickOverlay };
+});
+
+ipcMain.handle('settings:relicPickOverlay', async (_e, on) => {
+  relicPickOverlay = !!on;
+  /* Ausgeschaltet verschwindet auch ein Feld, das gerade steht - und das
+     Fenster geht mit, statt versteckt weiterzulaufen. */
+  if (!relicPickOverlay) {
+    setRelicPickInteractive(false);
+    hideRelicPick();
+    if (relicPickWin && !relicPickWin.isDestroyed()) relicPickWin.destroy();
+  } else if (!relicPickWin || relicPickWin.isDestroyed()) {
+    createRelicPickWindow();
+  }
+  try {
+    const cfg = await loadConfig();
+    await saveConfig({ ...cfg, relicPickOverlay });
+  } catch { /* nicht gespeichert, aber aktiv */ }
+  return { ok: true, relicPickOverlay };
+});
+
+ipcMain.handle('settings:rivenOverlay', async (_e, on) => {
+  rivenOverlay = !!on;
+  if (!rivenOverlay) hideRivenOverlay();
+  try {
+    const cfg = await loadConfig();
+    await saveConfig({ ...cfg, rivenOverlay });
+  } catch { /* nicht gespeichert, aber aktiv */ }
+  return { ok: true, rivenOverlay };
+});
+
+/* ---------- Lage und Groesse der Felder im Spiel ----------
+
+   Fuer den Rundgang "Arrange overlays" in den Einstellungen. Er zeichnet die
+   Felder auf einer Buehne im Seitenverhaeltnis des Spielfensters nach; damit
+   die Proportionen stimmen, bekommt er dessen Groesse in Punkten mit.
+
+   Jede Aenderung gilt sofort und wird sofort gespeichert. Steht ein Feld
+   gerade im Spiel, zieht es mit - die Preisschilder beim naechsten
+   Belohnungsbildschirm, weil ihre Lage an den gelesenen Karten haengt. */
+
+function overlayLayout() {
+  const dip = frameToDip(cachedFrame());
+  const unterNamen = letzteGeometrie?.names?.bottom;
+  return {
+    ok: true,
+    frame: { width: Math.round(dip.width), height: Math.round(dip.height) },
+    scaleRange: { min: OVERLAY_SCALE_MIN, max: OVERLAY_SCALE_MAX },
+    hotkey: hotkeys.interact || '',
+    /* offset: Abstand unter den Kartennamen (Anteil der Hoehe). namesBottom:
+       wo die Namen enden - zuletzt gemessen, sonst ein Mittelwert, nur damit
+       die Buehne die Schilder ungefaehr an die richtige Stelle setzt. */
+    tags: { offset: relicTagOffset, scale: relicTagScale, enabled: relicTags,
+            namesBottom: Number.isFinite(unterNamen) ? unterNamen : 0.5,
+            cardWidth: Number.isFinite(letzteGeometrie?.cardWidth) ? letzteGeometrie.cardWidth : DEFAULT_CARD_WIDTH },
+    relicPick: { pos: relicPickPos, scale: relicPickScale, enabled: relicPickOverlay },
+    riven: { pos: { ...rivenPos }, scale: rivenScale, enabled: rivenOverlay }
+  };
+}
+
+ipcMain.handle('overlay-layout:get', async () => overlayLayout());
+
+ipcMain.handle('overlay-layout:set', async (_e, patch = {}) => {
+  const p = patch || {};
+  if (p.tags) {
+    if (Number.isFinite(p.tags.offset)) relicTagOffset = Math.min(0.33, Math.max(0, p.tags.offset));
+    if ('scale' in p.tags) relicTagScale = clampOverlayScale(p.tags.scale);
+  }
+  if (p.relicPick) {
+    if ('pos' in p.relicPick) relicPickPos = cleanPos(p.relicPick.pos);
+    if ('scale' in p.relicPick) relicPickScale = clampOverlayScale(p.relicPick.scale);
+    refreshRelicPick();
+  }
+  if (p.riven) {
+    if (p.riven.pos && 'current' in p.riven.pos) rivenPos = { ...rivenPos, current: cleanPos(p.riven.pos.current) };
+    if (p.riven.pos && 'next' in p.riven.pos) rivenPos = { ...rivenPos, next: cleanPos(p.riven.pos.next) };
+    if ('scale' in p.riven) rivenScale = clampOverlayScale(p.riven.scale);
+    redrawRiven();
+  }
+  try {
+    const cfg = await loadConfig();
+    await saveConfig({ ...cfg, relicTagOffset, relicTagScale, relicPickPos, relicPickScale,
+                       rivenPos, rivenScale });
+  } catch { /* nicht gespeichert, aber aktiv */ }
+  return overlayLayout();
 });
 
 ipcMain.handle('settings:overlayEnabled', async (_e, on) => {
@@ -6840,7 +7947,6 @@ ipcMain.handle('settings:overlayEnabled', async (_e, on) => {
      der erst beim naechsten Mal wirkt, wirkt wie ein kaputter Schalter. */
   if (!overlayEnabled) {
     overlayShownForRelic = false;
-    overlayShownForRelicSelect = false;
     hideOverlay();
   }
 
@@ -6994,6 +8100,69 @@ async function notifyFoundryDone(w) {
 
   if (win && win.webContents) {
     win.webContents.send('notification:event', { type: 'foundry', title, body });
+  }
+}
+
+/* -------------------- Fluesternachrichten -------------------- */
+
+/**
+ * Meldet eine neue Fluesterunterhaltung.
+ *
+ * Der Text kommt aus dem Speicher des Spiels (whispers.js) und wird auch dann
+ * gelesen, wenn alle Nachrichten gemeldet werden sollen - er steht dann in der
+ * Meldung, statt nur "hat dir geschrieben".
+ *
+ * IM FILTER "NUR WARFRAME.MARKET" GILT: im Zweifel melden. Laesst sich der
+ * Text nicht lesen, weiss niemand, ob es ein Kaeufer war - und ein verpasster
+ * Kaeufer kostet mehr als eine Meldung zu viel. Still bleibt es nur, wenn der
+ * Text gelesen wurde und nicht von warframe.market kommt.
+ */
+async function notifyWhisper(from) {
+  const st = await store.load();
+  const cfg = st.notifications?.whispers || {};
+  /* Auch ausgeschaltet eine Zeile: fehlt eine Meldung, sagt das Protokoll
+     dann wenigstens, ob das Log sie ueberhaupt hergegeben hat. */
+  if (!cfg.enabled) { console.log('[Fluestern] neue Unterhaltung, Meldung aus'); return; }
+
+  /* Zweiter Versuch nach zwei Sekunden: der Reiter kann aufgehen, bevor die
+     Nachricht im Verlauf steht, und der Verlauf ist die verlaessliche Quelle
+     (siehe whispers.js). */
+  let messages = null;
+  for (const wait of [0, 2000]) {
+    if (wait) await new Promise(r => setTimeout(r, wait));
+    const res = await readWhisperInWorker(from);
+    if (res?.ok && res.messages?.length) { messages = res.messages; break; }
+  }
+
+  /* Neueste zuerst (siehe readWhisper) - im Filter die neueste vom Markt. */
+  const market = messages?.find(m => isMarketWhisper(m.text)) ?? null;
+  console.log(`[Fluestern] neue Unterhaltung, Text ${messages ? 'gelesen' : 'nicht lesbar'}` +
+              `${messages ? (market ? ', warframe.market' : ', kein Markt') : ''}`);
+  if (cfg.marketOnly && messages && !market) return;
+
+  /* Nur Uhrzeit, Name und Text - so, wie die Zeile im Spielchat steht. Die
+     Uhrzeit ist die aus dem Chat; fehlt sie, die jetzige, das ist dieselbe
+     Minute. */
+  const msg = market ?? messages?.[0] ?? null;
+  const time = msg?.time ??
+    new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  const title = `${from} · ${time}`;
+  const body = msg ? msg.text.slice(0, 200) : 'Sent you a message in game.';
+
+  if (st.notifications?.desktopToast !== false && Notification.isSupported()) {
+    const n = new Notification({ title, body, silent: !st.notifications?.sound });
+    n.on('click', () => {
+      if (!win) return;
+      if (win.isMinimized()) win.restore();
+      win.show();
+      win.focus();
+      win.webContents.send('navigate:tab', 'trading');
+    });
+    n.show();
+  }
+
+  if (win && win.webContents) {
+    win.webContents.send('notification:event', { type: 'whisper', title, body });
   }
 }
 
@@ -7496,6 +8665,9 @@ app.whenReady().then(async () => {
   /* Schon beim Start anlegen, versteckt: beim ersten Fund soll das Fenster
      fertig geladen sein und nur noch gezeigt werden muessen. */
   createTagWindow();
+  /* Dasselbe fuer die Relikt-Empfehlung - dort ist die Zeit noch knapper,
+     siehe den Abschnitt dazu. */
+  if (relicPickOverlay) createRelicPickWindow();
 
   /* Liest ab jetzt EE.log mit - beginnt am Dateiende, damit nicht die
      Belohnung von vorgestern als frischer Fund erscheint. */

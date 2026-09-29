@@ -20,7 +20,8 @@
  * ZUGANGSDATEN:
  *   Die Zeile enthaelt AccountIds - die eigene und die der Mitspieler. Sie
  *   werden hier verworfen und nie weitergereicht; aus dem Log verlaesst nur
- *   der Item-Pfad dieses Modul.
+ *   der Item-Pfad dieses Modul - und beim Fluestern der Name des Absenders,
+ *   den das Spiel ohnehin als Reitertitel anzeigt.
  *
  * LESEZUGRIFF:
  *   Nur lesend, nur ab dem zuletzt gelesenen Byte. Die Datei bleibt in der
@@ -31,6 +32,7 @@ import { open, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import * as dbwin from './dbwin.js';
+import { RivenCycleWatch } from './riven-cycle.js';
 
 /* ARGUS_EE_LOG zeigt auf eine andere Datei. Gedacht fuer zwei Faelle: eine
    Warframe-Installation mit abweichendem Datenpfad, und der Test der Kette
@@ -75,6 +77,24 @@ const REWARD_MAX_AGE_MS = 30000;
    sie die Uhr. Fuenf Minuten sind laenger, als irgendjemand vor der Auswahl
    steht, und kurz genug, dass eine haengende Anzeige nicht den Abend ueberlebt. */
 const SELECT_MAX_MS = 5 * 60 * 1000;
+
+/* Zwischen zwei Runden einer Endlosmission laeuft die Auswahl gegen eine Uhr
+   des Spiels. Nachgemessen an vier Runden am 28.09.2026:
+
+     886.640  ThemedProjectionManager.lua: PopulateInventoryGrid
+     886.712  ProjectionsCountdown.lua: Initialize timer nil 20     +72 ms
+
+   (die anderen drei: +65, +61, +63 ms). Waehlt man nichts, schliesst das
+   Spiel den Bildschirm nach diesen 20 s von selbst - welche Zeile dann kommt,
+   ist nicht gemessen, Kaan hat jedes Mal gewaehlt. Die Uhr des Spiels ist
+   dafuer die bessere Notbremse als fuenf Minuten: eine Anzeige ueber einer
+   laufenden Mission ist das Schlimmste, was diese Erkennung tun kann.
+
+   Eine Sekunde Fenster, weil die Zeitangaben des Belohnungsbildschirms
+   (5, 15) sonst hineinfallen koennten - die kommen, bevor die Auswahl
+   aufgeht, nie danach. */
+const SELECT_TIMER_WINDOW_S = 1;
+const SELECT_TIMER_GRACE_MS = 2000;
 
 /* Entprellung fuer game-activity: Zonenwechsel erzeugen oft mehrere Zeilen
    innerhalb weniger Millisekunden. Nur das erste Ereignis in diesem Fenster
@@ -174,6 +194,37 @@ const RE_INIT_MAPPING  = /InitMapping\b.*\bfilter\s+(\S+)/;
 const RE_SELECT_ARMED  = /Subscribing for \S*ThemedProjectionManager\.swf/;
 
 /**
+ * Der Bildschirm ist fertig aufgebaut.
+ *
+ * Nachgemessen an 23 Auswahlen am 28./29.09.2026: 89 bis 367 ms nach
+ * PopulateInventoryGrid - zwischen zwei Runden um 90 ms, von der Sternenkarte
+ * und im Schiff um 300 ms. Wer vom Bildschirm etwas ABLESEN will, fragt ab
+ * hier; vorher liest er ein halbes Raster.
+ */
+const RE_SELECT_READY  = /ThemedProjectionManager\.lua:\s*LoadingCompleteEnd/;
+
+/**
+ * Von wo die Auswahl aufgerufen wurde - drei Wege, drei Vorlaeufer im Log,
+ * nachgemessen an allen 23 Auswahlen vom 28./29.09.2026 (sieben von der
+ * Karte, vier zwischen Runden, zwoelf im Schiff; keine blieb ohne Zuordnung):
+ *
+ *   console  Die Relikt-Konsole im Schiff (Veredeln, kein Riss). Unmittelbar
+ *            davor "UIConsoleTrigger::Open()" - 22 bis 41 ms.
+ *            Dass die Nummer der Konsole nichts taugt (siehe RE_SELECT_OPEN),
+ *            stoert hier nicht: gefragt ist nur, OB eben eine Konsole aufging.
+ *   round    Zwischen zwei Runden einer Endlosmission. Unmittelbar davor
+ *            "Relic reward screen shut down" - 60 bis 68 ms.
+ *   map      Von der Sternenkarte. Zuletzt galt dort der Eingabefilter der
+ *            Karte (MapReduxInputFilter).
+ *
+ * Nur die Sternenkarte verlangt nach einem Blick auf den Bildschirm: zwischen
+ * den Runden nennt das Log die Aera schon, und im Schiff gibt es keinen Riss.
+ */
+const RE_CONSOLE_OPEN  = /UIConsoleTrigger::Open\(\)/;
+const VIA_CONSOLE_S = 0.2;
+const VIA_ROUND_S = 1;
+
+/**
  * Welches Relikt fuer die Mission eingelegt wurde.
  *
  * Die Sicherheitsfrage nennt es beim Namen, mitsamt Politur:
@@ -196,11 +247,13 @@ const RE_EQUIP = /Dialog::CreateOkCancel\(description=.*?\bequip\s+(\S+)\s+(\S+)
  *   Script [Info]: ThemedSquadOverlay.lua: Cached mission name=Exterminate:
  *                  Techrot (Höllvania) (SolNode854)
  *
- * DIE ZEILE KOMMT VOR DER RELIKTAUSWAHL. Auf der Sternenkarte waehlt man erst
- * den Riss und dann das Relikt; wenn der Auswahlbildschirm aufgeht, steht der
- * Knoten also schon fest. Genau darauf beruht der Aera-Filter im Overlay: der
- * Knoten sagt, welcher Riss gemeint ist, und der Riss sagt, welche Aera hinein
- * darf (siehe resolveFissureForNode in main.js).
+ * WANN DIE ZEILE KOMMT: hier stand "vor der Reliktauswahl - auf der
+ * Sternenkarte waehlt man erst den Riss und dann das Relikt". Im Spiel stimmt
+ * die Reihenfolge, im LOG nicht. Nachgemessen am 28.09.2026 an zwei Rissen
+ * von der Sternenkarte: die Auswahl geht auf, das Relikt wird gewaehlt, und
+ * erst 0,8 bis 0,9 s NACH der Sicherheitsfrage steht die Mission im Log. Fuer
+ * die erste Auswahl einer Rissmission ist die Aera also nicht zu haben; fuer
+ * jede weitere in derselben Mission schon (siehe RE_MISSION_LOADED).
  *
  * NUR DIE KENNUNG, NICHT DER NAME: die zweite Zeile traegt den Missionstitel in
  * der SPRACHE DES SPIELS ("Höllvania"). Ein Abgleich darueber haette bei jeder
@@ -212,18 +265,125 @@ const RE_EQUIP = /Dialog::CreateOkCancel\(description=.*?\bequip\s+(\S+)\s+(\S+)
  * (Roche) und CrewBattleNode515 (Railjack, Luckless Expanse). Eine Regel auf
  * SolNode haette ein Drittel der Risse stumm uebergangen.
  *
+ * WIE EIN RISS DASTEHT, nachgemessen am 28.09.2026:
+ *   Set squad mission: {"difficulty":"","voidTier":"VoidT4","quest":"",
+ *                       "name":"SolNode195_ActiveMission"}
+ * Zweierlei daran ist wichtig:
+ *   - Der Name traegt "_ActiveMission" hinten dran. Die Knotentabelle kennt
+ *     nur "SolNode195" - mit dem Zusatz fand fissureForNode keinen Riss, und
+ *     der Aera-Filter blieb bei Rissmissionen stumm. Knotenkennungen tragen
+ *     nie einen Unterstrich (452 von 452 in sol-nodes.json), also ist alles
+ *     ab dem ersten der Zusatz.
+ *   - voidTier nennt die Aera selbst, ohne Umweg ueber die Rissliste des
+ *     Weltzustands - und damit auch dann, wenn die gerade nicht erreichbar ist.
+ *
  * Dieselbe Zeile steht auch in RE_SELECT_CLOSED - wer eine Mission setzt, ist
  * nicht mehr in der Reliktauswahl. Beides gilt, und beides wird gemeldet:
  * dieser Zweig steht vor der Auswertung der Auswahl und gibt die Zeile weiter.
  */
-const RE_SQUAD_NODE = /Set squad mission:\s*\{[^}]*"name"\s*:\s*"(\w*Node\w+)"/;
+const RE_SQUAD_MISSION = /Set squad mission:\s*(\{[^}]*\})/;
+
+/**
+ * Die Mission, die gerade GELADEN wird - also die, in der man dann steht.
+ *
+ * Nachgemessen am 28.09.2026:
+ *    671.339  Sys [Info]: Client loaded {"difficulty":"","voidTier":"VoidT6",
+ *             "quest":"","name":"SolNode232_ActiveMission"} with MissionInfo:
+ *   1802.003  Script [Info]: ThemedSquadOverlay.lua: Host loading
+ *             {"difficulty":0.5,"name":"IceBladeHUB_HUB"} with MissionInfo:
+ *
+ * WARUM ES DIESE ZEILE BRAUCHT: "Set squad mission" haelt nicht durch. Beim
+ * Start der Mission, 2,9 s danach, kommt MatchingService::LeaveSquad - und
+ * das loescht den Riss (RE_LEFT_MISSION). Zwischen zwei Runden einer
+ * Endlosmission, genau dort, wo die Reliktauswahl alle paar Minuten
+ * wiederkommt, war die Aera damit nie bekannt. Diese Zeile kommt NACH dem
+ * Verlassen der Gruppe (665.668 -> 671.339) und gilt, bis man wieder im
+ * Schiff ist oder etwas anderes laedt.
+ *
+ * Ohne voidTier heisst sie deshalb auch etwas: kein Riss. Der alte wandert
+ * dann nicht in den Hub oder die naechste gewoehnliche Mission mit.
+ */
+const RE_MISSION_LOADED = /(?:Client loaded|Host loading)\s+(\{[^}]*\})\s+with MissionInfo/;
+
+/* VoidT1 bis VoidT6 -> Aera. Dieselbe Zaehlung wie in den Reliktpfaden
+   (T1VoidProjection... ist Lith, siehe inventory-items.js). Im Log
+   nachgemessen: VoidT4 bei "Hydron (Sedna) - Axi Fissure", eingelegt wurde
+   ein Axi-Relikt; VoidT6 bei "Tuvul Commons (Zariman) - Omnia Fissure". */
+const TIER_BY_VOID = {
+  VoidT1: 'Lith', VoidT2: 'Meso', VoidT3: 'Neo', VoidT4: 'Axi', VoidT5: 'Requiem', VoidT6: 'Omnia'
+};
+
+/**
+ * Das Missions-JSON aus einer der beiden Zeilen -> { node, name, tier }.
+ *
+ * Mit zwei Suchen statt JSON.parse: die Reihenfolge der Felder ist nicht
+ * dieselbe wie in der aelteren Messung oben, und ein Feld, das DE einmal
+ * anders schreibt, soll nur dieses Feld kosten und nicht die ganze Zeile.
+ *
+ * `name` ist die Kennung, wie sie dasteht (mit Zusatz), `node` der Knoten
+ * ohne ihn - oder null, wenn es kein Knoten ist (Hubs wie "IceBladeHUB_HUB").
+ */
+export function readMission(json) {
+  const name = /"name"\s*:\s*"([^"]*)"/.exec(json)?.[1] || '';
+  const id = name.split('_')[0];
+  const tier = TIER_BY_VOID[/"voidTier"\s*:\s*"(\w+)"/.exec(json)?.[1]] || null;
+  return { node: /^\w*Node\w+$/.test(id) ? id : null, name: name || null, tier };
+}
 
 /** Zurueck im Schiff heisst: keine Mission mehr im Blick. */
 const RE_LEFT_MISSION = /MatchingService::LeaveSquad|Created\s+\S*ThemedMainMenu\.swf/;
 
+/**
+ * Warframe meldet selbst, wenn es den Vordergrund verliert und zurueckbekommt:
+ *
+ *   19941.344  Sys [Info]: WM_ACTIVATEAPP 0
+ *   19949.453  Sys [Info]: WM_ACTIVATEAPP 1
+ *
+ * Nachgemessen am 28.09.2026: 118 solche Zeilen in einer Sitzung, streng
+ * abwechselnd, sieben davon bei offener Reliktauswahl - Kaan hatte die
+ * Konsole im Schiff offen und war zwischendurch in einem anderen Fenster.
+ * Genau dann stuende ein Feld ueber diesem anderen Fenster statt ueber dem
+ * Spiel.
+ */
+const RE_ACTIVATE = /\bWM_ACTIVATEAPP ([01])\s*$/;
+
+/**
+ * Eine neue Fluesterunterhaltung.
+ *
+ * Nachgemessen am 26.09.2026 an einer echten Nachricht:
+ *   ChatRedux.lua: ChatRedux::AddTab: Adding tab with channel name: FiFlynn to index 7
+ * "F" + Absender. Die anderen Reiter tragen andere Praefixe (C Clan, A Allianz,
+ * S Squad, H_ Region, Q/R/T Handel und Rekrutierung) - nur F ist Fluestern.
+ *
+ * NUR DIE ERSTE NACHRICHT: der Reiter geht einmal auf; weitere Nachrichten im
+ * offenen Reiter schreibt das Log nicht mit. Den Text schreibt es gar nicht -
+ * der kommt aus dem Speicher, siehe whispers.js.
+ *
+ * DAS PLATTFORM-SYMBOL: beim zweiten Test stand hinter dem Namen ein Zeichen
+ * aus dem privaten Bereich (UTF-8 EE 80 80), direkt vor " to index":
+ *   channel name: FTharun.tco<U+E000> to index 7
+ * Bei iFlynn fehlte es. Das Muster nahm nur den Fall ohne Symbol - und die
+ * Meldung blieb aus. Deshalb jetzt: alles bis zum Leerzeichen, und was nicht
+ * ASCII ist, faellt aus dem Namen heraus.
+ */
+const RE_WHISPER_TAB = /ChatRedux::AddTab: Adding tab with channel name: F(\S+) to index/;
+
+/* Beim Einloggen baut der Chat seine Reiter neu auf. Ob dabei offene
+   Fluesterreiter wiederkommen, ist nicht gemessen - kaemen sie, waeren es
+   lauter alte Unterhaltungen, gemeldet als neue. Die Reiter folgen dem
+   Verbindungsaufbau gemessen nach 0,7 s; zehn Sekunden sind reichlich. */
+const RE_CHAT_CONNECTED = /IRC connected/;
+const WHISPER_LOGIN_QUIET_SEC = 10;
+
 const STATE_BY_TAG = {
   RADIANT: 'Radiant', FLAWLESS: 'Flawless', EXCEPTIONAL: 'Exceptional', INTACT: 'Intact'
 };
+
+/** Warframes Laufzeituhr vorn in der Zeile, in Sekunden. */
+function logSeconds(line) {
+  const m = /^(\d+\.\d+)/.exec(line);
+  return m ? parseFloat(m[1]) : Date.now() / 1000;
+}
 
 export class LogWatcher extends EventEmitter {
   constructor(file = DEFAULT_LOG_PATH()) {
@@ -236,9 +396,16 @@ export class LogWatcher extends EventEmitter {
     this.relicSelectActive = false;
     this.relicSelectOpenedAt = 0;
     this.relicSelectArmedAt = 0;
+    this.relicSelectReady = false;
+    /* Die Vorlaeufer, an denen sich ablesen laesst, woher eine Auswahl kam -
+       siehe RE_CONSOLE_OPEN. Laufzeituhr des Spiels, in Sekunden. */
+    this.lastConsoleAt = null;
+    this.lastRewardClosedAt = null;
+    this.lastInputFilter = null;
     this.selectGuard = null;      // Notbremse, siehe armSelectGuard()
     this.busy = false;
     this.lastActivity = 0;          // Zeitstempel des letzten game-activity
+    this.chatConnectedAt = null;    // Laufzeituhr beim Chat-Login, siehe RE_CHAT_CONNECTED
     /* Zeilen, die ueber den Debugkanal kamen und deren Echo in der Datei noch
        aussteht. Siehe GESEHEN_MAX. */
     this.gesehen = new Set();
@@ -247,6 +414,10 @@ export class LogWatcher extends EventEmitter {
     /* Zeilen, die nur ueber die Datei kamen, OBWOHL der Debugkanal lief. Jede
        einzelne davon hat der Kanal verpasst - siehe handleLine. */
     this.verpasst = 0;
+    /* Der Umwandeln-Bildschirm fuer Rivens - eigener Zustand in eigenem
+       Modul, siehe riven-cycle.js. Hier kommt nur jede Zeile einmal an. */
+    this.rivenCycle = new RivenCycleWatch((type, data) =>
+      this.emit('riven-cycle', { type, ...data, at: Date.now() }));
   }
 
   /**
@@ -370,6 +541,31 @@ export class LogWatcher extends EventEmitter {
   handleLine(line, quelle = 'datei') {
     if (quelle === 'datei' && dbwin.isActive()) this.verpasst++;
 
+    /* Vor allen Abzweigungen unten: die meisten kehren nach ihrem Treffer
+       zurueck, und eine Dialogzeile, die dort haengen bliebe, fehlte hier. */
+    this.rivenCycle.handleLine(line);
+
+    if (RE_CHAT_CONNECTED.test(line)) {
+      this.chatConnectedAt = logSeconds(line);
+      return;
+    }
+
+    const activate = RE_ACTIVATE.exec(line);
+    if (activate) {
+      this.emit('game-focus', { active: activate[1] === '1', at: Date.now() });
+      return;
+    }
+
+    const whisper = RE_WHISPER_TAB.exec(line);
+    if (whisper) {
+      const sec = logSeconds(line);
+      const afterLogin = this.chatConnectedAt != null && sec >= this.chatConnectedAt &&
+        sec - this.chatConnectedAt < WHISPER_LOGIN_QUIET_SEC;
+      const from = whisper[1].replace(/[^\x21-\x7E]/g, '');
+      if (!afterLogin && from) this.emit('whisper', { from, at: Date.now() });
+      return;
+    }
+
     const equip = RE_EQUIP.exec(line);
     if (equip) {
       this.emit('relic-equipped', {
@@ -445,36 +641,59 @@ export class LogWatcher extends EventEmitter {
       const seconds = Number(timer[1]);
       /* "Initialize timer nil 0" kommt beim Schliessen - keine neue Laufzeit. */
       if (seconds > 0) this.emit('relic-timer', { seconds });
+      /* Dieselbe Zeile ist auch die Uhr der Reliktauswahl zwischen zwei
+         Runden - siehe SELECT_TIMER_WINDOW_S. */
+      if (seconds > 0 && this.relicSelectActive) this.noteSelectCountdown(seconds, logSeconds(line));
       return;
     }
 
     if (RE_CLOSED.test(line)) {
+      this.lastRewardClosedAt = logSeconds(line);
       this.emit('relic-closed', {});
       return;
     }
 
     /* Der Knoten, auf den die Gruppe zielt. VOR der Auswertung der
        Reliktauswahl, weil dieselbe Zeile auch deren Schlusssignal ist - sie
-       wird hier nur mitgelesen und nicht verbraucht. */
-    const squadNode = RE_SQUAD_NODE.exec(line);
-    if (squadNode) this.emit('squad-mission', { node: squadNode[1], at: Date.now() });
-    else if (RE_LEFT_MISSION.test(line)) this.emit('squad-mission', { node: null, at: Date.now() });
+       wird hier nur mitgelesen und nicht verbraucht.
 
-    const timeMatch = /^(\d+\.\d+)/.exec(line);
-    const logSec = timeMatch ? parseFloat(timeMatch[1]) : (Date.now() / 1000);
+       `loaded` unterscheidet die beiden Quellen: das Ziel der Gruppe darf
+       ohne voidTier weiter ueber die Rissliste nachgeschlagen werden (so war
+       es immer), eine GELADENE Mission ohne voidTier ist dagegen sicher
+       keine Rissmission - siehe RE_MISSION_LOADED. */
+    const squad = RE_SQUAD_MISSION.exec(line);
+    const loaded = squad ? null : RE_MISSION_LOADED.exec(line);
+    if (squad) {
+      const m = readMission(squad[1]);
+      if (m.node || m.tier) this.emit('squad-mission', { ...m, loaded: false, at: Date.now() });
+    } else if (loaded) {
+      this.emit('squad-mission', { ...readMission(loaded[1]), loaded: true, at: Date.now() });
+    } else if (RE_LEFT_MISSION.test(line)) {
+      this.emit('squad-mission', { node: null, name: null, tier: null, at: Date.now() });
+    }
+
+    const logSec = logSeconds(line);
 
     if (!this.relicSelectActive && RE_SELECT_OPEN.test(line)) {
       this.relicSelectActive = true;
       this.relicSelectOpenedAt = logSec;
+      this.relicSelectReady = false;
       /* Faengt der Mitschnitt erst bei der Anmeldezeile an - etwa weil die App
          mitten in der Reliktauswahl gestartet wurde -, ist der Bildschirm mit
          genau dieser Zeile schon scharf. Sonst wartet der Schluss auf eine
          Anmeldung, die nicht mehr kommt. */
       this.relicSelectArmedAt = RE_SELECT_ARMED.test(line) ? logSec : 0;
       this.armSelectGuard();
-      this.emit('relic-select-open', { at: Date.now() });
+      this.emit('relic-select-open', { at: Date.now(), via: this.selectVia(logSec) });
       return;
     }
+
+    /* Die Vorlaeufer mitschreiben, die sagen, woher die NAECHSTE Auswahl
+       kommt. Hinter der Pruefung oben: die Zeilen gehoeren immer zu dem, was
+       davor geschah. */
+    if (RE_CONSOLE_OPEN.test(line)) this.lastConsoleAt = logSec;
+    const filter = RE_INIT_MAPPING.exec(line);
+    if (filter && !this.relicSelectActive) this.lastInputFilter = filter[1];
 
     /* ----- Spielaktivitaet: Missionsende, Orbiter, Handel --------------- */
     const trigger =
@@ -494,6 +713,15 @@ export class LogWatcher extends EventEmitter {
 
     if (RE_SELECT_ARMED.test(line)) { this.relicSelectArmedAt = logSec; return; }
 
+    if (RE_SELECT_READY.test(line)) {
+      /* Zwischen zwei Runden kommt der Aufbau doppelt - gemeldet wird er einmal. */
+      if (!this.relicSelectReady) {
+        this.relicSelectReady = true;
+        this.emit('relic-select-ready', { at: Date.now(), after: Math.round((logSec - this.relicSelectOpenedAt) * 1000) });
+      }
+      return;
+    }
+
     /* Die 0.15 s halten die Zeilen ab, die zum Aufgehen selbst gehoeren -
        der Bildschirm meldet beim Oeffnen seinen eigenen Eingabefilter an. */
     if (logSec - this.relicSelectOpenedAt <= 0.15 && logSec >= this.relicSelectOpenedAt) return;
@@ -504,6 +732,15 @@ export class LogWatcher extends EventEmitter {
     const leftMenu = mapping && !/MenuInputFilter$/.test(mapping[1]);
 
     if (leftMenu || RE_SELECT_CLOSED.test(line)) this.closeSelect();
+  }
+
+  /** Woher die Auswahl kam, die in `sec` aufging - siehe RE_CONSOLE_OPEN. */
+  selectVia(sec) {
+    const seit = t => (t != null && sec >= t ? sec - t : Infinity);
+    if (seit(this.lastConsoleAt) <= VIA_CONSOLE_S) return 'console';
+    if (seit(this.lastRewardClosedAt) <= VIA_ROUND_S) return 'round';
+    if (/MapReduxInputFilter$/.test(this.lastInputFilter || '')) return 'map';
+    return null;
   }
 
   closeSelect() {
@@ -529,6 +766,22 @@ export class LogWatcher extends EventEmitter {
   armSelectGuard() {
     clearTimeout(this.selectGuard);
     this.selectGuard = setTimeout(() => this.closeSelect(), SELECT_MAX_MS);
+    this.selectGuard.unref?.();
+  }
+
+  /**
+   * Die Auswahl hat eine Uhr genannt - dann gilt die statt der fuenf Minuten.
+   *
+   * Nur eine Zeitangabe, die unmittelbar nach dem Aufgehen kommt, gehoert zur
+   * Auswahl (siehe SELECT_TIMER_WINDOW_S). Ob sie das tut, entscheidet die
+   * Spielzeit der beiden Zeilen, nicht ihre Ankunft: kommen sie in einem
+   * Schwung aus der gepufferten Datei, sagt die Ankunft darueber nichts.
+   */
+  noteSelectCountdown(seconds, sec) {
+    const since = sec - this.relicSelectOpenedAt;
+    if (!(since >= 0 && since <= SELECT_TIMER_WINDOW_S)) return;
+    clearTimeout(this.selectGuard);
+    this.selectGuard = setTimeout(() => this.closeSelect(), seconds * 1000 + SELECT_TIMER_GRACE_MS);
     this.selectGuard.unref?.();
   }
 }

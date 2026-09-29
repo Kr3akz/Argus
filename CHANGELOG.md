@@ -21,6 +21,105 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.17.0] - 2026-09-29
+
+### Added
+
+- **A Rivens tab.** Every riven you own, with its stats exactly as the game
+  shows them at rank 8, how well each stat rolled between its lowest and
+  highest possible value, rerolls, polarity and drain. The numbers were checked
+  against the game's own mod screen, stat by stat. Veiled rivens are listed
+  below with their challenge and how far along you are. It needs inventory
+  access, like the Inventory tab.
+
+- **Compare riven rolls while cycling.** On the cycle screen, Argus puts your
+  current roll on the left and the new one on the right, with arrows for every
+  stat that got better or worse and the average roll quality of each side. The
+  new roll is read from the running game as soon as it arrives, so you can decide
+  before you pick. It needs inventory access and has its own switch under
+  Settings → Overlays.
+
+- **A notification when someone whispers you in game.** Turn it on under
+  Settings → Notifications. With *Only warframe.market whispers* switched on,
+  Argus stays quiet unless the message was copied from warframe.market, so a
+  ping means someone wants to trade for one of your orders. The notification
+  shows what the chat shows: who, when, and the message. Warframe only records
+  when a conversation *starts*, so you hear about the first message from each
+  person — close their chat tab and the next one counts as new again. If Argus
+  can't read the text, it notifies you anyway rather than risk you missing a
+  buyer.
+
+- **Its own panel on the relic selection screen.** When you choose which relic
+  to take into a fissure, Argus now lays a small panel into the top right
+  corner of the game with the relics you own, ranked by what one crack is worth
+  on average — platinum and ducats, the refinement, how many you have, and the
+  best part in each. It is click-through like the price tags, follows the game
+  window to whichever monitor it is on, and steps aside while you are in
+  another window. Until now the whole overlay window jumped up for this, with
+  cycles and goals that mean nothing on that screen; it no longer does. The
+  panel has its own switch under Settings.
+
+  It has to be quick, and how quick was measured: over six picks, choosing a
+  relic took 1.1 to 2.8 seconds from the moment the screen opened. So the
+  window is ready from the start and appears as soon as the numbers are — with
+  the screen, not after it.
+
+  **Filter and move it with the cursor hotkey** (`Ctrl+E`), the same key that
+  takes the mouse into the overlay window. The panel then shows the same era
+  chips as the overlay, plus *Auto* and *★ Starred*, and you can drag it by its
+  title wherever it is in the way least; a double-click on the title sends it
+  back to the corner. It only takes clicks while the cursor is on it, and it
+  never takes focus from the game.
+
+  Once the fissure is known, only relics that fit it are listed. Between rounds
+  of an endless mission the game log names it — and if you let the game's
+  20-second clock run out there, the panel goes with it. On the star chart the
+  log names the fissure only *after* you pick, so Argus reads the era off the
+  selection screen instead: the `LITH ERA` line at the top left, or — while the
+  screen is still fading in and that line is too faint — the relic cards
+  together with the `COLLECTED 75/202` counter, whose second number says how
+  many relics the screen lists. The panel waits for that answer and appears
+  once, already filtered — it no longer shows every era first and then jumps.
+  Cards and counter can be read from about half a second after the screen
+  opens, while it is still fading in. If no answer comes within 1.2
+  seconds, you get the best relics of each era rather than one ranking that
+  could put Lith on top of a screen offering Axi. In the relic segment on your
+  ship every era is listed, since refining has no fissure.
+
+- **Arrange overlays.** A new button under Settings → Overlays walks through
+  the panels Argus draws over the game — the reward price tags, the relic
+  recommendation and the riven comparison — one after the other, on a stage
+  shaped like your game window. Drag each one where you want it and set its
+  size between 60 and 160 %. Every change is saved and applied at once. The
+  price tags only move up and down, since they belong under their cards; when
+  they grow, the columns stay exactly as wide as the cards and only what is
+  inside gets larger.
+
+- **The riven panels move too.** While they show on the cycle screen, the
+  cursor hotkey (`Ctrl+E`) lets you drag each of them by its title, the same
+  way as the relic recommendation; a double-click sends one back to its edge.
+  The panel for the new roll shows up as a placeholder then, so its spot can
+  be set before you cycle.
+
+### Changed
+
+- **Settings are split into tabs:** General, Overlays, Notifications, Inventory
+  and About, instead of one long page. *About* now also lists where Argus gets
+  its data — warframe.market, DE's Public Export and drop tables,
+  warframestat.us, tenno.tools, the Warframe Wiki, overframe.gg — and links to
+  the source code, the license and the issue tracker.
+
+### Fixed
+
+- **The era of a fissure was never recognised.** The game writes fissure
+  missions with a suffix the node table did not know (`SolNode195_ActiveMission`),
+  so the lookup came back empty every time — and the one line that named the
+  mission was forgotten again 2.9 seconds later, when the mission started.
+  Argus now takes the era straight from the game's own line (`voidTier`) and
+  also reads the line written as a mission loads. That is what lets the new
+  panel filter between rounds, and the era chips in the overlay window finally
+  set themselves too.
+
 ## [1.16.2] - 2026-09-28
 
 ### Fixed

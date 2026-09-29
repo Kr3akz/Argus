@@ -40,6 +40,12 @@ export const DEFAULT_NOTIFICATIONS = () => ({
     steelPathOnly: false,
     includeSteelPath: true,
     includeStorms: true
+  },
+  /* Fluesternachrichten im Spiel. marketOnly meldet nur, was von
+     warframe.market kommt - siehe whispers.js. */
+  whispers: {
+    enabled: false,
+    marketOnly: true
   }
 });
 
@@ -76,6 +82,10 @@ export async function load() {
         fissures: {
           ...defNotif.fissures,
           ...(rawNotif.fissures || {})
+        },
+        whispers: {
+          ...defNotif.whispers,
+          ...(rawNotif.whispers || {})
         }
       }
     };
@@ -242,6 +252,10 @@ export async function updateNotificationSettings(patch) {
     fissures: {
       ...s.notifications.fissures,
       ...(patch.fissures || {})
+    },
+    whispers: {
+      ...s.notifications.whispers,
+      ...(patch.whispers || {})
     }
   };
   return save(s);

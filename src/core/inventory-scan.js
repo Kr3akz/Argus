@@ -100,7 +100,7 @@
  * VORAUSSETZUNG:
  *   Ein Zonenwechsel muss stattgefunden haben - Dojo oder Relais und zurueck
  *   aufs Schiff, oder ein frischer Login. Vorher liegt gar kein Inventar im
- *   Heap. Dieselbe Einschraenkung dokumentiert AlecaFrame fuer sich selbst.
+ *   Heap.
  *
  * KEINE ZUGANGSDATEN:
  *   Dieses Modul fasst weder accountId noch nonce an. Es liest ein Dokument,

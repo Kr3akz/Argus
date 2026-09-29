@@ -78,6 +78,11 @@
   --t-requiem: 255  92  92;
   --t-omnia:   207 139 243;
 
+  /* Das Violett der Riven-Karten. Eigener Name, auch wenn es Omnia nahe
+     liegt: das eine ist eine Reliktaera, das andere eine Mod-Art, und wer
+     eins davon umfaerbt, soll das andere nicht mitreissen. */
+  --t-riven:   170 132 255;
+
   /* Das Rot aus der Wortmarke von warframe.market. Gegenueber dem Original
      (#a52f31) eine Spur aufgehellt: auf dem Grau ihrer Webseite traegt der
      Originalton, auf unserem fast schwarzen Grund saeuft er ab.
@@ -522,6 +527,12 @@ body:has(#app:not(.hidden)) .titlebar-brand::after {
   -webkit-mask-image: url('assets/icons/calendar.png');
   mask-image: url('assets/icons/calendar.png');
   transform: scale(1.1);
+}
+
+.icon-riven {
+  -webkit-mask-image: url('assets/icons/riven.png');
+  mask-image: url('assets/icons/riven.png');
+  transform: scale(1.3);
 }
 
 .icon-narmer {
@@ -11033,3 +11044,580 @@ input[type=number]:focus, input[type=email]:focus, input[type=password]:focus {
    einen anderen Reiter, und die naechste Station zeigte dann auf eine Stelle,
    die es dort nicht gibt. */
 body.guide-on .app-toast { pointer-events: none; }
+
+/* ---------------- Rivens ---------------- */
+/*
+ * Eigene Karten statt der Mod-Karte aus dem Builds-Reiter: die lebt von den
+ * Rahmenbildern je Seltenheit, und fuer Rivens gibt es keins. Violett wie im
+ * Spiel, sonst dieselben Flaechen wie ueberall.
+ */
+.riven-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+
+.riven-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px 10px;
+  border-radius: var(--r-md);
+  border: 1px solid rgb(var(--t-riven) / .22);
+  background: linear-gradient(180deg, rgb(var(--t-riven) / .10), var(--surface) 60%);
+}
+
+.riven-head { display: flex; align-items: center; gap: 10px; }
+.riven-img { width: 44px; height: 44px; object-fit: contain; flex-shrink: 0; }
+.riven-title { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.riven-title b { font-size: 14px; font-weight: 600; }
+.riven-name { font-size: 12.5px; color: rgb(var(--t-riven)); }
+
+.riven-drain {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.riven-drain svg { width: 13px; height: 13px; }
+
+.riven-stats { display: flex; flex-direction: column; gap: 5px; }
+
+/* Wert, Name, Balken, Prozent - feste Spalten, damit die Balken aller
+   Karten in einer Flucht stehen. */
+.riven-stat {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) 56px 32px;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+}
+.riven-val { font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+.riven-stat.is-buff .riven-val  { color: #7ee787; }
+.riven-stat.is-curse .riven-val { color: #ff8f8f; }
+.riven-label { color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.riven-unver { color: var(--gold); font-weight: 700; }
+
+.riven-roll { height: 5px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.riven-roll i { display: block; height: 100%; border-radius: 3px; }
+.riven-roll.q-top i    { background: var(--green); }
+.riven-roll.q-mid i    { background: rgb(var(--t-accent)); }
+.riven-roll.q-low i    { background: var(--gold); }
+.riven-roll.q-bottom i { background: var(--red); }
+.riven-pct { font-size: 11.5px; color: var(--text-3); text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Elemente in ihrer Spielfarbe; die physischen bleiben neutral. */
+.riven-label.el-fire        { color: #ff9f5a; }
+.riven-label.el-freeze      { color: #7fd3ff; }
+.riven-label.el-electricity { color: #c7a4ff; }
+.riven-label.el-toxin       { color: #7ee787; }
+
+.riven-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--surface-2);
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.riven-avg { margin-left: auto; color: var(--text-2); }
+
+.riven-subhead { margin: 26px 0 10px; font-size: 14px; font-weight: 600; }
+.riven-veiled {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+.riven-veil {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  border: 1px dashed rgb(var(--t-riven) / .3);
+  background: var(--surface);
+}
+.riven-veil p { font-size: 12.5px; color: var(--text-2); line-height: 1.5; }
+.riven-veil-prog { height: 5px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.riven-veil-prog i { display: block; height: 100%; background: rgb(var(--t-riven)); }
+.riven-veil-count { font-size: 11.5px; color: var(--text-3); }
+
+.riven-unopened-row {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.riven-unopened { padding: 3px 10px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); }
+
+/* ---------------- Riven-Overlay (Umwandeln-Bildschirm) ---------------- */
+/*
+ * Eigenes Fenster wie die Preisschilder: durchsichtig, klickdurchlaessig,
+ * ueber dem ganzen Spielfenster. Die zwei Felder sitzen an den Raendern,
+ * damit sie die beiden Karten in der Mitte nicht verdecken.
+ */
+body.riven-window {
+  background: transparent !important;
+  overflow: hidden;
+  height: 100vh;
+  margin: 0;
+  pointer-events: none;
+}
+
+.rv-panel {
+  position: absolute;
+  top: 18%;
+  width: clamp(300px, 21vw, 400px);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 12px 14px 10px;
+  border-radius: var(--r-md);
+  border: 1px solid rgb(var(--t-riven) / .35);
+  background: linear-gradient(180deg, rgba(34, 26, 52, .94), rgba(16, 19, 27, .94));
+  box-shadow: var(--shadow);
+  font-size: 12.5px;
+}
+.rv-left  { left: 2.5%; }
+.rv-right { right: 2.5%; }
+
+.rv-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.rv-tag {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: rgb(var(--t-riven));
+}
+.rv-cost { font-size: 11px; color: var(--text-3); }
+
+.rv-title { display: flex; flex-direction: column; }
+.rv-title b { font-size: 14px; font-weight: 600; }
+.rv-name { color: rgb(var(--t-riven)); }
+
+.rv-stats { display: flex; flex-direction: column; gap: 5px; }
+.rv-stat {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) 14px 44px 30px;
+  align-items: center;
+  gap: 7px;
+}
+.rv-val { font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+.rv-stat.is-buff .rv-val  { color: #7ee787; }
+.rv-stat.is-curse .rv-val { color: #ff8f8f; }
+.rv-label { color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rv-label.el-fire        { color: #ff9f5a; }
+.rv-label.el-freeze      { color: #7fd3ff; }
+.rv-label.el-electricity { color: #c7a4ff; }
+.rv-label.el-toxin       { color: #7ee787; }
+
+/* Die Spalte fuer den Vergleichspfeil bleibt auch ohne Pfeil stehen, damit
+   die Balken beider Felder in einer Flucht bleiben. */
+.rv-stat > .rv-cmp { font-size: 10px; text-align: center; }
+.rv-stat:not(:has(.rv-cmp)) .rv-roll { grid-column: 4; }
+.rv-cmp.is-up   { color: var(--green); }
+.rv-cmp.is-down { color: var(--red); }
+.rv-cmp.is-new  { color: var(--text-3); font-size: 9px; }
+
+.rv-roll { height: 5px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.rv-roll i { display: block; height: 100%; border-radius: 3px; }
+.rv-roll.q-top i    { background: var(--green); }
+.rv-roll.q-mid i    { background: rgb(var(--t-accent)); }
+.rv-roll.q-low i    { background: var(--gold); }
+.rv-roll.q-bottom i { background: var(--red); }
+.rv-pct { font-size: 11px; color: var(--text-3); text-align: right; font-variant-numeric: tabular-nums; }
+
+.rv-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--surface-2);
+  font-size: 11px;
+  color: var(--text-3);
+}
+.rv-pol { display: inline-flex; align-items: center; gap: 3px; }
+.rv-pol svg { width: 12px; height: 12px; }
+.rv-avg { margin-left: auto; color: var(--text-2); }
+.rv-avg em { font-style: normal; font-weight: 600; }
+.rv-avg em.is-up   { color: var(--green); }
+.rv-avg em.is-down { color: var(--red); }
+
+.rv-empty { color: var(--text-3); line-height: 1.5; }
+.rv-empty.is-busy::before {
+  content: '';
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: rgb(var(--t-riven));
+  animation: rv-pulse 1s ease-in-out infinite;
+}
+@keyframes rv-pulse { 50% { opacity: .25; } }
+.rv-note { font-size: 11px; color: var(--gold); line-height: 1.45; }
+
+/* Unter dem Namen: fuer welche Variante der Bildschirm rechnet - nur wenn
+   es nicht die Grundwaffe des Rivens ist (Scourge-Riven auf Scourge Prime). */
+.rv-on { font-size: 11px; color: var(--text-3); }
+
+/* ---------------- Relikt-Empfehlung (Auswahlbildschirm) ---------------- */
+/*
+ * Eigenes Fenster wie das Riven-Overlay: durchsichtig, klickdurchlaessig,
+ * ueber dem ganzen Spielfenster. Das Feld sitzt oben rechts an der Kante -
+ * so hat Kaan es nach dem ersten Test gewollt; vorher stand es auf der Hoehe
+ * der Riven-Felder (18 %) und damit "relativ mittig". Im Bedienmodus laesst
+ * es sich verschieben, die Lage steht dann inline (relic-pick.js).
+ */
+body.relic-pick-window {
+  background: transparent !important;
+  overflow: hidden;
+  height: 100vh;
+  margin: 0;
+  pointer-events: none;
+}
+
+/* Die Farbe folgt dem Riss: bei bekannter Aera deren Ton, bei Omnia der
+   violette, sonst der Akzent. Dieselben Kanaele wie ueberall (siehe :root). */
+.rp-panel, .rp-row { --era: var(--t-accent); }
+.rp-panel[data-tier="Lith"],    .rp-row[data-tier="Lith"]    { --era: var(--t-lith); }
+.rp-panel[data-tier="Meso"],    .rp-row[data-tier="Meso"]    { --era: var(--t-meso); }
+.rp-panel[data-tier="Neo"],     .rp-row[data-tier="Neo"]     { --era: var(--t-neo); }
+.rp-panel[data-tier="Axi"],     .rp-row[data-tier="Axi"]     { --era: var(--t-axi); }
+.rp-panel[data-tier="Requiem"], .rp-row[data-tier="Requiem"] { --era: var(--t-requiem); }
+.rp-panel[data-tier="Omnia"],   .rp-row[data-tier="Omnia"]   { --era: var(--t-omnia); }
+
+.rp-panel {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: clamp(300px, 21vw, 380px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 11px 12px 9px;
+  border-radius: var(--r-md);
+  border: 1px solid rgb(var(--era) / .35);
+  background: linear-gradient(180deg, rgba(24, 28, 38, .95), rgba(14, 17, 24, .95));
+  box-shadow: var(--shadow);
+  font-size: 12px;
+}
+/* Nur beim Aufgehen, nicht bei jeder Nachlieferung - siehe render(). */
+.rp-panel.is-entering { animation: rp-in .14s var(--ease) both; }
+@keyframes rp-in { from { opacity: 0; transform: translateY(4px); } }
+
+/* Bedienmodus: das Feld nimmt Klicks an (der Koerper des Fensters bleibt
+   pointer-events: none) und sagt das mit einem hellen Rand - man soll sehen,
+   dass die Maus gerade hier ist und nicht im Spiel. */
+.rp-panel.is-interactive {
+  pointer-events: auto;
+  user-select: none;
+  border-color: rgb(var(--t-accent) / .7);
+  box-shadow: var(--shadow), 0 0 0 1px rgb(var(--t-accent) / .25), 0 0 18px rgb(var(--t-accent) / .25);
+}
+.rp-panel.is-interactive .rp-head { cursor: move; }
+.rp-panel.is-dragging, .rp-panel.is-dragging .rp-head { cursor: grabbing; }
+
+/* Die Filter - dieselben Chips wie im Reliktabschnitt des Overlays (.ov-chip). */
+.rp-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+
+.rp-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.rp-tag {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: rgb(var(--era));
+}
+.rp-ctx { font-size: 11px; color: var(--text-2); white-space: nowrap; }
+.rp-ctx-era { color: rgb(var(--era)); font-weight: 600; }
+/* Stahlpfad als Schild, wie in der Rissliste des Overlays (.ov-sp). */
+.rp-sp {
+  font: 700 8px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-style: normal; letter-spacing: .4px;
+  color: var(--gold); background: rgb(var(--t-gold) / .14);
+  padding: 2px 4px; border-radius: 4px; margin-left: 5px;
+  vertical-align: 1px;
+}
+
+.rp-rows { display: flex; flex-direction: column; gap: 4px; }
+
+/* Eine Zeile wie die Reliktkarte im Overlay-Fenster (.ov-rc), nur ohne
+   Aufklappen: in einem klickdurchlaessigen Fenster muss alles, was man
+   braucht, ohne Klick dastehen. */
+.rp-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 9px 6px 11px;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04);
+  overflow: hidden;
+}
+.rp-row::before {
+  content: '';
+  position: absolute; left: 0; top: 0; bottom: 0; width: 2px;
+  background: rgb(var(--era) / .55);
+}
+/* Die Empfehlung selbst - bei unbekanntem Riss die beste jeder Aera. */
+.rp-row.is-top {
+  background: linear-gradient(100deg, rgb(var(--era) / .14), transparent 62%), var(--surface);
+  box-shadow: inset 0 0 0 1px rgb(var(--era) / .24);
+}
+.rp-row.is-top::before { width: 3px; background: rgb(var(--era) / .9); }
+
+.rp-img {
+  width: 28px; height: 28px; object-fit: contain;
+  filter: drop-shadow(0 0 6px rgb(var(--era) / .45));
+}
+.rp-main { min-width: 0; }
+.rp-title {
+  display: flex; align-items: center; gap: 5px;
+  white-space: nowrap; overflow: hidden;
+}
+.rp-title b { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.rp-era {
+  font: 700 9px/1 var(--font-sans, system-ui, sans-serif);
+  text-transform: uppercase; letter-spacing: .4px;
+  color: rgb(var(--era));
+  flex-shrink: 0;
+}
+.rp-count {
+  font: 600 10px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  color: var(--text-3); flex-shrink: 0;
+}
+.rp-star { display: inline-flex; color: var(--gold); flex-shrink: 0; }
+
+.rp-sub {
+  display: flex; align-items: baseline; gap: 4px;
+  margin-top: 3px; min-width: 0;
+  font-size: 10.5px; color: var(--text-3);
+}
+.rp-best { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-sub b { color: var(--text-2); font-weight: 700; flex-shrink: 0; }
+.rp-sub i { font-style: italic; opacity: .7; }
+
+/* Der Erwartungswert ist die Zahl, nach der geordnet ist - also die
+   groesste in der Zeile. */
+.rp-val { text-align: right; }
+.rp-plat {
+  display: flex; align-items: center; justify-content: flex-end; gap: 3px;
+  font: 700 15px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  color: var(--text); font-variant-numeric: tabular-nums;
+}
+.rp-duc {
+  display: flex; align-items: center; justify-content: flex-end; gap: 3px;
+  margin-top: 3px;
+  font: 600 11px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  color: var(--gold); font-variant-numeric: tabular-nums;
+}
+.rp-cur {
+  width: 14px; height: 14px; object-fit: contain; flex-shrink: 0;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .6));
+}
+.rp-duc .rp-cur { width: 12px; height: 12px; }
+
+.rp-foot {
+  display: flex; align-items: center; gap: 4px 10px;
+  padding-top: 7px;
+  border-top: 1px solid var(--surface-2);
+  font-size: 10.5px; color: var(--text-3);
+}
+.rp-foot-left { margin-right: auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rp-traces {
+  display: inline-flex; align-items: center; gap: 4px;
+  color: var(--text-2); font-variant-numeric: tabular-nums;
+}
+.rp-traces img { width: 13px; height: 13px; object-fit: contain; }
+
+/* Der Weg in den Bedienmodus, aus dem echten Kuerzel - wie die Hinweiszeile
+   des Overlays (.ov-hint). */
+.rp-hint { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.rp-keys { display: inline-flex; align-items: center; gap: 2px; }
+.rp-keys kbd {
+  font: 600 9px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  color: var(--text-2); background: var(--surface-2);
+  border: 1px solid rgba(255, 255, 255, .07); border-bottom-width: 2px;
+  padding: 2px 4px; border-radius: 4px;
+}
+
+.rp-empty { color: var(--text-3); line-height: 1.5; }
+.rp-empty.is-busy::before {
+  content: '';
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: rgb(var(--era));
+  animation: rv-pulse 1s ease-in-out infinite;
+}
+
+/* ---------------- Groesse und Lage der Felder im Spiel ---------------- */
+/*
+ * Eine Zahl je Fenster (--ov-scale), eingestellt im Rundgang "Arrange
+ * overlays". Ueber die eigene Eigenschaft `scale` und nicht ueber transform:
+ * die Einblendungen (rp-in, tagIn) animieren transform, und eine Groesse im
+ * selben Feld wuerde fuer die Dauer der Einblendung verschwinden.
+ *
+ * Gewachsen wird von der Ecke aus, an der das Feld haengt: an der rechten
+ * Kante von rechts oben, sonst - und sobald es verschoben wurde (is-placed) -
+ * von links oben. So bleibt die Kante, die man sieht, dort stehen.
+ */
+.rp-panel { scale: var(--ov-scale, 1); transform-origin: top right; }
+.rv-panel { scale: var(--ov-scale, 1); transform-origin: top left; }
+.rv-right { transform-origin: top right; }
+.rp-panel.is-placed, .rv-panel.is-placed { transform-origin: top left; }
+/* Die Schilder wachsen aus der Mitte - tags.js legt das Dock dafuer um den
+   Faktor schmaler an, damit die Spalten unter ihren Karten bleiben. */
+.tag-panel { scale: var(--ov-scale, 1); transform-origin: top center; }
+
+/* Bedienmodus der Riven-Felder - derselbe Rahmen wie bei der Relikt-Empfehlung. */
+.rv-panel.is-interactive {
+  pointer-events: auto;
+  user-select: none;
+  border-color: rgb(var(--t-accent) / .7);
+  box-shadow: var(--shadow), 0 0 0 1px rgb(var(--t-accent) / .25), 0 0 18px rgb(var(--t-accent) / .25);
+}
+.rv-panel.is-interactive .rv-head { cursor: move; }
+.rv-panel.is-dragging, .rv-panel.is-dragging .rv-head { cursor: grabbing; }
+.rv-hint {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding-top: 7px;
+  border-top: 1px solid var(--surface-2);
+  font-size: 11px; color: var(--text-3);
+}
+.rv-hint-key { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+
+/* ---------------- Rundgang "Arrange overlays" (overlay-layout.js) ---------------- */
+/*
+ * Ganzes Fenster, oben die Buehne im Seitenverhaeltnis des Spielfensters,
+ * darunter die Karte mit Text, Groesse und Weiter. Ueber der Tour (300),
+ * unter den Meldungen (1000).
+ */
+.ovl-tour {
+  position: fixed; inset: 0; z-index: 400;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 18px; padding: 24px 32px;
+  background: rgba(5, 7, 11, .86);
+  backdrop-filter: blur(3px);
+  animation: fade .18s var(--ease);
+}
+
+.ovl-stage {
+  position: relative; flex-shrink: 0;
+  overflow: hidden;
+  border-radius: var(--r-lg);
+  border: 1px solid rgba(255, 255, 255, .08);
+  background:
+    radial-gradient(ellipse at 50% 40%, rgba(80, 96, 128, .22), transparent 65%),
+    linear-gradient(180deg, #121722, #0a0d13);
+  box-shadow: var(--shadow-lg);
+}
+/* Die Welt hat die echte Groesse des Spielfensters in Punkten und wird um
+   den Faktor der Buehne verkleinert - so stimmen die Proportionen. */
+.ovl-world {
+  position: absolute; left: 0; top: 0;
+  transform-origin: 0 0;
+  font-size: 12px;
+}
+
+/* Umrisse des Spielbildschirms - nur Orientierung. */
+.ovl-ghost {
+  position: absolute;
+  border-radius: 10px;
+  border: 2px dashed rgba(255, 255, 255, .09);
+  background: rgba(255, 255, 255, .025);
+}
+.ovl-ghost.is-line { border: none; border-radius: 6px; background: rgba(255, 255, 255, .08); }
+
+/* Die Felder auf der Buehne lassen sich im Ganzen ziehen - im Spiel nur an der
+   Kopfzeile, hier gibt es nichts anderes zu tun. */
+.ovl-world .ovl-drag {
+  pointer-events: auto; cursor: grab; user-select: none;
+  outline: 2px dashed rgb(var(--t-accent) / .55); outline-offset: 6px;
+  transition: outline-color .15s var(--ease);
+}
+.ovl-world .ovl-drag:hover { outline-color: rgb(var(--t-accent) / .95); }
+.ovl-world .ovl-drag.is-dragging { cursor: grabbing; outline-color: rgb(var(--t-accent)); }
+.ovl-world[data-step="tags"] .ovl-drag { cursor: ns-resize; }
+.ovl-world .rp-panel, .ovl-world .rv-panel { animation: none; }
+
+.ovl-card {
+  width: min(640px, 100%);
+  background: #161b25;
+  border: 1px solid rgba(255, 255, 255, .07);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 16px 20px 18px;
+}
+.ovl-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.ovl-card h3 { font-size: 17px; font-weight: 600; letter-spacing: -.2px; }
+.ovl-count {
+  font-size: 10.5px; font-weight: 650; letter-spacing: .5px;
+  color: var(--text-3); font-variant-numeric: tabular-nums;
+}
+.ovl-text { margin-top: 8px; font-size: 12.5px; line-height: 1.6; color: var(--text-2); }
+.ovl-sub { margin-top: 4px; font-size: 11.5px; line-height: 1.5; color: var(--text-3); }
+.ovl-sub:empty { display: none; }
+.ovl-sub .is-off { color: var(--gold); }
+
+.ovl-size {
+  display: flex; align-items: center; gap: 12px;
+  margin-top: 14px; padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, .05);
+  font-size: 12px; color: var(--text-3);
+}
+.ovl-size input[type="range"] { flex: 1; accent-color: rgb(var(--t-accent)); }
+.ovl-size b {
+  min-width: 40px; text-align: right;
+  font-weight: 600; color: var(--text-2); font-variant-numeric: tabular-nums;
+}
+
+.ovl-actions { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
+.ovl-spacer { flex: 1; }
+.ovl-actions .btn { padding: 8px 20px; }
+.ovl-actions .btn-sm:disabled { opacity: .3; cursor: not-allowed; }
+
+/* ---------------- Einstellungen: Unterreiter ---------------- */
+/* Dieselben Knoepfe wie die Unterseiten der Weltlage (.ws-navtab), nur
+   dichter an der Ueberschrift - darunter kommt sofort Inhalt. */
+.set-nav { margin: 14px 0 18px; }
+.set-pane { display: none; animation: fade .2s var(--ease); }
+.set-pane.active { display: grid; }
+/* Ein Unterreiter mit nur einer Gruppe braucht nicht die ganze Breite: die
+   Schalter rechts stuenden sonst eine halbe Bildschirmbreite neben ihrem Text. */
+.set-pane-single.active { display: flex; flex-direction: column; gap: 18px; max-width: 900px; }
+.set-pane-single .setting-info span,
+.set-pane-single .settings-group-head p { max-width: 84ch; }
+
+/* Quellen und Projekt unter About - dieselbe Zwei-Spalten-Form wie die
+   Versionsangaben (.about-grid), die rechte Spalte rechtsbuendig. */
+.credit-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 9px 20px;
+  padding: 12px 0 4px;
+  font-size: 12.5px;
+}
+.credit-list > span { color: var(--text-3); }
+.credit-list > a, .credit-list > b { justify-self: end; text-align: right; }
+.credit-list > b { font-weight: 550; color: var(--text-2); }
+.credit-list > a {
+  color: var(--accent); cursor: pointer; text-decoration: none;
+  transition: color .15s var(--ease);
+}
+.credit-list > a:hover { color: var(--text); text-decoration: underline; }

@@ -118,6 +118,10 @@ const Icon = {
   /* Narmer-Zeichen - die Archon-Jagd laeuft unter Narmers Flagge, und der
      Boss steht als "Archon Amar · Narmer" auf derselben Karte. */
   narmer: s => `<span class="nav-icon-mask icon-narmer" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
+  /* Riven-Zeichen fuer den Reiter. Vorher stand dort das Mod-Kategorie-
+     Symbol (catMods), das auch im Katalog "Other" heisst - zwei Bedeutungen
+     fuer ein Bild. */
+  riven: s => `<span class="nav-icon-mask icon-riven" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
 
   /* Offizielles Steel Path Emblem (Difficulty2.png) */
   steelpath: s => `<span class="nav-icon-mask icon-steelpath" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,

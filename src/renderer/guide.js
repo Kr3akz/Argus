@@ -248,6 +248,8 @@ const Guide = (() => {
     {
       id: 'settings',
       tab: 'settings',
+      /* Die Tour-Gruppe steht im Unterreiter General. */
+      settingsPane: 'general',
       target: '#guide-settings-group',
       /* Die Gruppe steht in der LINKEN Spalte - daneben heisst also rechts.
          Links davon liegt nur die schmale Sidebar, da passt nichts hin. */
@@ -257,8 +259,8 @@ const Guide = (() => {
         <p>Hotkeys, notifications, the overlay windows, inventory access and which
            version you are running.</p>
         <p>If you want your inventory, the Baro planner and the weekly tracking to
-           do anything, <b>Inventory access</b> in this tab is the switch that turns
-           them on.</p>
+           do anything, <b>Inventory access</b> under <b>Inventory</b> is the switch
+           that turns them on.</p>
         <p>And this tour: <b>Start the tour</b>, right here, runs it again whenever
            you like.</p>`
     }
@@ -581,6 +583,8 @@ const Guide = (() => {
 
     if (st.tab && typeof window.showTab === 'function') window.showTab(st.tab);
     if (st.wsPane && typeof window.showWsPane === 'function') window.showWsPane(st.wsPane);
+    if (st.settingsPane && typeof window.showSettingsPane === 'function')
+      window.showSettingsPane(st.settingsPane);
     if (st.masteryMode && typeof window.setMasteryMode === 'function')
       window.setMasteryMode(st.masteryMode);
 

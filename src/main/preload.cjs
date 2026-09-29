@@ -50,6 +50,8 @@ contextBridge.exposeInMainWorld('api', {
      accountId oder nonce an. */
   getInventory:    ()          => ipcRenderer.invoke('inventory:get'),
   getFoundry:      ()          => ipcRenderer.invoke('foundry:get'),
+  /* Die Rivens: nur aus der lokalen Inventardatei, wie die Schmiede. */
+  getRivens:       ()          => ipcRenderer.invoke('rivens:get'),
   /* Die Bauketten haengen am Katalog, nicht am Inventar - deshalb ein
      eigener Kanal: sie stehen auch, bevor je etwas abgerufen wurde. */
   getCraftChains:  ()          => ipcRenderer.invoke('foundry:chains'),
@@ -141,6 +143,8 @@ contextBridge.exposeInMainWorld('api', {
   setRelicAutoShow:(on)        => ipcRenderer.invoke('settings:relicAutoShow', on),
   setRelicScan:    (on)        => ipcRenderer.invoke('settings:relicScan', on),
   setRelicTags:    (on)        => ipcRenderer.invoke('settings:relicTags', on),
+  setRivenOverlay: (on)        => ipcRenderer.invoke('settings:rivenOverlay', on),
+  setRelicPickOverlay: (on)    => ipcRenderer.invoke('settings:relicPickOverlay', on),
   /* Die gefuehrte Tour hat ihr Ende erreicht - gelesen wird der Merker mit
      getSetupState(), der beim Start ohnehin laeuft. */
   setGuideSeen:    (on)        => ipcRenderer.invoke('settings:guideSeen', on),
@@ -165,6 +169,46 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('tags:prewarm', handler);
   },
   tagsPrewarmDone: (zahlen)    => ipcRenderer.send('tags:prewarm-done', zahlen),
+  /* Riven-Overlay beim Umwandeln - nur das Riven-Fenster hoert darauf. Es
+     kommen fertig gerechnete Ansichten an, keine Speicherinhalte. */
+  onRivenOverlay:  (cb)        => {
+    const handler = (_e, state) => cb(state);
+    ipcRenderer.on('riven:overlay', handler);
+    return () => ipcRenderer.removeListener('riven:overlay', handler);
+  },
+  /* Bedienmodus der Riven-Felder - dasselbe Kuerzel und derselbe Ablauf wie
+     bei der Relikt-Empfehlung: nur auf einem Feld nimmt das Fenster Klicks an. */
+  onRivenInteractive: (cb)     => {
+    const handler = (_e, on) => cb(on);
+    ipcRenderer.on('riven:interactive', handler);
+    return () => ipcRenderer.removeListener('riven:interactive', handler);
+  },
+  rivenHover:      (over)      => ipcRenderer.send('riven:hover', !!over),
+  rivenRect:       (rect)      => ipcRenderer.send('riven:rect', rect),
+  rivenMove:       (which, pos) => ipcRenderer.send('riven:move', which, pos),
+  /* Lage und Groesse der Felder im Spiel - fuer den Rundgang in den
+     Einstellungen. Die Fenster im Spiel hoeren auf ihre eigenen Kanaele. */
+  getOverlayLayout: ()         => ipcRenderer.invoke('overlay-layout:get'),
+  setOverlayLayout: (patch)    => ipcRenderer.invoke('overlay-layout:set', patch),
+  /* Relikt-Empfehlung auf dem Auswahlbildschirm - nur ihr eigenes Fenster
+     hoert darauf. Kommt fertig ausgewaehlt an; null heisst "leeren". */
+  onRelicPick:     (cb)        => {
+    const handler = (_e, view) => cb(view);
+    ipcRenderer.on('relic-pick:overlay', handler);
+    return () => ipcRenderer.removeListener('relic-pick:overlay', handler);
+  },
+  /* Bedienmodus des Feldes (Kuerzel wie der Zeigermodus des Overlays). Das
+     Feld meldet zurueck, wo es steht und ob der Zeiger darauf ist - nur dann
+     nimmt sein Fenster Klicks an. */
+  onRelicPickInteractive: (cb) => {
+    const handler = (_e, on) => cb(on);
+    ipcRenderer.on('relic-pick:interactive', handler);
+    return () => ipcRenderer.removeListener('relic-pick:interactive', handler);
+  },
+  relicPickHover:  (over)      => ipcRenderer.send('relic-pick:hover', !!over),
+  relicPickRect:   (rect)      => ipcRenderer.send('relic-pick:rect', rect),
+  relicPickFilter: (value)     => ipcRenderer.send('relic-pick:filter', value),
+  relicPickMove:   (pos)       => ipcRenderer.send('relic-pick:move', pos),
   /* Relikt-Belohnungen aus EE.log. Nur der Item-Pfad kommt hier an -
      AccountIds bleiben in logwatch.js und werden dort verworfen. */
   getCurrentRelic: ()          => ipcRenderer.invoke('relic:current'),
