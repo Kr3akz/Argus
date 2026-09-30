@@ -246,8 +246,18 @@
           </div>
         </button>
 
+        <!-- Neben dem Farm-Guide: der kuratiert die wichtigsten Ressourcen,
+             hier steht ALLES, was DE veroeffentlicht - roh und durchsuchbar. -->
+        <button class="nav-item" data-tab="drops">
+          <span class="nav-icon" data-icon="droptables"></span>
+          <div class="nav-tooltip">
+            <b>Drop tables</b>
+            <span>Search every drop by item, location or enemy</span>
+          </div>
+        </button>
+
         <button class="nav-item" data-tab="notes">
-          <span class="nav-icon" data-icon="codex"></span>
+          <span class="nav-icon" data-icon="notes"></span>
           <div class="nav-tooltip">
             <b>Notes</b>
             <span>Local notebook</span>
@@ -782,6 +792,101 @@
           <div class="fg-facts" id="fg-facts"></div>
         </div>
       </div>
+    </section>
+
+    <!-- ---------------- Droptabellen ----------------
+         Drei Suchrichtungen (Item, Ort, Gegner) als Segment, weil sie
+         bestimmen, WORIN gesucht wird - die Chips darunter grenzen nur ein. -->
+    <section id="tab-drops" class="tabpane">
+      <div class="section-head section-head-row">
+        <div>
+          <h2>Drop tables</h2>
+          <p>Every drop DE publishes — search by item, location or enemy, then narrow it down</p>
+        </div>
+        <div class="dt-source">
+          <span id="dt-age"></span>
+          <button id="dt-refresh" class="btn-sm dt-refresh" title="Check for newer drop tables">
+            <span data-icon="refresh"></span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Erscheint nur nach einem Update der Tabellen, bis man es wegklickt. -->
+      <div id="dt-update" class="dt-update" hidden></div>
+
+      <div class="fg-modes">
+        <button class="fg-mode dt-mode active" data-dtmode="item">
+          <span data-icon="cube"></span> <span>By item</span>
+        </button>
+        <button class="fg-mode dt-mode" data-dtmode="place">
+          <span data-icon="map"></span> <span>By location</span>
+        </button>
+        <button class="fg-mode dt-mode" data-dtmode="enemy">
+          <span data-icon="target"></span> <span>By enemy</span>
+        </button>
+      </div>
+
+      <div class="searchbox">
+        <span class="ic" data-icon="search"></span>
+        <input id="dt-search" type="text" autocomplete="off" spellcheck="false"
+               placeholder="Search an item … e.g. Serration, Ash Prime, Arcane Energize">
+      </div>
+
+      <div class="dt-filters">
+        <div class="dt-filter-row">
+          <span class="dt-filter-label">Source</span>
+          <div class="ducats-filter-badges" id="dt-kinds"></div>
+        </div>
+        <div class="dt-filter-row">
+          <span class="dt-filter-label">Rarity</span>
+          <div class="ducats-filter-badges" id="dt-rarities"></div>
+          <span class="dt-filter-label dt-filter-label-inline">Rotation</span>
+          <div class="ducats-filter-badges" id="dt-rotations"></div>
+        </div>
+        <div class="dt-filter-row dt-selects">
+          <label>Region
+            <select id="dt-region"><option value="">Everywhere</option></select>
+          </label>
+          <label>Mission type
+            <select id="dt-gamemode"><option value="">Any</option></select>
+          </label>
+          <label>Relic refinement
+            <select id="dt-refinement"></select>
+          </label>
+          <label>Min. chance
+            <select id="dt-minchance">
+              <option value="0">Any</option>
+              <option value="1">≥ 1 %</option>
+              <option value="5">≥ 5 %</option>
+              <option value="10">≥ 10 %</option>
+              <option value="25">≥ 25 %</option>
+            </select>
+          </label>
+          <label id="dt-changes-wrap" hidden>Last update
+            <select id="dt-changes">
+              <option value="">All drops</option>
+              <option value="any">Anything changed</option>
+              <option value="added">New drops</option>
+              <option value="changed">Chance changed</option>
+              <option value="removed">Removed</option>
+            </select>
+          </label>
+          <label>Sort
+            <select id="dt-sort">
+              <option value="match">Best match</option>
+              <option value="chance">Highest chance</option>
+              <option value="item">Item name</option>
+              <option value="place">Location</option>
+            </select>
+          </label>
+          <button class="filter-chip chip-junk" id="dt-farmable"
+                  title="Hide relics that no longer drop anywhere">Farmable now</button>
+          <button class="btn-sm dt-reset" id="dt-reset">Reset filters</button>
+        </div>
+      </div>
+
+      <div class="dt-summary" id="dt-summary"></div>
+      <div id="dt-results" class="dt-results"></div>
     </section>
 
     <!-- ---------------- 5. Baro-Dukaten & Relikt-Helper ---------------- -->

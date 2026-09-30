@@ -96,7 +96,7 @@ window.api.onOverlayChanged(syncOverlayBadge);
 window.api.overlayState().then(syncOverlayBadge).catch(() => {});
 
 /* ---------------- Sidebar Navigation ---------------- */
-const TABS_WITHOUT_HERO = new Set(['rivens']);
+const TABS_WITHOUT_HERO = new Set(['rivens', 'drops']);
 
 function showTab(name) {
   if (typeof cancelHotkeyCapture === 'function') cancelHotkeyCapture();
@@ -108,7 +108,8 @@ function showTab(name) {
   document.querySelectorAll('.nav-item').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
   document.querySelectorAll('.tabpane').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
   /* Die Profilkarte oben gehoert zu allem, was am Konto haengt. Die Rivens
-     sind Einzelstuecke zum Durchsehen - dort nimmt sie nur Platz weg. */
+     sind Einzelstuecke zum Durchsehen, die Droptabellen haengen an gar
+     keinem Konto - dort nimmt sie nur Platz weg. */
   document.querySelector('.hero')?.classList.toggle('hidden', TABS_WITHOUT_HERO.has(name));
 
   if (name === 'mastery') {
@@ -120,6 +121,7 @@ function showTab(name) {
   if (name === 'worldstate') loadWorldState();
   if (name === 'weekly') loadWeekly();
   if (name === 'farmguide') reloadFarmTab();
+  if (name === 'drops') loadDropsTab();
   if (name === 'ducats') loadDucats();
   if (name === 'inventory') loadInventoryTab();
   if (name === 'rivens') loadRivensTab();
@@ -4304,6 +4306,416 @@ function openFarmGuideFor(name) {
   $('fg-search').value = name;
   reloadFarmTab();
 }
+
+/* ---------------- Droptabellen ----------------
+   Gesucht wird im Hauptprozess (drop-search.js), hier wird nur der Zustand
+   der Filter gehalten und das Ergebnis gezeichnet. Jede Aenderung schickt
+   die GANZE Filterlage mit - der Hauptprozess merkt sich nichts, und zwei
+   schnelle Klicks koennen sich nicht gegenseitig ueberholen (dtToken). */
+
+const dt = {
+  mode: 'item',
+  kinds: new Set(),
+  rarities: new Set(),
+  rotations: new Set(),
+  region: '',
+  gameMode: '',
+  refinement: 'Intact',
+  minChance: 0,
+  sort: 'match',
+  farmable: false,
+  changes: ''          // '' | 'any' | 'added' | 'changed' | 'removed'
+};
+let dtToken = 0;
+let dtHasChanges = false;
+let dtRefreshNote = null;   // kurze Rueckmeldung des Knopfs oben rechts
+
+/* Welches Update man schon weggeklickt hat. Pro Leser, deshalb localStorage
+   und nicht die Einstellungen - und in try, weil es gesperrt sein kann. */
+const DT_SEEN_KEY = 'argus.dropChangesSeen';
+const dtSeen = () => { try { return localStorage.getItem(DT_SEEN_KEY); } catch { return null; } };
+/* Nach zwei Wochen ist ein Update keine Neuigkeit mehr. */
+const DT_UPDATE_FRESH_MS = 14 * 24 * 60 * 60 * 1000;
+let dtTimer = null;
+let dtStarted = false;
+let dtKinds = [];
+
+const DT_PLACEHOLDER = {
+  item:  'Search an item … e.g. Serration, Ash Prime, Arcane Energize',
+  place: 'Search a location … e.g. Apollodorus, Arbitrations, Cetus, Axi A1',
+  enemy: 'Search an enemy … e.g. Stalker, Lephantis, Corrupted Heavy Gunner'
+};
+
+const DT_RARITIES = [
+  ['Common', 'chip-bronze'], ['Uncommon', 'chip-silver'], ['Rare', 'chip-gold'], ['Legendary', 'chip-legendary']
+];
+
+/* Was ein "Versuch" ist, haengt an der Quelle: eine Rotation, ein Kill, ein
+   geoeffnetes Relikt. Ohne das Wort waere "≈ 12" eine Zahl ohne Einheit. */
+const DT_TRY_UNIT = {
+  mission: 'rotations', special: 'rotations', bounty: 'bounties', enemy: 'kills',
+  relic: 'cracks', key: 'runs', sortie: 'sorties', other: 'tries'
+};
+
+const DT_ERAS  = ['Lith', 'Meso', 'Neo', 'Axi', 'Requiem', 'Omnia'];
+const DT_ZONES = ['Cetus', 'Orb Vallis', 'Cambion Drift', 'Zariman', 'Sanctum Anatomica', 'Höllvania'];
+
+const dtPct = v => `${Number(v).toLocaleString('en-GB', { maximumFractionDigits: 2 })} %`;
+
+function loadDropsTab() {
+  if (!dtStarted) {
+    dtStarted = true;
+    renderDropFilters(null);
+  }
+  runDropSearch();
+  setTimeout(() => $('dt-search')?.focus(), 0);
+}
+
+function dropSearchOpts() {
+  return {
+    q: $('dt-search').value,
+    mode: dt.mode,
+    kinds: [...dt.kinds],
+    rarities: [...dt.rarities],
+    rotations: [...dt.rotations],
+    region: dt.region || null,
+    gameMode: dt.gameMode || null,
+    refinement: dt.refinement,
+    minChance: dt.minChance,
+    sort: dt.sort,
+    farmable: dt.farmable,
+    changes: dt.changes || null
+  };
+}
+
+async function runDropSearch() {
+  const mine = ++dtToken;
+  let res;
+  try {
+    res = await window.api.searchDrops(dropSearchOpts());
+  } catch (err) {
+    res = { error: err.message, rows: [], total: 0 };
+  }
+  if (mine !== dtToken) return;   // ein neuerer Aufruf ist schon unterwegs
+
+  if (res.kinds) dtKinds = res.kinds;
+  if (!res.error) {
+    const c = res.changes?.counts;
+    dtHasChanges = !!c && (c.added + c.changed + c.removed) > 0;
+    renderDropUpdate(res.changes);
+  }
+  renderDropSource(res);
+  renderDropFilters(res.facets);
+  renderDropResults(res);
+}
+
+function queueDropSearch(delay = 180) {
+  clearTimeout(dtTimer);
+  dtTimer = setTimeout(runDropSearch, delay);
+}
+
+function renderDropSource(res) {
+  const el = $('dt-age');
+  if (!el) return;
+  if (!res.fetchedAt) { el.textContent = ''; return; }
+  /* Das Datum, an dem DE die Tabellen geaendert hat - nicht, wann Argus sie
+     geholt hat. Nur aeltere Abzuege kennen es nicht. */
+  const when = dtDate(res.modified || res.fetchedAt);
+  const note = dtRefreshNote ? ` · <span class="dt-note-flash">${esc(dtRefreshNote)}</span>` : '';
+  el.innerHTML = res.stale
+    ? `<span class="dt-stale" title="${esc(res.stale)}">Offline · tables from ${esc(when)}</span>`
+    : `${(res.rowCount || 0).toLocaleString('en-GB')} drops · tables from ${esc(when)}${note}`;
+}
+
+const dtDate = ms => new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+
+/* Der Hinweis nach einem Update: was dazukam, was wegfiel, welche Relikte
+   jetzt fallen. Ein Klick auf "Show changes" stellt den Filter darunter um -
+   die Aenderungen sind eine Sicht auf dieselbe Liste, keine eigene Seite. */
+function renderDropUpdate(ch) {
+  const el = $('dt-update');
+  if (!el) return;
+  const key = String(ch?.to?.fetchedAt || '');
+  const recent = ch && Date.now() - ch.to.fetchedAt < DT_UPDATE_FRESH_MS;
+  if (!dtHasChanges || !recent || dtSeen() === key) { el.hidden = true; return; }
+
+  const n = v => v.toLocaleString('en-GB');
+  const c = ch.counts;
+  const parts = [
+    c.added   ? `<b>${n(c.added)}</b> new` : '',
+    c.changed ? `<b>${n(c.changed)}</b> chance ${c.changed === 1 ? 'change' : 'changes'}` : '',
+    c.removed ? `<b>${n(c.removed)}</b> removed` : ''
+  ].filter(Boolean).join(' · ');
+  const list = names => names.slice(0, 10).map(esc).join(', ') + (names.length > 10 ? ` and ${names.length - 10} more` : '');
+  const relics = [
+    ch.relicsIn?.length  ? `<div><span class="dt-update-k is-in">Now dropping</span> ${list(ch.relicsIn)}</div>` : '',
+    ch.relicsOut?.length ? `<div><span class="dt-update-k is-out">Vaulted</span> ${list(ch.relicsOut)}</div>` : ''
+  ].join('');
+
+  el.innerHTML = `
+    <div class="dt-update-body">
+      <div class="dt-update-head"><b>Drop tables updated on ${esc(dtDate(ch.to.modified || ch.to.fetchedAt))}</b>
+        <span>${parts}</span></div>
+      ${relics ? `<div class="dt-update-relics">${relics}</div>` : ''}
+    </div>
+    <button class="btn-sm" id="dt-update-show">Show changes</button>
+    <button class="dt-update-close" id="dt-update-close" data-seen="${esc(key)}" title="Dismiss">${Icon.close(14)}</button>`;
+  el.hidden = false;
+}
+
+/* Chips und Auswahllisten. Die Zaehler kommen aus dem Hauptprozess und sind
+   VOR den Filtern gezaehlt - ein Chip zeigt, wie viele Treffer er fuer sich
+   haette, nicht wie viele nach allen anderen Filtern uebrig bleiben. */
+function renderDropFilters(facets) {
+  const count = (group, key) => {
+    const n = facets?.[group]?.[key];
+    return facets ? `<span class="chip-count">${(n || 0).toLocaleString('en-GB')}</span>` : '';
+  };
+  /* Ein Chip ohne Treffer bleibt stehen (die Leiste soll nicht springen),
+     tritt aber zurueck - er wuerde die Liste nur leeren. */
+  const none = (group, key) => facets && !facets[group]?.[key] ? ' is-none' : '';
+
+  const kinds = dtKinds.length ? dtKinds : [];
+  $('dt-kinds').innerHTML = kinds
+    /* Arten ohne einen einzigen Treffer blenden aus - bei einer Itemsuche
+       stuenden sonst neun Chips da, von denen sieben nichts tun. Eine
+       gewaehlte bleibt stehen, damit man sie wieder abwaehlen kann. */
+    .filter(k => !facets || facets.kinds[k.key] || dt.kinds.has(k.key))
+    .map(k => `<button class="filter-chip${dt.kinds.has(k.key) ? ' active' : ''}" data-dtkind="${k.key}">
+        ${esc(k.label)} ${count('kinds', k.key)}</button>`).join('');
+
+  $('dt-rarities').innerHTML = DT_RARITIES
+    .map(([r, cls]) => `<button class="filter-chip ${cls}${dt.rarities.has(r) ? ' active' : none('rarities', r)}" data-dtrarity="${r}">
+        ${r} ${count('rarities', r)}</button>`).join('');
+
+  $('dt-rotations').innerHTML = ['A', 'B', 'C']
+    .map(r => `<button class="filter-chip${dt.rotations.has(r) ? ' active' : none('rotations', r)}" data-dtrot="${r}">
+        ${r} ${count('rotations', r)}</button>`).join('');
+
+  /* Regionen gruppiert: Planeten, offene Welten, Relikt-Aeren. Sie stehen
+     alle im selben Feld, sind fuer den Spieler aber drei Dinge. */
+  const regions = new Set(Object.keys(facets?.regions || {}));
+  if (dt.region) regions.add(dt.region);
+  const eras = DT_ERAS.filter(r => regions.has(r));
+  const zones = DT_ZONES.filter(r => regions.has(r));
+  const planets = [...regions].filter(r => !DT_ERAS.includes(r) && !DT_ZONES.includes(r))
+    .sort((a, b) => a.localeCompare(b, 'en'));
+  const opt = (v, label = v) => `<option value="${esc(v)}"${dt.region === v ? ' selected' : ''}>${esc(label)}</option>`;
+  const group = (label, list) => list.length ? `<optgroup label="${label}">${list.map(v => opt(v)).join('')}</optgroup>` : '';
+  $('dt-region').innerHTML = opt('', 'Everywhere') + group('Star chart', planets)
+    + group('Open worlds', zones) + group('Relic era', eras);
+
+  const modes = new Set(Object.keys(facets?.modes || {}));
+  if (dt.gameMode) modes.add(dt.gameMode);
+  $('dt-gamemode').innerHTML = `<option value="">Any</option>` + [...modes]
+    .sort((a, b) => a.localeCompare(b, 'en'))
+    .map(m => `<option value="${esc(m)}"${dt.gameMode === m ? ' selected' : ''}>${esc(m)}</option>`).join('');
+
+  $('dt-refinement').innerHTML = ['Intact', 'Exceptional', 'Flawless', 'Radiant']
+    .map(r => `<option value="${r}"${dt.refinement === r ? ' selected' : ''}>${r}</option>`).join('')
+    + `<option value="all"${dt.refinement === 'all' ? ' selected' : ''}>All four</option>`;
+
+  $('dt-changes-wrap').hidden = !dtHasChanges && !dt.changes;
+  $('dt-changes').value = dt.changes;
+  $('dt-farmable').classList.toggle('active', dt.farmable);
+  $('dt-minchance').value = String(dt.minChance);
+  $('dt-sort').value = dt.sort;
+}
+
+/* "≈ 12 rotations" - und im Tooltip, wie viele es fuer 90 % Sicherheit sind.
+   Der Mittelwert allein taeuscht: bei 5 % sind es im Schnitt 20 Versuche,
+   aber jeder zehnte Spieler braucht 45 oder mehr. */
+function dropTries(row) {
+  /* Was es nicht mehr gibt, braucht keine Schaetzung, wie lange es dauert. */
+  if (row.chance == null || row.chance <= 0 || row.change === 'removed') return { text: '', title: '' };
+  const p = Math.min(row.chance, 100) / 100;
+  const unit = DT_TRY_UNIT[row.kind] || 'tries';
+  if (p >= 0.995) return { text: 'every time', title: 'Guaranteed from this source' };
+  const avg = 1 / p;
+  const n90 = Math.ceil(Math.log(0.1) / Math.log(1 - p));
+  const fmt = v => v < 10 ? v.toFixed(1).replace(/\.0$/, '') : Math.round(v).toLocaleString('en-GB');
+  return {
+    text: `≈ ${fmt(avg)} ${unit}`,
+    title: `One in ${fmt(avg)} on average · 90 % chance within ${n90.toLocaleString('en-GB')} ${unit}`
+  };
+}
+
+function renderDropResults(res) {
+  const box = $('dt-results');
+  const sum = $('dt-summary');
+  const q = $('dt-search').value.trim();
+
+  if (res.error) {
+    sum.textContent = '';
+    box.innerHTML = `<div class="empty">Couldn't load the drop tables: ${esc(res.error)}</div>`;
+    return;
+  }
+
+  if (!q && !res.facets) {
+    sum.textContent = '';
+    box.innerHTML = `
+      <div class="empty dt-hint">
+        Type a name above, or pick a filter to browse — for example
+        <div class="dt-examples">
+          <button class="btn-sm" data-dtexample="item|Serration">Serration</button>
+          <button class="btn-sm" data-dtexample="place|Axi A1 Relic">Axi A1 Relic</button>
+          <button class="btn-sm" data-dtexample="enemy|Stalker">Stalker</button>
+          <button class="btn-sm" data-dtexample="place|Arbitrations">Arbitrations</button>
+        </div>
+      </div>`;
+    return;
+  }
+
+  const capped = res.total > res.rows.length;
+  sum.innerHTML = `<b>${res.total.toLocaleString('en-GB')}</b> ${res.total === 1 ? 'drop' : 'drops'}`
+    + (q ? ` for “${esc(q)}”` : '')
+    + (dt.changes ? ' · changed in the last update' : '')
+    + (capped ? ` <span class="dt-capped">· showing the first ${res.rows.length} — narrow it down with the filters</span>` : '');
+
+  if (!res.rows.length) {
+    box.innerHTML = `<div class="empty">Nothing matches — try another spelling, another search mode, or fewer filters.</div>`;
+    return;
+  }
+
+  box.innerHTML = res.rows.map(r => {
+    const tries = dropTries(r);
+    const tags = [
+      `<span class="trade-chip chip-neutral dt-kind-${r.kind}">${esc(dtKinds.find(k => k.key === r.kind)?.label || r.kind)}</span>`,
+      r.mode ? `<span class="dt-tag">${esc(r.mode)}</span>` : '',
+      r.rotation ? `<span class="dt-tag dt-rot">Rotation ${esc(r.rotation)}</span>` : '',
+      r.stage ? `<span class="dt-tag">${esc(r.stage)}</span>` : '',
+      r.refinement && dt.refinement === 'all' ? `<span class="dt-tag">${esc(r.refinement)}</span>` : '',
+      r.vaulted ? `<span class="trade-chip chip-vault">Vaulted</span>` : '',
+      r.change === 'added' ? `<span class="trade-chip chip-junk">New</span>` : '',
+      r.change === 'removed' ? `<span class="trade-chip chip-vault">Removed</span>` : '',
+      r.change === 'changed' ? dropDelta(r) : '',
+      r.note ? `<span class="dt-note">${esc(r.note)}</span>` : ''
+    ].join('');
+    const where = r.kind === 'enemy' ? 'enemy' : 'place';
+    /* Die Farbe gehoert an das Wort, nicht an die Zahl: als grosse Ziffer
+       sind Bronze und Gold kaum auseinanderzuhalten, und eine Liste voller
+       farbiger Prozente zieht den Blick ueberallhin zugleich. */
+    const value = r.chance != null
+      ? `<b>${dtPct(r.chance)}</b>`
+      : r.standing ? `<b class="dt-standing">${r.standing.toLocaleString('en-GB')}</b>` : `<b class="dt-standing">—</b>`;
+    const sub = r.chance != null
+      ? `<span class="dt-r-${esc(String(r.rarity || '').toLowerCase())}">${esc(r.rarity || '')}</span>`
+      : `<span>${r.standing ? 'standing' : 'offer'}</span>`;
+    return `
+      <div class="dt-row${r.vaulted || r.change === 'removed' ? ' is-dim' : ''}">
+        <button class="dt-item" data-dtjump="item" data-dtq="${esc(r.item)}" title="Where else does this drop?">${esc(r.item)}</button>
+        <div class="dt-where">
+          <div class="dt-place-line">
+            <button class="dt-place" data-dtjump="${where}" data-dtq="${esc(r.place)}" title="Everything that drops here">${esc(r.place)}</button>
+            ${r.region && !r.place.startsWith(r.region) ? `<span class="dt-region">${esc(r.region)}</span>` : ''}
+          </div>
+          <div class="dt-tags">${tags}</div>
+        </div>
+        <div class="dt-chance">${value}${sub}</div>
+        <div class="dt-tries" title="${esc(tries.title)}">${esc(tries.text)}</div>
+      </div>`;
+  }).join('');
+}
+
+/* "↑ was 5 %" - die alte Chance neben der neuen, die Richtung als Farbe. */
+function dropDelta(r) {
+  if (r.before == null) return `<span class="trade-chip chip-neutral">Changed</span>`;
+  const up = (r.chance ?? 0) > r.before;
+  return `<span class="trade-chip dt-delta ${up ? 'is-up' : 'is-down'}" title="Chance before the last update">`
+    + `${up ? '↑' : '↓'} was ${dtPct(r.before)}</span>`;
+}
+
+function setDropMode(mode) {
+  dt.mode = mode;
+  document.querySelectorAll('.dt-mode').forEach(b => b.classList.toggle('active', b.dataset.dtmode === mode));
+  $('dt-search').placeholder = DT_PLACEHOLDER[mode];
+}
+
+/* Von aussen: "zeig mir die Droptabellen zu X". */
+function openDropTablesFor(name, mode = 'item') {
+  if (!name) return;
+  showTab('drops');
+  setDropMode(mode);
+  $('dt-search').value = name;
+  runDropSearch();
+}
+
+document.querySelectorAll('.dt-mode').forEach(btn => {
+  btn.onclick = () => { setDropMode(btn.dataset.dtmode); runDropSearch(); };
+});
+
+$('dt-search').oninput = () => queueDropSearch();
+$('dt-search').onkeydown = e => {
+  if (e.key === 'Enter') { clearTimeout(dtTimer); runDropSearch(); }
+  if (e.key === 'Escape') { $('dt-search').value = ''; runDropSearch(); }
+};
+
+/* Ein Lauscher fuer den ganzen Reiter - Chips und Zeilen werden bei jeder
+   Suche neu gezeichnet, einzelne onclick-Zuweisungen gingen dabei verloren. */
+$('tab-drops').addEventListener('click', e => {
+  const t = e.target.closest('button');
+  if (!t) return;
+  const toggle = (set, v) => { set.has(v) ? set.delete(v) : set.add(v); runDropSearch(); };
+
+  if (t.dataset.dtkind)   return toggle(dt.kinds, t.dataset.dtkind);
+  if (t.dataset.dtrarity) return toggle(dt.rarities, t.dataset.dtrarity);
+  if (t.dataset.dtrot)    return toggle(dt.rotations, t.dataset.dtrot);
+
+  if (t.dataset.dtjump) {
+    setDropMode(t.dataset.dtjump);
+    $('dt-search').value = t.dataset.dtq;
+    runDropSearch();
+    $('tab-drops').closest('.main-content')?.scrollTo({ top: 0, behavior: 'smooth' });
+    return;
+  }
+  if (t.dataset.dtexample) {
+    const [mode, q] = t.dataset.dtexample.split('|');
+    setDropMode(mode);
+    $('dt-search').value = q;
+    runDropSearch();
+    return;
+  }
+  if (t.id === 'dt-farmable') { dt.farmable = !dt.farmable; runDropSearch(); return; }
+  if (t.id === 'dt-reset') {
+    dt.kinds.clear(); dt.rarities.clear(); dt.rotations.clear();
+    Object.assign(dt, { region: '', gameMode: '', refinement: 'Intact', minChance: 0, sort: 'match', farmable: false, changes: '' });
+    runDropSearch();
+    return;
+  }
+  if (t.id === 'dt-update-show') {
+    dt.changes = 'any';
+    runDropSearch();
+    return;
+  }
+  if (t.id === 'dt-update-close') {
+    try { localStorage.setItem(DT_SEEN_KEY, t.dataset.seen); } catch { /* gesperrt */ }
+    $('dt-update').hidden = true;
+    return;
+  }
+  if (t.id === 'dt-refresh') {
+    t.classList.add('is-refreshing');
+    t.disabled = true;
+    /* Scheitert der Abruf, sagt das die Quellenzeile selbst ("Offline ·
+       tables from ..."), weil der Hauptprozess dann den alten Stand meldet.
+       Sonst kurz, ob etwas Neues kam - ein Knopf ohne Antwort wirkt kaputt. */
+    window.api.refreshDrops()
+      .then(r => { if (r?.ok) dtRefreshNote = r.changed ? 'updated just now' : 'up to date'; })
+      .catch(() => {})
+      .finally(() => {
+        t.classList.remove('is-refreshing');
+        t.disabled = false;
+        runDropSearch();
+        setTimeout(() => { dtRefreshNote = null; runDropSearch(); }, 4000);
+      });
+  }
+});
+
+$('dt-region').onchange     = e => { dt.region = e.target.value; runDropSearch(); };
+$('dt-gamemode').onchange   = e => { dt.gameMode = e.target.value; runDropSearch(); };
+$('dt-refinement').onchange = e => { dt.refinement = e.target.value; runDropSearch(); };
+$('dt-minchance').onchange  = e => { dt.minChance = Number(e.target.value) || 0; runDropSearch(); };
+$('dt-sort').onchange       = e => { dt.sort = e.target.value; runDropSearch(); };
+$('dt-changes').onchange    = e => { dt.changes = e.target.value; runDropSearch(); };
 
 /* ---------------- 3. Baro Dukaten & Relikt-Helper ---------------- */
 let ducatsData = null;

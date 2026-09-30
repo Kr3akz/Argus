@@ -18,18 +18,28 @@
  * mit dem Begleiter kommen. Dafuer steht unten eine kleine Regeltabelle. Sie
  * raet nicht, sondern liest den Pfad, in den DE die Karte einsortiert hat.
  */
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, rename, unlink } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { dataDir as defaultDataDir } from './paths.js';
+import { buildDropRows, diffDropRows, indexRows } from './drop-search.js';
 
-const DE_URL = 'https://drops.warframestat.us/data/all.json';
-const WF_URL = 'https://api.warframestat.us/mods/?only=uniqueName,name,drops';
-const CACHE  = dir => path.join(dir, 'drop-sources.json');
+const DE_URL   = 'https://drops.warframestat.us/data/all.json';
+const INFO_URL = 'https://drops.warframestat.us/data/info.json';
+const WF_URL   = 'https://api.warframestat.us/mods/?only=uniqueName,name,drops';
+const CACHE    = dir => path.join(dir, 'drop-sources.json');
+const PREV     = dir => path.join(dir, 'drop-sources.prev.json');
+const CHANGES  = dir => path.join(dir, 'drop-changes.json');
 const USER_AGENT = 'Argus/0.1 (persoenlicher Mastery-Planer)';
 
-/* Droptabellen aendern sich nur zu Updates und Prime-Access-Wechseln. */
+/* Nur noch der Rueckfall, wenn info.json nicht antwortet - sonst entscheidet
+   der Hash (siehe loadDropTables). */
 const TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/* Wie oft eine laufende Sitzung nach neuen Tabellen fragt. Argus bleibt oft
+   tagelang offen, und ein Patch kommt nicht zum Programmstart. */
+const CHECK_MS = 6 * 60 * 60 * 1000;
+const INFO_TIMEOUT_MS = 4000;
 
 /* Hochzaehlen, wenn sich der Aufbau der Cache-Datei aendert. */
 const CACHE_VERSION = 1;
@@ -88,23 +98,79 @@ function trimWfMods(list) {
 }
 
 /**
+ * Der Fingerabdruck der Tabellen: ein paar Byte statt 6 MB.
+ *
+ * Die Quelle legt neben all.json eine info.json mit Hash und Aenderungszeit
+ * ab. NACHGEMESSEN am 30.09.2026: DEs Seite trug "last-modified 25.09.
+ * 14:34 UTC", info.json "modified" genau denselben Zeitpunkt, der Abruf lief
+ * zwei Stunden spaeter. Ein anderer Hash heisst also: DE hat die Tabellen
+ * geaendert - und nur dann lohnt der grosse Abruf.
+ *
+ * Mit Zeitlimit, weil loadDropTables beim Start im Weg des Dashboards liegt:
+ * offline soll das hoechstens ein paar Sekunden kosten, nicht haengen.
+ */
+async function fetchInfo() {
+  try {
+    const res = await fetch(INFO_URL, {
+      headers: { 'User-Agent': USER_AGENT },
+      signal: AbortSignal.timeout(INFO_TIMEOUT_MS)
+    });
+    if (!res.ok) return null;
+    const info = await res.json();
+    return info?.hash ? { hash: String(info.hash), modified: Number(info.modified) || null } : null;
+  } catch {
+    return null;
+  }
+}
+
+async function readCache(dataDir) {
+  if (!existsSync(CACHE(dataDir))) return null;
+  try {
+    const cached = JSON.parse(await readFile(CACHE(dataDir), 'utf8'));
+    return cached?.version === CACHE_VERSION ? cached : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Laedt beide Tabellen, mit Cache auf Platte.
+ *
+ * WANN NEU GELADEN WIRD:
+ *   Frueher nach sieben Tagen, egal was passiert war. Nach einem Patch zeigte
+ *   Argus also bis zu einer Woche alte Drops, und ohne Patch lud es trotzdem
+ *   wochentlich 6 MB. Jetzt entscheidet der Hash aus info.json: beim ersten
+ *   Aufruf einer Sitzung, danach hoechstens alle sechs Stunden (`check`),
+ *   und immer beim Knopf im Reiter (`refresh`). Gleicher Hash - nichts tun.
+ *   Die sieben Tage bleiben nur als Rueckfall, wenn info.json nicht antwortet.
+ *
+ * DER ALTE STAND BLEIBT LIEGEN:
+ *   Vor dem Ueberschreiben wandert die bisherige Datei nach
+ *   drop-sources.prev.json. Daraus rechnet loadDropChanges, was sich mit dem
+ *   Update geaendert hat - erst wenn jemand fragt, nicht hier beim Laden.
  *
  * Die zweite Quelle ist ERGAENZUNG, kein Muss: faellt sie aus, arbeitet der
  * Rest mit DEs Zahlen weiter, statt den ganzen Aufruf scheitern zu lassen.
  */
-export async function loadDropTables({ dataDir = defaultDataDir(), refresh = false } = {}) {
-  if (index && !refresh) return index;
+export async function loadDropTables({ dataDir = defaultDataDir(), refresh = false, check = false } = {}) {
+  const due = !index || refresh || (check && Date.now() - (index.checkedAt || 0) > CHECK_MS);
+  if (!due) return index;
 
-  let cached = null;
-  if (existsSync(CACHE(dataDir))) {
-    try { cached = JSON.parse(await readFile(CACHE(dataDir), 'utf8')); } catch { cached = null; }
+  const info = await fetchInfo();
+
+  /* Schon geladen und unveraendert: die 6 MB gar nicht erst anfassen. */
+  if (index && info && index.hash === info.hash) {
+    index.checkedAt = Date.now();
+    index.stale = null;
+    return index;
   }
-  if (cached?.version !== CACHE_VERSION) cached = null;
 
-  const fresh = cached && (Date.now() - cached.fetchedAt < TTL_MS);
-  if (cached && fresh && !refresh) {
-    index = build(cached);
+  const cached = await readCache(dataDir);
+  const same = cached && info && cached.hash === info.hash;
+  const fallback = cached && !info && !refresh && Date.now() - cached.fetchedAt < TTL_MS;
+  if (same || fallback) {
+    if (!index || index.fetchedAt !== cached.fetchedAt) index = build(cached);
+    index.checkedAt = Date.now();
     return index;
   }
 
@@ -114,18 +180,102 @@ export async function loadDropTables({ dataDir = defaultDataDir(), refresh = fal
 
     const wf = await fetchJson(WF_URL).then(trimWfMods).catch(() => cached?.wf || []);
 
-    const payload = { version: CACHE_VERSION, fetchedAt: Date.now(), de, wf };
+    const payload = {
+      version: CACHE_VERSION, fetchedAt: Date.now(),
+      hash: info?.hash || null, modified: info?.modified || null,
+      de, wf
+    };
     await mkdir(dataDir, { recursive: true });
+    if (cached) await rename(CACHE(dataDir), PREV(dataDir)).catch(() => {});
     /* Jede einzelne Belohnung traegt eine 32-stellige _id mit sich, die hier
        niemand liest - sie macht rund ein Viertel der Datei aus. */
     await writeFile(CACHE(dataDir), JSON.stringify(payload, (k, v) => (k === '_id' ? undefined : v)));
     index = build(payload);
   } catch (err) {
     if (!cached) throw err;
-    index = build(cached);
+    /* Schon umbenannt, aber nicht neu geschrieben: den alten Stand
+       zurueckstellen, sonst startete Argus beim naechsten Mal ohne Cache. */
+    if (!existsSync(CACHE(dataDir))) await rename(PREV(dataDir), CACHE(dataDir)).catch(() => {});
+    if (!index || index.fetchedAt !== cached.fetchedAt) index = build(cached);
     index.stale = err.message;
   }
+  index.checkedAt = Date.now();
   return index;
+}
+
+/**
+ * Die flachen Zeilen fuer den Reiter "Drop tables" (siehe drop-search.js).
+ *
+ * Erst beim ersten Oeffnen des Reiters gebaut, nicht mit dem Index beim
+ * Start: 45 000 Zeilen kosten rund eine halbe Sekunde, und die meisten
+ * Sitzungen brauchen sie nie. Gelesen wird aus der Cache-Datei, die
+ * loadDropTables gerade geschrieben oder bestaetigt hat - der Index selbst
+ * behaelt die Rohdaten nicht, sonst laegen sie die ganze Sitzung im Speicher.
+ */
+let rowsCache = null;
+
+export async function loadDropRows(idx, { dataDir = defaultDataDir() } = {}) {
+  if (!idx) return [];
+  if (rowsCache?.fetchedAt === idx.fetchedAt) return rowsCache.rows;
+  const payload = JSON.parse(await readFile(CACHE(dataDir), 'utf8'));
+  const rows = buildDropRows(payload.de, { live: idx.liveRelics, wf: payload.wf });
+  rowsCache = { fetchedAt: idx.fetchedAt, rows };
+  return rows;
+}
+
+/**
+ * Was sich mit dem letzten Update der Tabellen geaendert hat.
+ *
+ * Gerechnet wird EINMAL, aus drop-sources.prev.json gegen den aktuellen
+ * Stand, und das Ergebnis landet in drop-changes.json. Danach wird die alte
+ * Datei geloescht - 6 MB, die niemand mehr braucht. Kommt vor dem ersten
+ * Blick schon das naechste Update, gilt der Vergleich mit dem Stand
+ * dazwischen: "seit dem letzten Update", nicht "seit du zuletzt geschaut hast".
+ *
+ * null heisst: kein Vergleich moeglich (erster Abruf ueberhaupt, oder der
+ * alte Stand ist schon weg und das Ergebnis gehoert zu einem aelteren Update).
+ */
+let changesCache = null;
+
+export async function loadDropChanges(idx, { dataDir = defaultDataDir() } = {}) {
+  if (!idx) return null;
+  if (changesCache?.to.fetchedAt === idx.fetchedAt) return changesCache;
+
+  try {
+    const saved = JSON.parse(await readFile(CHANGES(dataDir), 'utf8'));
+    if (saved?.to?.fetchedAt === idx.fetchedAt) return (changesCache = revive(saved));
+  } catch { /* noch keine Datei */ }
+
+  if (!existsSync(PREV(dataDir))) return null;
+  let prev;
+  try { prev = JSON.parse(await readFile(PREV(dataDir), 'utf8')); } catch { return null; }
+
+  const newRows = await loadDropRows(idx, { dataDir });
+  const oldLive = liveRelics(prev.de);
+  const oldRows = buildDropRows(prev.de, { live: oldLive, wf: prev.wf });
+  const diff = diffDropRows(oldRows, newRows);
+
+  const saved = {
+    from: { fetchedAt: prev.fetchedAt, hash: prev.hash || null, modified: prev.modified || null },
+    to:   { fetchedAt: idx.fetchedAt,  hash: idx.hash,          modified: idx.modified },
+    ...diff,
+    /* Welche Relikte mit dem Update in die Beute kamen oder aus ihr fielen -
+       fuer Prime-Jaeger die wichtigste Zeile des ganzen Vergleichs. */
+    relicsIn:  [...idx.liveRelics].filter(r => !oldLive.has(r)).sort(),
+    relicsOut: [...oldLive].filter(r => !idx.liveRelics.has(r)).sort()
+  };
+  await writeFile(CHANGES(dataDir), JSON.stringify(saved));
+  await unlink(PREV(dataDir)).catch(() => {});
+  return (changesCache = revive(saved));
+}
+
+/* Entfernte Zeilen gibt es in den aktuellen Tabellen nicht mehr - sie kommen
+   aus der Datei und brauchen dieselben Suchschluessel wie alle anderen. */
+function revive(saved) {
+  saved.removed = indexRows(saved.removed || []);
+  saved.addedKeys = new Set(saved.added || []);
+  saved.changedMap = new Map((saved.changed || []).map(c => [c.key, c.before]));
+  return saved;
 }
 
 /* ------------------------------------------------------------------ */
@@ -141,7 +291,7 @@ const key = name => String(name || '').toLowerCase().trim();
  * gar keine Pfade, sie nennen nur "Serration". Beide Seiten stammen aus
  * demselben englischen Export, die Namen decken sich also.
  */
-function build({ de, wf, fetchedAt }) {
+function build({ de, wf, fetchedAt, hash = null, modified = null }) {
   const byName = new Map();
   const add = (name, entry) => {
     if (!name || !entry.place) return;
@@ -235,8 +385,11 @@ function build({ de, wf, fetchedAt }) {
      Wieder zwei Chancen hintereinander, wie bei den Mods: erst laesst der
      Gegner ueberhaupt einen Bauplan fallen (enemyBlueprintDropChance), dann
      muss es dieser sein (chance). */
+  const bpSeen = new Set();
   for (const b of de?.blueprintLocations || []) {
     for (const e of b.enemies || []) {
+      bpSeen.add(key(`${b.blueprintName || b.itemName}|${e.enemyName}`));
+      bpSeen.add(key(`${b.itemName}|${e.enemyName}`));
       const table = e.enemyBlueprintDropChance ?? 100;
       const eintrag = {
         kind: 'enemy',
@@ -258,6 +411,10 @@ function build({ de, wf, fetchedAt }) {
      und zwar mit der Gegner-Chance daneben. */
   for (const t of de?.enemyBlueprintTables || []) {
     for (const i of t.items || []) {
+      /* Schon aus blueprintLocations bekannt - und dort mit BEIDEN Wuerfen.
+         Diese Tabelle kennt nur den zweiten; beim Stalker stuende "Dread
+         Blueprint" sonst mit 64,8 % neben den richtigen 32,4 %. */
+      if (bpSeen.has(key(`${i.itemName}|${t.enemyName}`))) continue;
       add(i.itemName, {
         kind: 'enemy',
         place: t.enemyName,
@@ -364,7 +521,8 @@ function build({ de, wf, fetchedAt }) {
     if (m.uniqueName) wfByPath.set(m.uniqueName, entries);
   }
 
-  return { byName, wfByName, wfByPath, liveRelics: liveRelics(de), fetchedAt, stale: null };
+  return { byName, wfByName, wfByPath, liveRelics: liveRelics(de), fetchedAt, hash, modified,
+           checkedAt: 0, stale: null };
 }
 
 /**

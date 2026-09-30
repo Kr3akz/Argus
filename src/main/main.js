@@ -48,7 +48,8 @@ import { formatReport, clearScans, scanSummary } from '../core/diagnostics.js';
 import { scanAccountId, findGameProcessIds } from '../core/accountid.js';
 import { buildInventory, SECTIONS, ownedUpgradeRanks, miscItemCount, ownedStock, recipeRow } from '../core/inventory-items.js';
 import { buildVendorOffers } from '../core/vendors.js';
-import { loadDropTables, sourcesFor } from '../core/droptables.js';
+import { loadDropTables, loadDropRows, loadDropChanges, sourcesFor } from '../core/droptables.js';
+import { searchDrops, DROP_KINDS, REFINEMENTS } from '../core/drop-search.js';
 import { loadCardImages, cardUrl } from '../core/cards.js';
 import { upgradeDetails } from '../core/upgrade-details.js';
 import { matchesFissureFilter } from '../core/fissure-filter.js';
@@ -2367,6 +2368,60 @@ ipcMain.handle('farming:get', async (_e, query) => {
 
 ipcMain.handle('mining:get', async (_e, query) => {
   return getMiningGuide(query);
+});
+
+/* Reiter "Drop tables": freie Suche ueber alle Droptabellen. Die Zeilen
+   entstehen erst beim ersten Aufruf (siehe loadDropRows), danach laeuft jede
+   Suche im Speicher - ein Tastendruck kostet wenige Millisekunden.
+
+   Nebenbei fragt jede Suche, ob die Tabellen noch aktuell sind - aber nur
+   alle sechs Stunden wirklich (check in loadDropTables), sonst ist das ein
+   Zeitvergleich. Argus bleibt oft ueber einen Patch hinweg offen. */
+async function currentDropTables(opts) {
+  const before = cache.dropTables;
+  cache.dropTables = await loadDropTables(opts);
+  /* Neuer Stand: der Vault-Index haengt an denselben Daten. */
+  if (cache.dropTables !== before) cache.vault = null;
+  return { idx: cache.dropTables, changed: !!before && cache.dropTables.fetchedAt !== before.fetchedAt };
+}
+
+function dropChangesSummary(ch) {
+  if (!ch) return null;
+  return {
+    from: ch.from, to: ch.to, counts: ch.counts,
+    relicsIn: ch.relicsIn, relicsOut: ch.relicsOut
+  };
+}
+
+ipcMain.handle('drops:search', async (_e, opts = {}) => {
+  try {
+    const { idx } = await currentDropTables({ check: true });
+    const rows = await loadDropRows(idx);
+    const changes = await loadDropChanges(idx).catch(() => null);
+    return {
+      ...searchDrops(rows, opts, changes),
+      kinds: DROP_KINDS,
+      refinements: REFINEMENTS,
+      rowCount: rows.length,
+      fetchedAt: idx.fetchedAt,
+      modified: idx.modified || null,
+      stale: idx.stale || null,
+      changes: dropChangesSummary(changes)
+    };
+  } catch (err) {
+    return { error: err.message, rows: [], total: 0 };
+  }
+});
+
+/* Von Hand nachsehen - der Knopf im Reiter. Laedt nur, wenn der Hash sich
+   geaendert hat; sonst meldet er "schon aktuell". */
+ipcMain.handle('drops:refresh', async () => {
+  try {
+    const { idx, changed } = await currentDropTables({ refresh: true });
+    return { ok: !idx.stale, changed, fetchedAt: idx.fetchedAt, stale: idx.stale || null };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
 });
 
 /* ------------------------ Relikte: Bausteine ------------------------

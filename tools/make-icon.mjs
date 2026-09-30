@@ -25,7 +25,11 @@ const MASKEN = [
   /* Narmer-Zeichen fuer die Archon-Jagd. Spielsymbol von Digital Extremes,
      wie die uebrigen Zeichen in der Oberflaeche auch - siehe die
      Lizenznotiz am Ende des README. */
-  { quelle: 'narmer.png', ziel: 'narmer.png', groesse: 256 }
+  { quelle: 'narmer.png', ziel: 'narmer.png', groesse: 256 },
+  /* Reitersymbole fuer Notizen und Droptabellen. Die Quelle heisst Notes.png
+     mit grossem N - das Ziel klein wie alle anderen in src/renderer/. */
+  { quelle: 'Notes.png', ziel: 'notes.png', groesse: 256 },
+  { quelle: 'droptables.png', ziel: 'droptables.png', groesse: 256 }
 ];
 const OUT_BUILD = path.join(ROOT, 'build', 'icon.png');
 const OUT_BUILD_ICO = path.join(ROOT, 'build', 'icon.ico');

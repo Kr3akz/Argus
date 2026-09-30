@@ -36,6 +36,9 @@ contextBridge.exposeInMainWorld('api', {
   setWeeklyDone:   (key, resetAt, done) => ipcRenderer.invoke('weekly:setDone', key, resetAt, done),
   getFarmingGuide: (q)         => ipcRenderer.invoke('farming:get', q),
   getMiningGuide:  (q)         => ipcRenderer.invoke('mining:get', q),
+  /* Droptabellen durchsuchen - nach Item, Ort oder Gegner, mit Filtern. */
+  searchDrops:     (opts)      => ipcRenderer.invoke('drops:search', opts),
+  refreshDrops:    ()          => ipcRenderer.invoke('drops:refresh'),
   getDucatsData:   ()          => ipcRenderer.invoke('ducats:get'),
   fetchDucatPrices:(slugs)     => ipcRenderer.invoke('ducats:fetchPrices', slugs),
   /* Baros Angebot gegen das eigene Inventar. Steht im Dukaten-Tab, weil es

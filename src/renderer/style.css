@@ -621,6 +621,21 @@ body:has(#app:not(.hidden)) .titlebar-brand::after {
   transform: scale(1.05);
 }
 
+/* 1.1 wie der Kalender: beide sind auf den Inhalt beschnitten, und so
+   landet die laengere Kante bei 24 px - im Band der Nachbarn (23-25 px),
+   nachgemessen an den Masken der Seitenleiste. */
+.icon-notes {
+  -webkit-mask-image: url('assets/icons/notes.png');
+  mask-image: url('assets/icons/notes.png');
+  transform: scale(1.1);
+}
+
+.icon-droptables {
+  -webkit-mask-image: url('assets/icons/droptables.png');
+  mask-image: url('assets/icons/droptables.png');
+  transform: scale(1.1);
+}
+
 .icon-checkmark {
   -webkit-mask-image: url('assets/icons/checkmark.png');
   mask-image: url('assets/icons/checkmark.png');
@@ -12428,3 +12443,190 @@ label.te-row { cursor: pointer; user-select: none; }
   transition: color .15s var(--ease);
 }
 .credit-list > a:hover { color: var(--text); text-decoration: underline; }
+
+/* ---------- Droptabellen ----------
+
+   Eine Liste, keine Karten: Hunderte Zeilen, die man ueberfliegt und
+   vergleicht. Deshalb feste Spalten - Item, Ort, Chance, Aufwand - und die
+   Zahl rechtsbuendig in gleich breiten Ziffern, damit 8,6 % und 25,33 %
+   untereinander stehen. Item und Ort sind selbst Suchknoepfe: ein Klick auf
+   den Ort zeigt alles, was dort faellt. */
+
+.dt-source { display: flex; align-items: center; gap: 10px; font-size: 11.5px; color: var(--text-3); }
+/* Rund und das Symbol genau in der Mitte: feste Kante statt Innenabstand,
+   und das Icon als Raster statt Inline-Box - sonst sitzt es auf der
+   Grundlinie der Schrift, ein paar Pixel zu hoch, und eiert beim Drehen. */
+.dt-refresh {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  justify-content: center;
+}
+.dt-refresh > span { display: grid; place-items: center; }
+.dt-refresh svg { display: block; }
+.dt-stale { color: rgb(var(--t-red-text)); }
+.dt-note-flash { color: var(--accent); }
+
+/* Hinweis nach einem Update. Eine Flaeche mit Schimmer aus der Ecke, wie
+   die anderen Hinweise in Argus - keine Kante, kein Rahmen. */
+.dt-update {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  border-radius: var(--r-md);
+  background:
+    radial-gradient(circle at 0% 0%, rgb(var(--t-accent) / .12), transparent 55%),
+    var(--surface);
+}
+.dt-update[hidden], .dt-selects label[hidden] { display: none; }
+.dt-update-body { flex: 1; min-width: 0; display: grid; gap: 6px; }
+.dt-update-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; font-size: 13px; }
+.dt-update-head > b { font-weight: 600; }
+.dt-update-head > span { font-size: 12px; color: var(--text-2); }
+.dt-update-head > span b { color: var(--text); font-variant-numeric: tabular-nums; }
+.dt-update-relics { display: grid; gap: 3px; font-size: 11.5px; color: var(--text-2); }
+.dt-update-k {
+  display: inline-block;
+  min-width: 92px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .3px;
+  text-transform: uppercase;
+}
+.dt-update-k.is-in  { color: rgb(var(--t-green-text)); }
+.dt-update-k.is-out { color: rgb(var(--t-red-text)); }
+.dt-update-close {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: background .15s var(--ease), color .15s var(--ease);
+}
+.dt-update-close:hover { background: var(--surface-2); color: var(--text); }
+.dt-update-close svg { display: block; }
+
+/* Die alte Chance: hoch gruen, runter rot - wie ein Kurs. */
+.trade-chip.dt-delta.is-up   { background: rgb(var(--t-green-lo) / .15); color: rgb(var(--t-green-text)); }
+.trade-chip.dt-delta.is-down { background: rgb(var(--t-red) / .14); color: rgb(var(--t-red-text)); }
+
+.dt-filters {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  background: var(--surface);
+  border-radius: var(--r-md);
+}
+.dt-filter-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.dt-filter-label {
+  width: 64px;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .3px;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.dt-filter-label-inline { width: auto; margin-left: 14px; }
+.dt-filter-row .chip-count { flex: none; min-width: 0; margin-left: 4px; }
+.dt-filter-row .filter-chip.is-none { opacity: .4; }
+
+.dt-selects { align-items: flex-end; gap: 10px 12px; padding-top: 4px; }
+.dt-selects label {
+  display: grid;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-3);
+}
+.dt-selects select {
+  width: auto;
+  min-width: 128px;
+  padding: 7px 12px;
+  font-size: 12px;
+  background: var(--surface-2);
+}
+.dt-selects .filter-chip { margin-left: auto; padding: 7px 13px; }
+.dt-selects .dt-reset { padding: 7px 13px; }
+
+.filter-chip.chip-legendary.active {
+  background: rgb(var(--t-omnia) / .2);
+  color: rgb(var(--t-omnia));
+  border-color: rgb(var(--t-omnia) / .4);
+}
+
+.dt-summary { font-size: 12.5px; color: var(--text-2); margin: 0 4px 10px; min-height: 18px; }
+.dt-summary b { color: var(--text); font-variant-numeric: tabular-nums; }
+.dt-capped { color: var(--text-3); }
+
+.dt-hint { line-height: 1.6; }
+.dt-examples { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+.dt-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.6fr) 88px 128px;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 14px;
+  margin-bottom: 4px;
+  background: var(--surface);
+  border-radius: var(--r-sm);
+}
+.dt-row:hover { background: var(--surface-2); }
+/* Gevaultet oder mit dem Update weggefallen: die Zeile tritt zurueck, die
+   rote Marke daneben sagt warum. Frueher eine rote Kante links - die zog
+   beim Scrollen Streifen nach, weil Chromium den Innenschatten hunderter
+   abgerundeter Zeilen nicht sauber mitverschiebt. Deckkraft hat das nicht,
+   und sie liest sich ohnehin richtiger: "gibt es gerade nicht" ist leiser,
+   nicht lauter. Beim Zeigen wieder voll, damit man es lesen kann. */
+.dt-row.is-dim { opacity: .5; }
+.dt-row.is-dim:hover { opacity: 1; }
+
+.dt-item, .dt-place {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: color .15s var(--ease);
+}
+.dt-item { font-size: 13px; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+.dt-place { font-size: 12.5px; font-weight: 550; color: var(--text-2); }
+.dt-item:hover, .dt-place:hover { color: var(--accent); }
+
+.dt-where { min-width: 0; }
+.dt-place-line { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.dt-region { font-size: 11.5px; color: var(--text-3); }
+.dt-tags { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.dt-tag { font-size: 10.5px; font-weight: 600; color: var(--text-3); }
+.dt-tag + .dt-tag::before, .trade-chip + .dt-tag::before { content: '·'; margin-right: 6px; opacity: .6; }
+.dt-rot { color: var(--text-2); }
+.dt-note { font-size: 10.5px; color: var(--text-3); opacity: .8; }
+
+.dt-chance { display: grid; justify-items: end; gap: 1px; }
+.dt-chance b { font-size: 13.5px; font-weight: 650; font-variant-numeric: tabular-nums; color: var(--text); }
+.dt-chance span { font-size: 10.5px; font-weight: 600; color: var(--text-3); }
+/* Dieselben drei Toene wie die Seltenheits-Chips darueber (.chip-bronze,
+   .chip-silver, .chip-gold) - ein Wort, eine Farbe, im ganzen Reiter. */
+.dt-chance .dt-r-common    { color: #ff9b5e; }
+.dt-chance .dt-r-uncommon  { color: rgb(var(--t-silver)); }
+.dt-chance .dt-r-rare      { color: var(--gold); }
+.dt-chance .dt-r-legendary { color: rgb(var(--t-omnia)); }
+.dt-chance .dt-standing { color: var(--text-2); }
+
+.dt-tries {
+  font-size: 11.5px;
+  color: var(--text-3);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  cursor: help;
+}
+.dt-tries:empty { cursor: default; }

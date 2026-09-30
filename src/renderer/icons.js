@@ -122,6 +122,11 @@ const Icon = {
      Symbol (catMods), das auch im Katalog "Other" heisst - zwei Bedeutungen
      fuer ein Bild. */
   riven: s => `<span class="nav-icon-mask icon-riven" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
+  /* Eigene Reitersymbole fuer Notizen und Droptabellen. Vorher standen dort
+     die gezeichneten `codex` und `crate`; beide bleiben im Satz, `crate`
+     wird an anderer Stelle noch gebraucht. */
+  notes: s => `<span class="nav-icon-mask icon-notes" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
+  droptables: s => `<span class="nav-icon-mask icon-droptables" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
 
   /* Offizielles Steel Path Emblem (Difficulty2.png) */
   steelpath: s => `<span class="nav-icon-mask icon-steelpath" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
