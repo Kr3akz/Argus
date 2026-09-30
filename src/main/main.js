@@ -1787,18 +1787,29 @@ ipcMain.handle('setup:state', async () => {
        weil das Fenster diesen Aufruf beim Start ohnehin macht - fuer eine
        Frage, die genau einmal pro Start gestellt wird, ist ein zweiter
        Rundgang durch die IPC-Bruecke eine Leitung ohne Ladung. */
-    guideSeen: cfg.guideSeen === true
+    guideSeen: cfg.guideSeen === true,
+    /* Welche Stationen schon gezeigt wurden. Fehlt die Liste bei gesehener
+       Tour, war es die erste Fassung (v1.15.0) - guide.js kennt deren
+       Stationen und zeigt nach einem Update nur, was seitdem dazukam. */
+    guideSteps: Array.isArray(cfg.guideSteps) ? cfg.guideSteps : null
   };
 });
 
 /* Die Tour ist gelaufen - oder jemand hat sie abgebrochen. Beides zaehlt.
    Scheitert das Schreiben, laeuft sie beim naechsten Start noch einmal: eine
    Tour zu viel ist ein Aergernis, eine verlorene Einstellung waere ein
-   Fehler, den niemand mehr findet. */
-ipcMain.handle('settings:guideSeen', async (_e, on) => {
+   Fehler, den niemand mehr findet.
+
+   `steps` sind die Kennungen der Stationen, die es in dieser Fassung gibt.
+   Nur kurze Kennungen aus Buchstaben und Bindestrichen werden gespeichert -
+   was aus dem Renderer kommt, landet sonst ungeprueft in config.json. */
+ipcMain.handle('settings:guideSeen', async (_e, on, steps) => {
+  const ids = Array.isArray(steps)
+    ? steps.filter(s => typeof s === 'string' && /^[a-z][a-z-]{0,31}$/.test(s)).slice(0, 64)
+    : null;
   try {
     const cfg = await loadConfig();
-    await saveConfig({ ...cfg, guideSeen: on === true });
+    await saveConfig({ ...cfg, guideSeen: on === true, ...(ids ? { guideSteps: ids } : {}) });
   } catch { /* siehe oben */ }
   return { ok: true, guideSeen: on === true };
 });

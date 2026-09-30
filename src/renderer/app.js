@@ -1192,11 +1192,14 @@ async function maybeStartGuide(state) {
   if (typeof Guide === 'undefined') return;
   try {
     const st = state || await window.api.getSetupState();
-    if (st.guideSeen === true) return;
+    /* Schon gesehen: dann hoechstens das, was seitdem dazukam - einmal, mit
+       einer Eingangsstation, die sagt, warum sich die Tour meldet. */
+    const only = st.guideSeen === true ? Guide.unseen(st.guideSteps) : null;
+    if (only && !only.length) return;
     /* Kurz warten: die Reiter fuellen sich nach dem ersten Zeichnen noch,
        und eine Station, die auf eine Liste zeigt, waehrend die Liste
        hochwaechst, zeigt danach daneben. */
-    setTimeout(() => Guide.start(), 450);
+    setTimeout(() => Guide.start(0, { only }), 450);
   } catch { /* ohne Merker lieber nicht zeigen als jedes Mal zeigen */ }
 }
 
@@ -4368,7 +4371,11 @@ function loadDropsTab() {
     renderDropFilters(null);
   }
   runDropSearch();
-  setTimeout(() => $('dt-search')?.focus(), 0);
+  /* Waehrend des Rundgangs nicht ins Suchfeld springen: die Tour schaltet den
+     Reiter nur zum Zeigen um, und ein blinkender Cursor unter der Abdunklung
+     sieht aus, als waere dort etwas zu tun. */
+  const touring = typeof Guide !== 'undefined' && Guide.isOpen;
+  if (!touring) setTimeout(() => $('dt-search')?.focus(), 0);
 }
 
 function dropSearchOpts() {

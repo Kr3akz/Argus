@@ -161,7 +161,7 @@ contextBridge.exposeInMainWorld('api', {
   setRelicPickOverlay: (on)    => ipcRenderer.invoke('settings:relicPickOverlay', on),
   /* Die gefuehrte Tour hat ihr Ende erreicht - gelesen wird der Merker mit
      getSetupState(), der beim Start ohnehin laeuft. */
-  setGuideSeen:    (on)        => ipcRenderer.invoke('settings:guideSeen', on),
+  setGuideSeen:    (on, steps) => ipcRenderer.invoke('settings:guideSeen', on, steps),
   /* Aussehen. getThemeSync ist der einzige synchrone Aufruf hier: theme.js
      braucht das Theme im <head>, bevor irgendetwas gezeichnet ist (siehe
      theme:resolved in main.js). Alle Fenster hoeren auf onThemeChanged. */

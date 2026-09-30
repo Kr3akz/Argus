@@ -2,7 +2,7 @@
  * Die gefuehrte Tour durch Argus - einmal beim ersten Start, danach auf Wunsch.
  *
  * WARUM EIN SCHEINWERFER UND KEIN TEXTFENSTER:
- *   Neun Reiter, in jedem drei bis fuenf Ansichten. Eine Seite Text darueber
+ *   Elf Reiter, in jedem drei bis fuenf Ansichten. Eine Seite Text darueber
  *   liest niemand, und wer sie liest, muss die Begriffe danach erst wieder in
  *   der Oberflaeche suchen. Deshalb zeigt jede Station auf das Stueck Fenster,
  *   von dem sie redet: der Reiter wird umgeschaltet, die Stelle ausgeschnitten,
@@ -36,8 +36,11 @@ const Guide = (() => {
 
   /* ---------------- Die Stationen ----------------
 
-     tab / wsPane / masteryMode schalten vor dem Messen um - ein Ziel in einem
-     versteckten Reiter hat keine Geometrie. target ist ein Auswaehler oder
+     tab / wsPane / masteryMode / settingsPane / rivenPane schalten vor dem
+     Messen um - ein Ziel in einem versteckten Reiter hat keine Geometrie.
+     Die Kennung (id) ist mehr als ein Name: sie wird als "gesehen"
+     gespeichert, und eine neue Kennung laesst die Tour nach einem Update
+     einmal mit genau dieser Station anlaufen. Also nie umbenennen. target ist ein Auswaehler oder
      eine Liste davon; die erste gefundene Stelle traegt den Pfeil, alle
      zusammen bilden den Ausschnitt. place ist ein Wunsch, kein Befehl: passt
      die Seite nicht ins Fenster, sucht sich der Kasten eine andere. */
@@ -52,8 +55,8 @@ const Guide = (() => {
         <p>Argus reads your Warframe account and the game’s world state, and works
            out what is worth doing next — mastery, relics, ducats, trades and
            farming routes.</p>
-        <p>This tour walks through every part of the window and takes about a
-           minute. It only looks and explains: nothing is switched on, and no
+        <p>This tour walks through every part of the window and takes a minute or
+           two. It only looks and explains: nothing is switched on, and no
            setting is changed behind your back.</p>
         <p class="guide-keys">
           <span><kbd>→</kbd> next</span>
@@ -69,9 +72,10 @@ const Guide = (() => {
       pad: 6,
       title: 'Everything lives in this rail',
       body: `
-        <p>Eight tabs, top to bottom, roughly in the order you need them: what is
+        <p>Eleven tabs, top to bottom, roughly in the order you need them: what is
            happening <em>right now</em>, what resets <em>this week</em>, what you
-           still have to master, and what you own.</p>
+           still have to master, what you own and what it is worth — and, further
+           down, the pages you look things up in.</p>
         <p>Hover over an icon and it says what is behind it. Settings sits on its
            own at the bottom.</p>`
     },
@@ -165,6 +169,22 @@ const Guide = (() => {
            <b>Inventory access</b>. Everything else in Argus works without it.</p>`
     },
     {
+      id: 'rivens',
+      tab: 'rivens',
+      rivenPane: 'unveiled',
+      target: '#riven-nav',
+      place: 'bottom',
+      title: 'Rivens',
+      body: `
+        <p>Every riven you own, with its stats exactly as the game shows them and a
+           grade from S to F. The grade comes from the market: which stats the
+           pricey rivens of that weapon actually carry on warframe.market. A wanted
+           stat with a poor roll beats a perfect one nobody looks for.</p>
+        <p><b>Veiled</b> lists the ones you have not revealed yet, with their
+           challenges. The <b>Riven finder</b> searches warframe.market auctions by
+           weapon and stats — that part works without inventory access.</p>`
+    },
+    {
       id: 'ducats',
       tab: 'ducats',
       target: '#tab-ducats .ducats-mode-tabs',
@@ -185,10 +205,12 @@ const Guide = (() => {
       place: 'bottom',
       title: 'Trading',
       body: `
-        <p>This tab is warframe.market, not the game: your open buy and sell orders,
-           your riven contracts, and every trade you have logged, with 30-day
-           totals. Sign in with your market account through the button at the top
-           right.</p>
+        <p>This tab is warframe.market, not the game: your buy and sell orders,
+           your riven contracts, a price lookup for anything, and a ledger of every
+           trade in platinum and ducats — charted under <b>Analytics</b>.
+           <b>Insights</b> says which primes are heading for the vault next, and what
+           of that is on your shelves. Sign in with your market account through the
+           button at the top right.</p>
         <p>Argus never messages anyone for you. Trade chat lines are copied to your
            clipboard and you send them yourself, in the game — a program that
            writes to strangers on its own is a bot, however politely it words it.</p>`
@@ -219,6 +241,20 @@ const Guide = (() => {
            kind of vein it sits in, and which cutter you want for it.</p>`
     },
     {
+      id: 'drops',
+      tab: 'drops',
+      target: ['#tab-drops .fg-modes', '#tab-drops .searchbox'],
+      place: 'bottom',
+      title: 'Drop tables',
+      body: `
+        <p>Every drop DE publishes. Search it by item, by location or by enemy, then
+           narrow it down by source, rarity, rotation, planet and chance — or leave
+           the search empty and browse by filter alone.</p>
+        <p>Each row says how many runs, kills or cracks it takes on average. When
+           DE changes the tables, this tab tells you what is new, what moved and
+           what was removed.</p>`
+    },
+    {
       id: 'notes',
       tab: 'notes',
       target: '#general-notes',
@@ -246,6 +282,41 @@ const Guide = (() => {
            can be switched off.</p>`
     },
     {
+      id: 'ingame',
+      tab: 'settings',
+      settingsPane: 'overlays',
+      target: '[data-set-pane="overlays"] .settings-note-row',
+      place: 'bottom',
+      title: 'Panels inside the game',
+      body: `
+        <p>Besides that window, Argus draws small panels straight into the game:
+           price tags under the four cards of a relic reward screen, a ranking of
+           your relics on the relic selection screen, and your current and new
+           roll side by side while you cycle a riven.</p>
+        <p>None of them takes focus from the game. <b>Arrange overlays</b> sets where
+           each one sits and how large it is; in the game itself, the cursor hotkey
+           lets you drag the relic and riven panels by their title.</p>`
+    },
+    {
+      id: 'themes',
+      tab: 'settings',
+      settingsPane: 'appearance',
+      /* Nicht die ganze Galerie: zwei Reihen Karten sind so hoch, dass der
+         Kasten nirgends mehr daneben passt und mitten auf den Vorschauen
+         landet. Die ersten drei Karten zeigen, was gemeint ist, und darunter
+         bleibt Platz. */
+      target: ['#theme-presets > :nth-child(1)', '#theme-presets > :nth-child(2)',
+               '#theme-presets > :nth-child(3)'],
+      place: 'bottom',
+      title: 'Themes',
+      body: `
+        <p>Nine looks to pick from, or your own: six colours, corners, glow and blur,
+           applied while you drag. Everything Argus draws over the game changes
+           with it.</p>
+        <p>A theme travels as one line of text — <b>Copy code</b> shares yours,
+           <b>Add a shared theme</b> takes someone else’s.</p>`
+    },
+    {
       id: 'settings',
       tab: 'settings',
       /* Die Tour-Gruppe steht im Unterreiter General. */
@@ -256,8 +327,8 @@ const Guide = (() => {
       place: 'right',
       title: 'Settings — and this tour',
       body: `
-        <p>Hotkeys, notifications, the overlay windows, inventory access and which
-           version you are running.</p>
+        <p>Hotkeys, the overlays, notifications for void fissures and for whispers in
+           game, inventory access and which version you are running.</p>
         <p>If you want your inventory, the Baro planner and the weekly tracking to
            do anything, <b>Inventory access</b> under <b>Inventory</b> is the switch
            that turns them on.</p>
@@ -266,7 +337,53 @@ const Guide = (() => {
     }
   ];
 
+  /* ---------------- Was schon gezeigt wurde ----------------
+
+     Die Stationen der ersten Fassung (v1.15.0). Wer die Tour damals gesehen
+     hat, hat noch keine gespeicherte Liste - fuer ihn gelten genau diese als
+     gesehen. Seitdem wird mit jedem Ende die Liste ALLER Stationen der
+     laufenden Fassung gespeichert, und was spaeter dazukommt, faellt daneben
+     auf. */
+  const FIRST_EDITION = ['welcome', 'sidebar', 'hero', 'worldstate', 'fissures', 'weekly',
+    'mastery', 'inventory', 'ducats', 'trading', 'builds', 'farmguide', 'notes',
+    'overlay', 'settings'];
+
+  /** Kennungen der Stationen, die nach dieser Liste noch niemand gezeigt hat. */
+  function unseen(seen) {
+    const known = new Set(Array.isArray(seen) ? seen : FIRST_EDITION);
+    return STEPS.filter(s => !known.has(s.id)).map(s => s.id);
+  }
+
+  /* "Rivens, Drop tables and Themes" - so, wie man es sagen wuerde. */
+  const spoken = names => names.length < 2 ? names.join('')
+    : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+
+  /**
+   * Die Eingangsstation, wenn nur das Neue gezeigt wird. Sie sagt zuerst,
+   * WARUM sich die Tour meldet: wer sie schon kennt, wuerde sonst glauben, sie
+   * sei versehentlich wieder angesprungen.
+   */
+  function whatsNewIntro(steps) {
+    return {
+      id: 'whatsnew',
+      target: null,
+      place: 'center',
+      title: 'New since your last tour',
+      body: `
+        <p>Argus has grown since you took the tour. This walks through only what is
+           new: ${spoken(steps.map(s => `<b>${s.title}</b>`))}.</p>
+        <p>The whole tour is still one click away, under Settings →
+           <b>Guided tour</b>.</p>
+        <p class="guide-keys">
+          <span><kbd>→</kbd> next</span>
+          <span><kbd>←</kbd> back</span>
+          <span><kbd>Esc</kbd> end it</span>
+        </p>`
+    };
+  }
+
   /* ---------------- Zustand ---------------- */
+  let list = STEPS;      // die Stationen dieses Durchlaufs - alle, oder nur die neuen
   let layer = null;      // die ganze Schicht
   let maskEl = null;     // <mask>, nimmt die Loecher auf
   let ringBox = null;    // Wirt der Markierungsrahmen
@@ -482,7 +599,7 @@ const Guide = (() => {
    */
   function layout() {
     if (!open) return;
-    const st = STEPS[at];
+    const st = list[at];
     const pad = st.pad ?? 10;
     const rects = targetsOf(st);
 
@@ -560,16 +677,16 @@ const Guide = (() => {
   /* ---------------- Stationen durchgehen ---------------- */
 
   function fill() {
-    const st = STEPS[at];
+    const st = list[at];
     layer.querySelector('#guide-title').innerHTML = st.title;
     layer.querySelector('#guide-text').innerHTML  = st.body;
-    layer.querySelector('#guide-count').textContent = `${at + 1} of ${STEPS.length}`;
+    layer.querySelector('#guide-count').textContent = `${at + 1} of ${list.length}`;
     layer.querySelector('#guide-rail-fill').style.width =
-      ((at + 1) / STEPS.length * 100).toFixed(1) + '%';
+      ((at + 1) / list.length * 100).toFixed(1) + '%';
 
     layer.querySelector('#guide-back').disabled = at === 0;
     const next = layer.querySelector('#guide-next');
-    next.textContent = at === STEPS.length - 1 ? 'Done' : 'Next';
+    next.textContent = at === list.length - 1 ? 'Done' : 'Next';
 
     box.classList.remove('is-in');
     /* Neu anstossen, damit die Einblendung bei jeder Station wieder laeuft -
@@ -579,12 +696,14 @@ const Guide = (() => {
   }
 
   function show() {
-    const st = STEPS[at];
+    const st = list[at];
 
     if (st.tab && typeof window.showTab === 'function') window.showTab(st.tab);
     if (st.wsPane && typeof window.showWsPane === 'function') window.showWsPane(st.wsPane);
     if (st.settingsPane && typeof window.showSettingsPane === 'function')
       window.showSettingsPane(st.settingsPane);
+    if (st.rivenPane && typeof window.showRivenPane === 'function')
+      window.showRivenPane(st.rivenPane);
     if (st.masteryMode && typeof window.setMasteryMode === 'function')
       window.setMasteryMode(st.masteryMode);
 
@@ -605,7 +724,7 @@ const Guide = (() => {
   function step(dir) {
     const next = at + dir;
     if (next < 0) return;
-    if (next >= STEPS.length) return stop();
+    if (next >= list.length) return stop();
     at = next;
     show();
   }
@@ -633,12 +752,20 @@ const Guide = (() => {
 
   /* ---------------- Oeffnen und Schliessen ---------------- */
 
-  function start(from = 0) {
+  /**
+   * `only` beschraenkt den Durchlauf auf diese Stationen, mit einer eigenen
+   * Eingangsstation davor - fuer den Start nach einem Update, wenn die Tour
+   * schon einmal lief. Ohne `only` laeuft sie ganz, wie beim ersten Start und
+   * beim Knopf in den Einstellungen.
+   */
+  function start(from = 0, { only = null } = {}) {
     mount();
-    if (open) { at = clamp(from, 0, STEPS.length - 1); show(); return; }
+    const picked = Array.isArray(only) ? STEPS.filter(s => only.includes(s.id)) : [];
+    list = picked.length ? [whatsNewIntro(picked), ...picked] : STEPS;
+    if (open) { at = clamp(from, 0, list.length - 1); show(); return; }
 
     open = true;
-    at = clamp(from, 0, STEPS.length - 1);
+    at = clamp(from, 0, list.length - 1);
     layer.classList.remove('hidden');
     document.body.classList.add('guide-on');
 
@@ -664,6 +791,10 @@ const Guide = (() => {
    * Wer abbricht, hat entschieden, dass er das nicht braucht; ihn beim
    * naechsten Start wieder zu fragen, waere kein Angebot mehr, sondern
    * Quengeln. Der Knopf in den Einstellungen holt sie jederzeit zurueck.
+   *
+   * Gespeichert werden ALLE Stationen dieser Fassung, auch nach einem
+   * Durchlauf nur mit den neuen - die alten kannte der Leser ja schon. Melden
+   * wird sich die Tour erst wieder, wenn eine Station dazukommt.
    */
   function stop() {
     if (!open) return;
@@ -678,12 +809,13 @@ const Guide = (() => {
     watchdog = null;
     lastSig = null;
 
-    try { window.api?.setGuideSeen?.(true); } catch { /* laeuft dann eben nochmal */ }
+    try { window.api?.setGuideSeen?.(true, STEPS.map(s => s.id)); } catch { /* laeuft dann eben nochmal */ }
   }
 
   return {
     start,
     stop,
+    unseen,
     get steps() { return STEPS.length; },
     get isOpen() { return open; }
   };
