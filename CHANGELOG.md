@@ -21,8 +21,14 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.20.1] - 2026-10-01
+
 ### Fixed
 
+- **Your profile keeps its date when you set a goal.** Setting, ticking off or
+  removing a goal, or saving a note, left *No profile data yet* under your
+  profile — although your rank and XP were right there. It now keeps saying
+  when the profile was last fetched.
 - **The last German words in the interface are English now:** the mission
   types in the fissure notification filter, two headings and the part labels
   in an item's data sheet, the part counter on set cards, the *Starred* filter
