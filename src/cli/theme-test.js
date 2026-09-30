@@ -51,9 +51,16 @@ ok('ausser den festen Farben setzt :root nichts, was ein Theme nicht auch setzt'
    fehlt.join(', '));
 ok('Fensterhintergrund bleibt #0d1117', resolved.windowBg === '#0d1117', resolved.windowBg);
 ok('Overlay-Hintergrund bleibt #0b0f16', resolved.overlayBg === '#0b0f16', resolved.overlayBg);
-ok('Regler stehen auf 1, Sidebar deckt zu 88 %',
-   resolved.vars['--r-k'] === '1' && resolved.vars['--sf-k'] === '1' && resolved.vars['--blur-k'] === '1'
-   && resolved.vars['--chrome-a'] === '.88');
+ok('Regler stehen auf 1, Pillen rund, Sidebar deckt zu 88 %',
+   resolved.vars['--r-k'] === '1' && resolved.vars['--r-pill'] === '999px' && resolved.vars['--sf-k'] === '1'
+   && resolved.vars['--blur-k'] === '1' && resolved.vars['--chrome-a'] === '.88');
+ok(':root setzt denselben Pillenradius', /--r-pill:\s*999px;/.test(rootBlock));
+
+/* Pillen gehen unter 100 % mit den Ecken mit, darueber bleiben sie rund. */
+const pill = r => resolveTheme({ ...argus, shape: { ...argus.shape, radius: r } }).vars['--r-pill'];
+ok('Pillen: eckig bei 0, halb bei 50 %, rund ab 100 %',
+   pill(0) === '0px' && pill(0.5) === '8px' && pill(0.95) === '15.2px' && pill(1) === '999px' && pill(1.5) === '999px',
+   [0, 0.5, 0.95, 1, 1.5].map(pill).join(' / '));
 
 /* Die Regeln allein, ohne Pins: wie weit liegen sie daneben? Unter 0.02 in
    OKLab ist mit blossem Auge kaum zu sehen. */

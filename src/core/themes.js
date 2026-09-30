@@ -320,6 +320,11 @@ function onAccent(accent) {
   return contrast(dark, accent) >= contrast(light, accent) ? dark : light;
 }
 
+/* Radius einer Pille bei Ecken 100 % knapp darunter: etwa die halbe Hoehe
+   der Chips, Knoepfe und Reiter (22 bis 36 px). Kleinere Pillen sind damit
+   schon vor 100 % ganz rund, groessere werden es beim letzten Schritt. */
+const PILL_RADIUS = 16;
+
 /* Reihenfolge wie in :root, damit ein Blick in die Entwicklerwerkzeuge
    dieselbe Liste zeigt wie style.css. */
 const CHANNEL_ORDER = [
@@ -340,6 +345,9 @@ export function resolveTheme(theme) {
   const vars = {};
   for (const k of CHANNEL_ORDER) vars['--t-' + k] = ch[k].join(' ');
   vars['--r-k'] = String(t.shape.radius);
+  /* Pillen folgen den Ecken nur unter 100 % - darueber sind sie schon so
+     rund, wie es geht. Siehe --r-pill in style.css. */
+  vars['--r-pill'] = t.shape.radius >= 1 ? '999px' : `${Math.round(PILL_RADIUS * t.shape.radius * 100) / 100}px`;
   vars['--sf-k'] = String(t.shape.surfaceContrast);
   /* Ohne Unschaerfe scheint durch eine zu 88 % deckende Sidebar das durch,
      was darunter rollt - dann muss sie fast ganz decken. */
