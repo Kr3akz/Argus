@@ -14,9 +14,9 @@
 ![Platform](https://img.shields.io/badge/platform-Windows-4a9eff?style=flat-square)
 
 **[Download](https://github.com/Kr3akz/Argus/releases/latest)** ·
+[Is it safe?](#is-it-safe-can-i-get-banned) ·
 [What it does](#what-it-does) ·
 [Every tab](#every-tab-up-close) ·
-[Is it safe?](#is-it-safe-can-i-get-banned) ·
 [Getting started](#getting-started) ·
 [Documentation](#documentation)
 
@@ -41,6 +41,44 @@ on Windows APIs. Free and open source under the GPL.
 ![Your profile, and the goals you are farming broken down into the parts they still need](docs/img/hero-mastery.webp)
 
 Every tab, view by view, is further down under **[Every tab, up close](#every-tab-up-close)**.
+
+---
+
+## Is it safe? Can I get banned?
+
+**Argus is very safe to use, because it only ever reads.** It never changes the game,
+never plays for you, and never talks to Digital Extremes' servers as if it were you.
+
+Your full inventory is not on your public profile. The only way to get it complete and
+exact without typing it in is to read it from the game running on your PC — that is what
+Argus does, and it is how the established Warframe companion apps have done it for years.
+Argus reads the inventory the game has *already downloaded* and stops there. It does not
+borrow the game's session to ask DE's servers for anything: that would mean imitating the
+game towards DE, which is exactly what Warframe's EULA rules out.
+
+In short:
+
+- **Nothing about the game is changed.** No DLL injection, no hooks, no memory writes,
+  and no input automation or macros.
+- **No network interception.** It never sniffs or intercepts the game's encrypted network
+  traffic, which would break Warframe's EULA.
+- **Nothing is asked of DE in your name.** No sign-in, no borrowed session, no API calls
+  on your behalf — and your inventory never leaves the machine.
+- **Read-only and opt-in.** Memory reading is strictly read-only (`PROCESS_VM_READ`),
+  happens only when you ask for it or after a zone load, and stays switched off unless you
+  turn it on.
+- **Built-in rate limiting.** The one thing fetched from DE — your *public* profile — has
+  mandatory cooldowns to protect you from their IP login throttles.
+
+**What nobody can promise.** DE's policy on third-party software has no list of approved
+tools and one rule: *use it at your own risk*. That holds for every tool, this one
+included. What DE does ban for — altered game files, cheating, exploiting, AFK farming —
+is nothing Argus does or could do, and tools that read the game this way have been in
+wide use for years without a documented ban. Should DE ever change that stance, the
+announcement will come from DE, not from this repository.
+
+Every mechanism, permission and endpoint is explained in detail:
+**→ [Read the full security & safety breakdown](docs/security.md)**
 
 ---
 
@@ -476,36 +514,6 @@ Each station marks the part of the window it talks about.
 ![The guided tour](docs/img/tour.webp)
 
 </details>
-
----
-
-## Is it safe? Can I get banned?
-
-The short answer is **yes, it is safe, and you will not get banned.**
-
-The quick breakdown:
-
-- **Argus changes nothing about the game.** No DLL injection, no hooks, no memory writes,
-  and no input automation or macros.
-- **No network interception.** It never sniffs or intercepts the game's encrypted network
-  traffic (which would violate Warframe's EULA).
-- **It never talks to Warframe's servers as if it were you.** No sign-in, no borrowed
-  session, no API calls on your behalf. Your inventory is read from the memory of the game
-  already running on your PC and never leaves the machine.
-- **Read-only and opt-in.** Memory reading is strictly read-only (`PROCESS_VM_READ`),
-  happens only when you ask for it or after a zone load, and remains completely disabled
-  unless you turn it on.
-- **Built-in rate limiting.** The one thing still fetched from DE — your *public*
-  profile — has mandatory cooldowns to protect you from their IP login throttles.
-
-One caveat worth stating plainly, because DE states it themselves: their policy on
-third-party software has **no list of approved tools** and one rule — *use it at your own
-risk*. Nothing here is approved; it is tolerated, as tools of this kind have been for
-years. That is a position DE could revise at any time, and it would not be announced in
-this repository.
-
-Every mechanism, permission and endpoint is explained in detail:
-**→ [Read the full security & safety breakdown](docs/security.md)**
 
 ---
 
