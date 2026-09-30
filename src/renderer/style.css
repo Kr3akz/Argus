@@ -12232,6 +12232,160 @@ body.relic-pick-window {
 .theme-subhead b { font-size: 13px; font-weight: 600; }
 .theme-subhead span { font-size: 11.5px; color: var(--text-3); }
 
+/* Die Karte zum Anlegen: dieselbe Groesse wie die anderen, damit das Raster
+   ruhig bleibt, statt der Vorschau ein leeres Feld mit einem Plus. */
+.theme-new-art {
+  height: 104px;
+  display: grid; place-items: center;
+  border-radius: calc(10px * var(--r-k));
+  background: rgb(var(--t-fg) / .025);
+  color: var(--text-3);
+  transition: color .15s var(--ease), background-color .15s var(--ease);
+}
+.theme-card-new:hover .theme-new-art { color: var(--accent); background: rgb(var(--t-accent) / .06); }
+.theme-card-new:disabled { cursor: not-allowed; opacity: .5; transform: none; }
+
+/* ---------------- Der Editor ----------------
+   Ein Bedienfeld mit fester Beschriftungsspalte, wie die Einstellungen
+   darueber: links, was es ist, rechts das eine Ding, das man daran aendert. */
+.te-head {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px;
+  padding: 12px 0 16px;
+  border-bottom: 1px solid rgb(var(--t-fg) / .05);
+}
+.te-name {
+  flex: 0 1 300px; min-width: 180px;
+  padding: 8px 12px;
+  border: none; border-radius: var(--r-sm);
+  background: var(--surface-2); color: var(--text);
+  font: inherit; font-size: 14px; font-weight: 600;
+  transition: background .18s var(--ease), box-shadow .18s var(--ease);
+}
+.te-name:focus { outline: none; background: var(--surface-3); box-shadow: 0 0 0 2px var(--accent-sf); }
+.te-name:disabled { background: transparent; padding-left: 0; color: var(--text); cursor: default; }
+.te-from { font-size: 12px; color: var(--text-3); }
+.te-actions { display: flex; gap: 6px; margin-left: auto; }
+
+.te-cols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 36px;
+  padding-top: 6px;
+}
+@media (max-width: 1100px) { .te-cols { grid-template-columns: 1fr; } }
+.te-label {
+  padding: 10px 0 2px;
+  font-size: 10.5px; font-weight: 650; letter-spacing: .8px; text-transform: uppercase;
+  color: var(--text-3);
+}
+.te-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 9px 0;
+  border-top: 1px solid rgb(var(--t-fg) / .05);
+}
+.te-rows .te-row:first-child { border-top: none; }
+/* Eine Farbe, zu der unten eine Warnung steht, bekommt die Kante links -
+   so findet man, welche Zeile gemeint ist. */
+.te-row.is-warned { box-shadow: inset 2px 0 0 rgb(var(--t-gold) / .7); padding-left: 10px; }
+.te-row-label { min-width: 0; }
+.te-row-label b { display: block; font-size: 13px; font-weight: 600; }
+.te-row-label span { display: block; margin-top: 2px; font-size: 11.5px; line-height: 1.4; color: var(--text-3); }
+label.te-row { cursor: pointer; user-select: none; }
+
+.te-color { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.te-swatch {
+  width: 34px; height: 26px;
+  border: none; border-radius: calc(7px * var(--r-k));
+  background: var(--sw, transparent);
+  box-shadow: inset 0 0 0 1px rgb(var(--t-fg) / .16);
+  cursor: pointer;
+  transition: transform .15s var(--ease), box-shadow .15s var(--ease);
+}
+.te-swatch:hover { transform: scale(1.06); box-shadow: inset 0 0 0 1px rgb(var(--t-fg) / .3); }
+.te-swatch.is-open { box-shadow: inset 0 0 0 1px rgb(var(--t-fg) / .3), 0 0 0 2px var(--accent); }
+.te-hex {
+  width: 86px;
+  padding: 5px 8px;
+  border: none; border-radius: var(--r-sm);
+  background: var(--surface-2); color: var(--text-2);
+  font: 600 12px/1.4 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  text-transform: lowercase;
+}
+.te-hex:focus { outline: none; color: var(--text); box-shadow: 0 0 0 2px var(--accent-sf); }
+.te-hex.is-bad { box-shadow: 0 0 0 2px rgb(var(--t-red) / .55); }
+
+.te-range { display: flex; align-items: center; gap: 10px; flex: 0 0 210px; }
+.te-range input[type="range"] { flex: 1; min-width: 0; accent-color: rgb(var(--t-accent)); }
+.te-val {
+  min-width: 44px; text-align: right;
+  font-size: 12px; font-weight: 600; color: var(--text-2); font-variant-numeric: tabular-nums;
+}
+
+.te-warnings { display: flex; flex-direction: column; gap: 6px; }
+.te-warnings:not(:empty) { padding-top: 12px; }
+.te-warn, .te-flash { display: flex; align-items: center; gap: 8px; }
+.te-warn svg, .te-flash svg { flex-shrink: 0; }
+
+/* ---------------- Der Farbwaehler ----------------
+   Schwebt ueber der Seite (position: fixed), damit ihn kein Rand einer
+   Gruppe abschneidet. Die Flaeche zeigt Saettigung nach rechts und
+   Helligkeit nach oben fuer den Farbton darunter; die Maske darueber dunkelt
+   ab, was core/themes.js fuer diese Farbe nicht zulaesst. */
+.cp {
+  position: fixed; z-index: 300;
+  width: 256px;
+  padding: 12px;
+  border-radius: var(--r-md);
+  background: var(--panel);
+  box-shadow: var(--shadow-lg), inset 0 0 0 1px rgb(var(--t-fg) / .08);
+  animation: fade .12s var(--ease);
+}
+.cp-area {
+  position: relative;
+  height: 150px;
+  border-radius: calc(8px * var(--r-k));
+  cursor: crosshair;
+  touch-action: none;
+  overflow: hidden;
+}
+.cp-area:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Gezeichnet wird die Flaeche in appearance.js (paintArea) - samt Maske. */
+.cp-field { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.cp-knob {
+  position: absolute;
+  width: 14px; height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 3px rgba(0, 0, 0, .45), 0 2px 6px rgba(0, 0, 0, .5);
+  pointer-events: none;
+}
+/* Der Farbton-Regler traegt den Farbkreis als Spur. */
+.cp-hue {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 12px;
+  margin: 12px 0 10px;
+  border-radius: 999px;
+  background: linear-gradient(to right, #f00, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00);
+  cursor: pointer;
+}
+.cp-hue::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .35), 0 2px 5px rgba(0, 0, 0, .45);
+}
+.cp-foot { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 6px 10px; }
+.cp-now { width: 28px; height: 28px; border-radius: calc(7px * var(--r-k)); box-shadow: inset 0 0 0 1px rgb(var(--t-fg) / .16); }
+.cp-hex {
+  padding: 6px 9px;
+  border: none; border-radius: var(--r-sm);
+  background: var(--surface-2); color: var(--text);
+  font: 600 12.5px/1.4 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+}
+.cp-hex:focus { outline: none; box-shadow: 0 0 0 2px var(--accent-sf); }
+.cp-hex.is-bad { box-shadow: 0 0 0 2px rgb(var(--t-red) / .55); }
+.cp-hint { grid-column: 1 / -1; font-size: 11px; line-height: 1.4; color: var(--text-3); }
+
 /* Quellen und Projekt unter About - dieselbe Zwei-Spalten-Form wie die
    Versionsangaben (.about-grid), die rechte Spalte rechtsbuendig. */
 .credit-list {

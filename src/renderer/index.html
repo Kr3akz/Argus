@@ -1569,13 +1569,47 @@
         </div>
         <div class="theme-grid" id="theme-presets"></div>
 
-        <div class="theme-own hidden" id="theme-own">
+        <div class="theme-own" id="theme-own">
           <div class="theme-subhead">
             <b>Your themes</b>
             <span id="theme-own-count"></span>
           </div>
           <div class="theme-grid" id="theme-custom"></div>
         </div>
+      </div>
+
+      <!-- Der Editor bearbeitet immer das GEWAEHLTE Theme. Presets bleiben,
+           wie sie sind: die erste Aenderung legt eine Kopie an (applyPatch,
+           edit), und ab da arbeitet der Editor an der Kopie weiter. -->
+      <div class="settings-group theme-editor" id="theme-editor">
+        <div class="settings-group-head">
+          <h3>Customize</h3>
+          <p id="theme-editor-note"></p>
+        </div>
+
+        <div class="te-head">
+          <input id="theme-name" class="te-name" maxlength="40" spellcheck="false" autocomplete="off"
+                 aria-label="Theme name">
+          <span class="te-from" id="theme-from"></span>
+          <div class="te-actions">
+            <button class="btn-sm" id="theme-duplicate" title="Make a copy of this theme"></button>
+            <button class="btn-sm" id="theme-reset"></button>
+            <button class="btn-sm danger" id="theme-delete"></button>
+          </div>
+        </div>
+
+        <div class="te-cols">
+          <div class="te-col">
+            <div class="te-label">Colours</div>
+            <div class="te-rows" id="theme-colors"></div>
+          </div>
+          <div class="te-col">
+            <div class="te-label">Shape &amp; effects</div>
+            <div class="te-rows" id="theme-shape"></div>
+          </div>
+        </div>
+
+        <div class="te-warnings" id="theme-warnings"></div>
       </div>
 
       </div>
