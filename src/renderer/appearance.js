@@ -1,6 +1,6 @@
 /**
- * Unterreiter "Appearance" in den Einstellungen: Themes waehlen, anlegen und
- * bearbeiten.
+ * Unterreiter "Appearance" in den Einstellungen: Themes waehlen, anlegen,
+ * bearbeiten und teilen, dazu die Groesse der Oberflaeche.
  *
  * WAS HIER STEHT UND WAS NICHT:
  *   Hier wird gezeichnet und geklickt. Gerechnet wird im Hauptprozess
@@ -277,10 +277,62 @@ const Appearance = (() => {
     }
   }
 
+  /* --------------------------- Groesse und Teilen --------------------------- */
+
+  function renderExtras() {
+    const zoom = $('theme-zoom');
+    if (zoom) {
+      zoom.innerHTML = state.zoomSteps.map(z => `
+        <button class="filter-chip${z === state.zoom ? ' active' : ''}" data-zoom="${z}"
+                aria-pressed="${z === state.zoom ? 'true' : 'false'}">${Math.round(z * 100)} %</button>`).join('');
+    }
+    const share = $('theme-share');
+    if (share) share.innerHTML = Icon.copy(13) + '<span>Copy code</span>';
+    const note = $('theme-share-note');
+    if (note) note.textContent = `Copies a code for “${state.activeTheme.name}” to the clipboard`;
+  }
+
+  /* Rueckmeldung zum Teilen und Einfuegen, direkt darunter statt oben im
+     Editor - wer einen Code einfuegt, schaut auf das Feld. */
+  let shareTimer = null;
+  function shareStatus(kind, text) {
+    const el = $('theme-share-status');
+    if (!el) return;
+    el.className = `settings-note ${kind}`;
+    el.textContent = text;
+    clearTimeout(shareTimer);
+    shareTimer = setTimeout(() => el.classList.add('hidden'), 6000);
+  }
+
+  async function share() {
+    await settle();
+    const res = await window.api.themeShareCode(state.active);
+    if (!res || !res.ok) { shareStatus('warn', res?.error || 'Could not make a code for this theme.'); return; }
+    const c = await window.api.copyText(res.code);
+    if (c && c.ok) shareStatus('ok', `Copied the code for “${state.activeTheme.name}”. Paste it anywhere to send it.`);
+    else shareStatus('warn', 'Could not reach the clipboard.');
+  }
+
+  async function importCode() {
+    const input = $('theme-import');
+    const code = (input?.value || '').trim();
+    if (!code) { shareStatus('warn', 'Paste a code into the field first.'); input?.focus(); return; }
+    await settle();
+    const res = await send({ import: code });
+    render();
+    if (res && res.ok) {
+      input.value = '';
+      shareStatus('ok', `Added “${state.activeTheme.name}” and switched to it.`);
+    } else {
+      shareStatus('warn', res?.error || 'That code did not work.');
+    }
+  }
+
   function render() {
     if (!state) return;
     renderCards();
     renderEditor();
+    renderExtras();
   }
 
   /* ------------------------------- Auftraege ------------------------------- */
@@ -337,7 +389,7 @@ const Appearance = (() => {
       renderCards();
       /* Das Preset wurde eben kopiert - Kopf und Knoepfe gehoeren jetzt zur
          Kopie. Die Werte stehen schon richtig da. */
-      if (res.active !== before) renderHead();
+      if (res.active !== before) { renderHead(); renderExtras(); }
       syncValues();
       renderWarnings();
     }
@@ -607,6 +659,15 @@ const Appearance = (() => {
     const sw = e.target.closest('.te-swatch');
     if (sw) { openPicker(sw.dataset.color, sw); return; }
 
+    const zb = e.target.closest('#theme-zoom [data-zoom]');
+    if (zb) {
+      const z = Number(zb.dataset.zoom);
+      if (state && z !== state.zoom) act({ zoom: z });
+      return;
+    }
+    if (e.target.closest('#theme-share')) { share(); return; }
+    if (e.target.closest('#theme-import-add')) { importCode(); return; }
+
     if (e.target.closest('#theme-duplicate')) {
       act({ duplicate: state.active }, res => { if (res?.ok) focusName(); });
       return;
@@ -674,6 +735,11 @@ const Appearance = (() => {
   });
 
   document.addEventListener('keydown', e => {
+    if (e.target.matches('#theme-import') && e.key === 'Enter') {
+      e.preventDefault();
+      importCode();
+      return;
+    }
     if (e.target.matches('#theme-name, #theme-colors .te-hex') && e.key === 'Enter') {
       e.preventDefault();
       e.target.blur();

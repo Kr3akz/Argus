@@ -97,11 +97,14 @@ src/core/     logic, entirely independent of the interface
   wfm-auctions.js contracts: riven, lich and sister auctions
   transactions.js local trade ledger
   updates.js      release check, download, SHA256 verification
+  themes.js       themes: presets, the tones derived from them, limits, share codes
 src/main/     Electron main process (main window + overlay window)
 src/renderer/ interface
   index.html    main window
   overlay.html  overlay window, its own lean interface
-  style.css     both windows
+  style.css     every window; all themeable colours are the --t-* channels in :root
+  theme.js      puts the chosen theme on each window before it first draws
+  appearance.js Settings → Appearance: gallery, editor, colour picker, sharing
   assets/mod/   frame textures for the mod cards (game assets)
   assets/icons/ sidebar symbols, used as CSS masks (colour comes from the theme)
 ```
@@ -144,6 +147,16 @@ node src/cli/log-test.js
 
 Replays the existing `EE.log` and shows what Argus would have recognised. With `--live`
 the test waits for the next fissure mission.
+
+```bash
+npm run theme-test
+```
+
+Checks the themes: the default theme resolves to exactly the values in `:root`, every
+preset stays readable (text, the ink on the accent, status colours), the limits keep
+every colour dark or light where it has to be, and share codes survive the round trip —
+while a tampered one is turned away. Run it after touching `themes.js` or the `--t-*`
+channels in `style.css`.
 
 ```bash
 npm run check-farm

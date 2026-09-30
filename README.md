@@ -80,6 +80,7 @@ Windows APIs.
 | **Trading** | Orders and contracts on warframe.market straight from your inventory, with a suggested price taken from the sellers who are in game rather than the ones who left days ago, plus a local trade ledger in platinum *and* ducats — charted, and checked against what your balance actually did. Every data sheet carries ninety days of *completed* trades, and the Insights tab says which primes are due to be vaulted next and what of that is on your shelves. → [details](docs/trading.md) |
 | **Builds** | Build loadouts against what you actually own, or import from Overframe. → [details](docs/builds.md) |
 | **Farming & mining** | Best nodes per material and the ores and gems of all three landscapes, sorted by vein colour. → [details](docs/farming.md) |
+| **Themes** | Nine looks to pick from — Orokin gold, Void violet, true black for OLED screens, a red–green safe one — or your own: six colours, corners, glow and blur, tuned live and shared as a single line of text. The panels over the game change with it. → [details](docs/themes.md) |
 
 ---
 

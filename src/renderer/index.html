@@ -1612,6 +1612,48 @@
         <div class="te-warnings" id="theme-warnings"></div>
       </div>
 
+      <div class="settings-cols">
+        <!-- Die Groesse gehoert NICHT zum Theme: sie haengt am Bildschirm und
+             reist deshalb auch nicht im Teilen-Code mit. -->
+        <div class="settings-group">
+          <div class="settings-group-head">
+            <h3>Interface size</h3>
+            <p>Scales everything in this window. The panels over the game keep their own size —
+               set that under Overlays → Arrange overlays.</p>
+          </div>
+          <div class="te-zoom" id="theme-zoom" role="group" aria-label="Interface size"></div>
+        </div>
+
+        <!-- Ein Theme passt in eine Zeile Text. Eingefuegt wird von Hand
+             (Strg+V ins Feld) - Argus liest die Zwischenablage nie selbst,
+             siehe copyText in preload.cjs. -->
+        <div class="settings-group">
+          <div class="settings-group-head">
+            <h3>Share</h3>
+            <p>A theme fits in one line of text. Send it to someone, and they paste it here.</p>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <b>Share the theme you are using</b>
+              <span id="theme-share-note">Copies a code to the clipboard</span>
+            </div>
+            <button class="btn-sm" id="theme-share"></button>
+          </div>
+          <div class="setting-row te-import">
+            <div class="setting-info">
+              <b>Add a shared theme</b>
+              <span>Paste a code starting with argus-theme: — it joins your themes and is picked right away</span>
+            </div>
+          </div>
+          <div class="te-import-form">
+            <input id="theme-import" class="te-code" spellcheck="false" autocomplete="off"
+                   placeholder="argus-theme:1:…" aria-label="Theme code">
+            <button class="btn-sm" id="theme-import-add">Add theme</button>
+          </div>
+          <div class="settings-note hidden" id="theme-share-status"></div>
+        </div>
+      </div>
+
       </div>
 
       <!-- ---- Unterreiter: Inventory ---- -->

@@ -12326,6 +12326,23 @@ label.te-row { cursor: pointer; user-select: none; }
 .te-warn, .te-flash { display: flex; align-items: center; gap: 8px; }
 .te-warn svg, .te-flash svg { flex-shrink: 0; }
 
+/* Groesse: vier Stufen als Chips - eine Wahl aus wenigen, kein Regler. */
+.te-zoom { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 0 2px; }
+.te-zoom .filter-chip { padding: 7px 14px; font-size: 12px; font-variant-numeric: tabular-nums; }
+
+/* Einfuegen: das Feld nimmt die Breite, der Knopf bleibt daneben. */
+.te-import { padding-bottom: 6px; }
+.te-import-form { display: flex; gap: 8px; padding-bottom: 12px; }
+.te-code {
+  flex: 1; min-width: 0;
+  padding: 8px 12px;
+  border: none; border-radius: var(--r-sm);
+  background: var(--surface-2); color: var(--text);
+  font: 12px/1.4 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+}
+.te-code::placeholder { color: var(--text-3); }
+.te-code:focus { outline: none; box-shadow: 0 0 0 2px var(--accent-sf); }
+
 /* ---------------- Der Farbwaehler ----------------
    Schwebt ueber der Seite (position: fixed), damit ihn kein Rand einer
    Gruppe abschneidet. Die Flaeche zeigt Saettigung nach rechts und

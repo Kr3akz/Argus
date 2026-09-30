@@ -344,11 +344,18 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: false,
+      /* Die Groesse der Oberflaeche gleich beim Laden - ueber setZoomFactor
+         danach stuende das erste Bild noch in 100 %. */
+      zoomFactor: appearance.zoom
     }
   });
 
   win.loadFile(path.join(__dirname, '../renderer/index.html'));
+  applyZoom();
+  /* Nach einem Neuladen gilt sonst wieder der Wert von oben, nicht der
+     zuletzt gewaehlte. */
+  win.webContents.on('did-finish-load', applyZoom);
   win.once('ready-to-show', () => win.show());
 
   /* Ohne Hauptfenster hat das Overlay keinen Zweck. Und ein nur verstecktes
@@ -8071,6 +8078,34 @@ async function handleRelicReward(ev) {
 const themedWindows = () => [win, overlayWin, tagWin, rivenWin, relicPickWin]
   .filter(w => w && !w.isDestroyed());
 
+/**
+ * Groesse der Oberflaeche - NUR das Hauptfenster.
+ *
+ * Die Felder ueber dem Spiel haben ihre eigene Groesse (Rundgang "Arrange
+ * overlays"), und die Preisschilder liegen auf den Pixeln der Karten; ein
+ * Zoom dort schoebe sie neben ihre Karten. Chromium fuehrt den Zoom je
+ * Adresse, und bei file:// ist das die ganze Adresse der Seite - index.html
+ * zoomt also nicht overlay.html oder tags.html mit.
+ *
+ * Die Mindestgroesse waechst mit: bei 125 % braucht das Layout 125 % der
+ * Punkte, sonst bekaeme es weniger Platz, als es bei 100 % mindestens hat.
+ * Gedeckelt auf die Arbeitsflaeche des Bildschirms - ein Mindestmass, das
+ * nicht auf den Schirm passt, liesse sich nicht mehr einhalten.
+ */
+function applyZoom() {
+  if (!win || win.isDestroyed()) return;
+  const z = appearance.zoom || 1;
+  win.webContents.setZoomFactor(z);
+  const area = screen.getDisplayMatching(win.getBounds()).workAreaSize;
+  const minW = Math.min(Math.round(WINDOW_MIN.width * z), area.width);
+  const minH = Math.min(Math.round(WINDOW_MIN.height * z), area.height);
+  win.setMinimumSize(minW, minH);
+  if (!win.isMaximized() && !win.isFullScreen()) {
+    const [w, h] = win.getSize();
+    if (w < minW || h < minH) win.setSize(Math.max(w, minW), Math.max(h, minH));
+  }
+}
+
 function broadcastTheme() {
   for (const w of themedWindows()) w.webContents.send('theme:changed', themeResolved);
   /* Der Fensterhintergrund zeigt sich nicht nur vor dem ersten Bild, sondern
@@ -8112,9 +8147,11 @@ ipcMain.handle('appearance:get', async () => ({ ok: true, ...describeAppearance(
 ipcMain.handle('appearance:set', async (_e, patch) => {
   const r = applyPatch(appearance, patch);
   if (!r.ok) return { ok: false, error: r.error, ...describeAppearance(appearance) };
+  const zoomBefore = appearance.zoom;
   appearance = r.appearance;
   themeResolved = resolveActive(appearance);
   broadcastTheme();
+  if (appearance.zoom !== zoomBefore) applyZoom();
   saveAppearance(patch && typeof patch === 'object' && 'edit' in patch ? 400 : 0);
   return { ok: true, created: r.created || null, ...describeAppearance(appearance) };
 });

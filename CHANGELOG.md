@@ -21,6 +21,43 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.19.0] - 2026-09-30
+
+### Added
+
+- **Themes.** Settings has a new *Appearance* tab with nine looks to choose
+  from: Argus, Orokin, Void, Corpus, Grineer, Infested, Midnight (true black
+  for OLED screens), High contrast, and Red–green safe (blue and orange instead
+  of green and red). Each is a card with a small window drawn in its own
+  colours, and one click applies it everywhere at once — the main window, the
+  overlay, the price tags on the reward screen, the relic recommendation and
+  the riven panels.
+
+- **Themes of your own.** Pick six colours — accent, background, surface tint,
+  text, positive and negative — and set the corners from square to round, how
+  far cards stand out, the glow at the top of the window and the blur behind
+  panels. Everything applies while you drag. The shades in between are worked
+  out for you, with the spacing of the default theme, so text stays readable;
+  if something does get hard to see, a line under the editor says so. Presets
+  never change — your first edit makes a copy you can rename. Up to 50 themes
+  of your own.
+
+- **Share a theme as one line of text.** *Copy code* puts it on the clipboard;
+  whoever pastes it under *Add a shared theme* has it straight away.
+
+- **Interface size.** 90, 100, 110 or 125 % for the main window. The panels
+  over the game keep the size you gave them.
+
+### Changed
+
+- Colours that mean something in the game now stay the same in every theme:
+  gold for ducats, Prime, the *Rare* rarity and buying; blue for platinum and
+  selling; the day and night colours of the open worlds. The platinum price in
+  the set list uses that fixed blue now, so it can never look like a ducat
+  price.
+- A few almost identical shades were merged into one — the start of the level
+  bar is a touch less teal, and vaulted items and negative stats share one red.
+
 ## [1.18.0] - 2026-09-30
 
 ### Added
