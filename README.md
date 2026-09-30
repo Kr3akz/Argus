@@ -4,7 +4,7 @@
 
 # Argus
 
-**A mastery rank planner and live companion for Warframe.**
+**A mastery planner and live companion for Warframe.**
 
 *The hundred-eyed watchman of Greek myth — he never closes all his eyes at once.*
 
@@ -13,52 +13,76 @@
 [![Licence](https://img.shields.io/github/license/Kr3akz/Argus?style=flat-square&color=4a9eff)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Windows-4a9eff?style=flat-square)
 
+**[Download](https://github.com/Kr3akz/Argus/releases/latest)** ·
+[What it does](#what-it-does) ·
+[Is it safe?](#is-it-safe-can-i-get-banned) ·
+[Getting started](#getting-started) ·
+[Documentation](#documentation)
+
 </div>
 
 ---
 
-Argus shows which items you are still missing for mastery rank, what pays off fastest,
-and breaks farming goals down to the raw materials. While you play, an overlay keeps the
-open-world cycles, void fissures and your goals on screen — and when a relic reward
-screen opens, it puts a platinum price and ducat value under all four parts.
+Argus runs next to Warframe and keeps track of what the game spreads across a dozen
+menus and websites: which items you still need for mastery and what they really cost you,
+what your prime parts, mods and rivens are worth, what is happening in the world right
+now, and where anything drops.
 
-**Windows only.** The overlay, the log reader and the inventory lookup all rely on
-Windows APIs.
+While you play, it works inside the game — prices under the four cards of a relic reward
+screen, your relics ranked on the selection screen, riven rolls side by side while you
+cycle. It does all of that by *looking*: it never changes the game, and never logs in to
+Warframe as you. Your inventory comes from the game already running on your PC,
+read-only, only if you allow it, and it never leaves your machine.
 
-![Open goals with the materials they still need](docs/img/01-mastery.png)
+**Windows only.** The panels over the game, the log reader and the inventory lookup rely
+on Windows APIs. Free and open source under the GPL.
+
+![Your profile, and the goals you are farming broken down into the parts they still need](docs/img/01-mastery.png)
 
 <details>
 <summary><b>More screenshots</b></summary>
 
 <br>
 
-**Live world state — cycles, fissures and timers**
+**Live world state — every void fissure, with its era and how long it still runs**
 
 ![Live world state](docs/img/02-worldstate.png)
 
-**Inventory — mods and arcanes as the cards they are in game**
+**Weekly rotation — everything that resets this week, ticked off from your save**
 
-![Inventory](docs/img/03-inventory.png)
+![Weekly rotation](docs/img/03-weekly.png)
 
-**Ducats — what to hand Baro, and the relic planner**
+**Inventory — mods as the cards they are in game**
 
-![Ducats](docs/img/04-ducats.png)
+![Inventory](docs/img/04-inventory.png)
+
+**Rivens — each one graded by what the market wants on that weapon**
+
+![Rivens](docs/img/05-rivens.png)
+
+**Ducats & Baro — melt or sell, part by part**
+
+![Ducats and Baro](docs/img/06-ducats.png)
+
+**Trading — the ledger, charted**
+
+![Trading](docs/img/07-trading.png)
+
+**Drop tables — what the Stalker drops, with both rolls counted**
+
+![Drop tables](docs/img/08-droptables.png)
+
+**Farming guide — the best nodes per material**
+
+![Farming guide](docs/img/09-farmguide.png)
 
 **Builds — against what you actually own**
 
-![Builds](docs/img/05-builds.png)
+![Builds](docs/img/10-builds.png)
 
-**Trading — orders, contracts and the ledger**
+**Themes — nine looks, or your own**
 
-![Trading](docs/img/06-trading.png)
-
-**Farming guide — best nodes per material**
-
-![Farming guide](docs/img/07-farmguide.png)
-
-**Settings — version, hotkeys and notifications**
-
-![Settings](docs/img/08-settings.png)
+![Themes](docs/img/11-themes.png)
 
 </details>
 
@@ -66,21 +90,90 @@ Windows APIs.
 
 ## What it does
 
-| | |
-|---|---|
-| **Mastery planning** | Every item you have not mastered, ranked by what it actually costs you. Set goals and Argus resolves them down to the raw materials — including how long the build actually takes, whether the vault is shut on it, and which blueprints want a Forma before you can even start. |
-| **Update vendors** | The eighteen shops that sell a Warframe instead of dropping it — Otak, Zorba, Acrithis, the shrine at Cetus — each with its price list lined up against what you already own, down to the blueprints you bought months ago and forgot. → [details](docs/vendors.md) |
-| **Live world state** | Open-world cycles, void fissures, sorties, Nightwave, invasions, Steel Path and Baro Ki'Teer, with desktop notifications for the fissures you care about. → [overlay & notifications](docs/controls.md) |
-| **Weekly rotation** | Everything that resets once a week in one place — Archon Hunt, The Circuit, Deep and Temporal Archimedea, Netracells, Kahl's Garrison, and the vendor resets for Teshin, Bird 3, Yonta, Acrithis, Palladino and Nightwave. |
-| **Relic rewards** | The reward screen opens, Argus reads all four parts off the screen and puts the platinum price and ducat value under each card — inside the game. Picking the relic to take in, it shows what each of yours is worth, narrowed to the era the fissure actually accepts. → [details](docs/relics.md) |
-| **Inventory** | Your mods, arcanes and relics as the cards they are in game, with data sheets, drop locations and rank-by-rank values — and the ones you do *not* have alongside them. Everything carries its warframe.market price, at the rank you hold; sets are ranked by what the part *you* own is worth, not by what the full set costs. Anything you already have listed on warframe.market says so on the item itself, and sets heading for the vault carry the date. → [details](docs/inventory.md) |
-| **Rivens** | Every riven you own with the numbers the game shows and a grade from S to F — based on which stats the *pricey* rivens of that weapon carry on warframe.market, not on guesswork. Veiled rivens with their challenges, a riven finder for warframe.market auctions, and grades on the cycle screen while you roll. → [details](docs/rivens.md) |
-| **Foundry** | What is building, when it is done, and what has been finished for weeks without you noticing — plus what the Helminth is digesting, and which weapons are built out of other weapons that you should rank to 30 first. → [details](docs/foundry.md) |
-| **Ducats & Baro** | What every prime part is worth melted against sold, which of them can no longer be farmed, and a shopping list that lines Baro's manifest up against what you already own. → [details](docs/baro.md) |
-| **Trading** | Orders and contracts on warframe.market straight from your inventory, with a suggested price taken from the sellers who are in game rather than the ones who left days ago, plus a local trade ledger in platinum *and* ducats — charted, and checked against what your balance actually did. Every data sheet carries ninety days of *completed* trades, and the Insights tab says which primes are due to be vaulted next and what of that is on your shelves. → [details](docs/trading.md) |
-| **Builds** | Build loadouts against what you actually own, or import from Overframe. → [details](docs/builds.md) |
-| **Farming & mining** | Best nodes per material and the ores and gems of all three landscapes, sorted by vein colour. → [details](docs/farming.md) |
-| **Themes** | Nine looks to pick from — Orokin gold, Void violet, true black for OLED screens, a red–green safe one — or your own: six colours, corners, glow and blur, tuned live and shared as a single line of text. The panels over the game change with it. → [details](docs/themes.md) |
+### Inside the game
+
+- **Prices on the reward screen.** When a relic reward screen opens, Argus reads the four
+  parts off the screen and puts the platinum price, the ducat value and what the whole
+  set is worth under each card — in the game, not in a second window.
+  → [Relic rewards](docs/relics.md)
+- **The best relic for this fissure.** On the relic selection screen, a small panel ranks
+  the relics you own by what one crack is worth, narrowed to the era the fissure accepts.
+  → [Relic rewards](docs/relics.md)
+- **Riven rolls side by side.** While you cycle a riven, your current and your new roll
+  stand next to each other — every stat marked better or worse, and a grade for both —
+  so you can decide before you pick. → [Rivens](docs/rivens.md)
+- **The overlay window.** Open-world cycles, void fissures, your relics and goals on top
+  of the running game, on a hotkey. → [Controls](docs/controls.md)
+- **Notifications** for the void fissures you care about, and for whispers in game —
+  if you like, only the ones copied from warframe.market, so a ping means someone wants
+  to trade. → [Controls](docs/controls.md)
+
+### Planning
+
+- **Mastery.** Every item you have not mastered, ranked by what it actually costs you.
+  Goals resolve down to the raw materials and are checked against what you own — with how
+  long the build takes, whether the vault is shut on it, and which blueprints want a
+  Forma before you can even start.
+- **Foundry and crafting chains.** What is building and when it is done, what has been
+  finished for weeks without you noticing, what the Helminth is digesting — and which
+  weapons are built out of other weapons you should rank to 30 first.
+  → [Foundry](docs/foundry.md)
+- **Update vendors.** The shops that sell a Warframe instead of dropping it — Otak, Zorba,
+  Acrithis, the shrine at Cetus — each price list lined up against what you already own.
+  → [Vendors](docs/vendors.md)
+- **Live world state.** Open-world cycles, void fissures, the sortie, the Archon hunt,
+  Nightwave, alerts, invasions, syndicate bounties, Steel Path and Baro's countdown.
+- **Weekly rotation.** Everything that resets once a week — Archon Hunt, The Circuit,
+  Deep and Temporal Archimedea, Netracells, Kahl's Garrison, the Descendia and the vendor
+  resets — ticked off by itself wherever your own save records it.
+
+### What you own
+
+- **Inventory.** Mods, arcanes and relics as the cards they are in game, with data sheets
+  and rank-by-rank values. Every relic in the game, vaulted or farmable, owned or not.
+  Your sets, ranked by what the part *you* hold is worth — and a warframe.market price on
+  everything, at the rank you have. → [Inventory](docs/inventory.md)
+- **Rivens.** Every riven with its stats exactly as the game shows them and a grade from
+  S to F — taken from which stats the *pricey* rivens of that weapon carry on
+  warframe.market, not from guesswork. Veiled rivens with their challenges.
+  → [Rivens](docs/rivens.md)
+- **Ducats & Baro.** What every prime part is worth melted against sold, what can no
+  longer be farmed, a relic planner, and Baro's manifest lined up against what you
+  already own. → [Ducats and Baro](docs/baro.md)
+
+### Trading
+
+- **warframe.market, straight from your inventory.** Orders and contracts for what you
+  own, with a suggested price taken from the sellers who are in game rather than the ones
+  who left days ago. A price lookup for anything, a riven finder, and ninety days of
+  *completed* trades on every data sheet. → [Trading](docs/trading.md)
+- **A trade ledger** in platinum *and* ducats — charted, and checked against what your
+  balance actually did. **Insights** says which primes are heading for the vault next,
+  and what of that is on your shelves. → [Trading](docs/trading.md)
+
+Argus never messages anyone for you: whispers are copied to your clipboard, and you send
+them yourself.
+
+### Looking things up
+
+- **Drop tables.** Every drop DE publishes, searchable by item, location or enemy and
+  narrowed by source, rarity, rotation, planet and chance — with the real chance of enemy
+  drops, the effort each one takes on average, and what changed with the last update.
+  → [Drop tables](docs/droptables.md)
+- **Farming & mining.** The best nodes per material, and every ore and gem of the three
+  landscapes sorted by vein colour. → [Farming](docs/farming.md)
+- **Builds.** Loadouts checked against what you own, or imported from Overframe — with
+  the forma, catalysts and endo they add up to. → [Builds](docs/builds.md)
+
+### Your way
+
+- **Themes.** Nine looks to pick from — Orokin gold, Void violet, true black for OLED
+  screens, a red–green safe one — or your own: six colours, corners, glow and blur,
+  shared as a single line of text. The panels over the game change with it.
+  → [Themes](docs/themes.md)
+- **Everything where you want it.** Move and resize each panel Argus draws over the game
+  on a stage shaped like your game window, pick your own hotkeys, and switch off whatever
+  you do not need. → [Controls](docs/controls.md)
 
 ---
 
@@ -90,125 +183,51 @@ The short answer is **yes, it is safe, and you will not get banned.**
 
 The quick breakdown:
 
-- **Argus changes nothing about the game.** No DLL injection, no hooks, no memory writes, and no input automation or macros.
-- **No network interception.** It never sniffs or intercepts the game's encrypted network traffic (which would violate Warframe's EULA).
-- **It never talks to Warframe's servers as if it were you.** No sign-in, no borrowed session, no API calls on your behalf. Your inventory is read from the memory of the game already running on your PC and never leaves the machine.
-- **Read-only and opt-in.** Memory reading is strictly read-only (`PROCESS_VM_READ`), happens only when you ask for it or after a zone load, and remains completely disabled unless you turn it on.
-- **Built-in rate limiting.** The one thing still fetched from DE — your *public* profile — has mandatory cooldowns to protect you from their IP login throttles.
+- **Argus changes nothing about the game.** No DLL injection, no hooks, no memory writes,
+  and no input automation or macros.
+- **No network interception.** It never sniffs or intercepts the game's encrypted network
+  traffic (which would violate Warframe's EULA).
+- **It never talks to Warframe's servers as if it were you.** No sign-in, no borrowed
+  session, no API calls on your behalf. Your inventory is read from the memory of the game
+  already running on your PC and never leaves the machine.
+- **Read-only and opt-in.** Memory reading is strictly read-only (`PROCESS_VM_READ`),
+  happens only when you ask for it or after a zone load, and remains completely disabled
+  unless you turn it on.
+- **Built-in rate limiting.** The one thing still fetched from DE — your *public*
+  profile — has mandatory cooldowns to protect you from their IP login throttles.
 
-One caveat worth stating plainly, because DE states it themselves: their policy on third-party software has **no list of approved tools** and one rule — *use it at your own risk*. Nothing here is approved; it is tolerated, as tools of this kind have been for years. That is a position DE could revise at any time, and it would not be announced in this repository.
+One caveat worth stating plainly, because DE states it themselves: their policy on
+third-party software has **no list of approved tools** and one rule — *use it at your own
+risk*. Nothing here is approved; it is tolerated, as tools of this kind have been for
+years. That is a position DE could revise at any time, and it would not be announced in
+this repository.
 
-Every single mechanism, permission, and endpoint is explained in detail:  
+Every mechanism, permission and endpoint is explained in detail:
 **→ [Read the full security & safety breakdown](docs/security.md)**
 
 ---
 
-## Install
+## Getting started
 
-1. Download the latest **`Argus-<version>-Setup.exe`** from the
-   [releases page](https://github.com/Kr3akz/Argus/releases).
-2. Run it. No administrator rights needed — it installs for your user account.
-3. Start it and enter your account ID (the app tells you where to find it).
+1. **Download** `Argus-<version>-Setup.exe` from the
+   [latest release](https://github.com/Kr3akz/Argus/releases/latest) and run it — no
+   administrator rights needed. A **portable** `.exe` is on the same page.
+2. **Windows will warn you**, because the releases are not code-signed: **More info →
+   Run anyway**. Every release ships a `SHA256SUMS.txt` to check your file against.
+3. **Start Warframe and log in**, then press **Allow and continue** in Argus. It finds
+   your account and your inventory by itself — there is nothing to look up, copy or
+   paste. No game running, or playing on console? **Enter your account ID instead**: you
+   get everything except the inventory.
+4. **A short tour** shows you around, pointing at each part of the window as it goes.
+   **Esc** ends it; **Settings → General → Guided tour** brings it back.
 
-There is also a **portable** `.exe` on the same page if you would rather not install
-anything. It keeps its data in the same place as the installed version.
+Argus checks for a new version once an hour and installs it only when you click —
+after checking the download against the release's checksum. Your goals, builds, notes
+and themes stay where they are.
 
-### "Windows protected your PC"
-
-The releases are not code-signed — a certificate costs a few hundred euros a year, and
-this is a hobby project. So SmartScreen will warn you. Click **More info → Run anyway**
-if you want to proceed.
-
-If you would rather verify what you downloaded, every release ships a
-`SHA256SUMS.txt`. Compare it against your file:
-
-```powershell
-Get-FileHash "Argus-1.0.0-Setup.exe" -Algorithm SHA256
-```
-
-Some antivirus products also flag the app. That is worth explaining rather than waving
-away: Argus can read the memory of the running Warframe process, which is a pattern
-heuristics look for. What it actually does with that is described under
-[Is this safe?](docs/security.md) — and it is **off until you switch it on**.
-
-### Updates
-
-Argus tells you when a newer version exists. Once an hour it asks GitHub for the latest
-release; if there is one, an **Update** badge appears in the title bar. Clicking it shows
-what changed before anything is downloaded.
-
-The download itself is the same file from the same releases page — but the app does the
-checking for you. It fetches the release's `SHA256SUMS.txt`, hashes the file while it
-downloads, and compares the two. **If they do not match, the file is deleted instead of
-run.** Without a code-signing certificate that comparison is the only thing standing
-between "the file built from this source" and "some .exe"; it is therefore not optional,
-and a release without a checksum file sends you to the browser rather than installing
-anything.
-
-Then the installer runs in the background, without a window of its own: Argus closes so
-its files can be replaced and comes back on the new version, in the same folder it was
-installed to before. It asks nothing further — the window you clicked in has already
-shown the version, what changed and the checksum it verified. On the **portable** build
-there is nothing to install: the folder with the new `.exe` opens and you swap the old
-one yourself.
-
-The hourly check can be turned off under **Settings → About Argus**. It is the only
-connection Argus opens without you pressing something, and nothing is ever downloaded
-without your say-so.
-
-### First run
-
-Argus asks one question: may it read from the running game?
-
-Start Warframe, log in, then press **Allow and continue**. Argus finds your account and
-your inventory by itself — there is nothing to look up, copy or paste.
-
-What you are agreeing to, in plain terms:
-
-- **Reading only.** Argus never changes anything in the game, never plays for you, and
-  never touches the game's network traffic.
-- **Your password is never involved**, and neither is your session. Argus does not sign
-  in anywhere and does not ask Warframe's servers for anything on your behalf.
-- **Your inventory never leaves this PC.** The running game already holds it in memory;
-  Argus reads it there and stops. Nothing is uploaded, nothing is fetched.
-- **What stays on your PC:** your account ID — needed for the *public* profile page,
-  the same 24 characters you could copy off warframe.com yourself — and a copy of your
-  inventory, so Argus need not look again.
-
-One practical detail: the game only puts your inventory in memory **when it loads a
-zone**. If nothing shows up, travel to a relay or your dojo and back to your ship, then
-fetch again. If it still will not, *Scan log* under **Settings → Inventory access** says
-what the search actually did and where it stopped — it holds no account ID and no
-inventory contents, so a screenshot of it can go to whoever is helping you.
-
-The mechanics behind that are spelled out under [Is this safe?](docs/security.md), and you
-can switch it off again at any time under Settings.
-
-#### Game not running, or playing on console?
-
-Take the second route on the same screen: **Enter your account ID instead**. That works
-without the game and on every platform — you then get everything except the inventory,
-which only the running game can provide. It also leaves the memory access switched off.
-
-1. Sign in on warframe.com
-2. Open `https://www.warframe.com/api/user-data`
-3. Copy the value of `user_id` — 24 characters, digits and `a`–`f`
-
-Since Update 38.0.8 the lookup only works by account ID. Tools that still ask for your
-display name are out of date.
-
-Either way, the first start downloads about 12 MB of public game data (DE's item
-catalogue and the mod list). Everything is stored under `%APPDATA%\Argus\data` —
-which means your goals, builds and notes survive an update, and an uninstall leaves them
-alone.
-
-#### The tour
-
-Once the window is up, a short guided tour runs by itself: fifteen stations through every
-tab, each one marking the piece of the window it is talking about. It takes about a
-minute, **Esc** ends it at any point, and it only explains — no switch is flipped along
-the way. It runs once; **Settings → Guided tour → Start the tour** brings it back
-whenever you want it.
+**→ [Install, updates and first run](docs/install.md)** has the details: what exactly you
+agree to on the first start, what to do if your inventory does not show up, how updates
+are verified, and where your data is kept.
 
 ---
 
@@ -216,15 +235,19 @@ whenever you want it.
 
 | | |
 |---|---|
+| [Install, updates and first run](docs/install.md) | Download, the SmartScreen warning, the first start, updates and where your data is kept |
 | [Controls, windows and settings](docs/controls.md) | The two windows, hotkeys, cursor mode, and everything under Settings |
-| [Relic rewards](docs/relics.md) | The overlay on a reward screen and the price tags inside the game |
-| [Foundry, chains, vault & subsume](docs/foundry.md) | What is building, which weapons eat other weapons, which primes are vaulted, and which frames you have subsumed |
-| [Ducats and Baro](docs/baro.md) | Melt or sell, what can no longer be farmed, and Baro's manifest against your inventory |
-| [Update vendors](docs/vendors.md) | The shops that sell a Warframe — their prices, what of it you own, and where the numbers come from |
+| [Relic rewards](docs/relics.md) | The price tags on a reward screen and the relic recommendation on the selection screen |
+| [Rivens](docs/rivens.md) | Grades, veiled rivens, the riven finder and the panels on the cycle screen |
 | [Inventory](docs/inventory.md) | Mods, arcanes and relics — cards, data sheets and drop locations |
+| [Foundry, chains, vault & subsume](docs/foundry.md) | What is building, which weapons eat other weapons, which primes are vaulted, and which frames you have subsumed |
+| [Update vendors](docs/vendors.md) | The shops that sell a Warframe — their prices, what of it you own, and where the numbers come from |
+| [Ducats and Baro](docs/baro.md) | Melt or sell, what can no longer be farmed, and Baro's manifest against your inventory |
 | [Trading](docs/trading.md) | Orders, contracts, the local trade ledger, market history and the vault forecast |
-| [Builds and mods](docs/builds.md) | Loadouts, what you own, and the Overframe import |
+| [Drop tables](docs/droptables.md) | Searching every drop table, the filters, what the numbers mean, and the changes after an update |
 | [Resources, farming and mining](docs/farming.md) | Best nodes per material, ores and gems |
+| [Builds and mods](docs/builds.md) | Loadouts, what you own, and the Overframe import |
+| [Themes](docs/themes.md) | Nine presets, your own themes, sharing them, and the interface size |
 | [Is this safe?](docs/security.md) | Everything Argus does to the game and your machine |
 | [Known limits](docs/limits.md) | What it cannot do, and where the data stops being reliable |
 | [Building from source](docs/development.md) | Build it, publish a release, find your way around |
@@ -242,8 +265,8 @@ npm install
 npm start
 ```
 
-The full picture — packaging, how a release is published, and the layout of the source
-tree — is in **[Building from source](docs/development.md)**.
+The full picture — packaging, how a release is published, the tests and the layout of
+the source tree — is in **[Building from source](docs/development.md)**.
 
 **Note on the source:** comments and commit messages are in German. The interface and
 the documentation are English.

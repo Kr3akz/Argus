@@ -21,6 +21,48 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.20.0] - 2026-09-30
+
+### Added
+
+- **Drop tables.** A new tab in the sidebar searches every drop table DE
+  publishes — by item ("where does Serration drop?"), by location ("what does
+  Apollodorus give?") or by enemy ("what does the Stalker drop?"). Narrow it
+  down by source, rarity, rotation, planet or open world, mission type and
+  minimum chance, or leave the search empty and browse by filter alone —
+  say, every Rotation C reward on Survival nodes. Relics show all four
+  refinements side by side, *Farmable now* hides vaulted ones, and every row
+  tells you how many runs, kills or cracks it takes on average (hover for the
+  number that gets you there nine times out of ten). Click an item or a
+  location to jump to its own table. Relic parts carry their real rarity
+  there — DE's tables label the three most common parts of every relic as
+  *Uncommon*.
+- **What changed in the last update.** When DE updates the drop tables, the
+  tab says so: how many drops are new, which chances moved, what was removed,
+  and which relics started or stopped dropping. *Show changes* narrows the
+  list to exactly those rows, and every changed row shows its old chance.
+- **The tour knows the new parts.** Rivens, Drop tables, the panels Argus
+  draws inside the game, and Themes each have a station of their own now —
+  nineteen in all. If you took the tour before, it comes back once after this
+  update with only those four, opened by a card that says why; *Esc* ends it
+  as always. The full tour stays under *Settings → General → Guided tour*.
+
+### Changed
+
+- Argus now notices new drop tables within hours instead of up to a week. It
+  asks for a tiny fingerprint of the tables at start-up and every six hours,
+  and only downloads the full tables when that fingerprint changes.
+- *Notes* has a new icon in the sidebar.
+
+### Fixed
+
+- Enemy blueprint drops no longer show up twice. The Dread blueprint, for
+  example, was listed at the Stalker with 64.8 % next to the correct 32.4 % —
+  the higher number left out the roll for dropping a blueprint at all.
+- The *Corners* setting of a theme now reaches the rounded pills as well —
+  filters, tags, the *Refresh profile* and *Reload* buttons, the tabs in the
+  live tracker. Before, they stayed round next to square cards.
+
 ## [1.19.0] - 2026-09-30
 
 ### Added

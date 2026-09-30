@@ -83,7 +83,8 @@ src/core/     logic, entirely independent of the interface
   logwatch.js     reads Warframe's EE.log (relic rewards)
   rewardscan.js   recognises the four rewards on screen
   relics.js       relic reward tables from DE's drop tables
-  droptables.js   locations for mods and arcanes ("where do I get this?")
+  droptables.js   locations for mods and arcanes ("where do I get this?"), update check
+  drop-search.js  the Drop tables tab: flat rows, search, filters, changes between two updates
   farming.js      resource guide: best nodes per material, checked against the star chart
   mining.js       ores and gems of the three landscapes, sorted by vein colour
   cards.js        arcane vessel images from the Warframe wiki
@@ -147,6 +148,15 @@ node src/cli/log-test.js
 
 Replays the existing `EE.log` and shows what Argus would have recognised. With `--live`
 the test waits for the next fissure mission.
+
+```bash
+npm run drop-search-test
+```
+
+Checks the Drop tables tab against the real tables in `data/`: relic rarities, enemy
+drops counted once with both rolls, the ordering of a node, the filters, and the
+comparison between two states of the tables (built from a copy with three known
+changes).
 
 ```bash
 npm run theme-test

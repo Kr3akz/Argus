@@ -23,7 +23,7 @@ anonymous.
 
 Only the **latest release** is supported. There are no backports — if you are on an older
 version, updating is the fix. The app checks for updates once an hour and tells you when
-one exists (see [Updates](README.md#updates)).
+one exists (see [Updates](docs/install.md#updates)).
 
 ## What is in scope
 

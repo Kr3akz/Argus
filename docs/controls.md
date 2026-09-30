@@ -22,7 +22,7 @@ Both shortcuts are freely assignable under **Settings**.
 
 ## Two windows
 
-The **main window** is the full interface with all nine sections — meant for a second
+The **main window** is the full interface with all eleven tabs — meant for a second
 monitor. It stays open when the overlay appears: both run at once, on separate screens.
 
 The **overlay** is a window of its own with its own interface (`overlay.html`), not a
@@ -93,13 +93,14 @@ Under **Settings** are the things that always apply:
 - **Guided tour** — the walk through every tab that runs once on the first start.
   *Start the tour* runs it again, as often as you like; **Esc** ends it at any point. It
   switches tabs and marks what it is talking about, and that is all it does — no setting
-  is changed along the way.
+  is changed along the way. When an update adds stations, it comes back once with only
+  those.
 - **Notifications on/off**, sound, and Windows desktop toasts. **Off by default** — a
   freshly installed program has not earned the right to push toasts into a running game.
   The mission types underneath are preselected anyway, so switching it on gives you
   something instead of eighteen empty checkboxes.
 - **About Argus** — which version is running, which commit it was built from, and the
-  switch for the hourly [update check](../README.md#updates). The commit is there because a version
+  switch for the hourly [update check](install.md#updates). The commit is there because a version
   number alone does not say *which* state you have in front of you when something looks
   different from the changelog.
 

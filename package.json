@@ -1,7 +1,7 @@
 {
   "name": "argus",
   "productName": "Argus",
-  "version": "1.19.0",
+  "version": "1.20.0",
   "description": "Mastery rank planner and live companion for Warframe: world state, inventory, builds and an in-game overlay",
   "type": "module",
   "main": "src/main/main.js",
@@ -34,6 +34,7 @@
     "relic-test": "node src/cli/relic-test.js",
     "riven-test": "node src/cli/riven-test.js",
     "relic-pick-test": "node src/cli/relic-pick-test.js",
+    "drop-search-test": "node src/cli/drop-search-test.js",
     "logquellen-test": "node src/cli/logquellen-test.js",
     "dbwin-test:app": "electron src/cli/app-test.cjs dbwin-test",
     "logquellen-test:app": "electron src/cli/app-test.cjs logquellen-test",

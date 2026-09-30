@@ -31,10 +31,11 @@
 - **A login to warframe.market**, and only if you use the trading tab. Your password goes
   to warframe.market's own endpoint once and is never stored; only the session token stays
   on this machine. Nothing about this touches the game or your Warframe account.
-- **An hourly question to GitHub** — the only request Argus makes without you pressing
-  anything: *is there a newer release?* It sends nothing but a user agent, and downloads
-  nothing until you say so. Switchable under **Settings → About Argus**, see
-  [Updates](../README.md#updates).
+- **An hourly question to GitHub** — the only request to GitHub Argus makes without you
+  pressing anything: *is there a newer release?* It sends nothing but a user agent, and
+  downloads nothing until you say so. Switchable under **Settings → About**, see
+  [Updates](install.md#updates). The public game data Argus keeps current by itself —
+  world state, drop tables, prices — is listed under [Endpoints](#endpoints).
 
 ## What the memory read actually does
 
@@ -84,7 +85,7 @@ instead* during setup never turns it on in the first place.
 | `api.warframe.com/cdn/getProfileViewingData.php` | your public profile |
 | `cdn.jsdelivr.net/.../warframe-exports-data` | DE's item catalogue + images |
 | `api.warframestat.us` | world state, cycles, fissures, syndicate augment locations |
-| `drops.warframestat.us` | DE's drop tables for relics, mods and arcanes |
+| `drops.warframestat.us` | DE's drop tables for relics, mods, arcanes and the Drop tables tab — a small fingerprint at start-up and every six hours, the full tables only when it changed |
 | `api.warframe.market/v2` | platinum prices and ducat values |
 | `wiki.warframe.com` | arcane images, mod frames, polarity symbols |
 | `overframe.gg` | build import, button press only |
