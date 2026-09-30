@@ -2015,7 +2015,17 @@ ipcMain.handle('goal:resolve', async (_e, uniqueName) => {
   return { ...r, buildTimeText: formatDuration(r.totalBuildSeconds) };
 });
 
-const rebuilt = async () => ({ ok: true, data: await buildDashboard({ fromCache: true }) });
+/* Nach Zielen und Notizen dieselben Metadaten wie bei dashboard:get - die
+   Fusszeile der Profilkarte liest daraus den Stand ("As of ..."). Ein
+   blosses { fromCache: true } liess fetchedAt weg: nach jedem Klick auf ein
+   Ziel stand dort "No profile data yet", obwohl MR und XP daneben zu sehen
+   waren. refresh: false liest nur die Profildatei auf Platte, also kein
+   Abruf bei DE und kein Eintrag in ratelimit.js; Einlesen und analyze()
+   kosten gemessene 5-30 ms. */
+const rebuilt = async () => {
+  const meta = await ensureData({ refresh: false });
+  return { ok: true, data: await buildDashboard(meta) };
+};
 
 ipcMain.handle('goal:add',     async (_e, u, n) => { await store.addGoal(u, n); return rebuilt(); });
 ipcMain.handle('goal:remove',  async (_e, u)    => { await store.removeGoal(u); return rebuilt(); });
