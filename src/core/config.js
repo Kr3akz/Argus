@@ -33,6 +33,11 @@ export const DEFAULT_HOTKEYS = { overlay: 'Ctrl+R', interact: 'Ctrl+E', main: 'C
    endet - durchgeklickt ODER abgebrochen. Wer abbricht, hat entschieden;
    ihn erneut zu fragen waere Quengeln statt Angebot. Zurueckholen laesst sie
    sich jederzeit ueber den Knopf im Einstellungs-Tab. */
+/* appearance: gewaehltes Theme, eigene Themes und die Groesse der
+   Oberflaeche - { theme, custom: [...], zoom }. null heisst Standard-Theme.
+   Geprueft und aufgefuellt wird es in core/themes.js (normalizeAppearance):
+   ein kaputter Eintrag faellt dort auf Argus zurueck, statt den Start zu
+   verhindern. */
 const DEFAULTS = {
   accountId: '', platform: 'pc', notes: {},
   overlayBounds: null, overlayOpacity: 0.94, overlayClickThrough: false,
@@ -40,6 +45,7 @@ const DEFAULTS = {
   updateCheck: true,
   wfmAutoStatus: false,
   guideSeen: false,
+  appearance: null,
   hotkeys: { ...DEFAULT_HOTKEYS }
 };
 

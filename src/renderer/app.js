@@ -13252,6 +13252,7 @@ async function loadSettingsTab() {
   renderHotkeys();
   renderNotifToggles();
   refreshScanLogLine();
+  if (typeof Appearance !== 'undefined') Appearance.load();
   /* Nur, wenn der Abruf beim Start nicht durchkam - Version und Unterbau
      aendern sich waehrend einer Sitzung nicht. */
   if (!appInfo) loadAboutBox();

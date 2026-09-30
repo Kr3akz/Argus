@@ -30,6 +30,7 @@ import { classify, CATEGORY_LABELS } from '../core/classify.js';
 import { acquisitionOf } from '../core/acquisition.js';
 import { resolveGoal, combineGoals, formatDuration, isRawMaterial, buildNameIndex, formaCost } from '../core/recipes.js';
 import { loadConfig, saveConfig, DEFAULT_HOTKEYS } from '../core/config.js';
+import { normalizeAppearance, resolveActive, describeAppearance, applyPatch, shareCodeFor } from '../core/themes.js';
 import * as store from '../core/store.js';
 import { loadMods, POLARITIES, RARITY_LABELS, searchMods, isAuraMod, isExilusMod,
          maxRankOf } from '../core/mods.js';
@@ -219,6 +220,15 @@ const WINDOW_MIN   = { width: 1020, height: 620 };
 const OVERLAY_SIZE = { width:  380, height: 600 };
 const OVERLAY_MIN  = { width:  300, height: 260 };
 
+/* Aussehen: gewaehltes Theme, eigene Themes, Groesse der Oberflaeche. Der
+   Stand steht in config.json (appearance), gerechnet wird in core/themes.js.
+   themeResolved ist das aktive Theme als fertige CSS-Variablen - das holt
+   sich jedes Fenster beim Laden (theme:resolved) und bekommt es bei jeder
+   Aenderung neu (theme:changed). */
+let appearance = normalizeAppearance(null);
+let themeResolved = resolveActive(appearance);
+let appearanceSaveTimer = null;   // siehe saveAppearance
+
 /* Eine Quelle fuer Registrierung und Anzeige - sonst zeigt die Titelleiste
    irgendwann eine Taste, die gar nicht mehr registriert ist. Aenderbar zur
    Laufzeit ueber den Einstellungs-Tab, gespeichert in data/config.json. */
@@ -324,7 +334,9 @@ function createWindow() {
   win = new BrowserWindow({
     width: WINDOW_SIZE.width, height: WINDOW_SIZE.height,
     minWidth: WINDOW_MIN.width, minHeight: WINDOW_MIN.height,
-    backgroundColor: '#0d1117',
+    /* Steht da, bevor die Seite gezeichnet ist - deshalb aus dem Theme, sonst
+       blitzt beim Start kurz das Blau von Argus auf. */
+    backgroundColor: themeResolved.windowBg,
     icon: path.join(__dirname, '../renderer/assets/app-icon.png'),
     frame: false,
     show: false,
@@ -546,6 +558,20 @@ async function loadOverlayPrefs() {
   }
 }
 
+/* Vor dem ersten Fenster: das holt sich sein Theme schon beim Laden des
+   <head> ab (theme:resolved), und sein Hintergrund steht noch frueher. */
+async function loadAppearance() {
+  try {
+    const cfg = await loadConfig();
+    appearance = normalizeAppearance(cfg.appearance);
+  } catch {
+    /* Ohne Konfiguration - oder mit einer kaputten - gilt Argus. Ein Theme
+       darf den Start nie verhindern. */
+    appearance = normalizeAppearance(null);
+  }
+  themeResolved = resolveActive(appearance);
+}
+
 /**
  * Klicks an das Spiel durchreichen.
  *
@@ -572,7 +598,7 @@ function createOverlayWindow() {
     ...(usableBounds(overlayBounds) || defaultOverlayBounds()),
     minWidth: OVERLAY_MIN.width, minHeight: OVERLAY_MIN.height,
     title: 'Argus Overlay',
-    backgroundColor: '#0b0f16',
+    backgroundColor: themeResolved.overlayBg,
     frame: false,
     show: false,
     skipTaskbar: true,
@@ -8038,6 +8064,65 @@ async function handleRelicReward(ev) {
     console.log(`[Relikt #${lauf}] Preise vollstaendig`, seit());
 }
 
+/* ---------------------------- Aussehen ---------------------------- */
+
+/* Jedes Fenster traegt das Theme - auch die ueber dem Spiel. Preisschilder,
+   Riven- und Relikt-Feld sehen damit aus wie die App, zu der sie gehoeren. */
+const themedWindows = () => [win, overlayWin, tagWin, rivenWin, relicPickWin]
+  .filter(w => w && !w.isDestroyed());
+
+function broadcastTheme() {
+  for (const w of themedWindows()) w.webContents.send('theme:changed', themeResolved);
+  /* Der Fensterhintergrund zeigt sich nicht nur vor dem ersten Bild, sondern
+     auch an den Raendern, waehrend man das Fenster aufzieht. */
+  if (win && !win.isDestroyed()) win.setBackgroundColor(themeResolved.windowBg);
+  if (overlayWin && !overlayWin.isDestroyed()) overlayWin.setBackgroundColor(themeResolved.overlayBg);
+}
+
+/* Beim Ziehen am Farbwaehler kommen Dutzende Aenderungen pro Sekunde - in
+   die Datei geht erst die, nach der es still wird. Alles andere (waehlen,
+   umbenennen, loeschen, einfuegen) ist ein einzelner Klick und wird sofort
+   geschrieben: wer danach gleich schliesst, soll es beim naechsten Start
+   wiederfinden. */
+function saveAppearance(delay = 0) {
+  clearTimeout(appearanceSaveTimer);
+  appearanceSaveTimer = setTimeout(async () => {
+    appearanceSaveTimer = null;
+    try {
+      const cfg = await loadConfig();
+      await saveConfig({ ...cfg, appearance });
+    } catch (err) {
+      console.warn('[Aussehen] nicht gespeichert:', err.message);
+    }
+  }, delay);
+}
+
+/* SYNCHRON, und das mit Absicht: theme.js fragt im <head>, bevor die Seite
+   zum ersten Mal gezeichnet wird. Mit einer asynchronen Antwort stuende die
+   App einen Augenblick im Standard-Theme da und spraenge dann um. Die Antwort
+   ist ein fertiges Objekt aus dem Speicher, der Renderer wartet darauf nicht
+   laenger als auf jede andere Nachricht. */
+ipcMain.on('theme:resolved', e => { e.returnValue = themeResolved; });
+
+ipcMain.handle('appearance:get', async () => ({ ok: true, ...describeAppearance(appearance) }));
+
+/* Jede Aenderung - waehlen, am Farbwaehler ziehen, umbenennen, einfuegen -
+   laeuft durch applyPatch in core/themes.js. Hier wird nur uebernommen,
+   verteilt und gespeichert. */
+ipcMain.handle('appearance:set', async (_e, patch) => {
+  const r = applyPatch(appearance, patch);
+  if (!r.ok) return { ok: false, error: r.error, ...describeAppearance(appearance) };
+  appearance = r.appearance;
+  themeResolved = resolveActive(appearance);
+  broadcastTheme();
+  saveAppearance(patch && typeof patch === 'object' && 'edit' in patch ? 400 : 0);
+  return { ok: true, created: r.created || null, ...describeAppearance(appearance) };
+});
+
+/* Der Teilen-Code. Kopiert wird im Renderer ueber copyText - hier entsteht
+   nur der Text. */
+ipcMain.handle('appearance:share', async (_e, id) => shareCodeFor(appearance, id));
+
 /* -------------------------- Einstellungen -------------------------- */
 
 ipcMain.handle('settings:get', async () => {
@@ -8848,6 +8933,7 @@ if (process.platform === 'win32') {
 
 app.whenReady().then(async () => {
   await loadOverlayPrefs();
+  await loadAppearance();
   createWindow();
   // Hotkey zum Ein-/Ausblenden waehrend des Spielens
   applyHotkeys();

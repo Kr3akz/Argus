@@ -12124,6 +12124,113 @@ body.relic-pick-window {
 .set-pane-single.active { display: flex; flex-direction: column; gap: 18px; max-width: 900px; }
 .set-pane-single .setting-info span,
 .set-pane-single .settings-group-head p { max-width: 84ch; }
+/* Das Aussehen braucht die Breite: eine Galerie, die auf 900 px zu drei
+   Karten je Zeile zusammenfaellt, zeigt die Themes als Liste statt als Wahl. */
+.set-pane-wide.active { display: flex; flex-direction: column; gap: 18px; max-width: 1240px; }
+.set-pane-wide .settings-group-head p { max-width: 84ch; }
+
+/* ---------------- Einstellungen: Aussehen ----------------
+   Karten wie ueberall in Argus: Flaeche ohne Rahmen, darueber eine dezente
+   Kontur als eigene Ebene (sonst verdeckt die dunkle Vorschau sie). Das
+   gewaehlte Theme bekommt eine farbige Kontur und eine Toenung - die Farbe ist
+   die der Seite und damit die des gewaehlten Themes selbst. */
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  padding: 12px 0 4px;
+}
+.theme-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  /* Ausdruecklich: Chromium 130 (Electron 33) gibt <button> im eigenen
+     Stylesheet noch align-items: flex-start mit - dann schrumpft die Vorschau
+     auf ihre Mindestbreite, waehrend sie in einem neueren Browser die ganze
+     Karte fuellt. */
+  align-items: stretch;
+  gap: 9px;
+  padding: 8px 8px 11px;
+  background: var(--surface);
+  border: none;
+  border-radius: var(--r-md);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color .15s var(--ease), transform .15s var(--ease);
+}
+.theme-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px rgb(var(--t-fg) / .07);
+  pointer-events: none;
+  transition: box-shadow .15s var(--ease);
+}
+.theme-card:hover { background-color: var(--surface-2); transform: translateY(-2px); }
+.theme-card:hover::after { box-shadow: inset 0 0 0 1px rgb(var(--t-fg) / .13); }
+.theme-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.theme-card.is-active { background-color: rgb(var(--t-accent) / .07); }
+.theme-card.is-active::after { box-shadow: inset 0 0 0 1px rgb(var(--t-accent) / .6); }
+
+.theme-card-meta { display: flex; flex-direction: column; gap: 2px; padding: 0 3px; min-width: 0; }
+.theme-card-meta b {
+  font-size: 13px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.theme-card-meta span { font-size: 11px; line-height: 1.35; color: var(--text-3); }
+.theme-card.is-active .theme-card-meta b { color: var(--accent); }
+
+/* Die Vorschau. Alles darin nimmt die Kanaele direkt (rgb(var(--t-...))),
+   weil nur die hier am Element gesetzt sind - siehe appearance.js. */
+.theme-mock {
+  display: flex;
+  height: 104px;
+  overflow: hidden;
+  border-radius: calc(10px * var(--r-k));
+  background:
+    radial-gradient(140% 80% at 58% -34%, rgb(var(--t-glow)), transparent 72%),
+    linear-gradient(180deg, rgb(var(--t-bg-hi)), rgb(var(--t-bg)) 70%);
+  box-shadow: inset 0 0 0 1px rgb(var(--t-fg) / .05);
+}
+.tm-rail {
+  width: 17%;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding-top: 10px;
+  background: rgb(var(--t-chrome) / var(--chrome-a));
+  box-shadow: inset -1px 0 0 rgb(var(--t-fg) / .04);
+}
+.tm-rail i { width: 9px; height: 9px; border-radius: calc(3px * var(--r-k)); background: rgb(var(--t-text-3) / .55); }
+.tm-rail i.on { background: rgb(var(--t-accent)); box-shadow: 0 0 6px rgb(var(--t-accent) / .6); }
+.tm-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; padding: 9px 9px 8px; }
+.tm-line { height: 5px; border-radius: 3px; flex-shrink: 0; }
+.tm-title { width: 48%; background: rgb(var(--t-text)); }
+.tm-sub { width: 68%; height: 4px; background: rgb(var(--t-text-3)); }
+.tm-cards { flex: 1; display: flex; gap: 5px; margin-top: 2px; }
+.tm-card {
+  flex: 1;
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 6px;
+  border-radius: calc(6px * var(--r-k));
+  background: rgb(var(--t-fg) / calc(.06 * var(--sf-k)));
+}
+.tm-card i { width: 72%; height: 4px; border-radius: 2px; background: rgb(var(--t-text-2) / .85); }
+.tm-card i + i { width: 46%; background: rgb(var(--t-text-3) / .85); }
+.tm-foot { display: flex; align-items: center; gap: 5px; }
+.tm-btn { width: 36%; height: 10px; border-radius: 999px; background: rgb(var(--t-accent)); }
+.tm-dot { width: 7px; height: 7px; border-radius: 50%; }
+.tm-dot.is-pos { margin-left: auto; background: rgb(var(--t-green)); }
+.tm-dot.is-neg { background: rgb(var(--t-red)); }
+
+.theme-subhead {
+  display: flex; align-items: baseline; gap: 10px;
+  margin-top: 14px; padding-top: 14px;
+  border-top: 1px solid rgb(var(--t-fg) / .05);
+}
+.theme-subhead b { font-size: 13px; font-weight: 600; }
+.theme-subhead span { font-size: 11.5px; color: var(--text-3); }
 
 /* Quellen und Projekt unter About - dieselbe Zwei-Spalten-Form wie die
    Versionsangaben (.about-grid), die rechte Spalte rechtsbuendig. */

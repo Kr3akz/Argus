@@ -159,6 +159,18 @@ contextBridge.exposeInMainWorld('api', {
   /* Die gefuehrte Tour hat ihr Ende erreicht - gelesen wird der Merker mit
      getSetupState(), der beim Start ohnehin laeuft. */
   setGuideSeen:    (on)        => ipcRenderer.invoke('settings:guideSeen', on),
+  /* Aussehen. getThemeSync ist der einzige synchrone Aufruf hier: theme.js
+     braucht das Theme im <head>, bevor irgendetwas gezeichnet ist (siehe
+     theme:resolved in main.js). Alle Fenster hoeren auf onThemeChanged. */
+  getThemeSync:    ()          => ipcRenderer.sendSync('theme:resolved'),
+  onThemeChanged:  (cb)        => {
+    const handler = (_e, theme) => cb(theme);
+    ipcRenderer.on('theme:changed', handler);
+    return () => ipcRenderer.removeListener('theme:changed', handler);
+  },
+  getAppearance:   ()          => ipcRenderer.invoke('appearance:get'),
+  setAppearance:   (patch)     => ipcRenderer.invoke('appearance:set', patch),
+  themeShareCode:  (id)        => ipcRenderer.invoke('appearance:share', id),
   /* Preisschilder im Spiel - nur das Schilder-Fenster hoert darauf. */
   onTags:          (cb)        => {
     const handler = (_e, data) => cb(data);
