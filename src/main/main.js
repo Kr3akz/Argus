@@ -759,7 +759,7 @@ function createTagWindow(bounds = frameToDip(cachedFrame())) {
     minimizable: false,
     maximizable: false,
     fullscreenable: false,
-    title: 'Argus Preisschilder',
+    title: 'Argus Price Tags',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,

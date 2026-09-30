@@ -21,6 +21,17 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The last German words in the interface are English now:** the mission
+  types in the fissure notification filter, two headings and the part labels
+  in an item's data sheet, the part counter on set cards, the *Starred* filter
+  in the relic planner, a *Remove* button and a few tooltips. The part labels
+  also no longer claim that every part takes twelve hours to build.
+- *About* no longer calls the update check the only connection Argus opens on
+  its own. It is the only thing Argus asks GitHub unprompted; the public game
+  data it keeps current is listed on the *Is this safe?* page.
+
 ## [1.20.0] - 2026-09-30
 
 ### Added

@@ -1729,7 +1729,7 @@ function renderGoals(data) {
             ${Icon.check(13)}<span>${g.done ? 'Done' : 'Mark done'}</span>
           </button>
           <button class="btn-sm danger" data-remove="${esc(g.uniqueName)}">
-            ${Icon.trash(13)}<span>Entfernen</span>
+            ${Icon.trash(13)}<span>Remove</span>
           </button>
         </div>
       </div>
@@ -3274,7 +3274,7 @@ async function openItemModal(uniqueName) {
 
     ${d.stats && d.stats.length ? `
       <div class="im-section">
-        <div class="im-section-title">Attribute & Werte</div>
+        <div class="im-section-title">Stats</div>
         <div class="im-stats-grid">
           ${d.stats.map(s => `
             <div class="im-stat-tile">
@@ -3311,7 +3311,7 @@ async function openItemModal(uniqueName) {
     ` : ''}
 
     <div class="im-section">
-      <div class="im-section-title">Beschaffung & Fundort</div>
+      <div class="im-section-title">Where to get it</div>
       <div class="im-source-box">
         <div class="im-source-label">${Icon.target(14)} <b>${esc(d.source)}</b></div>
         ${d.sourceNote ? `<div class="im-source-note">${esc(d.sourceNote)}</div>` : ''}
@@ -3332,7 +3332,7 @@ async function openItemModal(uniqueName) {
                     <span class="im-comp-count">${c.count}x</span>
                   </div>
                   <span class="im-comp-tag ${c.isSubRecipe ? '' : 'raw'}">
-                    ${c.isSubRecipe ? 'Wird geschmiedet (12h)' : 'Ressource / Teil'}
+                    ${c.isSubRecipe ? 'Built in the foundry' : 'Resource or part'}
                   </span>
                 </div>
               </div>
@@ -3358,7 +3358,7 @@ async function openItemModal(uniqueName) {
         <div class="im-section-title">Total resources & materials</div>
         <div class="im-recipe-meta">
           <span>${Icon.coin(13)} <b>${nf(d.credits)}</b> Credits</span>
-          <span>${Icon.clock(13)} <b>${esc(d.buildTime)}</b> Gesamtbauzeit</span>
+          <span>${Icon.clock(13)} <b>${esc(d.buildTime)}</b> total build time</span>
         </div>
         <div class="im-mats-grid">
           ${d.materials.map(m => `
@@ -5230,9 +5230,9 @@ function renderPlanTierFilter(all) {
     (trackedCount ? `
       <button class="tier-chip chip-tracked ${planOnlyTracked ? 'active' : ''}" type="button" data-tracked="1"
               title="Only the relics shown in the overlay">
-        <i class="chip-ic">${Icon.star(15)}</i>Gemerkt <span>${trackedCount}</span>
+        <i class="chip-ic">${Icon.star(15)}</i>Starred <span>${trackedCount}</span>
       </button>` : '') +
-    `<span class="tier-chip chip-traces" title="Void Traces (Spuren des Nichts)">
+    `<span class="tier-chip chip-traces" title="Void Traces">
        <img class="chip-ic chip-ic-img" src="assets/icons/currency/traces.png" alt=""><span>${nf(traces)} Traces</span>
      </span>` +
     `</div>`;
@@ -5350,7 +5350,7 @@ function renderDucatsRelicPlan() {
             <b>${esc(r.name)}</b>
             <span class="plan-state">${esc(relicStateLabel(r.state))}${r.count > 1 ? ' · ×' + r.count : ''}</span>
             <button class="plan-track ${tracked ? 'on' : ''}" data-track="${esc(id)}"
-                    title="${tracked ? 'Aus dem Overlay nehmen' : 'Im Overlay anzeigen'}">
+                    title="${tracked ? 'Remove from the overlay' : 'Show in the overlay'}">
               ${Icon.star(14)}
             </button>
           </div>
@@ -7576,9 +7576,9 @@ function setCardTile(s, idx) {
           <div class="set-head">
             <div class="set-title">
               <b>${esc(s.name)}</b>
-              <span>${s.ownedParts} / ${s.totalParts} Teile${s.complete ? ' · komplett' : ''}</span>
+              <span>${s.ownedParts} / ${s.totalParts} parts${s.complete ? ' · complete' : ''}</span>
             </div>
-            <div class="set-progress" title="${pct} % beisammen">
+            <div class="set-progress" title="${pct} % collected">
               <div class="set-progress-fill" style="width: ${pct}%"></div>
             </div>
           </div>
@@ -8755,7 +8755,7 @@ function renderUpgradeSources(d) {
   const groups = d.sources?.groups || [];
   if (!groups.length) {
     return `<div class="up-empty">
-      ${esc(d.dropNote || 'In den Droptabellen steht zu dieser Karte kein Fundort. '
+      ${esc(d.dropNote || 'The drop tables list no location for this card. '
         + 'That mostly affects time-limited rewards — you can still trade for them.')}
     </div>`;
   }
@@ -9261,7 +9261,7 @@ function renderRelicModal() {
         </div>
         <div class="im-title-group">
           <div class="im-tags">
-            <span class="im-badge cat">Relikt</span>
+            <span class="im-badge cat">Relic</span>
             ${d.tier ? `<span class="im-badge tier-${esc(d.tier.toLowerCase())}">${esc(d.tier)}</span>` : ''}
             ${d.vaulted ? '<span class="im-badge rar-rare">Vaulted</span>' : ''}
           </div>
@@ -10250,22 +10250,26 @@ document.addEventListener('click', e => {
 /* Auswahl im Einstellungsfenster. Die Schluessel sind die Namen, die die API
    liefert - der Abgleich in fissure-filter.js vergleicht sie exakt.
    Die Zariman-Typen stehen zusammen oben, die Railjack-Typen unten: sie tauchen
-   nur in Stuermen auf und haengen am Schalter "Stuerme einschliessen". */
+   nur in Stuermen auf und haengen am Schalter "Stuerme einschliessen".
+   Die Beschriftungen sind reine Anzeige und englisch wie der Rest der
+   Oberflaeche - deutsch standen sie noch aus der Zeit vor v1.0.0 da. Die
+   deutschen Alias-Namen in fissure-filter.js bleiben: an denen haengen
+   frueher gespeicherte Auswahlen. */
 const FISSURE_MISSION_TYPES = [
-  { key: 'Void Cascade', label: 'Void Cascade (Kaskade)' },
-  { key: 'Void Flood', label: 'Void-Flut (Flood)' },
-  { key: 'Void Armageddon', label: 'Void-Armageddon' },
-  { key: 'Capture', label: 'Gefangennahme (Capture)' },
+  { key: 'Void Cascade', label: 'Void Cascade' },
+  { key: 'Void Flood', label: 'Void Flood' },
+  { key: 'Void Armageddon', label: 'Void Armageddon' },
+  { key: 'Capture', label: 'Capture' },
   { key: 'Extermination', label: 'Exterminate' },
   { key: 'Survival', label: 'Survival' },
-  { key: 'Defense', label: 'Verteidigung (Defense)' },
-  { key: 'Mobile Defense', label: 'Mobile Verteidigung' },
+  { key: 'Defense', label: 'Defense' },
+  { key: 'Mobile Defense', label: 'Mobile Defense' },
   { key: 'Disruption', label: 'Disruption' },
-  { key: 'Excavation', label: 'Ausgrabung (Excavation)' },
-  { key: 'Alchemy', label: 'Alchemie (Alchemy)' },
-  { key: 'Rescue', label: 'Rettung (Rescue)' },
-  { key: 'Spy', label: 'Spionage (Spy)' },
-  { key: 'Interception', label: 'Abfangen (Interception)' },
+  { key: 'Excavation', label: 'Excavation' },
+  { key: 'Alchemy', label: 'Alchemy' },
+  { key: 'Rescue', label: 'Rescue' },
+  { key: 'Spy', label: 'Spy' },
+  { key: 'Interception', label: 'Interception' },
   { key: 'Sabotage', label: 'Sabotage' },
   { key: 'Skirmish', label: 'Skirmish (Railjack)' },
   { key: 'Volatile', label: 'Volatile (Railjack)' },
