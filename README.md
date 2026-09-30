@@ -15,6 +15,7 @@
 
 **[Download](https://github.com/Kr3akz/Argus/releases/latest)** ·
 [What it does](#what-it-does) ·
+[Every tab](#every-tab-up-close) ·
 [Is it safe?](#is-it-safe-can-i-get-banned) ·
 [Getting started](#getting-started) ·
 [Documentation](#documentation)
@@ -37,54 +38,9 @@ read-only, only if you allow it, and it never leaves your machine.
 **Windows only.** The panels over the game, the log reader and the inventory lookup rely
 on Windows APIs. Free and open source under the GPL.
 
-![Your profile, and the goals you are farming broken down into the parts they still need](docs/img/01-mastery.png)
+![Your profile, and the goals you are farming broken down into the parts they still need](docs/img/hero-mastery.webp)
 
-<details>
-<summary><b>More screenshots</b></summary>
-
-<br>
-
-**Live world state — every void fissure, with its era and how long it still runs**
-
-![Live world state](docs/img/02-worldstate.png)
-
-**Weekly rotation — everything that resets this week, ticked off from your save**
-
-![Weekly rotation](docs/img/03-weekly.png)
-
-**Inventory — mods as the cards they are in game**
-
-![Inventory](docs/img/04-inventory.png)
-
-**Rivens — each one graded by what the market wants on that weapon**
-
-![Rivens](docs/img/05-rivens.png)
-
-**Ducats & Baro — melt or sell, part by part**
-
-![Ducats and Baro](docs/img/06-ducats.png)
-
-**Trading — the ledger, charted**
-
-![Trading](docs/img/07-trading.png)
-
-**Drop tables — what the Stalker drops, with both rolls counted**
-
-![Drop tables](docs/img/08-droptables.png)
-
-**Farming guide — the best nodes per material**
-
-![Farming guide](docs/img/09-farmguide.png)
-
-**Builds — against what you actually own**
-
-![Builds](docs/img/10-builds.png)
-
-**Themes — nine looks, or your own**
-
-![Themes](docs/img/11-themes.png)
-
-</details>
+Every tab, view by view, is further down under **[Every tab, up close](#every-tab-up-close)**.
 
 ---
 
@@ -174,6 +130,352 @@ them yourself.
 - **Everything where you want it.** Move and resize each panel Argus draws over the game
   on a stage shaped like your game window, pick your own hotkeys, and switch off whatever
   you do not need. → [Controls](docs/controls.md)
+
+---
+
+## Every tab, up close
+
+Each tab of the window, with a screenshot of every view in it. Click one to open it.
+
+<details>
+<summary><b>Live tracker</b> — cycles, fissures, sorties, Nightwave, invasions, bounties and Steel Path</summary>
+
+<br>
+
+**Overview** — the open-world cycles and Baro's next visit
+
+![Live tracker: overview](docs/img/ws-overview.webp)
+
+**Void fissures** — every open fissure with its era, mission and time left
+
+![Live tracker: void fissures](docs/img/ws-fissures.webp)
+
+**Fissure notifications** — which fissures are worth a desktop notification, with what matches right now
+
+![Live tracker: fissure notifications](docs/img/ws-fissure-notifications.webp)
+
+**Sorties** — the daily sortie and this week's Archon hunt
+
+![Live tracker: sorties](docs/img/ws-sorties.webp)
+
+**Nightwave** — daily, weekly and elite acts with their standing
+
+![Live tracker: Nightwave](docs/img/ws-nightwave.webp)
+
+**Operations** — running events and how far along they are
+
+![Live tracker: operations](docs/img/ws-operations.webp)
+
+**Steel Path** — Teshin's offering this week, and whether Incursions are on
+
+![Live tracker: Steel Path](docs/img/ws-steelpath.webp)
+
+**Invasions** — both sides, their progress and their rewards
+
+![Live tracker: invasions](docs/img/ws-invasions.webp)
+
+**Syndicates** — the bounties and missions of each syndicate, and when they rotate
+
+![Live tracker: syndicates](docs/img/ws-syndicates.webp)
+
+</details>
+
+<details>
+<summary><b>Weekly rotation</b> — everything that resets once a week</summary>
+
+<br>
+
+**Content** — Archon Hunt, The Circuit, Deep and Temporal Archimedea, Netracells, Kahl's Garrison and the Descendia, ticked off from your save where it records them
+
+![Weekly rotation: content](docs/img/weekly-content.webp)
+
+**Vendor resets** — Teshin, Bird 3, Yonta, Acrithis, Palladino and Nightwave
+
+![Weekly rotation: vendor resets](docs/img/weekly-vendors.webp)
+
+</details>
+
+<details>
+<summary><b>Mastery & goals</b> — what to build next, and what it takes</summary>
+
+<br>
+
+**Goals** — your open goals broken down into parts, and one shopping list across all of them
+
+![Mastery: goals](docs/img/mastery-goals.webp)
+
+**Recommendations** — quick wins you already own, and items that are cheap to pick up
+
+![Mastery: recommendations](docs/img/mastery-recommendations.webp)
+
+**Catalogue** — every item in the game, by category and status; a click shows where it comes from
+
+![Mastery: catalogue](docs/img/mastery-catalogue.webp)
+
+**Item sheet** — stats, where to get it, what it is built from, and whether the vault is shut on it
+
+![Mastery: item sheet](docs/img/mastery-item.webp)
+
+**Foundry** — what is building, and what has been finished and waits for you
+
+![Mastery: foundry](docs/img/mastery-foundry.webp)
+
+**Crafting chains** — weapons built from other weapons, every link its own mastery
+
+![Mastery: crafting chains](docs/img/mastery-chains.webp)
+
+**Update vendors** — the Warframes you buy rather than farm, lined up against what you own
+
+![Mastery: update vendors](docs/img/mastery-vendors.webp)
+
+</details>
+
+<details>
+<summary><b>Inventory</b> — relics, sets, mods, arcanes, materials and blueprints</summary>
+
+<br>
+
+**Relics** — the ones you own, what one crack is worth, and whether they still drop
+
+![Inventory: relics](docs/img/inv-relics.webp)
+
+**My sets** — prime sets part by part, with their ducats and the best part you hold
+
+![Inventory: my sets](docs/img/inv-sets.webp)
+
+**Mods** — as the cards they are in game, owned or not
+
+![Inventory: mods](docs/img/inv-mods.webp)
+
+**Arcanes** — the same for arcanes, with rank and copies
+
+![Inventory: arcanes](docs/img/inv-arcanes.webp)
+
+**Materials** — everything you hold, with the count
+
+![Inventory: materials](docs/img/inv-materials.webp)
+
+**Blueprints** — every blueprint in your inventory
+
+![Inventory: blueprints](docs/img/inv-blueprints.webp)
+
+**Mod sheet** — ninety days of completed trades at your rank, the effect rank by rank, capacity and endo
+
+![Inventory: mod sheet](docs/img/inv-mod-sheet.webp)
+
+**Relic sheet** — the six rewards with their chances, platinum and ducats, for every refinement
+
+![Inventory: relic sheet](docs/img/inv-relic-sheet.webp)
+
+**Set sheet** — the market history of the full set, and whether its parts are worth more one by one
+
+![Inventory: set sheet](docs/img/inv-set-sheet.webp)
+
+</details>
+
+<details>
+<summary><b>Rivens</b> — graded by what the market wants</summary>
+
+<br>
+
+**Unveiled** — every riven with its stats as the game shows them, how well each rolled, and a grade from S to F
+
+![Rivens: unveiled](docs/img/rivens-unveiled.webp)
+
+**Veiled** — the challenges you are on, and the rivens you have not revealed yet
+
+![Rivens: veiled](docs/img/rivens-veiled.webp)
+
+**Riven finder** — warframe.market auctions by weapon and stats, next to the stats that weapon's pricey rivens carry (seller names blurred here)
+
+![Rivens: riven finder](docs/img/rivens-finder.webp)
+
+</details>
+
+<details>
+<summary><b>Baro & ducats</b> — melt or sell, and what Baro brings</summary>
+
+<br>
+
+**My prime inventory** — every prime part you own, in ducats, platinum and ducats per platinum
+
+![Baro & ducats: my prime inventory](docs/img/ducats-inventory.webp)
+
+**Full prime catalogue** — the same for every prime part in the game
+
+![Baro & ducats: full prime catalogue](docs/img/ducats-catalogue.webp)
+
+**Relic planner** — your relics ranked by what one crack is worth, era by era
+
+![Baro & ducats: relic planner](docs/img/ducats-planner.webp)
+
+**Baro's offer** — his manifest against what you own, and what it costs in ducats and credits
+
+![Baro & ducats: Baro's offer](docs/img/ducats-baro.webp)
+
+</details>
+
+<details>
+<summary><b>Trading</b> — warframe.market, straight from your inventory</summary>
+
+<br>
+
+**Orders** — your buy and sell orders, marked sold, edited or hidden with one click
+
+![Trading: orders](docs/img/trading-orders.webp)
+
+**Market** — what anything is going for right now, from the sellers who are in game (names blurred here)
+
+![Trading: market](docs/img/trading-market.webp)
+
+**Contracts** — your riven, lich and sister auctions
+
+![Trading: contracts](docs/img/trading-contracts.webp)
+
+**Transactions** — a local ledger of every trade, in platinum and ducats
+
+![Trading: transactions](docs/img/trading-transactions.webp)
+
+**Analytics** — earned and spent per day, and the running total
+
+![Trading: analytics](docs/img/trading-analytics.webp)
+
+**Insights** — which primes are heading for the vault next, and what of that you hold
+
+![Trading: insights](docs/img/trading-insights.webp)
+
+</details>
+
+<details>
+<summary><b>Builds</b> — loadouts against what you own</summary>
+
+<br>
+
+**Arsenal** — every frame, weapon and companion you have a build for, and the forma, reactors and endo they add up to
+
+![Builds: arsenal](docs/img/builds-arsenal.webp)
+
+**A build** — mods, ranks and polarities, and how much of it you already own
+
+![Builds: a build](docs/img/builds-build.webp)
+
+</details>
+
+<details>
+<summary><b>Farming guide</b> — resources, ores and gems</summary>
+
+<br>
+
+**Resources** — the best nodes per material, and why that node
+
+![Farming guide: resources](docs/img/farm-resources.webp)
+
+**Mining** — every ore and gem of the three landscapes, sorted by vein colour
+
+![Farming guide: mining](docs/img/farm-mining.webp)
+
+</details>
+
+<details>
+<summary><b>Drop tables</b> — every drop DE publishes</summary>
+
+<br>
+
+**By item** — everywhere Serration drops
+
+![Drop tables: by item](docs/img/drops-item.webp)
+
+**By location** — Apollodorus, rotation by rotation
+
+![Drop tables: by location](docs/img/drops-location.webp)
+
+**By enemy** — the Stalker, with both rolls counted
+
+![Drop tables: by enemy](docs/img/drops-enemy.webp)
+
+</details>
+
+<details>
+<summary><b>Notes</b> — a notebook that saves itself</summary>
+
+<br>
+
+**Notebook** — plans and lists, saved as you type (example text)
+
+![Notes](docs/img/notes.webp)
+
+</details>
+
+<details>
+<summary><b>Settings</b> — hotkeys, themes, overlays, notifications, inventory access and version</summary>
+
+<br>
+
+**General** — the guided tour and the global hotkeys
+
+![Settings: general](docs/img/settings-general.webp)
+
+**Appearance** — nine themes, your own, and the interface size
+
+![Settings: appearance](docs/img/settings-appearance.webp)
+
+**Overlays** — every panel over the game, each with its own switch
+
+![Settings: overlays](docs/img/settings-overlays.webp)
+
+**Notifications** — fissures and whispers, with sound and a desktop toast
+
+![Settings: notifications](docs/img/settings-notifications.webp)
+
+**Inventory** — reading the running game, and the scan log
+
+![Settings: inventory](docs/img/settings-inventory.webp)
+
+**About** — version, updates, and where the data comes from
+
+![Settings: about](docs/img/settings-about.webp)
+
+</details>
+
+<details>
+<summary><b>Over the game</b> — the overlay window and the panels inside the game</summary>
+
+<br>
+
+**Overlay window** — your tracked relics with the fissures that take them, the cycles and the fissures, on a hotkey
+
+<img src="docs/img/overlay-window.webp" alt="The overlay window" width="380">
+
+The three panels inside the game, as the arrangement stage shows them with its sample content:
+
+**Price tags** — under each card on the reward screen: the part, how many of it you own, platinum and ducats
+
+![Price tags on the reward screen](docs/img/panel-tags.webp)
+
+**Relic recommendation** — your best relics for the fissure you are choosing a relic for
+
+<img src="docs/img/panel-relicpick.webp" alt="Relic recommendation" width="420">
+
+**Riven comparison** — your current roll and the new one while you cycle
+
+<img src="docs/img/panel-riven-current.webp" alt="Riven comparison: current roll" width="49%"> <img src="docs/img/panel-riven-new.webp" alt="Riven comparison: new roll" width="49%">
+
+**Arrange overlays** — every panel on a stage shaped like your game window, to move and resize
+
+![Arrange overlays](docs/img/arrange-relicpick.webp)
+
+</details>
+
+<details>
+<summary><b>The guided tour</b> — a walk through every tab</summary>
+
+<br>
+
+Each station marks the part of the window it talks about.
+
+![The guided tour](docs/img/tour.webp)
+
+</details>
 
 ---
 
