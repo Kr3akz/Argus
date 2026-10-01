@@ -21,6 +21,65 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.21.0] - 2026-10-01
+
+### Added
+
+- **The live tracker, rebuilt.** Its overview is now a board for everything with
+  a clock: one row counts down to every reset and rotation — the daily reset,
+  the sortie, the weekly reset, Teshin, Baro, Varzia, the next arbitration and
+  Darvo — and turns gold when one is almost up. A click jumps to the page it
+  belongs to.
+- **Six open worlds instead of three.** Earth, the Zariman (who holds it, Corpus
+  or Grineer) and Duviri's mood join the Plains, Orb Vallis and the Cambion
+  Drift — each with when it flips, a bar for how far the phase has run, and
+  what it means where that is known (Eidolons at night, which damage Duviri's
+  enemies deal, whether Kullervo's Hold is open). All six are calculated from
+  the game's clock, so they stay right even when the world-state source is
+  behind or down.
+- **A notification before a cycle changes.** The bell on each cycle card, or
+  *Settings → Notifications*, picks the cycles; one to sixty minutes ahead.
+- **Today and this week, for you.** The sortie with the missions you have
+  already done, the standing and focus you can still earn today, this week's
+  Circuit with the frames you already own or fed to the Helminth and the
+  Incarnons you have installed or still hold as an adapter — and *Upcoming
+  weeks* shows the whole Circuit rotation ahead. Needs inventory access, and an
+  inventory read after today's reset.
+- **Bounties.** Every bounty board — Ostrons, Solaris United, Entrati with the
+  Isolation Vaults, Narmer and event bounties — with level, standing and mastery
+  requirement, and a click shows what each stage pays out at the rotation it is
+  on, straight from DE's drop tables. The Holdfasts, Cavia and The Hex roll
+  their missions in the game itself; for them, the fixed tiers and their
+  rewards. The faction syndicates' seven nodes of the day sit underneath.
+- **The arbitration schedule.** The arbitration running now and the next 24
+  hours of them, with mission type and faction.
+- **Traders.** Baro's list with what you own, Varzia's Prime Resurgence with
+  your mastery on every prime and the relics she sells, Darvo's deal with how
+  many are left, and the four-day rotations of Ergo Glast (Tenet weapons) and
+  Eleanor (Coda weapons, which batch now and which next).
+- **Steel Path** shows Teshin's offer for the weeks ahead and what he always
+  has. **Void fissures** split into normal, Steel Path and Void Storms.
+  **Operations** shows how far the Fomorian and the Razorback Armada are built.
+- The tour has a station for the new board. If you took it before, it comes
+  back once with only that one.
+
+### Changed
+
+- **Mastery is the first tab** and where Argus opens, followed by the live
+  tracker and the weekly rotation.
+- The live tracker no longer has your profile card on top — it needs the room,
+  and your profile is one click away on the Mastery tab.
+- *Alerts* moved onto the *Missions* page and *Syndicates* became *Bounties*.
+
+### Fixed
+
+- The arbitration never showed: the world-state source has been reporting a
+  dead placeholder for months, and an empty list looked like "none right now".
+  It now comes from a published schedule.
+- Alert rewards no longer name the same item twice, and alerts carry their own
+  title ("Tenno United Alert") instead of just the mission type.
+- The void fissure notification spoke German in two places — it is English now.
+
 ## [1.20.1] - 2026-10-01
 
 ### Fixed
