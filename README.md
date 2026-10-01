@@ -120,9 +120,9 @@ Every mechanism, permission and endpoint is explained in detail:
   Earth, the Plains, Orb Vallis, Cambion Drift, the Zariman and Duviri's mood — and what
   is left for you today. Void fissures split into normal, Steel Path and Void Storms; the
   sortie, the Archon hunt and the arbitration schedule; every bounty board with what each
-  stage pays out; invasions, Nightwave, Teshin's offers weeks ahead, and the traders —
-  Baro, Varzia's Prime Resurgence, Darvo, Ergo Glast and Eleanor — with what you already
-  own marked, down to the Incarnon in this week's Circuit.
+  stage pays out; invasions, Nightwave, Teshin's offers weeks ahead, today's Steel Path
+  incursions, and the traders — Baro, Varzia's Prime Resurgence, Darvo, Ergo Glast and
+  Eleanor — with what you already own marked, down to the Incarnon in this week's Circuit.
 - **Weekly rotation.** Everything that resets once a week — Archon Hunt, The Circuit,
   Deep and Temporal Archimedea, Netracells, Kahl's Garrison, the Descendia and the vendor
   resets — ticked off by itself wherever your own save records it.
@@ -249,7 +249,7 @@ Each tab of the window, with a screenshot of every view in it. Click one to open
 
 ![Live tracker: invasions](docs/img/ws-invasions.webp)
 
-**Steel Path** — Teshin's offer this week, the weeks after, and what he always has
+**Steel Path** — Teshin's offer this week and the weeks after, what he always has, and the six incursions of today and tomorrow
 
 ![Live tracker: Steel Path](docs/img/ws-steelpath.webp)
 
