@@ -17,6 +17,7 @@ import {
   CIRCUIT_NORMAL, CIRCUIT_HARD, looseKey
 } from '../core/world-view.js';
 import { parseArbitrationText, arbitrationWindow } from '../core/arbitrations.js';
+import { parseIncursionText, incursionWindow } from '../core/incursions.js';
 
 let fehler = 0;
 const ok = (label, cond, extra = '') => {
@@ -154,6 +155,53 @@ console.log('\n=== Arbitrations-Plan ===');
   ok('laufende endet um 14:00', w.current?.expiry === '2026-10-01T14:00:00.000Z');
   ok('zwei kommende', w.upcoming.length === 2);
   ok('unbekannter Knoten behaelt seine Kennung', w.upcoming[0]?.name === 'SettlementNode3');
+}
+
+console.log('\n=== Incursions-Plan ===');
+{
+  const plan = parseIncursionText(
+    '1790726400;SolNode1,SolNode2,SolNode3,SolNode4,SolNode5,SolNode6\nkaputt;\n' +
+    '1790812800;SettlementNode20,SolNode404,SolNode34,SolNode173,SolNode193,SolNode715\r\n' +
+    '1790899200;SettlementNode11,SolNode711,SolNode114,SolNode175,SolNode745,SolNode232\n');
+  ok('drei gueltige Tage, Muell uebersprungen', plan.length === 3);
+  ok('sechs Knoten je Tag', plan.every(e => e.nodes.length === 6));
+  const info = id => ({ SettlementNode20: { name: 'Iliad (Phobos)', type: 'Assassination', enemy: 'Corpus' } }[id] || null);
+  const w = incursionWindow(plan, { now: t('2026-10-01T13:30:00Z'), info });
+  ok('heute: der Satz ab 0:00 UTC', w.today?.activation === '2026-10-01T00:00:00.000Z', w.today?.activation);
+  ok('heute: erster Knoten aufgeloest', w.today?.missions[0]?.name === 'Iliad (Phobos)');
+  ok('heute: endet um Mitternacht', w.today?.expiry === '2026-10-02T00:00:00.000Z');
+  ok('morgen: der naechste Satz', w.tomorrow?.missions[0]?.node === 'SettlementNode11');
+  const spaeter = incursionWindow(plan, { now: t('2026-10-05T10:00:00Z'), info });
+  ok('Plan zu Ende: kein alter Satz als heute', spaeter.today === null && spaeter.tomorrow === null);
+}
+
+console.log('\n=== Steel Path: Bilder zu Teshins Posten ===');
+{
+  const items = [
+    { name: 'Kuva', uniqueName: '/Lotus/Types/Items/MiscItems/Kuva' },
+    { name: 'Forma', uniqueName: '/Lotus/Types/Items/MiscItems/Forma' },
+    { name: 'Umbra Forma', uniqueName: '/Lotus/Types/Items/MiscItems/FormaUmbra' }
+  ];
+  /* Riven-Karten stehen wie im echten Katalog nur im Nachschlage-Topf. */
+  const lookup = [{ name: 'Kitgun Riven Mod', uniqueName: '/Lotus/Upgrades/Mods/Randomized/RawModularPistolRandomMod' }];
+  const catalog = { items, lookup, byUniqueName: new Map([...items, ...lookup].map(i => [i.uniqueName, i])) };
+  const ws = {
+    counts: {}, cycles: [], fissures: [], alerts: [],
+    steelPath: {
+      rewardName: 'Kitgun Riven Mod', rewardCost: 75,
+      upcoming: [{ name: '3x Forma' }, { name: 'Umbra Forma Blueprint' }, { name: '50,000 Kuva' },
+                 { name: 'Bishamo Cuirass Blueprint' }, { name: '30,000 Endo' }]
+    }
+  };
+  const sp = buildWorldView(ws, { catalog, now: t('2026-10-01T13:30:00Z') }).steelPath;
+  const bild = n => sp.upcoming.find(u => u.name === n)?.image || '';
+  ok('diese Woche: Riven-Bild', /RawModularPistolRandomMod/.test(sp.rewardImage || ''));
+  ok('"3x Forma" -> Forma', /MiscItems\.Forma\.png$/.test(bild('3x Forma')), bild('3x Forma'));
+  ok('"Umbra Forma Blueprint" -> Umbra Forma', /FormaUmbra/.test(bild('Umbra Forma Blueprint')));
+  ok('"50,000 Kuva" -> Kuva', /MiscItems\.Kuva\.png$/.test(bild('50,000 Kuva')));
+  ok('Bishamo Cuirass -> Teshin-Ruestung Body', /TeshinArmourBody/.test(bild('Bishamo Cuirass Blueprint')));
+  ok('"30,000 Endo" -> mitgeliefertes Waehrungsbild', bild('30,000 Endo') === 'assets/icons/currency/endo.png', bild('30,000 Endo'));
+  ok('ohne Plan: keine Incursion-Liste', sp.incursions.today === null);
 }
 
 console.log('\n=== Konto: Circuit und Tageswerte ===');

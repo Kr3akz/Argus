@@ -53,12 +53,17 @@ follow [semantic versioning](https://semver.org/lang/en/).
   rewards. Above them, the seven nodes each faction syndicate marks today.
 - **The arbitration schedule.** The arbitration running now and the next 24
   hours of them, with mission type and faction.
+- **Steel Path incursions.** Today's six missions with node, mission type and
+  faction, and tomorrow's six next to them to plan ahead. The world-state
+  source only says that incursions are running, not where — like the
+  arbitrations, they come from a published schedule.
 - **Traders.** Baro's list with what you own, Varzia's Prime Resurgence with
   your mastery on every prime and the relics she sells, Darvo's deal with how
   many are left, and the four-day rotations of Ergo Glast (Tenet weapons) and
   Eleanor (Coda weapons, which batch now and which next).
-- **Steel Path** shows Teshin's offer for the weeks ahead and what he always
-  has. **Void fissures** split into normal, Steel Path and Void Storms.
+- **Steel Path** shows Teshin's offer for the weeks ahead, each with its
+  picture, and what he always has. **Void fissures** split into normal, Steel
+  Path and Void Storms.
   **Operations** shows how far the Fomorian and the Razorback Armada are built.
 - The tour has a station for the new board. If you took it before, it comes
   back once with only that one.

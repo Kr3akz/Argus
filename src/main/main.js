@@ -39,6 +39,7 @@ import { indexArcanes, searchArcanes, arcaneSlotCount, maxArcaneRank, isArcaneNa
 import { fetchWorldState } from '../core/worldstate.js';
 import { buildWorldView } from '../core/world-view.js';
 import { loadArbitrationSchedule } from '../core/arbitrations.js';
+import { loadIncursionSchedule } from '../core/incursions.js';
 import { computeWorldCycles } from '../core/cycles.js';
 import { loadSolNodes, fissureForNode, nodeName, nodeInfo } from '../core/solnodes.js';
 import { annotateWeekly, kahlAnker, inventarStand } from '../core/weekly.js';
@@ -2205,11 +2206,15 @@ ipcMain.handle('world:view', async (_e, force) => {
       bountyTables = await loadBountyTables(idx);
     } catch { /* ohne Tabellen keine Belohnungen */ }
 
+    /* Der Incursions-Plan laeuft neben den Knoten und dem Arbitrations-Plan
+       her - nacheinander koennten beim ersten Abruf zweimal 15 s vergehen. */
+    const incursionsLaden = loadIncursionSchedule().catch(() => []);
     let arbitrations = [];
     try {
       await loadSolNodes();
       arbitrations = await loadArbitrationSchedule();
     } catch { /* ohne Plan keine Arbitration */ }
+    const incursions = await incursionsLaden;
 
     if (!cache.market) cache.market = await loadMarketItems().catch(() => null);
 
@@ -2227,6 +2232,7 @@ ipcMain.handle('world:view', async (_e, force) => {
       mr: cache.analysis?.summary?.mr ?? null,
       bountyTables,
       arbitrations,
+      incursions,
       nodeInfo,
       relicName: path => resolveInventoryRelic(cache.market, path)?.key || null
     });

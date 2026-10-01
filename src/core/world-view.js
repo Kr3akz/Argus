@@ -20,6 +20,7 @@
 import { imageUrl } from './catalog.js';
 import { normalizeStorePath, buildBaroOffer } from './baro.js';
 import { arbitrationWindow } from './arbitrations.js';
+import { incursionWindow } from './incursions.js';
 import { inventarStand } from './weekly.js';
 
 const TAG = 86400000;
@@ -373,6 +374,57 @@ function buildVendors(catalog, konto, now) {
 }
 
 /* ------------------------------------------------------------------------
+   Steel Path
+   ------------------------------------------------------------------------
+
+   Teshins Posten heissen im Weltzustand nicht wie im Katalog: "50,000 Kuva",
+   "3x Forma", "Umbra Forma Blueprint". Menge und "Blueprint" fallen deshalb
+   weg, bevor gesucht wird - das Bild ist dasselbe. Die Bishamo-Teile sind
+   seine Operator-Ruestung und heissen im Katalog nur nach dem Koerperteil;
+   die vier stehen hier fest. Endo fuehrt der Katalog gar nicht - dafuer
+   liegt der App dasselbe Bild bei, das die Waehrungen im Inventar zeigen.
+   Der Pfad gilt relativ zu renderer/index.html. Das Relic Pack bleibt ohne
+   Bild. */
+
+const BISHAMO = { Helmet: 'Head', Cuirass: 'Body', Pauldrons: 'Arms', Greaves: 'Legs' };
+const MITGELIEFERT = { endo: 'assets/icons/currency/endo.png' };
+
+/* Die Riven-Karten und Adapter stehen nicht in items, sondern nur im
+   Nachschlage-Topf (siehe LOOKUP_FILES in core/catalog.js). */
+function lookupByName(catalog, name) {
+  if (!catalog?.lookup) return null;
+  if (!catalog._lookupByLoose) {
+    catalog._lookupByLoose = new Map();
+    for (const it of catalog.lookup) {
+      const k = it?.name && looseKey(it.name);
+      if (k && !catalog._lookupByLoose.has(k)) catalog._lookupByLoose.set(k, it);
+    }
+  }
+  return catalog._lookupByLoose.get(looseKey(name)) || null;
+}
+
+function teshinBild(catalog, name) {
+  const b = /^Bishamo (\w+)/.exec(name || '');
+  if (b && BISHAMO[b[1]]) return imageUrl(`/Lotus/Upgrades/Skins/Operator/Armour/Teshin/TeshinArmour${BISHAMO[b[1]]}`, 128);
+  const ohneMenge = String(name || '').replace(/^\s*[\d.,]+\s*k?x?\s+/i, '');
+  if (MITGELIEFERT[looseKey(ohneMenge)]) return MITGELIEFERT[looseKey(ohneMenge)];
+  const ohneBauplan = ohneMenge.replace(/\s+Blueprint$/i, '');
+  const it = itemByName(catalog, ohneMenge) || itemByName(catalog, ohneBauplan) || lookupByName(catalog, ohneMenge);
+  return it ? imageUrl(it.uniqueName, 128) : null;
+}
+
+function buildSteelPath(ws, catalog, incursions, info, now) {
+  const sp = ws.steelPath;
+  if (!sp) return null;
+  return {
+    ...sp,
+    rewardImage: teshinBild(catalog, sp.rewardName),
+    upcoming: (sp.upcoming || []).map(u => ({ ...u, image: teshinBild(catalog, u.name) })),
+    incursions: incursionWindow(incursions, { now, info })
+  };
+}
+
+/* ------------------------------------------------------------------------
    Varzia, Darvo, Baro
    ------------------------------------------------------------------------ */
 
@@ -589,7 +641,7 @@ function buildToday(ws, { inventory, mr, now }) {
 /**
  * @param ws   formatierter Weltzustand (core/worldstate.js)
  * @param ctx  { catalog, inventory, entries, subsumed, xpMap, mr,
- *               bountyTables, arbitrations, nodeInfo, relicName, now }
+ *               bountyTables, arbitrations, incursions, nodeInfo, relicName, now }
  */
 export function buildWorldView(ws, ctx = {}) {
   const now = ctx.now ?? Date.now();
@@ -614,6 +666,7 @@ export function buildWorldView(ws, ctx = {}) {
     traders,
     bounties,
     arbitration,
+    steelPath: buildSteelPath(ws, catalog, ctx.incursions, ctx.nodeInfo || (() => null), now),
     today: buildToday(ws, { inventory, mr: ctx.mr, now }),
     hasInventory: konto.hasInventory
   };

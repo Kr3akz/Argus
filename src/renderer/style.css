@@ -4428,30 +4428,48 @@ select option { background: var(--panel); color: var(--text); }
     radial-gradient(120% 140% at 0% 0%, rgb(var(--t-gold) / .10), transparent 55%),
     var(--surface);
 }
+.ws-sp-now { flex-direction: row; align-items: center; gap: 16px; }
+.ws-sp-now-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .ws-sp-now b { font-size: 19px; font-weight: 650; letter-spacing: -.2px; }
 .ws-sp-cost { font-size: 12px; color: var(--gold); font-weight: 600; }
-.ws-sp-inc {
-  align-self: flex-start;
-  margin-top: 8px;
-  font-size: 11px;
-  padding: 4px 10px;
-  border-radius: var(--r-pill);
-}
-.ws-sp-inc.on  { background: rgb(var(--t-green) / .14); color: var(--green); }
-.ws-sp-inc.off { background: var(--surface-2); color: var(--text-3); }
 .ws-sp-week {
   display: grid;
-  grid-template-columns: 110px 1fr auto;
-  align-items: baseline;
+  grid-template-columns: 32px 110px 1fr auto;
+  align-items: center;
   gap: 10px;
-  padding: 6px 0;
+  padding: 5px 0;
   border-top: 1px solid rgb(var(--t-fg) / .05);
 }
+.ws-sp-week .ws-pick-img { width: 32px; height: 32px; border-radius: calc(9px * var(--r-k)); }
+.ws-sp-week .ws-pick-img img { width: 26px; height: 26px; }
 .ws-sp-week:first-of-type { border-top: none; }
 .ws-sp-week span { font-size: 11.5px; color: var(--text-3); }
 .ws-sp-week b { font-size: 13px; font-weight: 550; }
 .ws-sp-week em { font-style: normal; font-size: 11.5px; color: var(--gold); font-variant-numeric: tabular-nums; }
-@media (max-width: 900px) { .ws-sp-grid { grid-template-columns: 1fr; } }
+/* Incursions: heute und morgen nebeneinander, gleich breit - morgen ist
+   nur zum Vorausplanen und tritt deshalb zurueck. */
+.ws-sp-inc-head { margin-top: 22px; }
+.ws-sp-inc-head + .ws-sp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ws-sp-today {
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgb(var(--t-green) / .08), transparent 55%),
+    var(--surface);
+}
+.ws-sp-next.is-muted { opacity: .7; }
+.ws-sp-mission {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 150px) 86px;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 0;
+  border-top: 1px solid rgb(var(--t-fg) / .05);
+}
+.ws-sp-mission:first-of-type { border-top: none; }
+.ws-sp-mission b { font-size: 13px; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-sp-mission .ws-arb-enemy { text-align: right; }
+@media (max-width: 900px) {
+  .ws-sp-grid, .ws-sp-inc-head + .ws-sp-grid { grid-template-columns: 1fr; }
+}
 
 /* ---------- Invasionen ---------- */
 .ws-invasion-grid {
@@ -5676,6 +5694,23 @@ button.ws-row.tone-accent:hover {
 .ws-darvo { display: flex; align-items: center; gap: 16px; }
 .ws-pick-img.is-large { width: 72px; height: 72px; }
 .ws-pick-img.is-large img { width: 62px; height: 62px; }
+/* Riven-Karten aus dem Export sind anders gebaut als jedes andere Item-Bild:
+   undurchsichtig schwarzer Sternengrund, und das Zeichen sitzt nicht in der
+   Mitte. Gemessen an der 512er-Fassung: Zeichen x 40-438, y 24-377, also
+   Mitte bei 46,5 % / 39,5 % - gut 10 % zu hoch und 3,5 % zu weit links. In
+   der Kachel stand deshalb ein schwarzes Quadrat mit dem Zeichen oben links.
+   Jetzt fuellt das Bild die Kachel und rueckt um genau diesen Versatz; der
+   schwarze Grund wird per screen zur Kachel. Das geht nur, weil jeder Theme-
+   Hintergrund dunkel ist (bg L <= 0.26, core/themes.js). Die Maske blendet
+   die Oberkante aus, die nach dem Verschieben sonst als feine Linie stuende. */
+.ws-pick-img:has(> img[src*=".Randomized."]) { overflow: hidden; }
+.ws-pick-img > img[src*=".Randomized."] {
+  width: 100%; height: 100%;
+  transform: translate(3.5%, 10.5%);
+  mix-blend-mode: screen;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 4%);
+          mask-image: linear-gradient(to bottom, transparent, #000 4%);
+}
 .ws-darvo-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .ws-darvo-body > b { font-size: 15px; font-weight: 600; }
 .ws-darvo-price { font-size: 13px; color: var(--text-2); }

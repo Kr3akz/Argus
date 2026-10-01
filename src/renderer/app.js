@@ -3933,7 +3933,7 @@ function renderToday(d) {
     zeilen.push(`
       <button class="ws-row" data-ws-go="steelpath">
         <span class="ws-row-label">Steel Path incursions</span>
-        <span class="ws-row-value">${t.incursions.active ? 'Five missions, new today' : 'Not reported'}</span>
+        <span class="ws-row-value">${t.incursions.active ? 'Six missions, new today' : 'Not reported'}</span>
         <span class="ws-row-eta">${t.incursions.active ? wsUhr(t.incursions.expiry) : ''}</span>
       </button>`);
   }
@@ -4555,6 +4555,44 @@ function renderSteelPath(sp) {
     return;
   }
 
+  const bild = (src, klasse = '') => `<div class="ws-pick-img${klasse}">${src
+    ? `<img src="${esc(src)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : ''}</div>`;
+  /* "The Murmur" soll .faction-murmur treffen, nicht .faction-themurmur. */
+  const fraktion = f => String(f || '').toLowerCase().replace(/^the\s+/, '').replace(/[^a-z]/g, '');
+  const mission = m => `
+    <div class="ws-sp-mission">
+      <b>${esc(m.name)}</b>
+      <span class="ws-arb-type">${esc(m.type || '')}</span>
+      <span class="ws-arb-enemy faction-${fraktion(m.enemy)}">${esc(m.enemy || '')}</span>
+    </div>`;
+  /* Die Ueberschrift steht immer - auch wenn der Plan fehlt, bleibt die Seite
+     gleich gegliedert, und der Hinweis haengt nicht lose unter Teshin. */
+  const inc = sp.incursions || {};
+  const incEnde = inc.today?.expiry || (sp.incursionsActive ? sp.incursionsExpiry : null);
+  const incursions = `
+    <div class="section-head section-head-row ws-sp-inc-head">
+      <div>
+        <h2>Steel Path incursions</h2>
+        <p>Six missions a day, 5 Steel Essence for each one you clear</p>
+      </div>
+      <span class="meta">${incEnde ? `new set in ${wsUhr(incEnde)}` : ''}</span>
+    </div>
+    ${inc.today ? `
+      <div class="ws-sp-grid">
+        <div class="ws-sp-next ws-sp-today">
+          <span class="ws-row-label">Today</span>
+          ${inc.today.missions.map(mission).join('')}
+        </div>
+        ${inc.tomorrow ? `
+          <div class="ws-sp-next is-muted">
+            <span class="ws-row-label">Tomorrow</span>
+            ${inc.tomorrow.missions.map(mission).join('')}
+          </div>` : ''}
+      </div>`
+    : `<p class="ws-caps-note">${sp.incursionsActive
+        ? 'Today’s missions could not be loaded — the schedule is out of reach right now.'
+        : 'No incursions reported right now.'}</p>`}`;
+
   box.innerHTML = `
     <div class="section-head section-head-row">
       <div>
@@ -4566,12 +4604,12 @@ function renderSteelPath(sp) {
     <div class="ws-sp-grid">
       <div class="ws-sp-col">
         <div class="ws-sp-now">
-          <span class="ws-row-label">This week</span>
-          <b>${esc(sp.rewardName || '—')}</b>
-          ${sp.rewardCost != null ? `<span class="ws-sp-cost">${sp.rewardCost} Steel Essence</span>` : ''}
-          <span class="ws-sp-inc ${sp.incursionsActive ? 'on' : 'off'}">
-            ${sp.incursionsActive ? `Incursions active · new set in ${wsUhr(sp.incursionsExpiry)}` : 'No incursions reported'}
-          </span>
+          ${bild(sp.rewardImage, ' is-large')}
+          <div class="ws-sp-now-body">
+            <span class="ws-row-label">This week</span>
+            <b>${esc(sp.rewardName || '—')}</b>
+            ${sp.rewardCost != null ? `<span class="ws-sp-cost">${sp.rewardCost} Steel Essence</span>` : ''}
+          </div>
         </div>
         ${(sp.evergreens || []).length ? `
           <div class="ws-sp-next">
@@ -4584,13 +4622,15 @@ function renderSteelPath(sp) {
         ${(sp.upcoming || []).length
           ? (sp.upcoming || []).map((u, i) => `
               <div class="ws-sp-week">
+                ${bild(u.image)}
                 <span>${i === 0 ? 'Next week' : esc(wsDatum(u.activation))}</span>
                 <b>${esc(u.name)}</b>
                 <em>${u.cost != null ? `${u.cost}` : ''}</em>
               </div>`).join('')
           : '<p class="ws-caps-note">The rotation is not known right now.</p>'}
       </div>
-    </div>`;
+    </div>
+    ${incursions}`;
 }
 
 /* ---------------- Unterseite: Haendler ---------------- */
