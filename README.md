@@ -241,7 +241,7 @@ Each tab of the window, with a screenshot of every view in it. Click one to open
 
 ![Live tracker: missions](docs/img/ws-missions.webp)
 
-**Bounties** — every bounty board; a click shows what each stage pays out, at the rotation it is on
+**Syndicates & bounties** — today's syndicate missions on top, then every bounty board; a click shows what each stage pays out, at the rotation it is on
 
 ![Live tracker: bounties](docs/img/ws-bounties.webp)
 
