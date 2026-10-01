@@ -46,6 +46,14 @@ export const DEFAULT_NOTIFICATIONS = () => ({
   whispers: {
     enabled: false,
     marketOnly: true
+  },
+  /* Die Uhren der offenen Welten: eine Meldung kurz bevor der Zustand
+     wechselt. `keys` nennt die Uhren aus core/cycles.js (earth, cetus,
+     vallis, cambion, zariman, duviri) - leer heisst aus, und so startet es:
+     dieselbe Zurueckhaltung wie beim Hauptschalter oben. */
+  cycles: {
+    keys: [],
+    leadMinutes: 3
   }
 });
 
@@ -86,6 +94,10 @@ export async function load() {
         whispers: {
           ...defNotif.whispers,
           ...(rawNotif.whispers || {})
+        },
+        cycles: {
+          ...defNotif.cycles,
+          ...(rawNotif.cycles || {})
         }
       }
     };
@@ -256,6 +268,10 @@ export async function updateNotificationSettings(patch) {
     whispers: {
       ...s.notifications.whispers,
       ...(patch.whispers || {})
+    },
+    cycles: {
+      ...s.notifications.cycles,
+      ...(patch.cycles || {})
     }
   };
   return save(s);

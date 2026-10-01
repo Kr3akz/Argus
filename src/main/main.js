@@ -37,7 +37,10 @@ import { loadMods, POLARITIES, RARITY_LABELS, searchMods, isAuraMod, isExilusMod
 import { evaluateBuild, combineBuilds, orokinTypeFor } from '../core/builds.js';
 import { indexArcanes, searchArcanes, arcaneSlotCount, maxArcaneRank, isArcaneName } from '../core/arcanes.js';
 import { fetchWorldState } from '../core/worldstate.js';
-import { loadSolNodes, fissureForNode, nodeName } from '../core/solnodes.js';
+import { buildWorldView } from '../core/world-view.js';
+import { loadArbitrationSchedule } from '../core/arbitrations.js';
+import { computeWorldCycles } from '../core/cycles.js';
+import { loadSolNodes, fissureForNode, nodeName, nodeInfo } from '../core/solnodes.js';
 import { annotateWeekly, kahlAnker, inventarStand } from '../core/weekly.js';
 import { searchResourceGuides, RESOURCE_CATEGORIES } from '../core/farming.js';
 import { getMiningGuide } from '../core/mining.js';
@@ -48,7 +51,7 @@ import { formatReport, clearScans, scanSummary } from '../core/diagnostics.js';
 import { scanAccountId, findGameProcessIds } from '../core/accountid.js';
 import { buildInventory, SECTIONS, ownedUpgradeRanks, miscItemCount, ownedStock, recipeRow } from '../core/inventory-items.js';
 import { buildVendorOffers } from '../core/vendors.js';
-import { loadDropTables, loadDropRows, loadDropChanges, sourcesFor } from '../core/droptables.js';
+import { loadDropTables, loadDropRows, loadDropChanges, loadBountyTables, sourcesFor } from '../core/droptables.js';
 import { searchDrops, DROP_KINDS, REFINEMENTS } from '../core/drop-search.js';
 import { loadCardImages, cardUrl } from '../core/cards.js';
 import { upgradeDetails } from '../core/upgrade-details.js';
@@ -1972,6 +1975,7 @@ const EXTERNAL_ALLOWED = [
   'https://www.warframe.com/droptables',
   'https://docs.warframestat.us',
   'https://tenno.tools',
+  'https://browse.wf',
   'https://wiki.warframe.com',
   'https://overframe.gg'
 ];
@@ -2169,6 +2173,67 @@ ipcMain.handle('vendors:get', async () => {
 
 ipcMain.handle('worldstate:get', async (_e, force) => {
   return await fetchWorldState({ force: !!force });
+});
+
+/**
+ * Der Live-Tracker im Hauptfenster - der Weltzustand plus das, was erst mit
+ * dem eigenen Konto eine Antwort wird (siehe core/world-view.js).
+ *
+ * Ein eigener Kanal und nicht worldstate:get: das Overlay fragt jenen alle
+ * paar Sekunden ab und braucht von alledem nichts, schon gar nicht die
+ * Belohnungstabellen der Kopfgelder.
+ *
+ * Jede Zutat ist fuer sich optional. Fehlt das Inventar, der Plan oder die
+ * Droptabelle, bleibt der jeweilige Teil leer - der Reiter steht trotzdem.
+ * Es wird NIE ein Inventar-Scan angestossen: loadInventory ohne refresh
+ * liest nur die Datei, die ohnehin daliegt.
+ */
+ipcMain.handle('world:view', async (_e, force) => {
+  try {
+    /* Die Uhren JEDES MAL frisch: der Weltzustand kommt bis zu 30 Sekunden
+       aus dem Zwischenspeicher, und der Reiter fragt genau dann nach, wenn
+       eine Phase gerade umgeschlagen ist - mit dem alten Stand stuende dort
+       noch "jetzt". Gerechnet kostet das nichts. */
+    const ws = { ...(await fetchWorldState({ force: !!force })), cycles: computeWorldCycles() };
+
+    try { if (!cache.catalog || !cache.analysis) await ensureData({ refresh: false }); } catch { /* ohne Profil */ }
+    const inventory = await loadInventory({ refresh: false }).then(r => r.inventory).catch(() => null);
+
+    let bountyTables = null;
+    try {
+      const { idx } = await currentDropTables({});
+      bountyTables = await loadBountyTables(idx);
+    } catch { /* ohne Tabellen keine Belohnungen */ }
+
+    let arbitrations = [];
+    try {
+      await loadSolNodes();
+      arbitrations = await loadArbitrationSchedule();
+    } catch { /* ohne Plan keine Arbitration */ }
+
+    if (!cache.market) cache.market = await loadMarketItems().catch(() => null);
+
+    const xpMap = mergeXP(
+      new Map((cache.profile?.LoadOutInventory?.XPInfo || []).map(e => [e.ItemType, e.XP])),
+      inventoryXP(inventory)
+    );
+
+    const view = buildWorldView(ws, {
+      catalog: cache.catalog,
+      inventory,
+      entries: cache.analysis?.entries || null,
+      subsumed: inventory ? subsumedSuits(inventory) : null,
+      xpMap,
+      mr: cache.analysis?.summary?.mr ?? null,
+      bountyTables,
+      arbitrations,
+      nodeInfo,
+      relicName: path => resolveInventoryRelic(cache.market, path)?.key || null
+    });
+    return { ok: true, data: view };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
 });
 
 /* Wochenrotation. Kein eigener Netzabruf: sie faellt beim Weltzustand mit
@@ -8563,7 +8628,7 @@ let notificationPollerTimer = null;
 async function triggerFissureNotification(fissure, settings) {
   const iconPath = path.join(__dirname, '../renderer/assets/icons/worldstate/fissure.png');
   const title = `Void fissure active: ${fissure.tier} · ${fissure.missionType}`;
-  const body = `${fissure.node} (${fissure.enemy || 'Befallen/Korrumpiert'})${fissure.isHard ? ' · [Steel Path]' : ''}\nRestzeit: ${fissure.eta || 'jetzt live'}`;
+  const body = `${fissure.node} (${fissure.enemy || 'Corrupted'})${fissure.isHard ? ' · [Steel Path]' : ''}\nTime left: ${fissure.eta || 'live now'}`;
 
   // Native Windows Notification Toast
   if (settings.desktopToast !== false && Notification.isSupported()) {
@@ -8637,6 +8702,68 @@ async function pollFissureTracker() {
   }
 }
 
+/* -------------------- Zyklus-Benachrichtigungen -------------------- */
+
+/* Die Uhren laufen nach der Zeit (core/cycles.js) - hier wird also nichts
+   abgefragt, nur gerechnet. Ein Takt von 20 Sekunden reicht, weil der
+   kleinste Vorlauf eine Minute ist: jedes Fenster wird mindestens dreimal
+   getroffen, gemeldet wird trotzdem nur einmal. */
+const CYCLE_TICK_MS = 20000;
+
+/* Welcher Wechsel schon gemeldet ist - je Uhr der Zeitpunkt des Wechsels.
+   Ohne das kaeme dieselbe Meldung bei jedem Takt im Vorlauffenster. */
+const gemeldeteWechsel = new Map();
+let cycleTimer = null;
+
+function triggerCycleNotification(cycle, restMs, settings) {
+  const min = Math.max(1, Math.round(restMs / 60000));
+  const um = new Date(cycle.expiry).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  const title = `${cycle.name}: ${cycle.next} in ${min} min`;
+  const body = `${cycle.label} ends at ${um}.`;
+
+  if (settings.desktopToast !== false && Notification.isSupported()) {
+    try {
+      const n = new Notification({ title, body, silent: !settings.sound });
+      n.on('click', () => {
+        if (!win) return;
+        if (win.isMinimized()) win.restore();
+        win.show();
+        win.focus();
+        win.webContents.send('navigate:tab', 'worldstate', 'overview');
+      });
+      n.show();
+    } catch (err) {
+      console.error('[Zyklen] Benachrichtigung fehlgeschlagen:', err.message);
+    }
+  }
+  if (win && win.webContents) {
+    win.webContents.send('notification:event', { type: 'cycle', title, body });
+  }
+}
+
+async function pollCycleAlerts() {
+  try {
+    const st = await store.load();
+    const settings = st.notifications || {};
+    const keys = new Set(settings.cycles?.keys || []);
+    if (!keys.size) return;
+
+    const vorlauf = Math.max(1, Math.min(60, Math.round(Number(settings.cycles?.leadMinutes) || 3))) * 60000;
+    const now = Date.now();
+    for (const c of computeWorldCycles(now)) {
+      if (!keys.has(c.key)) continue;
+      const wechsel = new Date(c.expiry).getTime();
+      const rest = wechsel - now;
+      if (rest <= 0 || rest > vorlauf) continue;
+      if (gemeldeteWechsel.get(c.key) === wechsel) continue;
+      gemeldeteWechsel.set(c.key, wechsel);
+      triggerCycleNotification(c, rest, settings);
+    }
+  } catch {
+    // Ein Fehler hier darf den Takt nicht beenden - beim naechsten Mal wieder.
+  }
+}
+
 ipcMain.handle('notifications:get', async () => {
   const st = await store.load();
   return st.notifications;
@@ -8646,6 +8773,7 @@ ipcMain.handle('notifications:save', async (_e, patch) => {
   const st = await store.updateNotificationSettings(patch);
   // Sofort prüfen, ob die neuen Einstellungen matchen
   pollFissureTracker();
+  pollCycleAlerts();
   return { ok: true, data: st.notifications };
 });
 
@@ -8666,7 +8794,7 @@ ipcMain.handle('notifications:test', async () => {
   };
 
   const title = `[Test] Void fissure active: Axi · Void Cascade`;
-  const body = `Teshub (Zariman) · [Steel Path]\nRestzeit: 54m (Test-Benachrichtigung)`;
+  const body = `Teshub (Zariman) · [Steel Path]\nTime left: 54m (test notification)`;
 
   if (Notification.isSupported()) {
     try {
@@ -9066,6 +9194,10 @@ app.whenReady().then(async () => {
   pollFissureTracker();
   notificationPollerTimer = setInterval(pollFissureTracker, 45000);
 
+  /* Und die Uhren der offenen Welten - ohne Netz, nur gerechnet. */
+  pollCycleAlerts();
+  cycleTimer = setInterval(pollCycleAlerts, CYCLE_TICK_MS);
+
   /* Fragt bei GitHub nach einer neueren Fassung - erst 15 Sekunden nach dem
      Start und nur im gepackten Build, siehe startUpdatePolling(). */
   startUpdatePolling();
@@ -9076,6 +9208,7 @@ app.whenReady().then(async () => {
 app.on('will-quit', () => {
   if (logWatcher) logWatcher.stop();
   if (notificationPollerTimer) clearInterval(notificationPollerTimer);
+  if (cycleTimer) clearInterval(cycleTimer);
   if (updateTimer) clearInterval(updateTimer);
   /* Die Verbindung IST der Status - beim Beenden faellt beides zusammen weg.
      Das ist der Rueckweg, den der Schalter verspricht: Argus zu, und

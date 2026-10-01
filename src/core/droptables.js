@@ -224,6 +224,30 @@ export async function loadDropRows(idx, { dataDir = defaultDataDir() } = {}) {
 }
 
 /**
+ * Die Kopfgeld-Tabellen der offenen Welten, fuer den Live-Tracker.
+ *
+ * Derselbe Gedanke wie bei loadDropRows: der Index haelt die Rohdaten nicht,
+ * also wird hier einmal je Tabellenstand aus der Cache-Datei gelesen - und
+ * nur die sechs Abschnitte behalten, die Kopfgelder beschreiben. Zusammen
+ * sind das rund 300 Zeilen, nicht 6 MB.
+ *
+ * Form: { cetusBountyRewards: [{ bountyLevel, rewards: { A: [...], B, C } }], ... }
+ */
+let bountyCache = null;
+const BOUNTY_FIELDS = ['cetusBountyRewards', 'solarisBountyRewards', 'deimosRewards',
+                       'zarimanRewards', 'entratiLabRewards', 'hexRewards'];
+
+export async function loadBountyTables(idx, { dataDir = defaultDataDir() } = {}) {
+  if (!idx) return null;
+  if (bountyCache?.fetchedAt === idx.fetchedAt) return bountyCache.tables;
+  const payload = JSON.parse(await readFile(CACHE(dataDir), 'utf8'));
+  const tables = {};
+  for (const f of BOUNTY_FIELDS) tables[f] = Array.isArray(payload.de?.[f]) ? payload.de[f] : [];
+  bountyCache = { fetchedAt: idx.fetchedAt, tables };
+  return tables;
+}
+
+/**
  * Was sich mit dem letzten Update der Tabellen geaendert hat.
  *
  * Gerechnet wird EINMAL, aus drop-sources.prev.json gegen den aktuellen

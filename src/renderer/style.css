@@ -163,6 +163,15 @@
      eins davon umfaerbt, soll das andere nicht mitreissen. */
   --t-riven:   170 132 255;
 
+  /* Fraktionsfarben - Invasionen, Arbitrationen, der Zariman. Spielfarben wie
+     Tag und Nacht: ein Theme, das die Corpus gruen faerbt, wuerde luegen. */
+  --fac-grineer:   230 120  64;
+  --fac-corpus:     96 176 240;
+  --fac-infested:  126 206  96;
+  --fac-corrupted: 232 196  96;
+  --fac-narmer:    214  92  92;
+  --fac-murmur:    168 160 220;
+
   /* Das Rot aus der Wortmarke von warframe.market. Gegenueber dem Original
      (#a52f31) eine Spur aufgehellt: auf dem Grau ihrer Webseite traegt der
      Originalton, auf unserem fast schwarzen Grund saeuft er ab.
@@ -2756,30 +2765,40 @@ select option { background: var(--panel); color: var(--text); }
 }
 
 /* ---------- 1. Live Worldstate Tracker ---------- */
+
+/* Sechs Uhren, drei je Reihe - fest und nicht auto-fill: bei der ueblichen
+   Fensterbreite (1560 px) passten sonst vier, und die zweite Reihe stand
+   halb leer. Schmaler zwei je Reihe. */
 .ws-cycles-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 14px;
-  margin-bottom: 24px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
 }
+@media (max-width: 1100px) { .ws-cycles-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 /* Drei Lagen: unten das Landschaftsbild, darueber ein Schleier aus
    Zustandsfarbe und Dunkel, obenauf die Schrift. isolation haelt die
    negativen z-index der Pseudoelemente in der Karte - ohne das rutschen
-   sie hinter den Seitenhintergrund. */
+   sie hinter den Seitenhintergrund.
+
+   Die Zustandsfarbe kommt als Kanal (--tone): Schleier, Kontur, Abzeichen,
+   Glocke und Phasenbalken tragen denselben Ton, und eine neue Phase braucht
+   genau eine Zeile weiter unten. */
 .ws-cycle-card {
-  --tint: rgb(var(--t-fg) / 0.05);
+  --tone: var(--t-fg);
   background: var(--bg-1);
-  border: 1px solid rgb(var(--t-fg) / 0.06);
+  border: 1px solid rgb(var(--tone) / .24);
   border-radius: var(--r-md);
-  padding: 18px 20px;
-  min-height: 150px;
+  padding: 15px 17px 14px;
+  min-height: 158px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   position: relative;
   overflow: hidden;
   isolation: isolate;
+  transition: border-color .3s var(--ease);
 }
 .ws-cycle-card::before {
   content: '';
@@ -2800,25 +2819,46 @@ select option { background: var(--panel); color: var(--text); }
   inset: 0;
   z-index: -1;
   background:
-    linear-gradient(125deg, var(--tint), transparent 58%),
+    linear-gradient(125deg, rgb(var(--tone) / .2), transparent 58%),
     linear-gradient(100deg, rgb(var(--t-deep) / .94) 0%, rgb(var(--t-deep) / .78) 38%, rgb(var(--t-deep) / .34) 100%);
 }
 .ws-cycle-card:hover::before { transform: scale(1.07); opacity: .78; }
+/* Das letzte Fuenftel der Phase: die Kontur wird kraeftiger. Kein Blinken -
+   das Fenster steht oft stundenlang offen. */
+.ws-cycle-card.is-urgent { border-color: rgb(var(--tone) / .62); }
 
 /* Offizielle Landschaftsbilder aus dem Warframe-Wiki. */
+.ws-cycle-card.map-earth::before   { background-image: url('assets/worlds/earth.jpg'); }
 .ws-cycle-card.map-cetus::before   { background-image: url('assets/worlds/cetus.jpg'); }
 .ws-cycle-card.map-vallis::before  { background-image: url('assets/worlds/vallis.jpg'); }
 .ws-cycle-card.map-cambion::before { background-image: url('assets/worlds/cambion.jpg'); }
+.ws-cycle-card.map-zariman::before { background-image: url('assets/worlds/zariman.jpg'); }
+.ws-cycle-card.map-duviri::before  { background-image: url('assets/worlds/duviri.jpg'); }
 
-.ws-cycle-card.day   { border-color: rgba(240, 184, 73, 0.28); --tint: rgba(240, 184, 73, 0.22); }
-.ws-cycle-card.night { border-color: rgba(74, 158, 255, 0.28); --tint: rgba(74, 158, 255, 0.22); }
-.ws-cycle-card.warm  { border-color: rgba(255, 120, 70, 0.28); --tint: rgba(255, 120, 70, 0.22); }
-.ws-cycle-card.cold  { border-color: rgba(100, 210, 255, 0.28); --tint: rgba(100, 210, 255, 0.22); }
+/* Tag, Nacht und die Zustaende der offenen Welten sind Weltfarben und folgen
+   keinem Theme: die Nacht bleibt blau, auch wenn der Akzent golden ist. Die
+   Stimmungen von Duviri tragen die Farbe ihres Himmels im Spiel. */
+:is(.ws-cycle-card, .ws-cycle-badge).tone-day     { --tone: 240 184 73; }
+:is(.ws-cycle-card, .ws-cycle-badge).tone-night   { --tone: 74 158 255; }
+:is(.ws-cycle-card, .ws-cycle-badge).tone-warm    { --tone: 255 120 70; }
+:is(.ws-cycle-card, .ws-cycle-badge).tone-cold    { --tone: 100 210 255; }
+:is(.ws-cycle-card, .ws-cycle-badge).tone-fass    { --tone: 255 150 50; }
+:is(.ws-cycle-card, .ws-cycle-badge).tone-vome    { --tone: 100 160 255; }
+:is(.ws-cycle-card, .ws-cycle-badge).tone-corpus  { --tone: var(--fac-corpus); }
+:is(.ws-cycle-card, .ws-cycle-badge).tone-grineer { --tone: var(--fac-grineer); }
+:is(.ws-cycle-card, .ws-cycle-badge).tone-joy     { --tone: 245 200 96; }
+:is(.ws-cycle-card, .ws-cycle-badge).tone-anger   { --tone: 255 102 72; }
+:is(.ws-cycle-card, .ws-cycle-badge).tone-envy    { --tone: 124 214 108; }
+:is(.ws-cycle-card, .ws-cycle-badge).tone-sorrow  { --tone: 150 178 205; }
+:is(.ws-cycle-card, .ws-cycle-badge).tone-fear    { --tone: 178 140 255; }
+
 .ws-cycle-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: 10px;
 }
+.ws-cycle-id { min-width: 0; }
 .ws-cycle-title {
   font-size: 14px;
   font-weight: 650;
@@ -2830,10 +2870,33 @@ select option { background: var(--panel); color: var(--text); }
   color: var(--text-3);
   margin-top: 1px;
 }
+/* Die Glocke: dieselbe Auswahl wie in den Einstellungen. Rund, weil sie
+   ein Symbol traegt und keinen Text - und auf dem Bild sitzt, wo eine Pille
+   wie ein Abzeichen aussaehe. */
+.ws-cycle-bell {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  background: rgb(var(--t-deep) / .45);
+  color: var(--text-3);
+  backdrop-filter: blur(calc(8px * var(--blur-k)));
+  transition: color .16s var(--ease), background .16s var(--ease), transform .16s var(--ease);
+}
+.ws-cycle-bell:hover { color: var(--text); background: rgb(var(--t-deep) / .7); }
+.ws-cycle-bell:active { transform: scale(.92); }
+.ws-cycle-bell.on { color: rgb(var(--tone)); background: rgb(var(--tone) / .2); }
+
+.ws-cycle-mid { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .ws-cycle-badge {
   background:
-    linear-gradient(var(--badge-tint, transparent), var(--badge-tint, transparent)),
+    linear-gradient(rgb(var(--tone) / .24), rgb(var(--tone) / .24)),
     rgb(var(--t-deep) / 0.5);
+  color: rgb(var(--tone));
   backdrop-filter: blur(calc(10px * var(--blur-k)));
   display: inline-flex;
   align-items: center;
@@ -2845,64 +2908,43 @@ select option { background: var(--panel); color: var(--text); }
   text-transform: uppercase;
   letter-spacing: 0.6px;
 }
-/* Tag, Nacht und die Phasen der offenen Welten sind Weltfarben und folgen
-   keinem Theme: die Nacht bleibt blau, auch wenn der Akzent golden ist. */
-.ws-cycle-badge.day { --badge-tint: rgba(240, 184, 73, 0.24); color: var(--gold); }
-.ws-cycle-badge.night { --badge-tint: rgba(74, 158, 255, 0.24); color: #4a9eff; }
-.ws-cycle-badge.warm { --badge-tint: rgba(255, 120, 70, 0.24); color: #ff884d; }
-.ws-cycle-badge.cold { --badge-tint: rgba(100, 210, 255, 0.24); color: #70d8ff; }
-.ws-cycle-badge.fass { --badge-tint: rgba(255, 150, 50, 0.24); color: #ffa84d; }
-.ws-cycle-badge.vome { --badge-tint: rgba(100, 160, 255, 0.24); color: #4a9eff; }
+.ws-cycle-hint {
+  font-size: 11.5px;
+  color: var(--text-2);
+  text-shadow: 0 1px 10px rgba(0, 0, 0, .85);
+}
 .ws-cycle-time {
-  font-size: 24px;
+  font-size: 23px;
   font-weight: 700;
   color: var(--text);
   letter-spacing: -0.5px;
+  font-variant-numeric: tabular-nums;
   text-shadow: 0 2px 18px rgba(0, 0, 0, .85);
 }
 .ws-cycle-time small {
-  font-size: 12px;
-  font-weight: 400;
+  font-size: 11.5px;
+  font-weight: 450;
   color: var(--text-3);
   margin-left: 6px;
+  letter-spacing: 0;
 }
-
-/* Baro Trader */
-.ws-trader-box {
-  background: var(--surface);
-  border-radius: var(--r-md);
-  box-shadow: var(--shadow);
-  padding: 22px 26px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  margin-bottom: 24px;
-}
-.ws-trader-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 14px;
-}
-.ws-trader-info h3 {
-  font-size: 17px;
-  font-weight: 650;
-  color: var(--text);
-}
-.ws-trader-info p {
-  font-size: 12.5px;
-  color: var(--text-3);
-  margin-top: 3px;
-}
-.ws-trader-status {
-  padding: 6px 14px;
+/* Wie weit die Phase schon herum ist. Duenn und unten, damit er die Zahl
+   darueber nicht verdraengt - er beantwortet "wie lange schon", die Zahl
+   "wie lange noch". */
+.ws-cycle-phase {
+  height: 3px;
+  margin-top: 9px;
   border-radius: var(--r-pill);
-  font-size: 12px;
-  font-weight: 700;
+  background: rgb(var(--t-fg) / .08);
+  overflow: hidden;
 }
-.ws-trader-status.active { background: rgb(var(--t-green) / 0.16); color: var(--green); }
-.ws-trader-status.inactive { background: rgb(var(--t-fg) / 0.06); color: var(--gold); }
+.ws-cycle-phase i {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: rgb(var(--tone) / .85);
+}
 
 /* Sortie & Archon */
 .ws-missions-grid {
@@ -4360,48 +4402,126 @@ select option { background: var(--panel); color: var(--text); }
 }
 
 /* ---------- Steel Path ---------- */
-.ws-steelpath-box { background: var(--surface); border-radius: var(--r-md); padding: 16px 18px; }
-.ws-sp-row { display: flex; justify-content: space-between; align-items: center; gap: 18px; flex-wrap: wrap; }
-.ws-sp-label { font-size: 11px; color: var(--text-3); display: block; margin-bottom: 3px; }
-.ws-sp-reward b { font-size: 15px; }
-.ws-sp-cost { font-size: 12px; color: var(--gold); margin-left: 9px; }
-.ws-sp-side { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
-.ws-sp-inc { font-size: 11px; padding: 3px 10px; border-radius: var(--r-pill); }
-.ws-sp-inc.on  { background: rgb(var(--t-green) / .16); color: var(--green); }
+/* Links diese Woche, rechts der Kreis danach. Die laufende Woche bekommt den
+   Schimmer aus der Ecke - Gold, weil Teshins Angebot mit Essenz bezahlt wird
+   wie Baros mit Dukaten. */
+.ws-sp-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(0, 1.4fr);
+  gap: 12px;
+  align-items: start;
+}
+.ws-sp-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.ws-sp-now, .ws-sp-next {
+  background: var(--surface);
+  border-radius: var(--r-md);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ws-sp-now {
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgb(var(--t-gold) / .10), transparent 55%),
+    var(--surface);
+}
+.ws-sp-now b { font-size: 19px; font-weight: 650; letter-spacing: -.2px; }
+.ws-sp-cost { font-size: 12px; color: var(--gold); font-weight: 600; }
+.ws-sp-inc {
+  align-self: flex-start;
+  margin-top: 8px;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+}
+.ws-sp-inc.on  { background: rgb(var(--t-green) / .14); color: var(--green); }
 .ws-sp-inc.off { background: var(--surface-2); color: var(--text-3); }
+.ws-sp-week {
+  display: grid;
+  grid-template-columns: 110px 1fr auto;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 0;
+  border-top: 1px solid rgb(var(--t-fg) / .05);
+}
+.ws-sp-week:first-of-type { border-top: none; }
+.ws-sp-week span { font-size: 11.5px; color: var(--text-3); }
+.ws-sp-week b { font-size: 13px; font-weight: 550; }
+.ws-sp-week em { font-style: normal; font-size: 11.5px; color: var(--gold); font-variant-numeric: tabular-nums; }
+@media (max-width: 900px) { .ws-sp-grid { grid-template-columns: 1fr; } }
 
 /* ---------- Invasionen ---------- */
 .ws-invasion-grid {
   display: grid; gap: 12px;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
 }
-.ws-invasion-card { background: var(--surface); border-radius: var(--r-md); padding: 15px 17px; }
+.ws-invasion-card {
+  background: var(--surface);
+  border-radius: var(--r-md);
+  padding: 15px 17px 13px;
+}
+/* Eine seltene Belohnung (Katalysator, Reaktor, Forma, Waffenteile) als
+   Kante links - ein Zustand, keine Farbe der Karte. */
+.ws-invasion-card.is-rare { box-shadow: inset 3px 0 0 rgb(var(--t-gold) / .75); }
 .ws-inv-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 11px; }
 .ws-inv-head b { font-size: 13.5px; }
 .ws-inv-head span { font-size: 11.5px; color: var(--text-3); }
 
-/* Der Balken zeigt den Frontverlauf: links Angreifer, rechts Verteidiger. */
-.ws-inv-bar {
-  height: 7px; border-radius: var(--r-pill); overflow: hidden;
-  background: rgb(var(--t-accent) / .25);
+.ws-inv-sides { display: flex; justify-content: space-between; gap: 14px; }
+.ws-inv-side { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ws-inv-side.right { text-align: right; align-items: flex-end; }
+.ws-inv-faction {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase;
+  color: rgb(var(--fac, var(--t-text-2)));
 }
-.ws-inv-fill { height: 100%; background: var(--red); border-radius: var(--r-pill); }
+.ws-inv-reward { font-size: 12.5px; color: var(--text); font-weight: 550; }
+.ws-inv-reward.is-rare { color: var(--gold); }
+.ws-inv-reward.is-none { color: var(--text-3); font-weight: 400; }
 
-.ws-inv-sides { display: flex; justify-content: space-between; gap: 14px; margin-top: 10px; }
-.ws-inv-side { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.ws-inv-side.right { text-align: right; }
-.ws-inv-faction { font-size: 11px; font-weight: 700; color: var(--text-2); }
-.ws-inv-reward { font-size: 11px; color: var(--text-3); }
+/* Der Balken zeigt den Frontverlauf: links Angreifer, rechts Verteidiger,
+   jede Seite in ihrer Fraktionsfarbe. */
+.ws-inv-bar {
+  display: flex;
+  height: 5px;
+  margin-top: 11px;
+  border-radius: var(--r-pill);
+  overflow: hidden;
+  background: rgb(var(--t-fg) / .06);
+  gap: 2px;
+}
+.ws-inv-bar i { display: block; height: 100%; background: rgb(var(--fac, var(--t-fg)) / .8); }
+.ws-inv-pct {
+  display: flex; justify-content: space-between;
+  margin-top: 5px; font-size: 10.5px; color: var(--text-3); font-variant-numeric: tabular-nums;
+}
+
+/* Fraktionen als Kanal - Text und Flaechen nehmen ihn ueber --fac. */
+.faction-grineer   { --fac: var(--fac-grineer); }
+.faction-corpus    { --fac: var(--fac-corpus); }
+.faction-infested,
+.faction-infestation { --fac: var(--fac-infested); }
+.faction-corrupted,
+.faction-orokin    { --fac: var(--fac-corrupted); }
+.faction-narmer    { --fac: var(--fac-narmer); }
+.faction-murmur    { --fac: var(--fac-murmur); }
 
 /* ---------- Syndikate ---------- */
+/* Sechs Syndikate, immer - also fest drei je Reihe statt auto-fill, das bei
+   1560 px fuenf und eine einsame sechste Karte stellte. */
 .ws-syndicate-grid {
   display: grid; gap: 10px;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
-.ws-syndicate-card { background: var(--surface); border-radius: var(--r-sm); padding: 13px 15px; }
+@media (max-width: 1000px) { .ws-syndicate-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.ws-syndicate-card { background: var(--surface); border-radius: var(--r-md); padding: 13px 15px; }
 .ws-syn-head { display: flex; justify-content: space-between; align-items: baseline; gap: 9px; }
 .ws-syn-head b { font-size: 13px; }
-.ws-syn-count { font-size: 11.5px; color: var(--text-3); margin-top: 4px; }
+.ws-syn-nodes { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+.ws-syn-nodes span {
+  font-size: 11px; color: var(--text-2);
+  background: rgb(var(--t-fg) / .05);
+  padding: 3px 8px; border-radius: calc(4px * var(--r-k));
+}
 
 .inv-currencies {
   display: grid;
@@ -5020,6 +5140,523 @@ select option { background: var(--panel); color: var(--text); }
 .ws-source.is-down { background: rgb(var(--t-red) / .1); color: var(--text-2); }
 .ws-source.is-down .ws-source-ic { color: var(--red); }
 .ws-source-ic { display: grid; flex-shrink: 0; }
+
+/* ---------- Live-Tracker: Kopf ---------- */
+.ws-head-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+
+/* Baro im Kopf: Gold, weil er mit Dukaten handelt - dieselbe feste Farbe wie
+   ueberall, wo Dukaten im Spiel sind. Ist er da, wird die Pille voller. */
+.ws-pill {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 13px; border-radius: var(--r-pill);
+  background: rgb(var(--t-gold) / .08);
+  color: var(--text-2); font-size: 12px;
+}
+.ws-pill svg { color: var(--gold); flex-shrink: 0; }
+.ws-pill b { color: var(--gold); font-weight: 650; font-variant-numeric: tabular-nums; }
+.ws-pill em { font-style: normal; color: var(--text-3); }
+.ws-pill em::before { content: '·'; margin-right: 7px; }
+.ws-pill.is-here { background: rgb(var(--t-gold) / .16); color: var(--text); }
+
+/* ---------- Uebersicht: Fristen ----------
+
+   Eine Reihe kleiner Uhren statt einer Liste: man sucht hier nicht, man
+   schaut. Jede ist ein Sprung zu dem Bereich, dessen Frist sie zeigt. */
+.ws-resets {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.ws-reset {
+  position: relative; overflow: hidden;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  min-width: 0;
+  padding: 11px 14px 10px;
+  border: none; border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--text); text-align: left; cursor: pointer;
+  transition: background .18s var(--ease), transform .18s var(--ease);
+}
+.ws-reset:hover { background: var(--surface-2); transform: translateY(-1px); }
+.ws-reset-label {
+  font-size: 10px; font-weight: 650; letter-spacing: .6px; text-transform: uppercase;
+  color: var(--text-3);
+}
+.ws-reset b {
+  font-size: 17px; font-weight: 650; letter-spacing: -.2px;
+  font-variant-numeric: tabular-nums;
+}
+.ws-reset-sub {
+  max-width: 100%;
+  font-size: 11px; color: var(--text-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* Gold fuer Baro, und fuer jede Frist im letzten Fuenftel ihrer Spanne -
+   ein Schimmer aus der Ecke, die Zahl in Gold. */
+.ws-reset.tone-gold,
+.ws-reset.is-urgent {
+  background:
+    radial-gradient(130% 150% at 0% 0%, rgb(var(--t-gold) / .12), transparent 60%),
+    var(--surface);
+}
+.ws-reset.is-urgent b { color: var(--gold); }
+
+/* ---------- Uebersicht: das Brett ---------- */
+.ws-dash {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr);
+  gap: 14px;
+  align-items: start;
+}
+.ws-dash-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+@media (max-width: 1100px) { .ws-dash { grid-template-columns: 1fr; } }
+
+.ws-panel {
+  background:
+    radial-gradient(120% 120% at 0% 0%, rgb(var(--t-accent) / .045), transparent 55%),
+    var(--surface);
+  border-radius: var(--r-md);
+  padding: 14px 16px 12px;
+  min-width: 0;
+}
+.ws-panel:empty { display: none; }
+.ws-panel-head { display: flex; align-items: center; gap: 11px; margin-bottom: 8px; }
+.ws-panel-ic {
+  display: grid; place-items: center; flex-shrink: 0;
+  width: 30px; height: 30px; border-radius: calc(9px * var(--r-k));
+  background: var(--accent-sf); color: var(--accent);
+}
+.ws-panel-ic .ws-stat-ic { width: 18px; height: 18px; }
+.ws-panel-title { flex: 1; min-width: 0; }
+.ws-panel-title h3 { font-size: 14px; font-weight: 600; }
+.ws-panel-title > span { display: block; font-size: 11.5px; color: var(--text-3); margin-top: 1px; }
+.ws-panel-title b { color: var(--text-2); font-weight: 600; font-variant-numeric: tabular-nums; }
+.ws-panel-link {
+  display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0;
+  padding: 5px 9px 5px 11px; border: none; border-radius: var(--r-pill);
+  background: transparent; color: var(--text-3);
+  font-size: 11.5px; font-weight: 550; cursor: pointer;
+  transition: background .16s var(--ease), color .16s var(--ease);
+}
+.ws-panel-link:hover { background: var(--surface-2); color: var(--text); }
+
+/* Eine Zeile im Panel: Beschriftung in fester Spalte, dann der Wert, dann
+   die Frist. Die feste Spalte haelt die Werte untereinander, auch wenn die
+   Beschriftungen verschieden lang sind. */
+.ws-row {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  margin: 0 -10px;
+  width: calc(100% + 20px);
+  border: none; border-radius: var(--r-sm);
+  background: transparent; color: var(--text);
+  font: inherit; text-align: left;
+}
+button.ws-row { cursor: pointer; transition: background .16s var(--ease); }
+button.ws-row:hover { background: rgb(var(--t-fg) / .04); }
+.ws-row + .ws-row { box-shadow: 0 -1px 0 rgb(var(--t-fg) / .04); }
+.ws-row-label {
+  font-size: 11px; font-weight: 600; color: var(--text-3);
+  letter-spacing: .2px;
+}
+.ws-row-value {
+  font-size: 13px; font-weight: 550; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ws-row-value em { font-style: normal; font-weight: 400; color: var(--text-3); margin-left: 4px; }
+.ws-row-value s { color: var(--text-3); }
+.ws-row-eta {
+  font-size: 12px; color: var(--text-2); font-weight: 550; white-space: nowrap;
+  font-variant-numeric: tabular-nums; grid-column: 4;
+}
+/* Ein Zustand als Kante links - Gold fuer Baro, Akzent fuer die Anomalie. */
+.ws-row.tone-gold   { box-shadow: inset 2px 0 0 rgb(var(--t-gold) / .7); }
+.ws-row.tone-accent { box-shadow: inset 2px 0 0 rgb(var(--t-accent) / .7); }
+
+/* Erledigte Sortie-Missionen als Punkte - dieselbe Sprache wie im
+   Wochenreiter (.wk-pip). */
+.ws-pips { display: inline-flex; gap: 4px; }
+.ws-pips i {
+  width: 11px; height: 11px; border-radius: calc(4px * var(--r-k));
+  background: rgb(var(--t-fg) / .08);
+}
+.ws-pips i.on { background: var(--green); }
+
+/* Was heute noch zu holen ist */
+.ws-caps { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgb(var(--t-fg) / .05); }
+.ws-caps-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 11px; font-weight: 650; color: var(--text-3); letter-spacing: .3px;
+  margin-bottom: 6px;
+}
+.ws-caps-head em { font-style: normal; font-weight: 400; }
+.ws-cap {
+  display: grid; grid-template-columns: 132px minmax(0, 1fr) 70px;
+  align-items: center; gap: 10px; padding: 4px 0;
+}
+.ws-cap-name { font-size: 12px; color: var(--text-2); }
+.ws-cap b { font-size: 12px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+.ws-cap.is-full b { color: var(--text-3); font-weight: 450; }
+.ws-cap-bar {
+  display: block; height: 5px; border-radius: var(--r-pill);
+  background: rgb(var(--t-fg) / .07); overflow: hidden;
+}
+.ws-cap-bar i { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+.ws-caps-note { font-size: 11.5px; color: var(--text-3); line-height: 1.5; margin-top: 8px; }
+
+/* ---------- Uebersicht: Risse als Raster ----------
+   Sechs Aeren mal drei Arten. Ein Feld ist ein Sprung in die Liste mit
+   genau diesem Filter; die kleine Uhr ist der Riss, der als naechster
+   schliesst. */
+.ws-fissure-matrix {
+  display: grid;
+  grid-template-columns: 72px repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  align-items: center;
+}
+.ws-fm-head {
+  font-size: 10px; font-weight: 650; letter-spacing: .5px; text-transform: uppercase;
+  color: var(--text-3); text-align: center; padding-bottom: 2px;
+}
+.ws-fm-tier { justify-self: start; }
+.ws-fm-cell {
+  display: flex; align-items: baseline; justify-content: center; gap: 7px;
+  padding: 6px 8px; border: none; border-radius: var(--r-sm);
+  background: rgb(var(--t-fg) / .04); color: var(--text);
+  cursor: pointer; font: inherit;
+  transition: background .16s var(--ease);
+}
+.ws-fm-cell:hover { background: rgb(var(--t-fg) / .09); }
+.ws-fm-cell b { font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.ws-fm-cell small { font-size: 10.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.ws-fm-cell.zero { opacity: .35; }
+
+/* ---------- Uebersicht: Circuit, Varzia & Co. als Bilder ---------- */
+.ws-circuit { padding: 8px 0 4px; }
+.ws-row + .ws-circuit, .ws-circuit + .ws-row { box-shadow: 0 -1px 0 rgb(var(--t-fg) / .04); }
+.ws-circuit-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+.ws-circuit-group + .ws-circuit-group { margin-top: 6px; }
+.ws-circuit-label {
+  display: block;
+  font-size: 10px; font-weight: 650; letter-spacing: .5px; text-transform: uppercase;
+  color: var(--text-3); margin: 6px 0 6px;
+}
+.ws-mini-btn {
+  border: none; background: rgb(var(--t-fg) / .05); color: var(--text-2);
+  font: inherit; font-size: 11px; font-weight: 550;
+  padding: 4px 10px; border-radius: var(--r-pill); cursor: pointer;
+  transition: background .16s var(--ease), color .16s var(--ease);
+}
+.ws-mini-btn:hover { background: var(--surface-3); color: var(--text); }
+.ws-mini-btn[aria-expanded="true"] { background: var(--accent-sf); color: var(--accent); }
+
+.ws-picks { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
+.ws-picks.is-dim { opacity: .6; }
+/* Eine Kachel je Item. Die Marke hat einen FESTEN Platz unter dem Namen -
+   eine Kachel ohne Marke haelt die Hoehe trotzdem, damit die Reihe nicht
+   springt. */
+.ws-pick {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  width: 70px;
+}
+.ws-pick-img {
+  position: relative;
+  width: 48px; height: 48px; flex-shrink: 0;
+  display: grid; place-items: center;
+  border-radius: calc(12px * var(--r-k));
+  background: rgb(var(--t-fg) / .045);
+  transition: background .16s var(--ease), transform .16s var(--ease);
+}
+.ws-pick-img::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgb(var(--t-fg) / .07);
+}
+.ws-pick-img img { width: 40px; height: 40px; object-fit: contain; }
+.ws-pick:hover .ws-pick-img { background: rgb(var(--t-fg) / .08); transform: translateY(-2px); }
+.ws-pick-name {
+  font-size: 10.5px; line-height: 1.25; color: var(--text-2); text-align: center;
+  max-width: 100%; overflow: hidden; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+}
+.ws-pick-mark {
+  font-size: 9px; font-weight: 700; letter-spacing: .3px;
+  padding: 2px 6px; border-radius: calc(4px * var(--r-k));
+  white-space: nowrap;
+}
+/* Die Marken - getoente Flaeche, farbige Schrift. */
+.is-done.ws-pick-mark,    .ws-tag.is-done    { background: rgb(var(--t-green) / .14);  color: var(--green); }
+.is-owned.ws-pick-mark,   .ws-tag.is-owned   { background: rgb(var(--t-fg) / .08);     color: var(--text-2); }
+.is-new.ws-pick-mark,     .ws-tag.is-accent  { background: var(--accent-sf);           color: var(--accent); }
+.is-helminth.ws-pick-mark                    { background: rgba(207, 139, 243, .16);   color: #cf8bf3; }
+.is-gold.ws-pick-mark,    .ws-tag.is-gold    { background: rgb(var(--t-gold) / .14);   color: var(--gold); }
+.is-muted.ws-pick-mark,   .ws-tag.is-muted   { background: rgb(var(--t-fg) / .05);     color: var(--text-3); }
+.ws-tag.is-red                               { background: rgb(var(--t-red) / .14);    color: var(--red); }
+/* Was man schon hat, tritt zurueck - das Bild, nicht die Marke. */
+.ws-pick.is-done .ws-pick-img img,
+.ws-pick.is-helminth .ws-pick-img img,
+.ws-pick.is-muted .ws-pick-img img { opacity: .55; }
+
+.ws-pick.is-mini { width: 46px; gap: 2px; }
+.ws-pick.is-mini .ws-pick-img { width: 32px; height: 32px; border-radius: calc(9px * var(--r-k)); }
+.ws-pick.is-mini .ws-pick-img img { width: 26px; height: 26px; }
+.ws-pick.is-mini .ws-pick-name { font-size: 9px; -webkit-line-clamp: 1; }
+.ws-pick.is-mini .ws-pick-mark { display: none; }
+
+.ws-picks.is-large .ws-pick { width: 86px; }
+.ws-picks.is-large .ws-pick-img { width: 64px; height: 64px; }
+.ws-picks.is-large .ws-pick-img img { width: 54px; height: 54px; }
+.ws-picks.is-large .ws-pick-name { font-size: 11.5px; }
+
+.ws-tag {
+  display: inline-block; vertical-align: 1px;
+  font-size: 9.5px; font-weight: 700; letter-spacing: .3px;
+  padding: 2px 6px; border-radius: calc(4px * var(--r-k));
+  margin-left: 4px; white-space: nowrap;
+}
+
+/* Die kommenden Circuit-Wochen, ausgeklappt */
+.ws-circuit-weeks {
+  display: flex; flex-direction: column; gap: 2px;
+  margin-top: 10px; padding-top: 8px;
+  border-top: 1px solid rgb(var(--t-fg) / .05);
+  max-height: 320px; overflow-y: auto;
+}
+.ws-cw { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: 10px; padding: 4px 0; }
+.ws-cw-when { font-size: 11.5px; font-weight: 600; color: var(--text-2); }
+.ws-cw-when em { display: block; font-style: normal; font-weight: 400; font-size: 10.5px; color: var(--text-3); }
+.ws-cw-picks { display: flex; flex-wrap: wrap; gap: 4px; align-items: flex-start; }
+.ws-cw-sep { width: 1px; align-self: stretch; margin: 2px 4px; background: rgb(var(--t-fg) / .08); }
+
+/* Die Splitterfarbe des Archons - Spielfarben. */
+.shard-crimson { color: #ff6b6b !important; }
+.shard-amber   { color: #f0b849 !important; }
+.shard-azure   { color: #5fb4ff !important; }
+
+/* ---------- Unterseite: Risse ---------- */
+.ws-fissure-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+/* Die Art des Risses ist die wichtigere Frage - als Segment, nicht als
+   Chip, wie der Wechsel Ressourcen/Bergbau im Farm-Reiter. */
+.ws-fissure-modes {
+  display: inline-flex; gap: 4px; padding: 4px;
+  background: var(--surface); border-radius: var(--r-pill);
+}
+.ws-seg {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 13px; border: none; border-radius: var(--r-pill);
+  background: transparent; color: var(--text-3);
+  font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: background .16s var(--ease), color .16s var(--ease);
+}
+.ws-seg:hover { color: var(--text); }
+.ws-seg.active { background: var(--surface-3); color: var(--text); }
+.ws-seg b {
+  font-size: 10.5px; font-weight: 650; color: var(--text-3);
+  background: rgba(0, 0, 0, .25); padding: 1px 6px; border-radius: var(--r-pill);
+}
+.ws-seg.active b { color: var(--text-2); }
+
+.ws-fissure-tags { display: inline-flex; align-items: center; gap: 4px; }
+.ws-fissure-tags .ws-tag { margin-left: 0; }
+/* Steel Path und Void Storm als Kante links - die Art ist ein Zustand der
+   Karte, die Aera steht schon als Marke darauf. */
+.ws-fissure-card.mode-hard  { box-shadow: inset 2px 0 0 rgb(var(--t-red) / .7); }
+.ws-fissure-card.mode-storm { box-shadow: inset 2px 0 0 rgb(var(--t-accent) / .7); }
+.ws-fissure-eta { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ws-fissure-eta.is-urgent { color: var(--gold); }
+
+/* ---------- Unterseite: Einsaetze ---------- */
+.ws-missions-grid { margin-top: 0; }
+.ws-box-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+.ws-box-head h3 { font-size: 16px; font-weight: 600; }
+.ws-box-eta { font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.ws-box-sub { font-size: 12.5px; color: var(--text-2); margin-bottom: 4px; }
+.ws-box-sub b { color: var(--text); }
+.ws-m-info b span { font-weight: 400; color: var(--text-3); margin-left: 4px; }
+.ws-m-info p.is-plain { color: var(--text-3); }
+.ws-mission-item.is-done { opacity: .5; }
+.ws-mission-item.is-done .ws-m-num { background: rgb(var(--t-green) / .16); color: var(--green); }
+
+/* Arbitrationen: die laufende gross, die naechsten als Liste mit fester
+   Zeitspalte - man liest sie wie einen Fahrplan. */
+.ws-arb { display: grid; grid-template-columns: minmax(240px, .8fr) minmax(0, 2fr); gap: 12px; align-items: start; }
+.ws-arb-now {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 16px 18px; border-radius: var(--r-md);
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgb(var(--t-accent) / .12), transparent 55%),
+    var(--surface);
+}
+.ws-arb-now b { font-size: 18px; font-weight: 650; letter-spacing: -.2px; }
+.ws-arb-now span { font-size: 12.5px; color: var(--text-2); }
+.ws-arb-now .ws-arb-left { margin-top: 6px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.ws-arb-list {
+  background: var(--surface); border-radius: var(--r-md);
+  padding: 6px 8px; max-height: 420px; overflow-y: auto;
+}
+.ws-arb-row {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) 170px 96px 80px;
+  align-items: baseline; gap: 10px;
+  padding: 6px 8px; border-radius: var(--r-sm);
+}
+.ws-arb-row:hover { background: rgb(var(--t-fg) / .035); }
+.ws-arb-row.is-next { background: rgb(var(--t-fg) / .045); }
+.ws-arb-time { font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.ws-arb-row b { font-size: 12.5px; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-arb-type { font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-arb-enemy { font-size: 11px; font-weight: 650; color: rgb(var(--fac, var(--t-text-3))); }
+.ws-arb-eta { font-size: 11.5px; color: var(--text-3); text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 1000px) { .ws-arb { grid-template-columns: 1fr; } }
+
+/* ---------- Unterseite: Kopfgelder ---------- */
+.ws-bounties { display: flex; flex-direction: column; gap: 12px; }
+.ws-bsyn { background: var(--surface); border-radius: var(--r-md); padding: 14px 16px 10px; }
+.ws-bsyn-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.ws-bsyn-head h3 { font-size: 15px; font-weight: 600; }
+.ws-bsyn-head > div > span { display: block; font-size: 11.5px; color: var(--text-3); margin-top: 1px; }
+.ws-bsyn-eta { font-size: 12px; color: var(--text-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ws-bsyn-note { font-size: 12px; color: var(--text-3); line-height: 1.5; margin: 4px 0 8px; max-width: 90ch; }
+.ws-bsyn-note b { color: var(--text-2); }
+
+.ws-jobs { display: flex; flex-direction: column; }
+.ws-job + .ws-job { box-shadow: 0 -1px 0 rgb(var(--t-fg) / .04); }
+.ws-job-row {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto 18px;
+  align-items: center; gap: 12px;
+  width: 100%; padding: 8px 8px; margin: 0;
+  border: none; border-radius: var(--r-sm);
+  background: transparent; color: var(--text);
+  font: inherit; text-align: left; cursor: pointer;
+  transition: background .16s var(--ease);
+}
+.ws-job-row:hover { background: rgb(var(--t-fg) / .04); }
+.ws-job-lvl {
+  justify-self: start;
+  font-size: 11.5px; font-weight: 650; color: var(--text-2);
+  background: rgb(var(--t-fg) / .06); padding: 3px 8px; border-radius: calc(5px * var(--r-k));
+  font-variant-numeric: tabular-nums;
+}
+.ws-job-type { font-size: 13px; font-weight: 550; min-width: 0; }
+.ws-job-meta { font-size: 11.5px; color: var(--text-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ws-job-chev { display: grid; place-items: center; color: var(--text-3); transition: transform .2s var(--ease); }
+.ws-job.open .ws-job-chev { transform: rotate(90deg); }
+.ws-job.open > .ws-job-row { background: rgb(var(--t-fg) / .035); }
+
+.ws-job-rewards { display: none; padding: 6px 8px 12px 84px; }
+.ws-job.open .ws-job-rewards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 6px 18px;
+  animation: fade .2s var(--ease);
+}
+.ws-rw-stage { min-width: 0; }
+.ws-rw-stage-name {
+  display: block; font-size: 10px; font-weight: 650; letter-spacing: .4px; text-transform: uppercase;
+  color: var(--text-3); margin: 4px 0 3px;
+}
+.ws-rw-items { display: flex; flex-direction: column; }
+/* Seltenheit als Kante links - Bronze, Silber, Gold wie im ganzen Haus. */
+.ws-rw {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  padding: 2px 0 2px 8px; font-size: 12px; color: var(--text-2);
+  box-shadow: inset 2px 0 0 rgb(var(--t-fg) / .1);
+}
+.ws-rw b { font-size: 11px; font-weight: 600; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.ws-rw.is-bronze { box-shadow: inset 2px 0 0 rgb(var(--t-bronze) / .6); }
+.ws-rw.is-silver { box-shadow: inset 2px 0 0 rgb(var(--t-silver) / .7); }
+.ws-rw.is-gold   { box-shadow: inset 2px 0 0 rgb(var(--t-gold) / .8); color: var(--text); }
+.ws-rw.is-gold b { color: var(--gold); }
+
+.ws-bsyn.is-unpublished .ws-job-row { grid-template-columns: 64px minmax(0, 1fr) auto 18px; }
+
+/* ---------- Unterseite: Haendler ---------- */
+#ws-traders { display: flex; flex-direction: column; gap: 14px; }
+.ws-trader {
+  background: var(--surface); border-radius: var(--r-md);
+  padding: 16px 18px;
+  display: flex; flex-direction: column; gap: 10px;
+  min-width: 0;
+}
+.ws-trader.tone-gold {
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgb(var(--t-gold) / .10), transparent 55%),
+    var(--surface);
+}
+.ws-trader-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.ws-trader-head > div { flex: 1; min-width: 0; }
+.ws-trader-head h3 { font-size: 16px; font-weight: 600; }
+.ws-trader-head > div > span { display: block; font-size: 12px; color: var(--text-3); margin-top: 1px; }
+.ws-trader-sub { display: flex; flex-direction: column; gap: 6px; }
+.ws-trader-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 1000px) { .ws-trader-pair { grid-template-columns: 1fr; } }
+
+.ws-trade-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 8px; }
+.ws-trade-item {
+  display: grid; grid-template-columns: 48px minmax(0, 1fr) auto;
+  align-items: center; gap: 10px;
+  padding: 7px 10px 7px 7px; border-radius: var(--r-sm);
+  background: rgb(var(--t-fg) / .03);
+}
+.ws-trade-item.is-owned .ws-pick-img img { opacity: .55; }
+.ws-trade-item.is-missing { box-shadow: inset 2px 0 0 rgb(var(--t-gold) / .6); }
+.ws-trade-body { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ws-trade-body b { font-size: 12.5px; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-trade-body span { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--text-3); }
+.ws-trade-body .currency-ic { width: 13px; height: 13px; }
+
+.ws-chip-wall { display: flex; flex-wrap: wrap; gap: 6px; }
+.ws-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11.5px; color: var(--text-2);
+  background: rgb(var(--t-fg) / .05);
+  padding: 4px 10px; border-radius: var(--r-pill);
+}
+.ws-chip b { font-size: 11px; font-weight: 650; color: var(--gold); font-variant-numeric: tabular-nums; }
+.ws-chip .ws-fissure-tier { padding: 1px 5px; font-size: 9px; }
+
+.ws-darvo { display: flex; align-items: center; gap: 16px; }
+.ws-pick-img.is-large { width: 72px; height: 72px; }
+.ws-pick-img.is-large img { width: 62px; height: 62px; }
+.ws-darvo-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.ws-darvo-body > b { font-size: 15px; font-weight: 600; }
+.ws-darvo-price { font-size: 13px; color: var(--text-2); }
+.ws-darvo-price b { color: var(--text); font-size: 15px; }
+.ws-darvo-price s { color: var(--text-3); margin-left: 3px; }
+.ws-darvo-stock { font-size: 11.5px; color: var(--text-3); }
+.ws-darvo .ws-cap-bar { max-width: 260px; }
+.ws-darvo.is-soldout .ws-cap-bar i { background: rgb(var(--t-fg) / .22); }
+
+/* ---------- Unterseite: Operationen ---------- */
+.ws-builds { background: var(--surface); border-radius: var(--r-md); padding: 10px 16px; }
+.ws-build {
+  display: grid; grid-template-columns: 170px minmax(0, 1fr) 80px;
+  align-items: center; gap: 12px; padding: 7px 0;
+}
+.ws-build + .ws-build { border-top: 1px solid rgb(var(--t-fg) / .05); }
+.ws-build span:first-child { font-size: 12.5px; color: var(--text-2); }
+.ws-build b { font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+.ws-build .ws-cap-bar { height: 6px; }
+
+/* ---------- Einstellungen: Zyklus-Meldungen ---------- */
+.setting-row-cycles .setting-info { flex: 1; }
+.cycle-lead {
+  display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0;
+  font-size: 12px; color: var(--text-3);
+}
+/* Die Grundregel fuer Zahlenfelder setzt width: 100% - hier ist das Feld
+   nur zwei Ziffern breit, und die Beschriftung daneben bleibt auf einer Zeile. */
+.cycle-lead input[type=number] { width: 58px; flex: none; padding: 7px 8px; text-align: center; font-variant-numeric: tabular-nums; }
+.cycle-lead span { white-space: nowrap; }
+.cycle-picks { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 0 12px; }
 
 /* Alerts & zeitlich begrenzte Missionen */
 .ws-alert-list {

@@ -108,4 +108,10 @@ Under **Settings** are the things that always apply:
 the live tracker under *Void fissures → Notifications*. That choice belongs with the list
 it filters: the preview there shows immediately how many fissures currently match.
 
+**Open-world cycles** — night on the Plains, the Vallis warming up, Duviri changing its
+mood — can announce themselves a few minutes before they flip. Pick the cycles under
+*Settings → Notifications*, or with the bell on each cycle card in the live tracker; both
+switch the same list, and with none picked it is off. The lead time is one to sixty
+minutes. The cycles run on a fixed clock, so this needs no network at all.
+
 ---

@@ -4,7 +4,7 @@
  * automatischem tenno.tools Live-Fallback bei Ausfällen oder veraltetem Server-Stand.
  */
 import { buildWeekly } from './weekly.js';
-import { computeCycles } from './cycles.js';
+import { computeCycles, computeWorldCycles } from './cycles.js';
 
 let cachedWorldstate = null;
 let lastFetchedAt = 0;
@@ -67,35 +67,12 @@ export async function fetchWorldState({ force = false } = {}) {
 
   if (data) {
     try {
-      const formatted = {
-        fetchedAt: new Date().toISOString(),
-        source: sourceName,
-        /* Der Zeitstempel der QUELLE, nicht unserer - und zwar der Quelle, aus
-           der die Risse stammen. Nur sie kann unvollstaendig sein; die Zyklen
-           kommen aus der Uhr und die Wochenansicht schaut selbst nach. */
-        sourceTimestamp: fissureStamp,
-        ...cycles,
-        voidTrader: formatVoidTrader(data.voidTrader),
+      const formatted = formatWorldState(data, {
         fissures,
-        sortie: formatSortie(data.sortie),
-        archonHunt: formatArchonHunt(data.archonHunt),
-        events: formatEvents(data.events || []),
-        nightwave: formatNightwave(data.nightwave),
-        alerts: [
-          ...formatAlerts(data.alerts || []),
-          ...formatKuva(data.kuva),
-          ...formatArbitration(data.arbitration)
-        ],
-        invasions: formatInvasions(data.invasions || []),
-        syndicates: formatSyndicates(data.syndicateMissions || []),
-        steelPath: formatSteelPath(data.steelPath),
-        /* Die Wochenansicht bekommt die ROHdaten: hier oben sind die
-           Ablaufdaten schon zu Textbausteinen verrechnet, dort werden sie
-           als Zeitpunkte gebraucht. Siehe core/weekly.js. */
-        weekly: buildWeekly(data)
-      };
-
-      formatted.counts = countAll(formatted);
+        source: sourceName,
+        sourceTimestamp: fissureStamp,
+        cycles
+      });
 
       cachedWorldstate = formatted;
       lastFetchedAt = now;
@@ -115,22 +92,106 @@ export async function fetchWorldState({ force = false } = {}) {
     return fallbackFull;
   }
 
-  /* Letzte Rettung: alter Cache oder leerer Stand */
+  /* Letzte Rettung: alter Cache oder leerer Stand. Die Uhren werden auch
+     dann neu gerechnet - sie brauchen keine Quelle, und ein alter Stand
+     zeigte sonst eine Nacht, die laengst vorbei ist. */
   if (cachedWorldstate) {
-    return { ...cachedWorldstate, error: primaryError || 'WorldState veraltet' };
+    return {
+      ...cachedWorldstate,
+      ...computeCycles(),
+      cycles: computeWorldCycles(),
+      error: primaryError || 'World state is out of date'
+    };
   }
 
-  return {
+  const leer = {
     error: primaryError || 'World state unreachable',
     fetchedAt: new Date().toISOString(),
     source: 'none',
     sourceTimestamp: null,
     ...computeCycles(),
+    cycles: computeWorldCycles(),
+    ...LEERE_ZUSAETZE,
     voidTrader: null, fissures: [], sortie: null, archonHunt: null,
-    events: [], nightwave: [], alerts: [], invasions: [], syndicates: [], steelPath: null,
-    counts: { events: 0, nightwave: 0, alerts: 0, steelPath: 0, invasions: 0,
-              syndicates: 0, fissures: 0, sortie: 0, archon: 0, missions: 0 }
+    events: [], nightwave: [], alerts: [], invasions: [], syndicates: [], steelPath: null
   };
+  leer.counts = countAll(leer);
+  return leer;
+}
+
+/* Die Felder, die erst mit dem Live-Tracker-Ausbau dazukamen. Ein Rueckfall,
+   der sie nicht fuehrt, muss sie trotzdem LEER fuehren - die Oberflaeche
+   fragt nicht bei jedem einzeln nach, ob es ihn gibt. */
+const LEERE_ZUSAETZE = Object.freeze({
+  nightwaveSeason: null,
+  vaultTrader: null,
+  dailyDeals: [],
+  circuit: null,
+  bounties: [],
+  factionMissions: [],
+  simaris: null,
+  anomaly: null,
+  construction: null
+});
+
+/**
+ * Die rohe Antwort von warframestat.us in die Form, mit der Argus rechnet.
+ *
+ * Bewusst ohne Netz und ohne Zwischenspeicher: dieselbe Funktion laeuft im
+ * Hauptprozess auf der Live-Antwort und in den Tests auf einem gespeicherten
+ * Abzug. Was sie braucht, bekommt sie herein - auch die Uhrzeit.
+ *
+ * @param data  die rohe Antwort (api.warframestat.us/pc)
+ * @param opts.fissures        schon gepruefte Risse (z. B. aus dem Rueckfall);
+ *                             fehlen sie, kommen sie aus `data`
+ * @param opts.source          Name der Quelle fuer die Anzeige
+ * @param opts.sourceTimestamp Zeitstempel der Quelle, aus der die Risse stammen
+ * @param opts.cycles          schon gerechnete Zyklen (sonst jetzt gerechnet)
+ * @param opts.now             Bezugszeit in ms
+ */
+export function formatWorldState(data, {
+  fissures = null, source = 'warframestat', sourceTimestamp, cycles = null, now = Date.now()
+} = {}) {
+  const formatted = {
+    fetchedAt: new Date(now).toISOString(),
+    source,
+    /* Der Zeitstempel der QUELLE, nicht unserer - und zwar der Quelle, aus
+       der die Risse stammen. Nur sie kann unvollstaendig sein; die Zyklen
+       kommen aus der Uhr und die Wochenansicht schaut selbst nach. */
+    sourceTimestamp: sourceTimestamp === undefined ? (data.timestamp || null) : sourceTimestamp,
+    ...(cycles || computeCycles(now)),
+    cycles: computeWorldCycles(now),
+    voidTrader: formatVoidTrader(data.voidTrader),
+    fissures: fissures || formatFissures(data.fissures || []),
+    sortie: formatSortie(data.sortie),
+    archonHunt: formatArchonHunt(data.archonHunt),
+    events: formatEvents(data.events || []),
+    nightwave: formatNightwave(data.nightwave),
+    nightwaveSeason: formatNightwaveSeason(data.nightwave),
+    alerts: [
+      ...formatAlerts(data.alerts || []),
+      ...formatKuva(data.kuva),
+      ...formatArbitration(data.arbitration)
+    ],
+    invasions: formatInvasions(data.invasions || []),
+    syndicates: formatSyndicates(data.syndicateMissions || []),
+    bounties: formatBounties(data.syndicateMissions || [], data.events || []),
+    factionMissions: formatFactionMissions(data.syndicateMissions || []),
+    steelPath: formatSteelPath(data.steelPath),
+    vaultTrader: formatVaultTrader(data.vaultTrader),
+    dailyDeals: formatDailyDeals(data.dailyDeals),
+    circuit: formatCircuit(data.duviriCycle),
+    simaris: formatSimaris(data.simaris),
+    anomaly: formatAnomaly(data.sentientOutposts, now),
+    construction: formatConstruction(data.constructionProgress),
+    /* Die Wochenansicht bekommt die ROHdaten: hier oben sind die
+       Ablaufdaten schon zu Textbausteinen verrechnet, dort werden sie
+       als Zeitpunkte gebraucht. Siehe core/weekly.js. */
+    weekly: buildWeekly(data)
+  };
+
+  formatted.counts = countAll(formatted);
+  return formatted;
 }
 
 /** Knoten-Name von 'Planet/Knoten' in 'Knoten (Planet)' normalisieren. */
@@ -315,6 +376,8 @@ async function fetchTennoToolsFullWorldState() {
       source: 'tennotools',
       sourceTimestamp: d.time ? new Date(d.time * 1000).toISOString() : null,
       ...computeCycles(),
+      cycles: computeWorldCycles(),
+      ...LEERE_ZUSAETZE,
       voidTrader,
       fissures: fissures.sort((a, b) => a.tierNum - b.tierNum || a.node.localeCompare(b.node)),
       sortie: sorties,
@@ -424,6 +487,12 @@ function formatFissures(list) {
 function formatSortie(s) {
   if (!s) return null;
   return {
+    /* Die Kennung ist dieselbe, unter der das Inventar erledigte Missionen
+       ablegt (CompletedSorties: "SolNode127_<id>") - darueber zaehlt der
+       Live-Tracker, wie viele der drei schon gelaufen sind. */
+    id: s.id || null,
+    activation: s.activation || null,
+    expiry: s.expiry || null,
     boss: s.boss || 'Boss',
     faction: s.faction || 'Grineer',
     eta: s.eta || etaFrom(s.expiry),
@@ -439,6 +508,9 @@ function formatSortie(s) {
 function formatArchonHunt(a) {
   if (!a) return null;
   return {
+    id: a.id || null,
+    activation: a.activation || null,
+    expiry: a.expiry || null,
     boss: a.boss || 'Archon',
     faction: a.faction || 'Narmer',
     eta: a.eta || etaFrom(a.expiry),
@@ -475,8 +547,18 @@ function etaFrom(expiry) {
 /** Belohnung einer Invasionsseite als lesbarer Text. */
 function rewardText(reward) {
   if (!reward) return '';
-  const parts = (reward.countedItems || []).map(c => `${c.count}x ${c.type || c.key}`);
-  parts.push(...(reward.items || []));
+  /* Dieselbe Belohnung steht oft ZWEIMAL in der Antwort: einmal gezaehlt
+     (countedItems) und einmal als Name (items). Am 2026-10-01 trugen die
+     Tenno-United-Alerts beides - "1x Conquera Kuaka Floof, Conquera Kuaka
+     Floof". Der Name zaehlt nur, wenn er nicht schon gezaehlt ist, und eine
+     Eins vor einem Einzelstueck sagt nichts. */
+  const gezaehlt = new Set();
+  const parts = (reward.countedItems || []).map(c => {
+    const name = c.type || c.key;
+    gezaehlt.add(String(name).toLowerCase());
+    return c.count > 1 ? `${c.count}x ${name}` : name;
+  });
+  parts.push(...(reward.items || []).filter(n => !gezaehlt.has(String(n).toLowerCase())));
   if (reward.credits) parts.push(`${reward.credits.toLocaleString('en-GB')} credits`);
   return parts.join(', ');
 }
@@ -511,7 +593,9 @@ function formatAlerts(list) {
     .map(a => ({
       id: a.id,
       art: 'alert',
-      titel: a.mission?.type || 'Alert',
+      /* "Tenno United Alert" sagt mehr als "Disruption" - der Missionstyp
+         steht ohnehin in der Ortszeile darunter. */
+      titel: a.mission?.description || a.mission?.type || 'Alert',
       node: a.mission?.node || '',
       missionType: a.mission?.type || 'Mission',
       faction: a.mission?.faction || '',
@@ -622,18 +706,281 @@ function formatSyndicates(list) {
     }));
 }
 
-/** Steel Path: Teshins Wochenangebot und ob die Incursions heute laufen. */
+/* Eine Woche in ms - Teshins Angebot wechselt im Wochentakt. */
+const WOCHE_MS = 7 * 86400000;
+
+/**
+ * Steel Path: Teshins Wochenangebot, die Wochen danach und ob die Incursions
+ * heute laufen.
+ *
+ * DIE KOMMENDEN WOCHEN SIND GERECHNET, NICHT GERATEN. `rotation` ist der
+ * vollstaendige Kreis seiner Wochenangebote, in der Reihenfolge, in der sie
+ * drankommen - der aktuelle Posten steht darin (am 2026-10-01 "Kitgun Riven
+ * Mod" an dritter Stelle von acht). Was danach kommt, ist also einfach der
+ * naechste Eintrag im Kreis. Steht der aktuelle Posten NICHT im Kreis, wird
+ * nichts vorhergesagt - dann hat DE den Kreis umgebaut, und eine Liste ab
+ * irgendeiner Stelle waere eine erfundene.
+ *
+ * `expiry` steht in der Antwort auf Sonntag 23:59:59. Die neue Woche beginnt
+ * eine Sekunde spaeter, am Montag 0:00 UTC - deshalb auf die volle Minute
+ * aufgerundet.
+ */
 function formatSteelPath(sp) {
   if (!sp) return null;
   const inc = sp.incursions || null;
+
+  const kreis = (sp.rotation || []).filter(r => r?.name);
+  const aktuell = sp.currentReward?.name || '';
+  const stelle = kreis.findIndex(r => r.name === aktuell);
+  const ende = sp.expiry ? Math.ceil(new Date(sp.expiry).getTime() / 60000) * 60000 : NaN;
+
+  const upcoming = stelle >= 0 && Number.isFinite(ende)
+    ? kreis.slice(1).map((_, i) => {
+        const r = kreis[(stelle + 1 + i) % kreis.length];
+        const ab = ende + i * WOCHE_MS;
+        return {
+          name: r.name,
+          cost: r.cost ?? null,
+          activation: new Date(ab).toISOString(),
+          expiry: new Date(ab + WOCHE_MS).toISOString()
+        };
+      })
+    : [];
+
   return {
-    rewardName: sp.currentReward?.name || '',
+    rewardName: aktuell,
     rewardCost: sp.currentReward?.cost ?? null,
     remaining: sp.remaining || '',
+    activation: sp.activation || null,
+    expiry: sp.expiry || null,
+    upcoming,
+    /* Was jederzeit bei ihm liegt, unabhaengig von der Woche. */
+    evergreens: (sp.evergreens || []).filter(r => r?.name).map(r => ({ name: r.name, cost: r.cost ?? null })),
     // Die API liefert zu den Incursions nur einen Zeitraum, keine Missionsliste.
     incursionsActive: !!(inc && inc.expiry && new Date(inc.expiry).getTime() > Date.now()),
-    incursionsEta: inc ? etaFrom(inc.expiry) : ''
+    incursionsEta: inc ? etaFrom(inc.expiry) : '',
+    incursionsExpiry: inc?.expiry || null
   };
+}
+
+/* ------------------------- Ausbau des Live-Trackers ------------------------- */
+
+/**
+ * Nightwave als Staffel - die Akte selbst stehen in formatNightwave.
+ * Die Staffel laeuft Monate; ihr Ende ist trotzdem eine echte Frist, und wer
+ * Creds sparen will, will sie kennen.
+ */
+function formatNightwaveSeason(nw) {
+  if (!nw) return null;
+  return {
+    season: nw.season ?? null,
+    phase: nw.phase ?? null,
+    activation: nw.activation || null,
+    expiry: nw.expiry || null
+  };
+}
+
+/**
+ * Varzia, Prime Resurgence.
+ *
+ * Die Preisfelder heissen in der Antwort `ducats` und `credits`, weil
+ * warframestat.us denselben Parser wie fuer Baro benutzt - Dukaten oder
+ * Credits sind es aber nicht. Welche Waehrung welches Feld traegt, ist am
+ * Abzug nicht sicher abzulesen (Pakete und Ausruestung stehen beide unter
+ * `ducats`, die Relikte unter `credits`), deshalb gibt Argus die Zahlen
+ * unter neutralem Namen weiter und schreibt keine Waehrung daneben, die es
+ * nicht belegen kann.
+ */
+function formatVaultTrader(vt) {
+  if (!vt) return null;
+  return {
+    character: vt.character || 'Varzia',
+    location: vt.location || null,
+    activation: vt.activation || null,
+    expiry: vt.expiry || null,
+    items: (vt.inventory || []).map(i => ({
+      uniqueName: i.uniqueName || null,
+      name: i.item || null,
+      price: i.ducats ?? i.credits ?? null
+    }))
+  };
+}
+
+/** Darvos Tagesangebot. Meist genau eines; die Antwort ist trotzdem eine Liste. */
+function formatDailyDeals(list) {
+  return (list || [])
+    .filter(stillActive)
+    .map(d => ({
+      item: d.item || 'Item',
+      uniqueName: d.uniqueName || null,
+      originalPrice: d.originalPrice ?? null,
+      salePrice: d.salePrice ?? null,
+      discount: d.discount ?? null,
+      total: d.total ?? null,
+      sold: d.sold ?? null,
+      activation: d.activation || null,
+      expiry: d.expiry || null
+    }));
+}
+
+/**
+ * Was der Circuit diese Woche zur Wahl stellt - nur die Namen. Aufgeloest
+ * (Bild, Besitz, Helminth, Incarnon) wird im Hauptprozess, der Katalog und
+ * Inventar hat; siehe core/world-view.js.
+ */
+function formatCircuit(duviri) {
+  const auswahl = duviri?.choices || [];
+  const holen = k => auswahl.find(c => String(c.category).toLowerCase() === k)?.choices || [];
+  const normal = holen('normal');
+  const hard = holen('hard');
+  if (!normal.length && !hard.length) return null;
+  return { normal, hard };
+}
+
+/* Die offenen Welten, die Kopfgelder vergeben - in der Reihenfolge, in der
+   sie ins Spiel kamen. `zone` ist der Ort, an dem man sie annimmt, `table`
+   das Feld in DEs Droptabellen, unter dem ihre Belohnungen stehen. */
+const KOPFGELD_SYNDIKATE = [
+  { match: /^ostrons?$|cetussyndicate/i,       key: 'ostrons',   name: 'Ostrons',        zone: 'Cetus · Plains of Eidolon',   table: 'cetusBountyRewards',   suffix: 'Cetus Bounty' },
+  { match: /^solaris united$|solarissyndicate/i, key: 'solaris',  name: 'Solaris United', zone: 'Fortuna · Orb Vallis',        table: 'solarisBountyRewards', suffix: 'Orb Vallis Bounty' },
+  { match: /^entrati$|entratisyndicate/i,      key: 'entrati',   name: 'Entrati',        zone: 'Necralisk · Cambion Drift',   table: 'deimosRewards',        suffix: 'Cambion Drift Bounty' },
+  { match: /holdfasts|zarimansyndicate/i,      key: 'holdfasts', name: 'The Holdfasts',  zone: 'Chrysalith · Zariman',        table: 'zarimanRewards',       suffix: 'Zariman Bounty' },
+  { match: /^cavia$|entratilabsyndicate/i,     key: 'cavia',     name: 'Cavia',          zone: 'Sanctum Anatomica · Deimos',  table: 'entratiLabRewards',    suffix: 'Entrati Lab Bounty' },
+  { match: /^the hex$|hexsyndicate/i,          key: 'hex',       name: 'The Hex',        zone: 'Höllvania · 1999',            table: 'hexRewards',           suffix: 'WF1999 Bounty' }
+];
+
+export const BOUNTY_SYNDICATES = KOPFGELD_SYNDIKATE.map(({ match, ...rest }) => rest);
+
+/**
+ * Welche Rotation ein Kopfgeld gerade auszahlt, steht im Pfad seiner
+ * Belohnungstabelle: .../TierATableARewards ist Stufe A, Rotation A;
+ * .../VaultBountyTierBTableCRewards ein Isolation Vault mit Rotation C.
+ *
+ * Nachgeprueft am 2026-10-01 gegen eine zweite Quelle, die die Rotation als
+ * eigenes Feld fuehrt: von 23 Auftraegen der Ostrons, Solaris United und
+ * Entrati trugen dort 21 das Feld, und alle 21 stimmten - einschliesslich des
+ * einen Entrati-Auftrags, der als einziger auf B stand (TierDTableBRewards).
+ * Die zwei uebrigen (Entrati, Stufe 40-60 und 100) fuehrt sie ohne Rotation.
+ */
+export function bountyRotation(uniqueName) {
+  const m = /Table([ABC])Rewards$/.exec(String(uniqueName || ''));
+  return m ? m[1] : null;
+}
+
+function formatJob(j) {
+  const stufen = Array.isArray(j.standingStages) ? j.standingStages : [];
+  return {
+    id: j.id || null,
+    type: j.type || 'Bounty',
+    levels: Array.isArray(j.enemyLevels) ? j.enemyLevels.slice(0, 2) : [],
+    minMR: j.minMR ?? 0,
+    standing: stufen,
+    standingTotal: stufen.reduce((s, n) => s + (Number(n) || 0), 0),
+    stages: stufen.length,
+    rotation: bountyRotation(j.uniqueName),
+    uniqueName: j.uniqueName || null,
+    isVault: !!j.isVault,
+    /* Narmer-Auftraege gibt es nur bei Tag (Cetus) bzw. Nacht (Fortuna). */
+    timeBound: j.timeBound || null,
+    expiry: j.expiry || null
+  };
+}
+
+/**
+ * Kopfgelder der offenen Welten, je Syndikat.
+ *
+ * Drei Syndikate fehlen in der Antwort regelmaessig mit leerer Liste: die
+ * Holdfasts, Cavia und The Hex. Deren Auftraege wuerfelt der Spielclient
+ * selbst aus - veroeffentlicht wird davon nichts. Sie stehen trotzdem hier,
+ * mit leerer Liste, damit die Oberflaeche ihre festen Stufen aus den
+ * Droptabellen zeigen kann, statt so zu tun, als gaebe es sie nicht.
+ *
+ * Kopfgelder eines laufenden EVENTS (Ghoul Purge) kommen als eigene Gruppe
+ * dazu - sie haengen an der Operation, nicht an einem Syndikat.
+ */
+function formatBounties(syndicateMissions, events) {
+  const out = [];
+  for (const def of KOPFGELD_SYNDIKATE) {
+    const s = syndicateMissions.find(x => def.match.test(x.syndicateKey || '') || def.match.test(x.syndicate || ''));
+    out.push({
+      key: def.key,
+      syndicate: def.name,
+      zone: def.zone,
+      table: def.table,
+      suffix: def.suffix,
+      expiry: s?.expiry || null,
+      published: !!(s?.jobs || []).length,
+      jobs: (s?.jobs || []).map(formatJob)
+    });
+  }
+
+  for (const e of events) {
+    if (!(e.jobs || []).length || !e.expiry || new Date(e.expiry).getTime() <= Date.now()) continue;
+    const ghoul = /ghoul/i.test(e.description || '') || (e.jobs || []).some(j => /Ghoul/i.test(j.uniqueName || ''));
+    out.push({
+      key: 'event-' + (e.id || e.description),
+      syndicate: e.description || 'Operation',
+      zone: ghoul ? 'Cetus · Plains of Eidolon' : (e.node || ''),
+      table: ghoul ? 'cetusBountyRewards' : null,
+      suffix: ghoul ? 'Ghoul Bounty' : null,
+      expiry: e.expiry,
+      published: true,
+      isEvent: true,
+      jobs: (e.jobs || []).map(formatJob)
+    });
+  }
+  return out;
+}
+
+/**
+ * Die klassischen Syndikate (Steel Meridian, Arbiters ...): sie vergeben
+ * keine Kopfgelder, sondern markieren taeglich sieben Knoten, auf denen ihre
+ * Missionen laufen.
+ */
+function formatFactionMissions(list) {
+  return list
+    .filter(s => (s.nodes || []).length && !(s.jobs || []).length)
+    .map(s => ({
+      syndicate: s.syndicate || s.syndicateKey || 'Syndicate',
+      nodes: (s.nodes || []).filter(Boolean),
+      expiry: s.expiry || null
+    }))
+    .sort((a, b) => a.syndicate.localeCompare(b.syndicate, 'en'));
+}
+
+/** Simaris' Syntheseziel. */
+function formatSimaris(s) {
+  if (!s?.target) return null;
+  return { target: s.target, active: !!s.isTargetActive };
+}
+
+/**
+ * Die Sentient-Anomalie im Veil. Die Antwort traegt sie auch dann, wenn
+ * ihr Fenster vorbei ist - `active` allein reicht nicht, die Zeit entscheidet.
+ */
+function formatAnomaly(so, now = Date.now()) {
+  if (!so?.mission || !so.active) return null;
+  if (so.expiry && new Date(so.expiry).getTime() <= now) return null;
+  return {
+    node: so.mission.node || null,
+    faction: so.mission.faction || null,
+    type: so.mission.type || null,
+    activation: so.activation || null,
+    expiry: so.expiry || null
+  };
+}
+
+/* Bau der Fomorian und der Razorback-Armada, in Prozent. Ueber 100 heisst:
+   fertig gebaut. Wann der Angriff beginnt, steht nicht darin - am 2026-10-01
+   meldete die Quelle den Fomorian mit 115,5 %, waehrend als Operation nur die
+   Razorback-Armada lief. */
+function formatConstruction(cp) {
+  if (!cp) return null;
+  const zahl = v => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.round(n * 10) / 10 : null;
+  };
+  return { fomorian: zahl(cp.fomorianProgress), razorback: zahl(cp.razorbackProgress) };
 }
 
 /** Zaehler fuer die Statusleiste - gleiche Reihenfolge wie im Spiel. */
@@ -650,6 +997,10 @@ function countAll(f) {
     archon:     f.archonHunt ? 1 : 0,
     /* Sortie und Archon-Jagd teilen sich eine Unterseite - der Reiter zeigt,
        wie viele der beiden gerade laufen. */
-    missions:   (f.sortie ? 1 : 0) + (f.archonHunt ? 1 : 0)
+    missions:   (f.sortie ? 1 : 0) + (f.archonHunt ? 1 : 0),
+    /* Veroeffentlichte Auftraege, nicht Syndikate: drei davon wuerfelt das
+       Spiel selbst aus, die zaehlen hier nicht mit. */
+    bounties:   (f.bounties || []).reduce((s, b) => s + (b.jobs || []).length, 0),
+    traders:    (f.voidTrader?.active ? 1 : 0) + (f.vaultTrader ? 1 : 0) + (f.dailyDeals || []).length
   };
 }

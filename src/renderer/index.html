@@ -166,12 +166,21 @@
   <aside class="sidebar">
     <div class="sidebar-top">
       <nav class="sidebar-nav">
-        <button class="nav-item active" data-tab="worldstate">
+        <button class="nav-item active" data-tab="mastery">
+          <span class="nav-icon" data-icon="mastered"></span>
+          <span id="goal-count" class="nav-pill hidden">0</span>
+          <div class="nav-tooltip">
+            <b>Mastery & farming goals</b>
+            <span>Goals, recommendations & catalogue</span>
+          </div>
+        </button>
+
+        <button class="nav-item" data-tab="worldstate">
           <span class="nav-icon" data-icon="alert"></span>
           <span class="nav-pill live-dot"></span>
           <div class="nav-tooltip">
             <b>Live tracker</b>
-            <span>Cycles, Baro & fissures</span>
+            <span>Cycles, resets, fissures, bounties & traders</span>
           </div>
         </button>
 
@@ -183,15 +192,6 @@
           <div class="nav-tooltip">
             <b>Weekly rotation <span class="wip">WIP</span></b>
             <span>Archon, Circuit, Archimedea & vendor resets</span>
-          </div>
-        </button>
-
-        <button class="nav-item" data-tab="mastery">
-          <span class="nav-icon" data-icon="mastered"></span>
-          <span id="goal-count" class="nav-pill hidden">0</span>
-          <div class="nav-tooltip">
-            <b>Mastery & farming goals</b>
-            <span>Goals, recommendations & catalogue</span>
           </div>
         </button>
 
@@ -342,207 +342,9 @@
       </div>
     </section>
 
-    <!-- ---------------- 1. Live World-State Tracker ---------------- -->
-    <section id="tab-worldstate" class="tabpane active">
-      <div class="section-head section-head-row">
-        <div>
-          <h2>Live world state & cycles</h2>
-          <p>Live timers for open worlds, void fissures, Baro Ki’Teer and sorties</p>
-        </div>
-        <button class="btn-sm" id="btn-refresh-worldstate">
-          <span data-icon="refresh"></span> <span>Reload</span>
-        </button>
-      </div>
-
-      <!-- Zustand der Datenquelle. Steht ueber allen Unterseiten, weil eine
-           veraltete oder ausgefallene Quelle jede einzelne betrifft. -->
-      <div id="ws-source" class="ws-source hidden"></div>
-
-      <!-- Unterseiten-Navigation mit Anzahl je Bereich -->
-      <div id="ws-nav" class="ws-nav"></div>
-
-      <!-- ---- Unterseite: Übersicht ---- -->
-      <div class="ws-pane active" data-ws-pane="overview">
-        <div class="section-head"><h2>Open world cycles</h2></div>
-        <div class="ws-cycles-grid" id="ws-cycles"></div>
-
-        <div class="section-head"><h2>Baro Ki’Teer (void trader)</h2></div>
-        <div id="ws-voidtrader" class="ws-trader-box"></div>
-      </div>
-
-      <!-- ---- Unterseite: Void-Risse ---- -->
-      <div class="ws-pane" data-ws-pane="fissures">
-        <div class="section-head section-head-row">
-          <div>
-            <h2>Active void fissures (relics)</h2>
-            <p>Find the fastest missions to crack your relics</p>
-          </div>
-          <div class="ws-fissure-actions">
-            <button id="btn-fissure-notif" class="btn-sm btn-fissure-notif" title="Adjust void fissure notifications">
-              <span data-icon="bell"></span>
-              <span id="fissure-notif-btn-label">Notifications</span>
-              <span id="fissure-notif-btn-badge" class="notif-active-badge">On</span>
-            </button>
-            <div class="ws-fissure-filters" id="ws-fissure-filters">
-              <button class="fissure-tab active" data-tier="all">All</button>
-              <button class="fissure-tab" data-tier="Lith">Lith</button>
-              <button class="fissure-tab" data-tier="Meso">Meso</button>
-              <button class="fissure-tab" data-tier="Neo">Neo</button>
-              <button class="fissure-tab" data-tier="Axi">Axi</button>
-              <button class="fissure-tab" data-tier="Requiem">Requiem</button>
-              <button class="fissure-tab" data-tier="Omnia">Omnia</button>
-            </div>
-          </div>
-        </div>
-        <div id="ws-fissures" class="ws-fissures-grid"></div>
-      </div>
-
-      <!-- ---- Unterseite: Einsätze (Sortie & Archon) ---- -->
-      <div class="ws-pane" data-ws-pane="missions">
-        <div class="ws-missions-grid">
-          <div class="ws-box">
-            <div class="section-head"><h2>Daily sortie</h2></div>
-            <div id="ws-sortie"></div>
-          </div>
-          <div class="ws-box">
-            <div class="section-head"><h2>Archon hunt</h2></div>
-            <div id="ws-archon"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ---- Unterseite: Nightwave ---- -->
-      <div class="ws-pane" data-ws-pane="nightwave">
-        <div class="section-head">
-          <h2>Nightwave acts</h2>
-          <p>Daily, weekly and elite acts for standing and rewards</p>
-        </div>
-        <div id="ws-nightwave" class="ws-alert-list"></div>
-      </div>
-
-      <!-- ---- Unterseite: Alerts & zeitlich begrenzte Missionen ---- -->
-      <div class="ws-pane" data-ws-pane="alerts">
-        <div class="section-head">
-          <h2>Alerts & time-limited missions</h2>
-          <p>Kuva siphons, arbitrations and classic alerts</p>
-        </div>
-        <div id="ws-alerts" class="ws-alert-list"></div>
-      </div>
-
-      <!-- ---- Unterseite: Laufende Operationen ---- -->
-      <div class="ws-pane" data-ws-pane="events">
-        <div class="section-head"><h2>Running operations</h2></div>
-        <div id="ws-events" class="ws-event-list"></div>
-      </div>
-
-      <!-- ---- Unterseite: Steel Path ---- -->
-      <div class="ws-pane" data-ws-pane="steelpath">
-        <div class="section-head"><h2>Steel Path</h2></div>
-        <div id="ws-steelpath" class="ws-steelpath-box"></div>
-      </div>
-
-      <!-- ---- Unterseite: Invasionen ---- -->
-      <div class="ws-pane" data-ws-pane="invasions">
-        <div class="section-head">
-          <h2>Invasions</h2>
-          <p>Pick a side and finish 3 missions to claim the reward</p>
-        </div>
-        <div id="ws-invasions" class="ws-invasion-grid"></div>
-      </div>
-
-      <!-- ---- Unterseite: Syndikate ---- -->
-      <div class="ws-pane" data-ws-pane="syndicates">
-        <div class="section-head">
-          <h2>Syndicate bounties</h2>
-          <p>Active syndicate bounties and missions</p>
-        </div>
-        <div id="ws-syndicates" class="ws-syndicate-grid"></div>
-      </div>
-    </section>
-
-    <!-- ---------------- 2. Wochenrotation ----------------
-         Was einmal pro Woche zurueckgesetzt wird. Zwei Gruppen, weil es
-         zwei verschiedene Fragen sind: was muss ich noch SPIELEN, und wo
-         muss ich noch EINKAUFEN, bevor der Reset kommt. -->
-    <section id="tab-weekly" class="tabpane">
-      <div class="section-head">
-        <h2>Weekly rotation</h2>
-        <p>Everything that resets once a week — and how long you still have</p>
-      </div>
-
-      <div class="weekly-reset" id="weekly-reset">
-        <div class="weekly-reset-ring" id="weekly-reset-ring" aria-hidden="true"></div>
-        <div class="weekly-reset-main">
-          <span class="weekly-reset-label">Weekly reset in</span>
-          <b id="weekly-reset-eta">—</b>
-          <span class="weekly-reset-when" id="weekly-reset-when"></span>
-          <!-- Wie aktuell der gelesene Spielstand ist. Steht hier und nicht
-               als Warnbalken: solange er aus dieser Woche stammt, ist das
-               eine Randnotiz und kein Problem. -->
-          <span class="weekly-sync" id="weekly-sync"></span>
-        </div>
-        <!--
-          Der Fehler steht IN der Leiste und nicht als Balken darunter.
-
-          Er sagt genau eine Sache: die Zahl links stimmt gerade nicht, weil
-          der Weltzustand nicht erreichbar ist. Eine eigene Zeile darunter
-          schob die halbe Seite nach unten, sobald das Netz huestet - und das
-          war dann die groesste Bewegung auf dem Bildschirm fuer die kleinste
-          Auskunft. Neben dem Countdown steht sie da, wo sie hingehoert:
-          direkt an der Zahl, die sie betrifft, und gleich neben dem Knopf,
-          mit dem man es nochmal versucht.
-        -->
-        <div id="weekly-error" class="weekly-err hidden"></div>
-        <button class="btn-sm" id="btn-weekly-refresh">Reload</button>
-      </div>
-
-      <!-- Steht ueber beiden Ansichten, weil es die Aussagekraft der ganzen
-           Seite betrifft: ohne Inventar aus DIESER Woche wird nichts
-           automatisch verfolgt, und das soll dranstehen statt still zu
-           passieren. -->
-      <div id="weekly-inv-note" class="weekly-inv-note hidden"></div>
-
-      <div class="weekly-mode-row">
-        <div class="ducats-tabs">
-          <button class="ducats-tab-btn active" id="tab-weekly-mode-content" data-mode="content">
-            Content
-          </button>
-          <button class="ducats-tab-btn" id="tab-weekly-mode-vendors" data-mode="vendors">
-            Vendor resets
-          </button>
-        </div>
-        <span class="meta" id="weekly-mode-hint">Missions and modes that reset this week</span>
-      </div>
-
-      <div class="weekly-pane active" id="weekly-pane-content">
-        <!-- Bewusst ohne Spaltenklasse: die Spalten baut
-             renderWeeklyContentPane hier hinein, samt Ueberschriften und
-             dem Streifen fuer Erledigtes. -->
-        <div id="weekly-content"></div>
-      </div>
-
-      <div class="weekly-pane" id="weekly-pane-vendors">
-        <div class="weekly-cols" id="weekly-vendors"></div>
-
-        <!-- Steht NUR hier und nicht unter beiden Ansichten: im Content-Teil
-             kosteten diese vier Zeilen genau den Platz, der dort zum
-             Scrollen zwang. Verloren geht nichts - jedes der drei Schilder
-             traegt denselben Text als title-Attribut, und die Schilder
-             selbst stehen in beiden Ansichten. -->
-        <p class="weekly-foot">
-          <span class="weekly-src weekly-src-live">live</span> comes with its own expiry
-          straight from the world state.
-          <span class="weekly-src weekly-src-reset">reset</span> has none in the API and
-          follows the common weekly reset, taken from the Archon Hunt.
-          <span class="weekly-src weekly-src-auto">tracked</span> is read from your own
-          game data — and only from an inventory that belongs to the current week.
-          Nothing is guessed; where that isn't possible, tick it off yourself.
-        </p>
-      </div>
-    </section>
-
-    <!-- ---------------- 3. Mastery & Farm-Ziele ---------------- -->
-    <section id="tab-mastery" class="tabpane">
+    <!-- ---------------- 1. Mastery & Farm-Ziele ----------------
+         Der erste Reiter und der Start: das, wofuer Argus da ist. -->
+    <section id="tab-mastery" class="tabpane active">
 
       <!-- Immer sichtbar: was gerade laeuft, egal ob Manager oder Katalog -->
       <div id="active-goals-wrap" class="hidden">
@@ -733,6 +535,264 @@
         </div>
 
         <div id="vendor-body"></div>
+      </div>
+    </section>
+
+    <!-- ---------------- 2. Live-Tracker ----------------
+         Was in der Welt gerade laeuft und wann es wechselt.
+
+         OHNE PROFILKARTE DARUEBER (seit v1.21.0): der Reiter braucht die
+         Hoehe, und mit dem Konto hat hier nur zu tun, was ausdruecklich daran
+         haengt - ob man den Frame aus dem Circuit schon hat, wie viel
+         Standing heute noch offen ist. Das steht dann an Ort und Stelle.
+
+         Die Uebersicht ist ein Brett mit allem, was man auf einen Blick
+         wissen will; die Unterseiten dahinter fuehren jeden Bereich aus. -->
+    <section id="tab-worldstate" class="tabpane">
+      <div class="section-head section-head-row ws-head">
+        <div>
+          <h2>Live tracker</h2>
+          <p>What is running in the world right now, and when it changes</p>
+        </div>
+        <div class="ws-head-actions">
+          <!-- Baro gehoert in den Kopf: er ist das eine Ereignis, nach dem
+               man auf jeder Unterseite fragt. -->
+          <span id="ws-baro-pill" class="ws-pill hidden"></span>
+          <button class="btn-sm" id="btn-refresh-worldstate">
+            <span data-icon="refresh"></span> <span>Reload</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Zustand der Datenquelle. Steht ueber allen Unterseiten, weil eine
+           veraltete oder ausgefallene Quelle jede einzelne betrifft. -->
+      <div id="ws-source" class="ws-source hidden"></div>
+
+      <!-- Unterseiten-Navigation mit Anzahl je Bereich -->
+      <div id="ws-nav" class="ws-nav"></div>
+
+      <!-- ---- Unterseite: Uebersicht ---- -->
+      <div class="ws-pane active" data-ws-pane="overview">
+        <!-- Alle Fristen in einer Reihe: Tagesreset, Sortie, Woche, Teshin,
+             Baro, Varzia, Arbitration, Darvo. -->
+        <div id="ws-resets" class="ws-resets"></div>
+
+        <div id="ws-cycles" class="ws-cycles-grid"></div>
+
+        <div class="ws-dash">
+          <div class="ws-dash-col">
+            <div id="ws-today" class="ws-panel"></div>
+            <div id="ws-glance-fissures" class="ws-panel"></div>
+          </div>
+          <div class="ws-dash-col">
+            <div id="ws-week" class="ws-panel"></div>
+            <div id="ws-glance-traders" class="ws-panel"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---- Unterseite: Void-Risse ---- -->
+      <div class="ws-pane" data-ws-pane="fissures">
+        <div class="section-head section-head-row">
+          <div>
+            <h2>Void fissures</h2>
+            <p>Find the fastest missions to crack your relics</p>
+          </div>
+          <div class="ws-fissure-actions">
+            <button id="btn-fissure-notif" class="btn-sm btn-fissure-notif" title="Adjust void fissure notifications">
+              <span data-icon="bell"></span>
+              <span id="fissure-notif-btn-label">Notifications</span>
+              <span id="fissure-notif-btn-badge" class="notif-active-badge">On</span>
+            </button>
+          </div>
+        </div>
+        <!-- Zwei Fragen, zwei Reihen: WELCHE Art Riss (normal, Steel Path,
+             Void Storm im Railjack) und welche AERA. -->
+        <div class="ws-fissure-bar">
+          <div class="ws-fissure-modes" id="ws-fissure-modes"></div>
+          <div class="ws-fissure-filters" id="ws-fissure-filters">
+            <button class="fissure-tab active" data-tier="all">All eras</button>
+            <button class="fissure-tab" data-tier="Lith">Lith</button>
+            <button class="fissure-tab" data-tier="Meso">Meso</button>
+            <button class="fissure-tab" data-tier="Neo">Neo</button>
+            <button class="fissure-tab" data-tier="Axi">Axi</button>
+            <button class="fissure-tab" data-tier="Requiem">Requiem</button>
+            <button class="fissure-tab" data-tier="Omnia">Omnia</button>
+          </div>
+        </div>
+        <div id="ws-fissures" class="ws-fissures-grid"></div>
+      </div>
+
+      <!-- ---- Unterseite: Einsaetze ----
+           Sortie, Archon-Jagd, Arbitration und was sonst ein Zeitfenster hat.
+           Frueher standen Alerts und Kuva auf einer eigenen Seite, die fast
+           immer leer war - hier stehen sie unter dem, was immer laeuft. -->
+      <div class="ws-pane" data-ws-pane="missions">
+        <div class="ws-missions-grid">
+          <div class="ws-box">
+            <div class="ws-box-head">
+              <h3>Daily sortie</h3>
+              <span class="ws-box-eta" id="ws-sortie-eta"></span>
+            </div>
+            <div id="ws-sortie"></div>
+          </div>
+          <div class="ws-box">
+            <div class="ws-box-head">
+              <h3>Archon hunt</h3>
+              <span class="ws-box-eta" id="ws-archon-eta"></span>
+            </div>
+            <div id="ws-archon"></div>
+          </div>
+        </div>
+
+        <div class="section-head">
+          <h2>Arbitrations</h2>
+          <p>A new node every hour, on the hour — the one running now and the next day ahead</p>
+        </div>
+        <div id="ws-arbitration"></div>
+
+        <div class="section-head">
+          <h2>Alerts &amp; Kuva</h2>
+          <p>Classic alerts and Kuva siphons, when the world state reports any</p>
+        </div>
+        <div id="ws-alerts" class="ws-alert-list"></div>
+      </div>
+
+      <!-- ---- Unterseite: Kopfgelder ---- -->
+      <div class="ws-pane" data-ws-pane="bounties">
+        <div class="section-head">
+          <h2>Bounties</h2>
+          <p>Every open-world bounty board — click a bounty for what each stage pays out</p>
+        </div>
+        <div id="ws-bounties" class="ws-bounties"></div>
+
+        <div class="section-head">
+          <h2>Syndicate missions</h2>
+          <p>The seven nodes each faction syndicate marks today</p>
+        </div>
+        <div id="ws-syndicates" class="ws-syndicate-grid"></div>
+      </div>
+
+      <!-- ---- Unterseite: Invasionen ---- -->
+      <div class="ws-pane" data-ws-pane="invasions">
+        <div class="section-head">
+          <h2>Invasions</h2>
+          <p>Pick a side and finish three missions to claim its reward</p>
+        </div>
+        <div id="ws-invasions" class="ws-invasion-grid"></div>
+      </div>
+
+      <!-- ---- Unterseite: Steel Path ---- -->
+      <div class="ws-pane" data-ws-pane="steelpath">
+        <div id="ws-steelpath"></div>
+      </div>
+
+      <!-- ---- Unterseite: Nightwave ---- -->
+      <div class="ws-pane" data-ws-pane="nightwave">
+        <div class="section-head section-head-row">
+          <div>
+            <h2>Nightwave acts</h2>
+            <p>Daily, weekly and elite acts for standing and rewards</p>
+          </div>
+          <span class="meta" id="ws-nightwave-season"></span>
+        </div>
+        <div id="ws-nightwave" class="ws-alert-list"></div>
+      </div>
+
+      <!-- ---- Unterseite: Haendler ---- -->
+      <div class="ws-pane" data-ws-pane="traders">
+        <div id="ws-traders"></div>
+      </div>
+
+      <!-- ---- Unterseite: Laufende Operationen ---- -->
+      <div class="ws-pane" data-ws-pane="events">
+        <div class="section-head">
+          <h2>Running operations</h2>
+          <p>Events with a timer, and what the enemy fleets are building</p>
+        </div>
+        <div id="ws-events" class="ws-event-list"></div>
+        <div id="ws-world-extras"></div>
+      </div>
+    </section>
+
+    <!-- ---------------- 3. Wochenrotation ----------------
+         Was einmal pro Woche zurueckgesetzt wird. Zwei Gruppen, weil es
+         zwei verschiedene Fragen sind: was muss ich noch SPIELEN, und wo
+         muss ich noch EINKAUFEN, bevor der Reset kommt. -->
+    <section id="tab-weekly" class="tabpane">
+      <div class="section-head">
+        <h2>Weekly rotation</h2>
+        <p>Everything that resets once a week — and how long you still have</p>
+      </div>
+
+      <div class="weekly-reset" id="weekly-reset">
+        <div class="weekly-reset-ring" id="weekly-reset-ring" aria-hidden="true"></div>
+        <div class="weekly-reset-main">
+          <span class="weekly-reset-label">Weekly reset in</span>
+          <b id="weekly-reset-eta">—</b>
+          <span class="weekly-reset-when" id="weekly-reset-when"></span>
+          <!-- Wie aktuell der gelesene Spielstand ist. Steht hier und nicht
+               als Warnbalken: solange er aus dieser Woche stammt, ist das
+               eine Randnotiz und kein Problem. -->
+          <span class="weekly-sync" id="weekly-sync"></span>
+        </div>
+        <!--
+          Der Fehler steht IN der Leiste und nicht als Balken darunter.
+
+          Er sagt genau eine Sache: die Zahl links stimmt gerade nicht, weil
+          der Weltzustand nicht erreichbar ist. Eine eigene Zeile darunter
+          schob die halbe Seite nach unten, sobald das Netz huestet - und das
+          war dann die groesste Bewegung auf dem Bildschirm fuer die kleinste
+          Auskunft. Neben dem Countdown steht sie da, wo sie hingehoert:
+          direkt an der Zahl, die sie betrifft, und gleich neben dem Knopf,
+          mit dem man es nochmal versucht.
+        -->
+        <div id="weekly-error" class="weekly-err hidden"></div>
+        <button class="btn-sm" id="btn-weekly-refresh">Reload</button>
+      </div>
+
+      <!-- Steht ueber beiden Ansichten, weil es die Aussagekraft der ganzen
+           Seite betrifft: ohne Inventar aus DIESER Woche wird nichts
+           automatisch verfolgt, und das soll dranstehen statt still zu
+           passieren. -->
+      <div id="weekly-inv-note" class="weekly-inv-note hidden"></div>
+
+      <div class="weekly-mode-row">
+        <div class="ducats-tabs">
+          <button class="ducats-tab-btn active" id="tab-weekly-mode-content" data-mode="content">
+            Content
+          </button>
+          <button class="ducats-tab-btn" id="tab-weekly-mode-vendors" data-mode="vendors">
+            Vendor resets
+          </button>
+        </div>
+        <span class="meta" id="weekly-mode-hint">Missions and modes that reset this week</span>
+      </div>
+
+      <div class="weekly-pane active" id="weekly-pane-content">
+        <!-- Bewusst ohne Spaltenklasse: die Spalten baut
+             renderWeeklyContentPane hier hinein, samt Ueberschriften und
+             dem Streifen fuer Erledigtes. -->
+        <div id="weekly-content"></div>
+      </div>
+
+      <div class="weekly-pane" id="weekly-pane-vendors">
+        <div class="weekly-cols" id="weekly-vendors"></div>
+
+        <!-- Steht NUR hier und nicht unter beiden Ansichten: im Content-Teil
+             kosteten diese vier Zeilen genau den Platz, der dort zum
+             Scrollen zwang. Verloren geht nichts - jedes der drei Schilder
+             traegt denselben Text als title-Attribut, und die Schilder
+             selbst stehen in beiden Ansichten. -->
+        <p class="weekly-foot">
+          <span class="weekly-src weekly-src-live">live</span> comes with its own expiry
+          straight from the world state.
+          <span class="weekly-src weekly-src-reset">reset</span> has none in the API and
+          follows the common weekly reset, taken from the Archon Hunt.
+          <span class="weekly-src weekly-src-auto">tracked</span> is read from your own
+          game data — and only from an inventory that belongs to the current week.
+          Nothing is guessed; where that isn't possible, tick it off yourself.
+        </p>
       </div>
     </section>
 
@@ -1550,8 +1610,12 @@
           <span>World state &amp; cycles</span>
           <a data-ext="https://tenno.tools">tenno.tools</a>
 
-          <span>Mod card images</span>
-          <a data-ext="https://wiki.warframe.com">Warframe Wiki</a>
+          <span>Arbitration schedule</span>
+          <a data-ext="https://browse.wf">browse.wf</a>
+
+          <span>Mod cards &amp; rotations</span>
+          <a data-ext="https://wiki.warframe.com"
+             title="Mod card frames, and the Circuit, Ergo Glast and Eleanor rotations">Warframe Wiki</a>
 
           <span>Build imports</span>
           <a data-ext="https://overframe.gg">overframe.gg</a>
@@ -1924,7 +1988,7 @@
       <div class="settings-group">
         <div class="settings-group-head">
           <h3>Notifications</h3>
-          <p>New void fissures, checked every 45 seconds, and whispers in game</p>
+          <p>New void fissures (checked every 45 seconds), open-world cycles and whispers in game</p>
         </div>
 
         <label class="setting-row">
@@ -1957,6 +2021,23 @@
           <input type="checkbox" id="set-whisper-market" class="toggle-checkbox">
           <span class="toggle-switch"></span>
         </label>
+
+        <!-- Die Uhren der offenen Welten. Kein Schalter, sondern die Auswahl
+             selbst: ist keine Uhr gewaehlt, ist es aus. Dieselben Chips
+             schaltet die Glocke auf jeder Zyklus-Karte im Live-Tracker. -->
+        <div class="setting-row setting-row-cycles">
+          <div class="setting-info">
+            <b>Open-world cycles</b>
+            <span>A notification shortly before a cycle changes — night falls on the Plains,
+                  the Vallis warms up, Duviri changes its mood. Pick the cycles here, or
+                  with the bell on each cycle card in the live tracker.</span>
+          </div>
+          <label class="cycle-lead" title="How many minutes before the change">
+            <input type="number" id="set-cycle-lead" min="1" max="60" step="1" value="3">
+            <span>min before</span>
+          </label>
+        </div>
+        <div class="cycle-picks" id="set-cycle-picks"></div>
 
         <label class="setting-row">
           <div class="setting-info">

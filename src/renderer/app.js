@@ -96,7 +96,7 @@ window.api.onOverlayChanged(syncOverlayBadge);
 window.api.overlayState().then(syncOverlayBadge).catch(() => {});
 
 /* ---------------- Sidebar Navigation ---------------- */
-const TABS_WITHOUT_HERO = new Set(['rivens', 'drops']);
+const TABS_WITHOUT_HERO = new Set(['worldstate', 'rivens', 'drops']);
 
 function showTab(name) {
   if (typeof cancelHotkeyCapture === 'function') cancelHotkeyCapture();
@@ -109,7 +109,9 @@ function showTab(name) {
   document.querySelectorAll('.tabpane').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
   /* Die Profilkarte oben gehoert zu allem, was am Konto haengt. Die Rivens
      sind Einzelstuecke zum Durchsehen, die Droptabellen haengen an gar
-     keinem Konto - dort nimmt sie nur Platz weg. */
+     keinem Konto - dort nimmt sie nur Platz weg. Der Live-Tracker braucht
+     seit v1.21.0 die volle Hoehe fuer sein Brett; was dort am Konto haengt,
+     steht an Ort und Stelle. */
   document.querySelector('.hero')?.classList.toggle('hidden', TABS_WITHOUT_HERO.has(name));
 
   if (name === 'mastery') {
@@ -3411,38 +3413,64 @@ document.addEventListener('keydown', e => {
   }
 });
 
-/* ---------------- Live World-State Tracker ---------------- */
+/* ---------------- Live World-State Tracker ----------------
+
+   Seit v1.21.0 kommt der Reiter ueber world:view (core/world-view.js): der
+   Weltzustand plus das, was erst mit dem Konto eine Antwort wird - Besitz im
+   Circuit und bei Varzia, das heute noch offene Standing, die Belohnungen der
+   Kopfgelder, der Arbitrations-Plan. Das Overlay bleibt bei getWorldState;
+   es braucht nichts davon. */
 let worldStateCache = null;
 let activeFissureTier = 'all';
+let activeFissureMode = 'all';      // 'all' | 'normal' | 'hard' | 'storm'
 let worldStateTimer = null;
+let worldLoading = false;
+/* Das frueheste Ende einer Uhr auf der Uebersicht. Ist es vorbei, laedt der
+   Sekundentakt einmal nach - sonst stuende eine abgelaufene Phase bis zum
+   naechsten 30-Sekunden-Abruf auf "now". */
+let naechsterWechsel = Infinity;
+/* Aufgeklappte Kopfgelder und die Circuit-Vorschau ueberleben das Neuzeichnen
+   alle 30 Sekunden - sonst klappte einem die Tabelle unter der Maus zu. */
+const wsOffen = new Set();
+let wsCircuitWochen = false;
+
+const aktiverReiter = () => document.querySelector('.nav-item.active')?.dataset.tab;
 
 async function loadWorldState(force = false) {
+  if (worldLoading) return;
+  worldLoading = true;
   const btn = $('btn-refresh-worldstate');
   if (btn) {
     btn.disabled = true;
     btn.classList.add('is-refreshing');
     btn.innerHTML = Icon.refresh(14) + ' <span>Loading …</span>';
   }
-  
-  const data = await window.api.getWorldState(force);
+
+  let res;
+  try { res = await window.api.getWorldView(force); }
+  catch (err) { res = { ok: false, error: err.message }; }
+  worldLoading = false;
+
   if (btn) {
     btn.disabled = false;
     btn.classList.remove('is-refreshing');
     btn.innerHTML = Icon.refresh(14) + ' <span>Reload</span>';
   }
 
-  if (!data || data.error) {
-    $('ws-cycles').innerHTML = `<div class="empty">Could not load live data (${esc(data?.error || 'network error')}).</div>`;
+  if (!res?.ok || !res.data) {
+    renderWsSource({ error: res?.error || 'network error' });
+    if (!worldStateCache) {
+      $('ws-resets').innerHTML = `<div class="empty">Could not load live data (${esc(res?.error || 'network error')}).</div>`;
+    }
     return;
   }
 
-  worldStateCache = data;
-  renderWorldState(data);
+  worldStateCache = res.data;
+  renderWorldState(res.data);
 
   clearInterval(worldStateTimer);
   worldStateTimer = setInterval(() => {
-    const activeTab = document.querySelector('.nav-item.active')?.dataset.tab;
-    if (activeTab === 'worldstate') loadWorldState(false);
+    if (aktiverReiter() === 'worldstate') loadWorldState(false);
   }, 30000);
 }
 
@@ -3469,220 +3497,189 @@ function cycleLeftText(expiry, fallback) {
   const h = Math.floor((total % 86400) / 3600);
   const m = Math.floor((total % 3600) / 60);
   const s = total % 60;
-  /* Tage kommen bei den drei Zyklen nie vor - der laengste dauert zweieinhalb
-     Stunden. Baro haengt an derselben Uhr und ist bis zu zwei Wochen weg;
-     ohne diese Zeile stuende dort "319h 12m". */
+  /* Tage kommen bei den Zyklen nie vor - der laengste dauert vier Stunden.
+     Baro haengt an derselben Uhr und ist bis zu zwei Wochen weg; ohne diese
+     Zeile stuende dort "319h 12m". */
   if (d) return `${d}d ${h}h`;
   return h ? `${h}h ${m}m` : `${m}m ${s}s`;
 }
 
-const cycleClock = cyc =>
-  `<span class="ws-cycle-clock" data-cycle-until="${esc(cyc.expiry || '')}"
-         data-cycle-fallback="${esc(cyc.timeLeft || '')}">${
-    esc(cycleLeftText(cyc.expiry, cyc.timeLeft))}</span>`;
+/** Eine tickende Uhr. Der Sekundentakt unten zaehlt jede davon mit. */
+const wsUhr = (iso, fallback = '') =>
+  `<span class="ws-clock" data-cycle-until="${esc(iso || '')}" data-cycle-fallback="${esc(fallback)}">${
+    esc(cycleLeftText(iso, fallback))}</span>`;
 
-/** Sekundentakt nur fuer die drei Uhren - kein Neuzeichnen der ganzen Seite. */
+/* Wann genau - als Uhrzeit, wenn es heute ist, sonst mit Wochentag. Die
+   Restzeit allein beantwortet "wie lange noch", aber nicht "um wie viel Uhr
+   muss ich am Rechner sein". */
+function wsZeitpunkt(iso) {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '';
+  const uhr = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  if (d.toDateString() === new Date().toDateString()) return uhr;
+  const bisDahin = d.getTime() - Date.now();
+  if (bisDahin > 6 * 86400000) {
+    return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) + ', ' + uhr;
+  }
+  return d.toLocaleDateString('en-GB', { weekday: 'short' }) + ' ' + uhr;
+}
+
+const wsDatum = iso => {
+  const d = new Date(iso);
+  return Number.isFinite(d.getTime())
+    ? d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+    : '';
+};
+
+/**
+ * Der Sekundentakt fuer alles, was auf dem Reiter laeuft - kein Neuzeichnen
+ * der Seite, nur Text, Breite und eine Klasse.
+ *
+ *   data-cycle-until             Restzeit als Text
+ *   data-phase-start/-end        Breite eines Fortschrittsbalkens
+ *   data-urgent-start/-end       .is-urgent, sobald weniger als ein Fuenftel
+ *                                der Spanne uebrig ist
+ */
 function tickCycleClocks() {
+  const now = Date.now();
   document.querySelectorAll('[data-cycle-until]').forEach(el => {
     el.textContent = cycleLeftText(el.dataset.cycleUntil, el.dataset.cycleFallback);
   });
+  document.querySelectorAll('[data-phase-end]').forEach(el => {
+    const a = Date.parse(el.dataset.phaseStart), b = Date.parse(el.dataset.phaseEnd);
+    if (Number.isFinite(a) && Number.isFinite(b) && b > a) {
+      el.style.width = (Math.min(1, Math.max(0, (now - a) / (b - a))) * 100).toFixed(2) + '%';
+    }
+  });
+  document.querySelectorAll('[data-urgent-end]').forEach(el => {
+    const a = Date.parse(el.dataset.urgentStart), b = Date.parse(el.dataset.urgentEnd);
+    const knapp = Number.isFinite(a) && Number.isFinite(b) && b > a && b > now && (b - now) / (b - a) < 0.2;
+    el.classList.toggle('is-urgent', knapp);
+  });
+
+  /* Eine Phase ist um: einmal nachladen, und nur, wenn jemand hinschaut.
+     Eineinhalb Sekunden Puffer, damit die Uhr im Hauptprozess sicher schon
+     auf der neuen Phase steht. */
+  if (now > naechsterWechsel + 1500 && !worldLoading && aktiverReiter() === 'worldstate') {
+    naechsterWechsel = Infinity;
+    loadWorldState(false);
+  }
 }
 setInterval(tickCycleClocks, 1000);
 
-function renderWorldState(d) {
-  // 1. Zyklen
-  const c = d.cetus || {};
-  const v = d.vallis || {};
-  const cb = d.cambion || {};
+const leerHinweis = text => `<div class="empty" style="grid-column: 1 / -1;">${esc(text)}</div>`;
 
-  $('ws-cycles').innerHTML = `
-    <div class="ws-cycle-card map-cetus ${c.isDay ? 'day' : 'night'}">
-      <div class="ws-cycle-head">
-        <div>
-          <div class="ws-cycle-title">Plains of Eidolon (Cetus)</div>
-          <div class="ws-cycle-sub">Earth · Eidolon hunting</div>
-        </div>
-        <span class="ws-cycle-badge ${c.isDay ? 'day' : 'night'}">
-          ${c.isDay ? Icon.sun(15) + ' Day' : Icon.moon(15) + ' Night (Eidolon)'}
-        </span>
-      </div>
-      <div class="ws-cycle-time">${cycleClock(c)} <small>remaining</small></div>
+/* Ein Panel der Uebersicht: Kopf mit Symbol, Titel, Nebenzeile und einem
+   Sprung zur Unterseite, die den Bereich ausfuehrt. */
+function wsPanel({ icon, title, sub = '', go = null, body }) {
+  const sprung = go
+    ? `<button class="ws-panel-link" ${go.tab ? `data-tab-go="${esc(go.tab)}"` : `data-ws-go="${esc(go.pane)}"`}>${
+        esc(go.label)}${Icon.chevron(12)}</button>`
+    : '';
+  return `
+    <div class="ws-panel-head">
+      <span class="ws-panel-ic">${icon}</span>
+      <div class="ws-panel-title"><h3>${esc(title)}</h3>${sub ? `<span>${sub}</span>` : ''}</div>
+      ${sprung}
     </div>
-
-    <div class="ws-cycle-card map-vallis ${v.isWarm ? 'warm' : 'cold'}">
-      <div class="ws-cycle-head">
-        <div>
-          <div class="ws-cycle-title">Orb Vallis (Fortuna)</div>
-          <div class="ws-cycle-sub">Venus · thermia cycles</div>
-        </div>
-        <span class="ws-cycle-badge ${v.isWarm ? 'warm' : 'cold'}">
-          ${v.isWarm ? Icon.flame(15) + ' Warm' : Icon.snowflake(15) + ' Cold'}
-        </span>
-      </div>
-      <div class="ws-cycle-time">${cycleClock(v)} <small>remaining</small></div>
-    </div>
-
-    <div class="ws-cycle-card map-cambion ${cb.isFass ? 'warm' : 'night'}">
-      <div class="ws-cycle-head">
-        <div>
-          <div class="ws-cycle-title">Cambion Drift (Deimos)</div>
-          <div class="ws-cycle-sub">Deimos · worm cycle</div>
-        </div>
-        <span class="ws-cycle-badge ${cb.state || 'fass'}">
-          ${cb.isFass ? 'Fass (orange)' : 'Vome (blue)'}
-        </span>
-      </div>
-      <div class="ws-cycle-time">${cycleClock(cb)} <small>remaining</small></div>
-    </div>
-  `;
-
-  // 2. Baro Ki'Teer
-  /* SEINE UHR TICKT MIT DEN ZYKLEN. Hier stand die Textfassung aus der
-     Quelle - nur schickt warframestat.us zu Baro weder `startString` noch
-     `endString`, und der Notnagel "in a few days" stand deshalb zwei Wochen
-     lang unveraendert da. Aus `activation`/`expiry` gerechnet stimmt die Zahl
-     in jeder Sekunde, und derselbe Sekundentakt, der die drei Zyklen zaehlt,
-     zaehlt sie mit - ohne einen zweiten Zeitgeber. */
-  const vt = d.voidTrader || {};
-  const traderClock = (until, fallback) =>
-    `<b class="ws-trader-clock" data-cycle-until="${esc(until || '')}"
-        data-cycle-fallback="${esc(fallback || '')}">${
-      esc(cycleLeftText(until, fallback))}</b>`;
-
-  if (vt.active) {
-    $('ws-voidtrader').innerHTML = `
-      <div class="ws-trader-head">
-        <div class="ws-trader-info">
-          <h3>${esc(vt.character)} is here!</h3>
-          <p>Location: <b>${esc(vt.location)}</b> · leaves the relay in
-             ${traderClock(vt.expiry, vt.endString)}</p>
-        </div>
-        <span class="ws-trader-status active">In the relay now</span>
-      </div>
-      ${vt.inventory && vt.inventory.length ? `
-        <div class="ducats-catalog-list" style="margin-top: 14px;">
-          ${vt.inventory.map(it => `
-            <div class="ducat-item-row">
-              <div class="ducat-item-body">
-                <b>${esc(it.item)}</b>
-                <span>${nf(it.credits)} Credits</span>
-              </div>
-              <span class="ducat-item-val"><img class="currency-ic ducat-ic" src="assets/icons/ducats.png" alt="Ducats"> <b>${nf(it.ducats)}</b></span>
-            </div>
-          `).join('')}
-        </div>
-      ` : ''}
-    `;
-  } else {
-    $('ws-voidtrader').innerHTML = `
-      <div class="ws-trader-head">
-        <div class="ws-trader-info">
-          <h3>${esc(vt.character || "Baro Ki'Teer")} is travelling</h3>
-          <p>Next arrival: <b>${esc(vt.location || 'a relay')}</b> in
-             ${traderClock(vt.activation, vt.startString)}${
-               /* Das Datum dazu: eine Zahl, die herunterlaeuft, beantwortet
-                  "wie lange noch" - aber nicht "welcher Tag ist das". Bei
-                  zwei Wochen Abstand ist das die haeufigere Frage. */
-               vt.activation
-                 ? ` <span class="ws-trader-date">(${esc(new Date(vt.activation)
-                     .toLocaleString('en-GB', { weekday: 'short', day: 'numeric',
-                                                month: 'short', hour: '2-digit', minute: '2-digit' }))})</span>`
-                 : ''}</p>
-        </div>
-        <span class="ws-trader-status inactive">Counting down</span>
-      </div>
-    `;
-  }
-
-  // 3. Sortie & Archon
-  /* Restzeit nur anhaengen, wenn es eine gibt - sonst blieb hier ein
-     angefangenes "Noch" ohne Wert stehen. */
-  const restzeit = eta => (eta ? ` · <b>${esc(eta)}</b> left` : '');
-
-  const sort = d.sortie;
-  if (sort) {
-    $('ws-sortie').innerHTML = `
-      <div style="font-size: 12.5px; color: var(--text-2); margin-bottom: 8px;">
-        Boss: <b style="color: var(--text);">${esc(sort.boss)}</b> (${esc(sort.faction)})${restzeit(sort.eta)}
-      </div>
-      ${(sort.variants || []).map((v, i) => `
-        <div class="ws-mission-item">
-          <div class="ws-m-num">${i + 1}</div>
-          <div class="ws-m-info">
-            <b>${esc(v.missionType)} (${esc(v.node)})</b>
-            <p>${esc(v.modifier)}: ${esc(v.modifierDescription)}</p>
-          </div>
-        </div>
-      `).join('')}
-    `;
-  } else {
-    $('ws-sortie').innerHTML = '<div class="empty">No active sortie reported.</div>';
-  }
-
-  const arc = d.archonHunt;
-  if (arc) {
-    $('ws-archon').innerHTML = `
-      <div style="font-size: 12.5px; color: var(--text-2); margin-bottom: 8px;">
-        Target: <b style="color: var(--gold);">${esc(arc.boss)}</b>${restzeit(arc.eta)}
-      </div>
-      ${(arc.missions || []).map((m, i) => `
-        <div class="ws-mission-item">
-          <div class="ws-m-num">${i + 1}</div>
-          <div class="ws-m-info">
-            <b>${esc(m.type)}</b>
-            <p>${esc(m.node)}</p>
-          </div>
-        </div>
-      `).join('')}
-    `;
-  } else {
-    $('ws-archon').innerHTML = '<div class="empty">No archon hunt active.</div>';
-  }
-
-  // 4. Void Fissures
-  renderFissures(d.fissures || []);
-
-  // 6. Neue Weltzustands-Abschnitte
-  renderWsSource(d);
-  renderWsNav(d.counts || {});
-  renderNightwave(d.nightwave || []);
-  renderAlerts(d);
-  renderEvents(d.events || []);
-  renderSteelPath(d.steelPath);
-  renderInvasions(d.invasions || []);
-  renderSyndicates(d.syndicates || []);
+    <div class="ws-panel-body">${body}</div>`;
 }
 
-/* ---------------- Weltzustands-Leiste (wie in der Sternenkarte) ---------------- */
+/* ---------------- Besitz-Marken ----------------
 
-/**
- * Reihenfolge und Beschriftung wie im Spiel. icon 'img:x' nutzt ein Original-Asset
- * aus assets/icons/worldstate, 'svg:x' eine Vektorglyphe - fuer Event und Alerts
- * gibt das Wiki kein brauchbares weisses Icon her.
- */
-const leerHinweis = text => `<div class="empty" style="grid-column: 1 / -1;">${esc(text)}</div>`;
+   Jede Kachel traegt hoechstens EINE Marke an festem Platz, die wichtigste
+   Aussage zuerst. Der Rest steht im title - eine Kachel mit drei Marken
+   liest niemand. */
+
+function frameMarke(p) {
+  if (p.subsumed) return { cls: 'is-helminth', text: 'Helminth', title: 'Fed to the Helminth' };
+  if (p.mastery === 'done') return { cls: 'is-done', text: 'Mastered', title: 'Mastered' };
+  if (p.owned) return { cls: 'is-owned', text: 'Owned', title: 'In your arsenal' };
+  if (p.mastery === 'partial') return { cls: 'is-owned', text: 'Levelled', title: 'Levelled, but not to max rank' };
+  if (p.mastery === 'missing') return { cls: 'is-new', text: 'New', title: 'Never levelled — new mastery' };
+  return null;
+}
+
+function incarnonMarke(p) {
+  const s = p.incarnon;
+  if (!s) return null;
+  if (s.state === 'installed') return { cls: 'is-done', text: 'Installed', title: `Incarnon installed on ${s.on}` };
+  if (s.state === 'adapter') return { cls: 'is-gold', text: s.count > 1 ? `Adapter ×${s.count}` : 'Adapter', title: 'Adapter in your inventory, not installed yet' };
+  if (p.haveVariant) return { cls: 'is-new', text: 'Not yet', title: 'You own the weapon but not its Incarnon' };
+  return { cls: 'is-muted', text: 'No weapon', title: `You own none of: ${(p.variants || []).join(', ')}` };
+}
+
+function wsPick(p, { marke = frameMarke, size = '' } = {}) {
+  const m = marke(p);
+  const titel = [p.name, m?.title].filter(Boolean).join(' — ');
+  return `
+    <div class="ws-pick ${size} ${m ? m.cls : ''}" title="${esc(titel)}">
+      <div class="ws-pick-img">${p.image
+        ? `<img src="${esc(p.image)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">`
+        : ''}</div>
+      <span class="ws-pick-name">${esc(p.name)}</span>
+      ${m ? `<span class="ws-pick-mark ${m.cls}">${esc(m.text)}</span>` : ''}
+    </div>`;
+}
+
+/* ---------------- Zusammenbau ---------------- */
+
+function renderWorldState(d) {
+  renderWsSource(d);
+  renderWsNav(d.counts || {});
+  renderBaroPill(d.traders?.baro);
+
+  renderResets(d);
+  renderCycles(d.cycles || []);
+  renderToday(d);
+  renderFissureGlance(d.fissures || []);
+  renderWeek(d);
+  renderTraderGlance(d.traders || {});
+
+  renderFissureModes(d.fissures || []);
+  renderFissures(d.fissures || []);
+  renderSortie(d.sortie, d.today?.sortie);
+  renderArchon(d.archonHunt);
+  renderArbitration(d.arbitration);
+  renderAlerts(d);
+  renderBounties(d.bounties || []);
+  renderSyndicates(d.factionMissions || []);
+  renderInvasions(d.invasions || []);
+  renderSteelPath(d.steelPath);
+  renderNightwave(d.nightwave || [], d.nightwaveSeason);
+  renderTraders(d.traders || {});
+  renderEvents(d.events || [], d);
+
+  const enden = (d.cycles || []).map(c => Date.parse(c.expiry)).filter(Number.isFinite);
+  naechsterWechsel = enden.length ? Math.min(...enden) : Infinity;
+  tickCycleClocks();
+}
+
+/* ---------------- Unterseiten ---------------- */
 
 /**
  * Unterseiten des Live-Trackers.
  *
- * Frueher stand alles untereinander auf einer sehr langen Seite. Die Leiste war
- * eine reine Sprungnavigation - jetzt schaltet sie echte Seiten um, damit man
- * nicht an Invasionen vorbeiscrollen muss, um zu den Rissen zu kommen.
- *
- * `count` nennt das Feld aus d.counts, das als Zahl am Reiter steht;
- * null bedeutet: dieser Bereich hat keine sinnvolle Anzahl.
+ * `count` nennt das Feld aus d.counts, das als Zahl am Reiter steht; null
+ * bedeutet: dieser Bereich hat keine sinnvolle Anzahl. Alerts und Kuva
+ * stehen seit dem Ausbau mit auf der Einsatz-Seite, die Syndikate auf der
+ * Kopfgeld-Seite.
  */
 const WS_PANES = [
-  { key: 'overview',   label: 'Overview',    icon: 'svg:globe',     count: null },
-  { key: 'fissures',   label: 'Void fissures', icon: 'img:fissure', count: 'fissures' },
-  { key: 'missions',   label: 'Sorties',     icon: 'img:sortie',    count: 'missions' },
-  { key: 'nightwave',  label: 'Nightwave',   icon: 'img:nightwave', count: 'nightwave' },
-  { key: 'alerts',     label: 'Alerts',      icon: 'img:quest',     count: 'alerts' },
-  { key: 'events',     label: 'Operations',  icon: 'img:event',     count: 'events' },
-  { key: 'steelpath',  label: 'Steel Path',  icon: 'img:steelpath', count: 'steelPath' },
-  { key: 'invasions',  label: 'Invasions',   icon: 'img:invasion',  count: 'invasions' },
-  { key: 'syndicates', label: 'Syndicates',  icon: 'img:syndicate', count: 'syndicates' }
+  { key: 'overview',   label: 'Overview',      icon: 'svg:globe',     count: null },
+  { key: 'fissures',   label: 'Void fissures', icon: 'img:fissure',   count: 'fissures' },
+  { key: 'missions',   label: 'Missions',      icon: 'img:sortie',    count: 'missions' },
+  { key: 'bounties',   label: 'Bounties',      icon: 'img:syndicate', count: 'bounties' },
+  { key: 'invasions',  label: 'Invasions',     icon: 'img:invasion',  count: 'invasions' },
+  { key: 'steelpath',  label: 'Steel Path',    icon: 'img:steelpath', count: null },
+  { key: 'nightwave',  label: 'Nightwave',     icon: 'img:nightwave', count: 'nightwave' },
+  { key: 'traders',    label: 'Traders',       icon: 'svg:shop',      count: null },
+  { key: 'events',     label: 'Operations',    icon: 'img:event',     count: 'events' }
 ];
+
+/* Fruehere Namen von Unterseiten - Benachrichtigungen und die Tour koennen
+   sie noch nennen. */
+const WS_PANE_ALT = { alerts: 'missions', syndicates: 'bounties' };
 
 let wsPane = 'overview';
 
@@ -3702,6 +3699,8 @@ function renderWsNav(counts) {
 }
 
 function showWsPane(key) {
+  key = WS_PANE_ALT[key] || key;
+  if (!WS_PANES.some(p => p.key === key)) key = 'overview';
   wsPane = key;
   document.querySelectorAll('.ws-pane').forEach(p =>
     p.classList.toggle('active', p.dataset.wsPane === key));
@@ -3710,10 +3709,59 @@ function showWsPane(key) {
   document.querySelector('.main-content')?.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-$('ws-nav')?.addEventListener('click', e => {
-  const btn = e.target.closest('.ws-navtab');
-  if (btn) showWsPane(btn.dataset.wsGo);
+/* Ein Lauscher fuer den ganzen Reiter: Unterseiten, Spruenge aus den Panels,
+   Glocken, Kopfgelder, Circuit-Vorschau und die Risse-Matrix. */
+$('tab-worldstate')?.addEventListener('click', e => {
+  const glocke = e.target.closest('[data-cycle-bell]');
+  if (glocke) { toggleCycleBell(glocke.dataset.cycleBell); return; }
+
+  const zelle = e.target.closest('[data-fissure-cell]');
+  if (zelle) {
+    const [mode, tier] = zelle.dataset.fissureCell.split('|');
+    setFissureFilter({ mode, tier });
+    showWsPane('fissures');
+    return;
+  }
+
+  const modus = e.target.closest('[data-fissure-mode]');
+  if (modus) { setFissureFilter({ mode: modus.dataset.fissureMode }); return; }
+
+  const job = e.target.closest('[data-job]');
+  if (job) {
+    const k = job.dataset.job;
+    if (wsOffen.has(k)) wsOffen.delete(k); else wsOffen.add(k);
+    job.closest('.ws-job')?.classList.toggle('open', wsOffen.has(k));
+    job.setAttribute('aria-expanded', String(wsOffen.has(k)));
+    return;
+  }
+
+  if (e.target.closest('[data-circuit-weeks]')) {
+    wsCircuitWochen = !wsCircuitWochen;
+    if (worldStateCache) renderWeek(worldStateCache);
+    return;
+  }
+
+  const reiter = e.target.closest('[data-tab-go]');
+  if (reiter) {
+    const ziel = reiter.dataset.tabGo;
+    if (ziel === 'baro') zeigeBaroPlaner();
+    else showTab(ziel);
+    return;
+  }
+
+  const go = e.target.closest('[data-ws-go]');
+  if (go) showWsPane(go.dataset.wsGo);
 });
+
+/* Der Baro-Planer lebt im Dukaten-Reiter. Der Modus wird VOR dem Umschalten
+   gesetzt: showTab stoesst dort das Laden an, und das soll gleich in der
+   richtigen Ansicht landen statt erst im Inventar. */
+function zeigeBaroPlaner() {
+  ducatsMode = 'baro';
+  showTab('ducats');
+  updateDucatsModeTabs();
+  renderDucatsCatalog();
+}
 
 /**
  * Zustand der Datenquelle.
@@ -3734,7 +3782,7 @@ function renderWsSource(d) {
   if (d.error) {
     art = 'down';
     text = `The data source (warframestat.us) is not answering: ${d.error}. `
-         + 'What you see is the last thing that loaded — or nothing.';
+         + 'What you see is the last thing that loaded — the cycles are calculated and stay right regardless.';
   } else if (alterMin !== null && alterMin > 15) {
     art = 'stale';
     const h = Math.floor(alterMin / 60), m = alterMin % 60;
@@ -3748,22 +3796,532 @@ function renderWsSource(d) {
   box.innerHTML = `<span class="ws-source-ic">${Icon.warning(16)}</span><span>${esc(text)}</span>`;
 }
 
-/* Alter Sprung-Zielcode - bleibt fuer den Fall, dass irgendwo noch data-target sitzt. */
-$('ws-statusbar')?.addEventListener('click', e => {
-  const btn = e.target.closest('.ws-stat');
-  if (!btn) return;
-  const id = btn.dataset.target;
-  if (!id) return;
-  const el = $(id);
-  if (el && !el.classList.contains('hidden')) {
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+/* Baro im Kopf des Reiters - die eine Frist, nach der man auf jeder
+   Unterseite fragt. */
+function renderBaroPill(b) {
+  const pill = $('ws-baro-pill');
+  if (!pill) return;
+  if (!b || !(b.active ? b.expiry : b.activation)) { pill.classList.add('hidden'); return; }
+  pill.classList.remove('hidden');
+  pill.classList.toggle('is-here', !!b.active);
+  pill.innerHTML = `${Icon.baro(14)}<span>${b.active ? 'Baro leaves in' : 'Baro arrives in'}</span>
+    <b>${wsUhr(b.active ? b.expiry : b.activation)}</b>${b.location ? `<em>${esc(b.location)}</em>` : ''}`;
+}
+
+/* ---------------- Uebersicht: Fristen ---------------- */
+
+function renderResets(d) {
+  const box = $('ws-resets');
+  if (!box) return;
+  const t = d.today || {};
+  const tr = d.traders || {};
+  const TAG = 86400000;
+  const minus = (iso, ms) => iso ? new Date(Date.parse(iso) - ms).toISOString() : null;
+
+  const arb = d.arbitration || {};
+  const arbNext = arb.upcoming?.[0] || null;
+
+  const eintraege = [
+    { label: 'Daily reset', until: t.dailyReset, from: minus(t.dailyReset, TAG),
+      sub: 'Standing, focus, incursions', go: 'overview' },
+    d.sortie && { label: 'Sortie', until: d.sortie.expiry, from: d.sortie.activation,
+      sub: `${d.sortie.boss || ''}`, go: 'missions' },
+    { label: 'Weekly reset', until: t.weeklyReset, from: minus(t.weeklyReset, 7 * TAG),
+      sub: 'Archon, Circuit, Netracells', tab: 'weekly' },
+    d.steelPath?.expiry && { label: 'Steel Path honors', until: d.steelPath.expiry, from: d.steelPath.activation,
+      sub: d.steelPath.rewardName || '', go: 'steelpath' },
+    tr.baro && (tr.baro.active ? tr.baro.expiry : tr.baro.activation) && {
+      label: tr.baro.active ? 'Baro leaves' : 'Baro arrives',
+      until: tr.baro.active ? tr.baro.expiry : tr.baro.activation,
+      from: tr.baro.active ? tr.baro.activation : null,
+      sub: tr.baro.location || '', go: 'traders', tone: 'gold' },
+    tr.resurgence?.expiry && { label: 'Prime Resurgence', until: tr.resurgence.expiry, from: tr.resurgence.activation,
+      sub: (tr.resurgence.primes || []).filter(p => p.category === 'Suits').map(p => p.name.replace(/ Prime$/, '')).join(' & ') || 'Varzia',
+      go: 'traders' },
+    (arb.current || arbNext) && { label: arb.current ? 'Arbitration' : 'Next arbitration',
+      until: arb.current ? arb.current.expiry : arbNext.activation,
+      from: arb.current ? arb.current.activation : null,
+      sub: arb.current ? `${arb.current.name}` : `${arbNext.name}`, go: 'missions' },
+    tr.darvo?.[0] && { label: 'Darvo’s deal', until: tr.darvo[0].expiry, from: tr.darvo[0].activation,
+      sub: tr.darvo[0].name, go: 'traders' }
+  ].filter(Boolean);
+
+  box.innerHTML = eintraege.map(e => `
+    <button class="ws-reset ${e.tone ? 'tone-' + e.tone : ''}" ${e.tab ? `data-tab-go="${e.tab}"` : `data-ws-go="${e.go}"`}
+            ${e.from ? `data-urgent-start="${esc(e.from)}" data-urgent-end="${esc(e.until)}"` : ''}
+            title="${esc(e.label)} — ${esc(wsZeitpunkt(e.until))}">
+      <span class="ws-reset-label">${esc(e.label)}</span>
+      <b>${wsUhr(e.until)}</b>
+      <span class="ws-reset-sub">${esc(e.sub || '')}</span>
+    </button>`).join('');
+}
+
+/* ---------------- Uebersicht: Zyklen ---------------- */
+
+/* Tag, Nacht und die Zustaende der offenen Welten sind Weltfarben und folgen
+   keinem Theme - siehe die Badge-Regeln in style.css. */
+const ZYKLUS_ICON = { day: 'sun', night: 'moon', warm: 'flame', cold: 'snowflake' };
+
+function renderCycles(cycles) {
+  const box = $('ws-cycles');
+  if (!box) return;
+  const an = new Set(notificationSettings?.cycles?.keys || []);
+
+  box.innerHTML = cycles.map(c => {
+    const ic = ZYKLUS_ICON[c.state] && Icon[ZYKLUS_ICON[c.state]] ? Icon[ZYKLUS_ICON[c.state]](14) : '';
+    const glocke = an.has(c.key);
+    return `
+    <div class="ws-cycle-card map-${esc(c.key)} tone-${esc(c.state)}"
+         data-urgent-start="${esc(c.activation)}" data-urgent-end="${esc(c.expiry)}">
+      <div class="ws-cycle-head">
+        <div class="ws-cycle-id">
+          <div class="ws-cycle-title">${esc(c.name)}</div>
+          <div class="ws-cycle-sub">${esc(c.place)}</div>
+        </div>
+        <button class="ws-cycle-bell${glocke ? ' on' : ''}" data-cycle-bell="${esc(c.key)}"
+                title="${glocke ? 'Notification on — click to switch it off'
+                                : `Notify me before ${esc(c.name)} changes`}">${glocke ? Icon.bellRing(14) : Icon.bell(14)}</button>
+      </div>
+      <div class="ws-cycle-mid">
+        <span class="ws-cycle-badge tone-${esc(c.state)}">${ic}${esc(c.label)}</span>
+        ${c.hint ? `<span class="ws-cycle-hint">${esc(c.hint)}</span>` : ''}
+      </div>
+      <div class="ws-cycle-foot">
+        <div class="ws-cycle-time">${wsUhr(c.expiry)} <small>until ${esc(c.next)} · ${esc(wsZeitpunkt(c.expiry))}</small></div>
+        <div class="ws-cycle-phase"><i data-phase-start="${esc(c.activation)}" data-phase-end="${esc(c.expiry)}"></i></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* Glocke auf einer Zyklus-Karte: dieselbe Auswahl wie in den Einstellungen. */
+async function toggleCycleBell(key) {
+  const keys = new Set(notificationSettings?.cycles?.keys || []);
+  if (keys.has(key)) keys.delete(key); else keys.add(key);
+  const res = await window.api.saveNotifications({ cycles: { keys: [...keys] } });
+  if (res?.ok) {
+    notificationSettings = res.data;
+    if (worldStateCache) renderCycles(worldStateCache.cycles || []);
+    renderCycleSettings();
+    tickCycleClocks();
   }
+}
+
+/* ---------------- Uebersicht: Heute ---------------- */
+
+function renderToday(d) {
+  const box = $('ws-today');
+  if (!box) return;
+  const t = d.today || {};
+  const zeilen = [];
+
+  if (t.sortie) {
+    const s = t.sortie;
+    const fortschritt = s.done == null
+      ? ''
+      : `<span class="ws-pips" title="${s.done} of ${s.missions} missions done">${
+          Array.from({ length: s.missions }, (_, i) => `<i class="${i < s.done ? 'on' : ''}"></i>`).join('')}</span>`;
+    zeilen.push(`
+      <button class="ws-row" data-ws-go="missions">
+        <span class="ws-row-label">Sortie</span>
+        <span class="ws-row-value">${esc(s.boss)} <em>${esc(s.faction)}</em></span>
+        ${fortschritt}
+        <span class="ws-row-eta">${wsUhr(s.expiry)}</span>
+      </button>`);
+  }
+  if (t.incursions) {
+    zeilen.push(`
+      <button class="ws-row" data-ws-go="steelpath">
+        <span class="ws-row-label">Steel Path incursions</span>
+        <span class="ws-row-value">${t.incursions.active ? 'Five missions, new today' : 'Not reported'}</span>
+        <span class="ws-row-eta">${t.incursions.active ? wsUhr(t.incursions.expiry) : ''}</span>
+      </button>`);
+  }
+  if (t.simaris) {
+    zeilen.push(`
+      <div class="ws-row">
+        <span class="ws-row-label">Synthesis target</span>
+        <span class="ws-row-value">${esc(t.simaris.target)} <em>Cephalon Simaris</em></span>
+      </div>`);
+  }
+  if (d.anomaly) {
+    zeilen.push(`
+      <div class="ws-row tone-accent">
+        <span class="ws-row-label">Sentient anomaly</span>
+        <span class="ws-row-value">${esc(d.anomaly.node || '')} <em>${esc([d.anomaly.type, d.anomaly.faction].filter(Boolean).join(' · '))}</em></span>
+        <span class="ws-row-eta">${d.anomaly.expiry ? wsUhr(d.anomaly.expiry) : ''}</span>
+      </div>`);
+  }
+
+  /* Was heute noch zu holen ist - nur aus einem Inventar von HEUTE. Ein
+     aelteres sagt nichts: seitdem sind die Zaehler voll, oder man hat
+     gespielt und es nicht neu gelesen. */
+  let konto = '';
+  if (t.fresh && (t.standing || t.focus)) {
+    /* Der Balken zeigt, was UEBRIG ist - wie die Zahl daneben. Zuerst zeigte
+       er das Verbrauchte, und ein fast voller Balken neben einer kleinen Zahl
+       las sich wie ein Widerspruch. */
+    const bar = (left, cap) => {
+      const rest = cap ? Math.max(0, Math.min(1, left / cap)) : 0;
+      return `<span class="ws-cap-bar"><i style="width:${(rest * 100).toFixed(1)}%"></i></span>`;
+    };
+    const angefasst = (t.standing || []).filter(x => x.cap && x.left < x.cap);
+    const unberuehrt = (t.standing || []).length - angefasst.length;
+    konto = `
+      <div class="ws-caps">
+        <div class="ws-caps-head"><span>Left today</span><em>as of ${esc(wsZeitpunkt(t.inventoryAt))}</em></div>
+        ${t.focus ? `
+          <div class="ws-cap">
+            <span class="ws-cap-name">Focus</span>${bar(t.focus.left, t.focus.cap)}
+            <b>${nf(t.focus.left)}</b>
+          </div>` : ''}
+        ${angefasst.map(x => `
+          <div class="ws-cap ${x.left <= 0 ? 'is-full' : ''}">
+            <span class="ws-cap-name">${esc(x.label)}</span>${bar(x.left, x.cap)}
+            <b>${x.left <= 0 ? 'capped' : nf(x.left)}</b>
+          </div>`).join('')}
+        ${unberuehrt ? `<p class="ws-caps-note">${angefasst.length ? 'Every other syndicate' : 'Every syndicate'}: the full ${
+          nf((t.standing || [])[0]?.cap || 0)} standing still open.</p>` : ''}
+      </div>`;
+  } else if (d.hasInventory) {
+    konto = `<p class="ws-caps-note">Standing and focus left today appear here once your inventory is read
+      after today’s reset${t.inventoryAt ? ` — the last one is from ${esc(wsZeitpunkt(t.inventoryAt))}` : ''}.
+      Argus reads it by itself while you play.</p>`;
+  }
+
+  box.innerHTML = wsPanel({
+    icon: Icon.clock(16),
+    title: 'Today',
+    sub: `resets in <b>${wsUhr(t.dailyReset)}</b>`,
+    body: (zeilen.join('') || '<p class="ws-caps-note">Nothing reported for today.</p>') + konto
+  });
+}
+
+/* ---------------- Uebersicht: Risse auf einen Blick ---------------- */
+
+const FISSURE_TIERS = ['Lith', 'Meso', 'Neo', 'Axi', 'Requiem', 'Omnia'];
+const FISSURE_MODES = [
+  { key: 'all',    label: 'All' },
+  { key: 'normal', label: 'Normal' },
+  { key: 'hard',   label: 'Steel Path' },
+  { key: 'storm',  label: 'Void Storms' }
+];
+const fissureMode = f => f.isStorm ? 'storm' : f.isHard ? 'hard' : 'normal';
+
+function renderFissureGlance(list) {
+  const box = $('ws-glance-fissures');
+  if (!box) return;
+  const spalten = FISSURE_MODES.slice(1);
+  const kopf = `<span></span>${spalten.map(m => `<span class="ws-fm-head">${esc(m.label)}</span>`).join('')}`;
+  const reihen = FISSURE_TIERS.map(tier => {
+    const zellen = spalten.map(m => {
+      const treffer = list.filter(f => f.tier === tier && fissureMode(f) === m.key);
+      const bald = treffer.map(f => Date.parse(f.expiry)).filter(Number.isFinite).sort((a, b) => a - b)[0];
+      return `<button class="ws-fm-cell${treffer.length ? '' : ' zero'}" data-fissure-cell="${m.key}|${tier}"
+                title="${treffer.length} ${esc(tier)} ${esc(m.label.toLowerCase())} fissure${treffer.length === 1 ? '' : 's'}">
+        <b>${treffer.length}</b>${bald ? `<small>${wsUhr(new Date(bald).toISOString())}</small>` : ''}
+      </button>`;
+    }).join('');
+    return `<span class="ws-fm-tier ws-fissure-tier ${tier}">${tier}</span>${zellen}`;
+  }).join('');
+
+  box.innerHTML = wsPanel({
+    icon: '<span class="ws-stat-ic ic-fissure"></span>',
+    title: 'Void fissures',
+    sub: `${list.length} open · the clock is the first to close`,
+    go: { pane: 'fissures', label: 'All fissures' },
+    body: `<div class="ws-fissure-matrix">${kopf}${reihen}</div>`
+  });
+}
+
+/* ---------------- Uebersicht: Diese Woche ---------------- */
+
+const SPLITTER_FARBE = { amar: 'Crimson', nira: 'Amber', boreal: 'Azure' };
+
+function renderWeek(d) {
+  const box = $('ws-week');
+  if (!box) return;
+  const teile = [];
+
+  const a = d.archonHunt;
+  if (a) {
+    const farbe = SPLITTER_FARBE[String(a.boss || '').toLowerCase().replace(/^archon\s+/, '')];
+    teile.push(`
+      <button class="ws-row" data-ws-go="missions">
+        <span class="ws-row-label">Archon hunt</span>
+        <span class="ws-row-value">${esc(a.boss)}${farbe ? ` <em class="shard-${farbe.toLowerCase()}">${farbe} shard</em>` : ''}</span>
+        <span class="ws-row-eta">${wsUhr(a.expiry)}</span>
+      </button>`);
+  }
+
+  const c = d.circuit;
+  if (c) {
+    const vorschau = wsCircuitWochen && (c.normalRotation?.length || c.hardRotation?.length);
+    const woche = (rot, i) => rot?.[i];
+    const zukunft = vorschau
+      ? `<div class="ws-circuit-weeks">${Array.from({ length: Math.max(c.normalRotation?.length || 0, c.hardRotation?.length || 0) - 1 }, (_, k) => {
+          const i = k + 1;
+          const n = woche(c.normalRotation, i), h = woche(c.hardRotation, i);
+          const ab = (n || h)?.activation;
+          return `
+            <div class="ws-cw">
+              <span class="ws-cw-when">${i === 1 ? 'Next week' : `In ${i} weeks`}<em>${esc(wsDatum(ab))}</em></span>
+              <div class="ws-cw-picks">
+                ${(n?.picks || []).map(p => wsPick(p, { size: 'is-mini' })).join('')}
+                ${n && h ? '<span class="ws-cw-sep"></span>' : ''}
+                ${(h?.picks || []).map(p => wsPick(p, { marke: incarnonMarke, size: 'is-mini' })).join('')}
+              </div>
+            </div>`;
+        }).join('')}</div>`
+      : '';
+
+    teile.push(`
+      <div class="ws-circuit">
+        <div class="ws-circuit-head">
+          <span class="ws-row-label">The Circuit</span>
+          ${(c.normalRotation?.length || c.hardRotation?.length)
+            ? `<button class="ws-mini-btn" data-circuit-weeks aria-expanded="${wsCircuitWochen}">${
+                wsCircuitWochen ? 'Hide upcoming weeks' : 'Upcoming weeks'}</button>` : ''}
+        </div>
+        <div class="ws-circuit-group">
+          <span class="ws-circuit-label">Warframes${c.normalWeek ? ` · week ${c.normalWeek} of 11` : ''}</span>
+          <div class="ws-picks">${c.normal.map(p => wsPick(p)).join('')}</div>
+        </div>
+        <div class="ws-circuit-group">
+          <span class="ws-circuit-label">Steel Path · Incarnon${c.hardWeek ? ` · week ${c.hardWeek}` : ''}</span>
+          <div class="ws-picks">${c.hard.map(p => wsPick(p, { marke: incarnonMarke })).join('')}</div>
+        </div>
+        ${!c.hasInventory ? '<p class="ws-caps-note">With inventory access, each pick shows whether you already have it.</p>' : ''}
+        ${zukunft}
+      </div>`);
+  }
+
+  const sp = d.steelPath;
+  if (sp?.rewardName) {
+    const naechste = (sp.upcoming || []).slice(0, 2).map(u => esc(u.name)).join(', ');
+    teile.push(`
+      <button class="ws-row" data-ws-go="steelpath">
+        <span class="ws-row-label">Teshin</span>
+        <span class="ws-row-value">${esc(sp.rewardName)}${sp.rewardCost != null ? ` <em>${sp.rewardCost} Steel Essence</em>` : ''}</span>
+        <span class="ws-row-eta">${naechste ? `next: ${naechste}` : ''}</span>
+      </button>`);
+  }
+
+  box.innerHTML = wsPanel({
+    icon: Icon.weekly(16),
+    title: 'This week',
+    sub: `resets in <b>${wsUhr(d.today?.weeklyReset)}</b>`,
+    go: { tab: 'weekly', label: 'Weekly rotation' },
+    body: teile.join('') || '<p class="ws-caps-note">Nothing reported for this week.</p>'
+  });
+}
+
+/* ---------------- Uebersicht: Haendler ---------------- */
+
+function renderTraderGlance(tr) {
+  const box = $('ws-glance-traders');
+  if (!box) return;
+  const teile = [];
+
+  const b = tr.baro;
+  if (b) {
+    const fehlt = b.summary ? b.items.filter(i => i.owned === false).length : null;
+    teile.push(`
+      <button class="ws-row tone-gold" data-tab-go="baro">
+        <span class="ws-row-label">Baro Ki’Teer</span>
+        <span class="ws-row-value">${b.active
+          ? `${b.items.length} offers${fehlt != null ? ` <em>${fehlt} you don’t have</em>` : ''}`
+          : `${esc(b.location || 'a relay')} <em>${esc(wsZeitpunkt(b.activation))}</em>`}</span>
+        <span class="ws-row-eta">${b.active ? 'leaves ' : 'in '}${wsUhr(b.active ? b.expiry : b.activation)}</span>
+      </button>`);
+  }
+
+  const r = tr.resurgence;
+  if (r) {
+    teile.push(`
+      <div class="ws-circuit">
+        <div class="ws-circuit-head">
+          <span class="ws-row-label">Prime Resurgence</span>
+          <span class="ws-row-eta">${r.expiry ? `ends in ${wsUhr(r.expiry)}` : ''}</span>
+        </div>
+        <div class="ws-picks">${(r.primes || []).map(p => wsPick(p)).join('')}</div>
+      </div>`);
+  }
+
+  for (const dd of tr.darvo || []) {
+    teile.push(`
+      <button class="ws-row" data-ws-go="traders">
+        <span class="ws-row-label">Darvo’s deal</span>
+        <span class="ws-row-value">${esc(dd.name)} <em>${dd.salePrice}p <s>${dd.originalPrice}p</s></em>${
+          dd.soldOut ? ' <span class="ws-tag is-muted">Sold out</span>' : dd.discount ? ` <span class="ws-tag is-done">−${dd.discount}%</span>` : ''}</span>
+        <span class="ws-row-eta">${wsUhr(dd.expiry)}</span>
+      </button>`);
+  }
+
+  const v = tr.vendors;
+  if (v) {
+    teile.push(`
+      <button class="ws-row" data-ws-go="traders">
+        <span class="ws-row-label">Ergo Glast · Eleanor</span>
+        <span class="ws-row-value">Tenet bonuses <em>${esc(wsZeitpunkt(v.tenet.expiry))}</em> · Coda batch ${esc(v.coda.batch)} → ${esc(v.coda.nextBatch)} <em>${esc(wsZeitpunkt(v.coda.expiry))}</em></span>
+      </button>`);
+  }
+
+  box.innerHTML = wsPanel({
+    icon: Icon.shop(16),
+    title: 'Traders',
+    sub: 'Baro, Varzia, Darvo and the four-day rotations',
+    go: { pane: 'traders', label: 'All traders' },
+    body: teile.join('') || '<p class="ws-caps-note">No trader reported.</p>'
+  });
+}
+
+/* ---------------- Unterseite: Void-Risse ---------------- */
+
+const RELIC_TIER_IMAGES = {
+  lith: 'assets/icons/worldstate/relic-lith.png',
+  meso: 'assets/icons/worldstate/relic-meso.png',
+  neo: 'assets/icons/worldstate/relic-neo.png',
+  axi: 'assets/icons/worldstate/relic-axi.png',
+  requiem: 'assets/icons/worldstate/relic-requiem.png',
+  omnia: 'assets/icons/worldstate/relic-omnia.png'
+};
+
+function relicTierImage(tier) {
+  const t = String(tier || '').toLowerCase();
+  return RELIC_TIER_IMAGES[t] || 'assets/icons/worldstate/relic-lith.png';
+}
+
+function setFissureFilter({ mode, tier } = {}) {
+  if (mode) activeFissureMode = mode;
+  if (tier) activeFissureTier = tier;
+  document.querySelectorAll('.fissure-tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.tier.toLowerCase() === activeFissureTier.toLowerCase()));
+  if (worldStateCache) {
+    renderFissureModes(worldStateCache.fissures || []);
+    renderFissures(worldStateCache.fissures || []);
+  }
+}
+
+function renderFissureModes(list) {
+  const box = $('ws-fissure-modes');
+  if (!box) return;
+  box.innerHTML = FISSURE_MODES.map(m => {
+    const n = m.key === 'all' ? list.length : list.filter(f => fissureMode(f) === m.key).length;
+    return `<button class="ws-seg${activeFissureMode === m.key ? ' active' : ''}" data-fissure-mode="${m.key}">${
+      esc(m.label)}<b>${n}</b></button>`;
+  }).join('');
+}
+
+function renderFissures(list) {
+  const nachModus = activeFissureMode === 'all' ? list : list.filter(f => fissureMode(f) === activeFissureMode);
+  const filtered = activeFissureTier === 'all'
+    ? nachModus
+    : nachModus.filter(f => String(f.tier).toLowerCase() === activeFissureTier.toLowerCase());
+  const sortiert = [...filtered].sort((a, b) =>
+    (a.tierNum || 0) - (b.tierNum || 0) || (Date.parse(a.expiry) || 0) - (Date.parse(b.expiry) || 0));
+
+  $('ws-fissures').innerHTML = sortiert.length
+    ? sortiert.map(f => {
+      const isMatch = isFissureAlertMatch(f, notificationSettings);
+      const art = fissureMode(f);
+      return `
+      <div class="ws-fissure-card mode-${art} ${isMatch ? 'is-alert-match' : ''}">
+        ${isMatch ? `<span class="fissure-alert-badge" title="Fissure alarm match">${Icon.bell(12)}</span>` : ''}
+        <img class="ws-fissure-img tier-${esc(String(f.tier || '').toLowerCase())}" src="${relicTierImage(f.tier)}" alt="${esc(f.tier)}" onerror="this.style.display='none'">
+        <div class="ws-fissure-info">
+          <span class="ws-fissure-tags">
+            <span class="ws-fissure-tier ${esc(f.tier)}">${esc(f.tier)}</span>
+            ${art === 'hard' ? '<span class="ws-tag is-red">Steel Path</span>' : ''}
+            ${art === 'storm' ? '<span class="ws-tag is-accent">Void Storm</span>' : ''}
+          </span>
+          <b class="ws-fissure-mission">${esc(f.missionType)}</b>
+          <span class="ws-fissure-node">${esc(f.node)} · ${esc(f.enemy)}</span>
+        </div>
+        <span class="ws-fissure-eta" data-urgent-start="${esc(f.activation || '')}" data-urgent-end="${esc(f.expiry || '')}">${
+          f.expiry ? wsUhr(f.expiry) : esc(f.eta)}</span>
+      </div>
+    `;}).join('')
+    : '<div class="empty" style="grid-column: 1 / -1;">No active fissures match this filter.</div>';
+}
+
+document.querySelectorAll('.fissure-tab').forEach(tab => {
+  tab.onclick = () => setFissureFilter({ tier: tab.dataset.tier });
 });
 
-/* ---------------- Alerts & zeitlich begrenzte Missionen ---------------- */
+/* ---------------- Unterseite: Einsaetze ---------------- */
 
-/* Farbe und Kurzname je Art. Kuva-Fluten und Elite-Aufgaben stechen heraus,
-   weil sie die lohnendsten und seltensten Eintraege der Liste sind. */
+function renderSortie(sort, stand) {
+  const box = $('ws-sortie');
+  if (!box) return;
+  $('ws-sortie-eta').innerHTML = sort?.expiry ? `ends in ${wsUhr(sort.expiry)}` : '';
+  if (!sort) { box.innerHTML = '<div class="empty">No active sortie reported.</div>'; return; }
+  const erledigt = stand?.done;
+  box.innerHTML = `
+    <div class="ws-box-sub">
+      Boss: <b>${esc(sort.boss)}</b> · ${esc(sort.faction)}${erledigt != null
+        ? ` · <span class="ws-tag ${erledigt >= (stand.missions || 3) ? 'is-done' : 'is-accent'}">${erledigt} of ${stand.missions || 3} done</span>` : ''}
+    </div>
+    ${(sort.variants || []).map((v, i) => `
+      <div class="ws-mission-item${erledigt != null && i < erledigt ? ' is-done' : ''}">
+        <div class="ws-m-num">${i + 1}</div>
+        <div class="ws-m-info">
+          <b>${esc(v.missionType)} <span>${esc(v.node)}</span></b>
+          <p>${esc(v.modifier)}${v.modifierDescription ? `: ${esc(v.modifierDescription)}` : ''}</p>
+        </div>
+      </div>`).join('')}`;
+}
+
+function renderArchon(arc) {
+  const box = $('ws-archon');
+  if (!box) return;
+  $('ws-archon-eta').innerHTML = arc?.expiry ? `ends in ${wsUhr(arc.expiry)}` : '';
+  if (!arc) { box.innerHTML = '<div class="empty">No archon hunt active.</div>'; return; }
+  const farbe = SPLITTER_FARBE[String(arc.boss || '').toLowerCase().replace(/^archon\s+/, '')];
+  box.innerHTML = `
+    <div class="ws-box-sub">
+      Target: <b class="${farbe ? 'shard-' + farbe.toLowerCase() : ''}">${esc(arc.boss)}</b>${farbe ? ` · drops a ${farbe} Archon Shard` : ''}
+    </div>
+    ${(arc.missions || []).map((m, i) => `
+      <div class="ws-mission-item">
+        <div class="ws-m-num">${i + 1}</div>
+        <div class="ws-m-info">
+          <b>${esc(m.type)}</b>
+          <p class="is-plain">${esc(m.node)}</p>
+        </div>
+      </div>`).join('')}`;
+}
+
+function renderArbitration(arb) {
+  const box = $('ws-arbitration');
+  if (!box) return;
+  const cur = arb?.current;
+  const next = arb?.upcoming || [];
+  if (!cur && !next.length) {
+    box.innerHTML = leerHinweis('The arbitration schedule could not be loaded.');
+    return;
+  }
+  const zeile = (a, i) => `
+    <div class="ws-arb-row${i === 0 ? ' is-next' : ''}">
+      <span class="ws-arb-time">${esc(wsZeitpunkt(a.activation))}</span>
+      <b>${esc(a.name)}</b>
+      <span class="ws-arb-type">${esc(a.type || '')}</span>
+      <span class="ws-arb-enemy faction-${esc(String(a.enemy || '').toLowerCase())}">${esc(a.enemy || '')}</span>
+      <span class="ws-arb-eta">${i === 0 ? `in ${wsUhr(a.activation)}` : ''}</span>
+    </div>`;
+  box.innerHTML = `
+    <div class="ws-arb">
+      ${cur ? `
+        <div class="ws-arb-now">
+          <span class="ws-row-label">Running now</span>
+          <b>${esc(cur.name)}</b>
+          <span>${esc([cur.type, cur.enemy].filter(Boolean).join(' · '))}</span>
+          <span class="ws-arb-left">ends in ${wsUhr(cur.expiry)}</span>
+        </div>` : ''}
+      <div class="ws-arb-list">${next.map(zeile).join('')}</div>
+    </div>`;
+}
+
 /* ---------------- Nightwave ---------------- */
 
 const NW_ARTEN = {
@@ -3772,9 +4330,13 @@ const NW_ARTEN = {
   'nightwave-taeglich': { label: 'Daily act',           klasse: '' }
 };
 
-function renderNightwave(list) {
+function renderNightwave(list, season) {
   const box = $('ws-nightwave');
   if (!box) return;
+  const sb = $('ws-nightwave-season');
+  if (sb) sb.innerHTML = season?.season != null
+    ? `Season ${esc(String(season.season))}${season.expiry ? ` · ends in ${wsUhr(season.expiry)}` : ''}`
+    : '';
 
   const items = Array.isArray(list) ? list : [];
   if (!items.length) {
@@ -3800,21 +4362,23 @@ function renderNightwave(list) {
 /* ---------------- Alerts, Kuva & Schlichtung ---------------- */
 
 const ALERT_ARTEN = {
-  'kuva-flut':    { label: 'Kuva-Flut',   klasse: 'is-gold' },
-  'kuva-siphon':  { label: 'Kuva-Siphon', klasse: 'is-gold' },
-  'arbitration':  { label: 'Schlichtung', klasse: 'is-accent' },
-  'alert':        { label: 'Alert',       klasse: '' }
+  'kuva-flut':    { label: 'Kuva Flood',   klasse: 'is-gold' },
+  'kuva-siphon':  { label: 'Kuva Siphon',  klasse: 'is-gold' },
+  'arbitration':  { label: 'Arbitration',  klasse: 'is-accent' },
+  'alert':        { label: 'Alert',        klasse: '' }
 };
 
 function renderAlerts(d) {
   const box = $('ws-alerts');
   if (!box) return;
 
-  const list = d.alerts || [];
+  /* Die Arbitration kommt aus dem Plan (eigener Abschnitt darueber) - das
+     Feld der Weltzustandsquelle ist tot und wuerde hoechstens doppeln. */
+  const list = (d.alerts || []).filter(a => a.art !== 'arbitration');
   if (!list.length) {
     box.innerHTML = leerHinweis(d.error
       ? 'The data source is not answering right now, so there are no entries.'
-      : 'Nothing time-limited is running right now.');
+      : 'No alerts or Kuva missions are reported right now.');
     return;
   }
 
@@ -3836,161 +4400,345 @@ function renderAlerts(d) {
   }).join('');
 }
 
-/* ---------------- Operationen / Events ---------------- */
+/* ---------------- Unterseite: Kopfgelder ---------------- */
 
-/* Seit dem Umbau auf Unterseiten versteckt sich kein Bereich mehr selbst -
-   eine leere Seite braucht eine Erklaerung, kein Verschwinden. */
-function renderEvents(list) {
-  if (!$('ws-events')) return;
-  if (!list.length) {
-    $('ws-events').innerHTML = leerHinweis('No operation is running at the moment.');
-    return;
-  }
+const RARITY_KLASSE = { common: 'is-bronze', uncommon: 'is-silver', rare: 'is-gold', legendary: 'is-gold' };
 
-  $('ws-events').innerHTML = list.map(e => `
-    <div class="ws-event-card">
-      <div class="ws-event-head">
-        <div>
-          <b>${esc(e.name)}</b>
-          <span>${esc(e.node || e.tooltip || '')}</span>
-        </div>
-        <span class="ws-eta">${esc(e.eta)}</span>
+function belohnungsListe(stufen) {
+  return (stufen || []).map(g => `
+    <div class="ws-rw-stage">
+      <span class="ws-rw-stage-name">${esc(g.stage)}</span>
+      <div class="ws-rw-items">
+        ${g.items.map(it => `
+          <div class="ws-rw ${RARITY_KLASSE[String(it.rarity || '').toLowerCase()] || ''}">
+            <span>${esc(it.name)}</span>
+            <b>${it.chance != null ? `${Number(it.chance).toFixed(it.chance < 10 ? 2 : 1)}%` : ''}</b>
+          </div>`).join('')}
       </div>
-      ${e.progress != null ? `
-        <div class="ws-progress">
-          <div class="ws-progress-fill" style="width:${e.progress}%"></div>
-        </div>
-        <div class="ws-progress-label">${e.progress}% complete</div>` : ''}
-      ${e.rewards.length ? `<div class="ws-event-rewards">${
-        e.rewards.map(r => `<span>${esc(r)}</span>`).join('')}</div>` : ''}
     </div>`).join('');
 }
 
-/* ---------------- Steel Path ---------------- */
+function renderBounties(list) {
+  const box = $('ws-bounties');
+  if (!box) return;
+  if (!list.length) { box.innerHTML = leerHinweis('No bounties reported.'); return; }
 
-function renderSteelPath(sp) {
-  if (!$('ws-steelpath')) return;
-  if (!sp) {
-    $('ws-steelpath').innerHTML = leerHinweis('No Steel Path data reported.');
-    return;
-  }
+  box.innerHTML = list.map(b => {
+    const kopf = `
+      <div class="ws-bsyn-head">
+        <div>
+          <h3>${esc(b.syndicate)}</h3>
+          <span>${esc(b.zone || '')}</span>
+        </div>
+        ${b.published && b.expiry ? `<span class="ws-bsyn-eta">${b.isEvent ? 'event ends in' : 'new bounties in'} ${wsUhr(b.expiry)}</span>` : ''}
+      </div>`;
 
-  $('ws-steelpath').innerHTML = `
-    <div class="ws-sp-row">
-      <div class="ws-sp-reward">
-        <span class="ws-sp-label">Teshin’s offering this week</span>
-        <b>${esc(sp.rewardName || '—')}</b>
-        ${sp.rewardCost != null ? `<span class="ws-sp-cost">${sp.rewardCost} Steel Essence</span>` : ''}
-      </div>
-      <div class="ws-sp-side">
-        <span class="ws-eta">${esc(sp.remaining || '')}</span>
-        <span class="ws-sp-inc ${sp.incursionsActive ? 'on' : 'off'}">
-          ${sp.incursionsActive ? 'Incursions active · ' + esc(sp.incursionsEta) : 'No incursions'}
-        </span>
-      </div>
-    </div>`;
+    if (!b.published) {
+      const stufen = (b.tiers || []).map((t, i) => {
+        const k = `${b.key}|tier|${i}`;
+        const offen = wsOffen.has(k);
+        return `
+          <div class="ws-job${offen ? ' open' : ''}">
+            <button class="ws-job-row" data-job="${esc(k)}" aria-expanded="${offen}">
+              <span class="ws-job-lvl">${t.levels[0]}–${t.levels[1]}</span>
+              <span class="ws-job-type">Level ${t.levels[0]}–${t.levels[1]} bounty</span>
+              <span class="ws-job-meta">${t.rewards.reduce((s, g) => s + g.items.length, 0)} possible rewards</span>
+              <span class="ws-job-chev">${Icon.chevron(12)}</span>
+            </button>
+            <div class="ws-job-rewards">${belohnungsListe(t.rewards)}</div>
+          </div>`;
+      }).join('');
+      return `
+        <div class="ws-bsyn is-unpublished">
+          ${kopf}
+          <p class="ws-bsyn-note">The game rolls these missions itself, so nobody publishes them. The level tiers and what they pay out at the end are fixed:</p>
+          <div class="ws-jobs">${stufen || '<p class="ws-bsyn-note">No reward table loaded.</p>'}</div>
+        </div>`;
+    }
+
+    const auftraege = b.jobs.map((j, i) => {
+      const k = `${b.key}|${j.id || i}|${i}`;
+      const offen = wsOffen.has(k);
+      const tags = [
+        j.timeBound ? `<span class="ws-tag is-gold" title="Only during the ${esc(j.timeBound)}">Narmer · ${esc(j.timeBound)}</span>` : '',
+        j.isVault ? '<span class="ws-tag is-accent">Isolation Vault</span>' : '',
+        j.minMR ? `<span class="ws-tag is-muted">MR ${j.minMR}</span>` : ''
+      ].join('');
+      return `
+        <div class="ws-job${offen ? ' open' : ''}">
+          <button class="ws-job-row" data-job="${esc(k)}" aria-expanded="${offen}">
+            <span class="ws-job-lvl">${j.levels.join('–')}</span>
+            <span class="ws-job-type">${esc(j.type)} ${tags}</span>
+            <span class="ws-job-meta">${j.standingTotal ? `${nf(j.standingTotal)} standing · ` : ''}${j.stages} stages${
+              j.rewardRotation ? ` · rotation ${esc(j.rewardRotation)}` : ''}</span>
+            <span class="ws-job-chev">${Icon.chevron(12)}</span>
+          </button>
+          <div class="ws-job-rewards">${j.rewards
+            ? belohnungsListe(j.rewards)
+            : '<p class="ws-bsyn-note">No matching reward table in DE’s drop tables.</p>'}</div>
+        </div>`;
+    }).join('');
+
+    return `<div class="ws-bsyn">${kopf}<div class="ws-jobs">${auftraege}</div></div>`;
+  }).join('');
 }
 
-/* ---------------- Invasionen ---------------- */
+/* ---------------- Syndikatsmissionen ---------------- */
 
-function renderInvasions(list) {
-  if (!$('ws-invasions')) return;
+function renderSyndicates(list) {
+  const box = $('ws-syndicates');
+  if (!box) return;
   if (!list.length) {
-    $('ws-invasions').innerHTML = leerHinweis('No invasions are running right now.');
+    box.innerHTML = leerHinweis('No syndicate missions reported.');
     return;
   }
+  box.innerHTML = list.map(sy => `
+    <div class="ws-syndicate-card">
+      <div class="ws-syn-head">
+        <b>${esc(sy.syndicate)}</b>
+        <span class="ws-eta">${sy.expiry ? wsUhr(sy.expiry) : ''}</span>
+      </div>
+      <div class="ws-syn-nodes">${sy.nodes.map(n => `<span>${esc(n)}</span>`).join('')}</div>
+    </div>`).join('');
+}
 
-  $('ws-invasions').innerHTML = list.map(i => `
-    <div class="ws-invasion-card">
+/* ---------------- Unterseite: Invasionen ---------------- */
+
+/* Was bei einer Invasion den Weg lohnt. Nur Bauplaene und Teile, die es
+   anders kaum gibt - Fieldron & Co. sind die Regel, nicht die Ausnahme. */
+const INVASION_SELTEN = /catalyst|reactor|forma|exilus|wraith|vandal|umbra/i;
+
+function renderInvasions(list) {
+  const box = $('ws-invasions');
+  if (!box) return;
+  if (!list.length) {
+    box.innerHTML = leerHinweis('No invasions are running right now.');
+    return;
+  }
+  const fraktion = f => String(f || '').toLowerCase().replace(/[^a-z]/g, '');
+  const seite = (fac, reward, rechts) => `
+    <div class="ws-inv-side${rechts ? ' right' : ''} faction-${fraktion(fac)}">
+      <span class="ws-inv-faction">${esc(fac)}</span>
+      ${reward ? `<span class="ws-inv-reward${INVASION_SELTEN.test(reward) ? ' is-rare' : ''}">${esc(reward)}</span>`
+               : '<span class="ws-inv-reward is-none">No reward</span>'}
+    </div>`;
+
+  const sortiert = [...list].sort((a, b) =>
+    (INVASION_SELTEN.test(b.attackerReward + b.defenderReward) ? 1 : 0) -
+    (INVASION_SELTEN.test(a.attackerReward + a.defenderReward) ? 1 : 0));
+
+  box.innerHTML = sortiert.map(i => `
+    <div class="ws-invasion-card${INVASION_SELTEN.test(i.attackerReward + i.defenderReward) ? ' is-rare' : ''}">
       <div class="ws-inv-head">
         <b>${esc(i.node)}</b>
         <span>${esc(i.desc)}</span>
       </div>
-      <div class="ws-inv-bar" title="${i.completion}% in favour of ${esc(i.attacker)}">
-        <div class="ws-inv-fill" style="width:${i.completion}%"></div>
-      </div>
       <div class="ws-inv-sides">
-        <div class="ws-inv-side">
-          <span class="ws-inv-faction">${esc(i.attacker)}</span>
-          <span class="ws-inv-reward">${esc(i.attackerReward || '—')}</span>
-        </div>
-        <div class="ws-inv-side right">
-          <span class="ws-inv-faction">${esc(i.defender)}</span>
-          <span class="ws-inv-reward">${esc(i.defenderReward || '—')}</span>
-        </div>
+        ${seite(i.attacker, i.attackerReward, false)}
+        ${seite(i.defender, i.defenderReward, true)}
       </div>
+      <div class="ws-inv-bar" title="${i.completion}% in favour of ${esc(i.attacker)}">
+        <i class="faction-${fraktion(i.attacker)}" style="width:${i.completion}%"></i>
+        <i class="faction-${fraktion(i.defender)}" style="width:${100 - i.completion}%"></i>
+      </div>
+      <div class="ws-inv-pct"><span>${i.completion}%</span><span>${100 - i.completion}%</span></div>
     </div>`).join('');
 }
 
-/* ---------------- Syndikate ---------------- */
+/* ---------------- Unterseite: Steel Path ---------------- */
 
-function renderSyndicates(list) {
-  if (!$('ws-syndicates')) return;
-  if (!list.length) {
-    $('ws-syndicates').innerHTML = leerHinweis('No syndicate bounties reported.');
+function renderSteelPath(sp) {
+  const box = $('ws-steelpath');
+  if (!box) return;
+  if (!sp) {
+    box.innerHTML = leerHinweis('No Steel Path data reported.');
     return;
   }
 
-  $('ws-syndicates').innerHTML = list.map(sy => {
-    // Bounty-Syndikate liefern Jobs, die klassischen Fraktionen stattdessen Nodes.
-    const count = sy.jobCount || sy.nodeCount;
-    const what = sy.jobCount ? 'bounties' : 'missions';
-    return `
-      <div class="ws-syndicate-card">
-        <div class="ws-syn-head">
-          <b>${esc(sy.syndicate)}</b>
-          <span class="ws-eta">${esc(sy.eta)}</span>
-        </div>
-        <div class="ws-syn-count">${count} ${what}</div>
-      </div>`;
-  }).join('');
-}
-
-const RELIC_TIER_IMAGES = {
-  lith: 'assets/icons/worldstate/relic-lith.png',
-  meso: 'assets/icons/worldstate/relic-meso.png',
-  neo: 'assets/icons/worldstate/relic-neo.png',
-  axi: 'assets/icons/worldstate/relic-axi.png',
-  requiem: 'assets/icons/worldstate/relic-requiem.png',
-  omnia: 'assets/icons/worldstate/relic-omnia.png'
-};
-
-function relicTierImage(tier) {
-  const t = String(tier || '').toLowerCase();
-  return RELIC_TIER_IMAGES[t] || 'assets/icons/worldstate/relic-lith.png';
-}
-
-function renderFissures(list) {
-  const filtered = activeFissureTier === 'all'
-    ? list
-    : list.filter(f => f.tier.toLowerCase() === activeFissureTier.toLowerCase());
-
-  $('ws-fissures').innerHTML = filtered.length
-    ? filtered.map(f => {
-      const isMatch = isFissureAlertMatch(f, notificationSettings);
-      return `
-      <div class="ws-fissure-card ${isMatch ? 'is-alert-match' : ''}">
-        ${isMatch ? `<span class="fissure-alert-badge" title="Fissure alarm match">${Icon.bell(12)}</span>` : ''}
-        <img class="ws-fissure-img tier-${esc(String(f.tier || '').toLowerCase())}" src="${relicTierImage(f.tier)}" alt="${esc(f.tier)}" onerror="this.style.display='none'">
-        <div class="ws-fissure-info">
-          <span class="ws-fissure-tier ${esc(f.tier)}">${esc(f.tier)}</span>
-          <b class="ws-fissure-mission">${esc(f.missionType)}${f.isHard ? ' <small style="color:var(--red); font-size:11px;">[Steel Path]</small>' : ''}</b>
-          <span class="ws-fissure-node">${esc(f.node)} · ${esc(f.enemy)}</span>
-        </div>
-        <span class="ws-fissure-eta">${esc(f.eta)}</span>
+  box.innerHTML = `
+    <div class="section-head section-head-row">
+      <div>
+        <h2>Teshin’s Steel Path honors</h2>
+        <p>One rotating offer a week for Steel Essence, plus what he always has</p>
       </div>
-    `;}).join('')
-    : '<div class="empty" style="grid-column: 1 / -1;">No active fissures match this filter.</div>';
+      <span class="meta">${sp.expiry ? `new offer in ${wsUhr(sp.expiry)}` : ''}</span>
+    </div>
+    <div class="ws-sp-grid">
+      <div class="ws-sp-col">
+        <div class="ws-sp-now">
+          <span class="ws-row-label">This week</span>
+          <b>${esc(sp.rewardName || '—')}</b>
+          ${sp.rewardCost != null ? `<span class="ws-sp-cost">${sp.rewardCost} Steel Essence</span>` : ''}
+          <span class="ws-sp-inc ${sp.incursionsActive ? 'on' : 'off'}">
+            ${sp.incursionsActive ? `Incursions active · new set in ${wsUhr(sp.incursionsExpiry)}` : 'No incursions reported'}
+          </span>
+        </div>
+        ${(sp.evergreens || []).length ? `
+          <div class="ws-sp-next">
+            <span class="ws-row-label">Always in stock</span>
+            <div class="ws-chip-wall">${sp.evergreens.map(e => `<span class="ws-chip">${esc(e.name)}<b>${e.cost ?? ''}</b></span>`).join('')}</div>
+          </div>` : ''}
+      </div>
+      <div class="ws-sp-next">
+        <span class="ws-row-label">The weeks after</span>
+        ${(sp.upcoming || []).length
+          ? (sp.upcoming || []).map((u, i) => `
+              <div class="ws-sp-week">
+                <span>${i === 0 ? 'Next week' : esc(wsDatum(u.activation))}</span>
+                <b>${esc(u.name)}</b>
+                <em>${u.cost != null ? `${u.cost}` : ''}</em>
+              </div>`).join('')
+          : '<p class="ws-caps-note">The rotation is not known right now.</p>'}
+      </div>
+    </div>`;
 }
 
-document.querySelectorAll('.fissure-tab').forEach(tab => {
-  tab.onclick = () => {
-    document.querySelectorAll('.fissure-tab').forEach(t => t.classList.remove('active'));
-    tab.classList.add('active');
-    activeFissureTier = tab.dataset.tier;
-    if (worldStateCache) renderFissures(worldStateCache.fissures || []);
-  };
-});
+/* ---------------- Unterseite: Haendler ---------------- */
+
+function renderTraders(tr) {
+  const box = $('ws-traders');
+  if (!box) return;
+  const teile = [];
+
+  /* Baro */
+  const b = tr.baro;
+  if (b) {
+    const liste = b.active && b.items.length
+      ? `<div class="ws-trade-grid">${b.items.map(i => `
+          <div class="ws-trade-item ${i.owned === true ? 'is-owned' : i.owned === false ? 'is-missing' : ''}" title="${esc(i.name)}">
+            <div class="ws-pick-img">${i.image ? `<img src="${esc(i.image)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : ''}</div>
+            <div class="ws-trade-body">
+              <b>${esc(i.name)}</b>
+              <span><img class="currency-ic ducat-ic" src="assets/icons/ducats.png" alt="">${nf(i.ducats)} · ${nf(i.credits)} cr</span>
+            </div>
+            ${i.owned === true ? '<span class="ws-pick-mark is-done">Owned</span>'
+              : i.newMastery ? '<span class="ws-pick-mark is-new">New mastery</span>'
+              : i.blueprintOnly ? '<span class="ws-pick-mark is-gold">Blueprint</span>' : ''}
+          </div>`).join('')}</div>`
+      : `<p class="ws-bsyn-note">${b.active ? 'His list is not published yet.' :
+          `Next stop: <b>${esc(b.location || 'a relay')}</b>, ${esc(wsZeitpunkt(b.activation))}. DE publishes what he brings only once he is there.`}</p>`;
+    teile.push(`
+      <div class="ws-trader tone-gold">
+        <div class="ws-trader-head">
+          <div><h3>${esc(b.character || 'Baro Ki’Teer')}</h3><span>${esc(b.location || '')}</span></div>
+          <span class="ws-bsyn-eta">${b.active ? 'leaves in' : 'arrives in'} ${wsUhr(b.active ? b.expiry : b.activation)}</span>
+          <button class="btn-sm" data-tab-go="baro">Baro planner</button>
+        </div>
+        ${liste}
+      </div>`);
+  }
+
+  /* Varzia */
+  const r = tr.resurgence;
+  if (r) {
+    const relikte = (r.relics || []).map(x => `<span class="ws-chip"><span class="ws-fissure-tier ${esc(x.tier || '')}">${esc(x.tier || '')}</span>${esc(x.name ? x.name.replace(/^(Lith|Meso|Neo|Axi|Requiem|Omnia)\s+/, '') : 'Relic')}</span>`).join('');
+    teile.push(`
+      <div class="ws-trader">
+        <div class="ws-trader-head">
+          <div><h3>Prime Resurgence</h3><span>${esc(r.character || 'Varzia')}${r.location ? ` · ${esc(r.location)}` : ''}</span></div>
+          <span class="ws-bsyn-eta">${r.expiry ? `rotation ends in ${wsUhr(r.expiry)}` : ''}</span>
+        </div>
+        <div class="ws-picks is-large">${(r.primes || []).map(p => wsPick(p)).join('')}</div>
+        ${relikte ? `<div class="ws-trader-sub"><span class="ws-row-label">Relics</span><div class="ws-chip-wall">${relikte}</div></div>` : ''}
+        ${(r.packs || []).length || (r.cosmetics || []).length ? `
+          <div class="ws-trader-sub"><span class="ws-row-label">Packs &amp; cosmetics</span>
+            <div class="ws-chip-wall">${[...(r.packs || []), ...(r.cosmetics || [])].map(x => `<span class="ws-chip">${esc(x.name)}</span>`).join('')}</div>
+          </div>` : ''}
+      </div>`);
+  }
+
+  /* Darvo */
+  for (const dd of tr.darvo || []) {
+    teile.push(`
+      <div class="ws-trader">
+        <div class="ws-trader-head">
+          <div><h3>Darvo’s deal</h3><span>Market, one item a day</span></div>
+          <span class="ws-bsyn-eta">ends in ${wsUhr(dd.expiry)}</span>
+        </div>
+        <div class="ws-darvo${dd.soldOut ? ' is-soldout' : ''}">
+          <div class="ws-pick-img is-large">${dd.image ? `<img src="${esc(dd.image)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : ''}</div>
+          <div class="ws-darvo-body">
+            <b>${esc(dd.name)}</b>
+            <span class="ws-darvo-price"><b>${dd.salePrice}p</b> <s>${dd.originalPrice}p</s>${dd.discount ? ` <span class="ws-tag is-done">−${dd.discount}%</span>` : ''}</span>
+            ${dd.total != null ? `<span class="ws-darvo-stock">${dd.soldOut ? 'Sold out' : `${nf(dd.total - dd.sold)} of ${nf(dd.total)} left`}</span>
+              <span class="ws-cap-bar"><i style="width:${Math.min(100, (dd.sold / Math.max(1, dd.total)) * 100).toFixed(1)}%"></i></span>` : ''}
+          </div>
+        </div>
+      </div>`);
+  }
+
+  /* Ergo Glast und Eleanor */
+  const v = tr.vendors;
+  if (v) {
+    teile.push(`
+      <div class="ws-trader-pair">
+        <div class="ws-trader">
+          <div class="ws-trader-head">
+            <div><h3>${esc(v.tenet.vendor)}</h3><span>${esc(v.tenet.place)}</span></div>
+            <span class="ws-bsyn-eta">new bonuses in ${wsUhr(v.tenet.expiry)}</span>
+          </div>
+          <div class="ws-picks">${v.tenet.items.map(p => wsPick(p)).join('')}</div>
+          <p class="ws-bsyn-note">Always all five. Every four days each weapon rolls a new progenitor element and bonus — those are not published, check them at the relay.</p>
+        </div>
+        <div class="ws-trader">
+          <div class="ws-trader-head">
+            <div><h3>${esc(v.coda.vendor)}</h3><span>${esc(v.coda.place)}</span></div>
+            <span class="ws-bsyn-eta">batch ${esc(v.coda.nextBatch)} in ${wsUhr(v.coda.expiry)}</span>
+          </div>
+          <span class="ws-circuit-label">Batch ${esc(v.coda.batch)} · now</span>
+          <div class="ws-picks">${v.coda.items.map(p => wsPick(p)).join('')}</div>
+          <span class="ws-circuit-label">Batch ${esc(v.coda.nextBatch)} · from ${esc(wsZeitpunkt(v.coda.expiry))}</span>
+          <div class="ws-chip-wall">${v.coda.nextItems.map(p => `<span class="ws-chip">${esc(p.name)}</span>`).join('')}</div>
+        </div>
+      </div>`);
+  }
+
+  box.innerHTML = teile.join('') || leerHinweis('No trader reported.');
+}
+
+/* ---------------- Unterseite: Operationen ---------------- */
+
+/* Seit dem Umbau auf Unterseiten versteckt sich kein Bereich mehr selbst -
+   eine leere Seite braucht eine Erklaerung, kein Verschwinden. */
+function renderEvents(list, d) {
+  if (!$('ws-events')) return;
+  $('ws-events').innerHTML = list.length
+    ? list.map(e => `
+      <div class="ws-event-card">
+        <div class="ws-event-head">
+          <div>
+            <b>${esc(e.name)}</b>
+            <span>${esc(e.node || e.tooltip || '')}</span>
+          </div>
+          <span class="ws-eta">${e.expiry ? wsUhr(e.expiry) : esc(e.eta)}</span>
+        </div>
+        ${e.progress != null ? `
+          <div class="ws-progress">
+            <div class="ws-progress-fill" style="width:${e.progress}%"></div>
+          </div>
+          <div class="ws-progress-label">${e.progress}% complete</div>` : ''}
+        ${e.rewards.length ? `<div class="ws-event-rewards">${
+          e.rewards.map(r => `<span>${esc(r)}</span>`).join('')}</div>` : ''}
+      </div>`).join('')
+    : leerHinweis('No operation is running at the moment.');
+
+  /* Was die Flotten bauen. Ab 100 % ist der Bau fertig - wann der Angriff
+     beginnt, sagt die Antwort nicht (am 2026-10-01 stand der Fomorian auf
+     115,5 %, und als Operation lief nur die Razorback-Armada). Deshalb
+     "built" und nicht "attacking". */
+  const box = $('ws-world-extras');
+  if (!box) return;
+  const c = d.construction;
+  const balken = (name, p) => p == null ? '' : `
+    <div class="ws-build${p >= 100 ? ' is-built' : ''}">
+      <span>${esc(name)}</span>
+      <span class="ws-cap-bar"><i style="width:${Math.min(100, p)}%"></i></span>
+      <b title="${p.toFixed(1)}%">${p >= 100 ? 'Built' : `${p.toFixed(1)}%`}</b>
+    </div>`;
+  box.innerHTML = c && (c.fomorian != null || c.razorback != null) ? `
+    <div class="section-head"><h2>Fleet construction</h2><p>How far the Grineer and Corpus are with their next assault</p></div>
+    <div class="ws-builds">${balken('Balor Fomorian', c.fomorian)}${balken('Razorback Armada', c.razorback)}</div>` : '';
+}
 
 /* ---------------- 2. Ressourcen & Farm-Guide ---------------- */
 let farmGuideCache = [];
@@ -10300,6 +11048,9 @@ async function loadNotificationSettings() {
   try {
     notificationSettings = await window.api.getNotifications();
     updateNotificationButtonState();
+    /* Die Glocken auf den Zyklus-Karten koennen schon gezeichnet sein,
+       bevor diese Antwort da ist - dann standen sie alle auf aus. */
+    if (worldStateCache) renderCycles(worldStateCache.cycles || []);
   } catch (err) {
     console.error('Could not load the notification settings:', err);
   }
@@ -10539,6 +11290,9 @@ function showInAppToast({ title, body, type }) {
       setMasteryMode('foundry');
     } else if (type === 'whisper') {
       showTab('trading');
+    } else if (type === 'cycle') {
+      showTab('worldstate');
+      showWsPane('overview');
     } else {
       showTab('worldstate');
       showWsPane('fissures');
@@ -13488,7 +14242,51 @@ function renderNotifToggles() {
   const marketRow = $('set-whisper-market')?.closest('.setting-row');
   if (marketRow) marketRow.classList.toggle('is-disabled', !w.enabled);
   if ($('set-whisper-market')) $('set-whisper-market').disabled = !w.enabled;
+
+  renderCycleSettings();
 }
+
+/* ---------------- Zyklus-Meldungen ----------------
+
+   Sechs Chips und der Vorlauf. Ein eigener Hauptschalter waere doppelt: ist
+   keine Uhr gewaehlt, ist es aus. Die Glocken auf den Karten im Live-Tracker
+   schalten dieselbe Liste - beide Wege zeichnen danach beide Stellen neu. */
+const ZYKLUS_NAMEN = [
+  ['earth', 'Earth'], ['cetus', 'Plains of Eidolon'], ['vallis', 'Orb Vallis'],
+  ['cambion', 'Cambion Drift'], ['zariman', 'Zariman'], ['duviri', 'Duviri']
+];
+
+function renderCycleSettings() {
+  const box = $('set-cycle-picks');
+  if (!box) return;
+  const c = notificationSettings?.cycles || {};
+  const keys = new Set(c.keys || []);
+  box.innerHTML = ZYKLUS_NAMEN.map(([k, label]) =>
+    `<button class="filter-chip${keys.has(k) ? ' active' : ''}" data-cycle-pick="${k}">${esc(label)}</button>`).join('');
+  const lead = $('set-cycle-lead');
+  if (lead && document.activeElement !== lead) lead.value = c.leadMinutes ?? 3;
+}
+
+$('set-cycle-picks')?.addEventListener('click', async e => {
+  const chip = e.target.closest('[data-cycle-pick]');
+  if (!chip) return;
+  const keys = new Set(notificationSettings?.cycles?.keys || []);
+  const k = chip.dataset.cyclePick;
+  if (keys.has(k)) keys.delete(k); else keys.add(k);
+  const res = await window.api.saveNotifications({ cycles: { keys: [...keys] } });
+  if (res?.ok) {
+    notificationSettings = res.data;
+    renderCycleSettings();
+    if (worldStateCache) renderCycles(worldStateCache.cycles || []);
+  }
+});
+
+$('set-cycle-lead')?.addEventListener('change', async e => {
+  const n = Math.max(1, Math.min(60, Math.round(Number(e.target.value) || 3)));
+  e.target.value = n;
+  const res = await window.api.saveNotifications({ cycles: { leadMinutes: n } });
+  if (res?.ok) notificationSettings = res.data;
+});
 
 /* Eigener Schalter, eigene Ablage: das Einblenden bei Relikt-Funden haengt am
    Overlay, nicht an den Benachrichtigungen, und liegt deshalb in config.json

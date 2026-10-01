@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('api', {
   searchItems:     (q)         => ipcRenderer.invoke('items:search', q),
   getItemDetails:  (u)         => ipcRenderer.invoke('item:details', u),
   getWorldState:   (force)     => ipcRenderer.invoke('worldstate:get', force),
+  getWorldView:    (force)     => ipcRenderer.invoke('world:view', force),
   /* Wochenrotation - stammt aus demselben Abruf wie der Weltzustand,
      siehe core/weekly.js. */
   getWeekly:       (force)     => ipcRenderer.invoke('weekly:get', force),

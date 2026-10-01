@@ -49,7 +49,8 @@
     "ocr-probe": "node src/cli/ocr-probe.js",
     "tagfrist-test": "node src/cli/tagfrist-test.js",
     "preis-test": "node src/cli/preis-test.js",
-    "theme-test": "node src/cli/theme-test.js"
+    "theme-test": "node src/cli/theme-test.js",
+    "world-test": "node src/cli/world-test.js"
   },
   "devDependencies": {
     "electron": "^33.0.0",

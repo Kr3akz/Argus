@@ -40,14 +40,22 @@ const CACHE = () => dataFile('sol-nodes.json');
 const TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 let nodes = null;   // Map: Kennung -> "Cervantes (Earth)"
+let infos = null;   // Map: Kennung -> { name, type, enemy }
 
 function index(raw) {
   const map = new Map();
+  /* Missionstyp und Gegner stehen in derselben Tabelle und wurden lange
+     weggeworfen - gebraucht hat sie erst der Arbitrations-Plan, der nur
+     Kennungen liefert ("SolNode302") und sonst nichts. */
+  infos = new Map();
   for (const [id, entry] of Object.entries(raw || {})) {
     const name = entry?.value;
     /* Knoten ohne eigenen Namen tragen ihre Kennung als Wert ("SolNode0").
        Die koennen nichts aufloesen und stehen nur im Weg. */
-    if (name && name !== id) map.set(id, name);
+    if (name && name !== id) {
+      map.set(id, name);
+      infos.set(id, { name, type: entry.type || null, enemy: entry.enemy || null });
+    }
   }
   return map;
 }
@@ -101,6 +109,11 @@ export async function loadSolNodes({ refresh = false } = {}) {
 /** Lesbarer Name zu einer Knotenkennung, oder null. Ohne geladene Tabelle null. */
 export function nodeName(id) {
   return (id && nodes?.get(id)) || null;
+}
+
+/** Name, Missionstyp und Gegner zu einer Knotenkennung, oder null. */
+export function nodeInfo(id) {
+  return (id && infos?.get(id)) || null;
 }
 
 /**

@@ -47,7 +47,7 @@ const Guide = (() => {
   const STEPS = [
     {
       id: 'welcome',
-      tab: 'worldstate',
+      tab: 'mastery',
       target: null,
       place: 'center',
       title: 'Welcome to Argus',
@@ -66,22 +66,24 @@ const Guide = (() => {
     },
     {
       id: 'sidebar',
-      tab: 'worldstate',
+      tab: 'mastery',
       target: '.sidebar-nav',
       place: 'right',
       pad: 6,
       title: 'Everything lives in this rail',
       body: `
-        <p>Eleven tabs, top to bottom, roughly in the order you need them: what is
-           happening <em>right now</em>, what resets <em>this week</em>, what you
-           still have to master, what you own and what it is worth — and, further
+        <p>Eleven tabs, top to bottom, roughly in the order you need them: what you
+           still have to master, what is happening <em>right now</em>, what resets
+           <em>this week</em>, what you own and what it is worth — and, further
            down, the pages you look things up in.</p>
         <p>Hover over an icon and it says what is behind it. Settings sits on its
            own at the bottom.</p>`
     },
     {
+      /* Die Profilkarte steht seit v1.21.0 nicht mehr ueber dem Live-Tracker -
+         gezeigt wird sie dort, wo Argus startet. */
       id: 'hero',
-      tab: 'worldstate',
+      tab: 'mastery',
       target: '.hero',
       place: 'bottom',
       title: 'Your profile, at a glance',
@@ -96,6 +98,22 @@ const Guide = (() => {
            throttled, and that locks you out of the game’s login too.</p>`
     },
     {
+      id: 'mastery',
+      tab: 'mastery',
+      masteryMode: 'manager',
+      target: '#tab-mastery .ducats-mode-tabs',
+      place: 'bottom',
+      title: 'Mastery & farming goals',
+      body: `
+        <p>Four views on the same question — what is worth building next.</p>
+        <p><b>Manager</b> holds your open goals with the materials each one still
+           needs, plus recommendations. <b>Catalogue</b> is every item in the game,
+           filterable by category and status; a click on a tile shows its drop
+           sources and makes it a goal. <b>Foundry</b> is what is building, when it
+           is done, and what is finished and waiting for you. <b>Vendors</b> covers
+           the Warframes you buy rather than farm.</p>`
+    },
+    {
       id: 'worldstate',
       tab: 'worldstate',
       wsPane: 'overview',
@@ -103,11 +121,30 @@ const Guide = (() => {
       place: 'bottom',
       title: 'Live tracker',
       body: `
-        <p>The world state as the game itself reports it: open-world day and night
-           cycles, Baro’s countdown, the daily sortie, the Archon hunt, Nightwave
-           acts, alerts, invasions, syndicate bounties and Steel Path.</p>
+        <p>The world right now: fissures, the sortie, the Archon hunt and the
+           arbitration schedule, every bounty board with what it pays out,
+           invasions, Steel Path, Nightwave, the traders and running operations.</p>
         <p>These sub-tabs split it up, and the number on each one says how much is
            currently in there — a grey zero means there is nothing to look at.</p>`
+    },
+    {
+      /* Neu in v1.21.0 - wer die Tour kennt, bekommt genau diese Station
+         einmal als "New since your last tour". */
+      id: 'world-board',
+      tab: 'worldstate',
+      wsPane: 'overview',
+      target: ['#ws-resets', '#ws-cycles'],
+      place: 'bottom',
+      title: 'Every clock in one place',
+      body: `
+        <p>The top row counts down to every reset and rotation — daily, sortie,
+           weekly, Teshin, Baro, Varzia, the next arbitration and Darvo — and
+           turns gold when one is almost up. A click jumps to the page it belongs
+           to.</p>
+        <p>Below, all six open worlds with their state and when it flips. The bell
+           on a card gets you a notification a few minutes before. Further down,
+           what is left for you today and this week: the Circuit picks you
+           already own, the standing and focus you can still earn.</p>`
     },
     {
       id: 'fissures',
@@ -118,8 +155,8 @@ const Guide = (() => {
       title: 'Void fissures — and being told about them',
       body: `
         <p>Every open fissure with its mission type, its node and how long it still
-           runs. The era chips filter the list down to the relics you actually
-           hold.</p>
+           runs — normal, Steel Path or Void Storm. The era chips filter the list
+           down to the relics you actually hold.</p>
         <p><b>Notifications</b> decides which of them are worth interrupting you
            for: tiers, mission types, Steel Path. Argus looks for new ones every
            45 seconds and can raise a Windows notification — the one channel that
@@ -137,22 +174,6 @@ const Guide = (() => {
         <p>Whatever Argus can read from your own game data is ticked off by
            itself; everything else you tick off by hand. Nothing on this page is
            guessed — where it cannot be known, it says so.</p>`
-    },
-    {
-      id: 'mastery',
-      tab: 'mastery',
-      masteryMode: 'manager',
-      target: '#tab-mastery .ducats-mode-tabs',
-      place: 'bottom',
-      title: 'Mastery & farming goals',
-      body: `
-        <p>Four views on the same question — what is worth building next.</p>
-        <p><b>Manager</b> holds your open goals with the materials each one still
-           needs, plus recommendations. <b>Catalogue</b> is every item in the game,
-           filterable by category and status; a click on a tile shows its drop
-           sources and makes it a goal. <b>Foundry</b> is what is building, when it
-           is done, and what is finished and waiting for you. <b>Vendors</b> covers
-           the Warframes you buy rather than farm.</p>`
     },
     {
       id: 'inventory',
@@ -327,8 +348,9 @@ const Guide = (() => {
       place: 'right',
       title: 'Settings — and this tour',
       body: `
-        <p>Hotkeys, the overlays, notifications for void fissures and for whispers in
-           game, inventory access and which version you are running.</p>
+        <p>Hotkeys, the overlays, notifications for void fissures, open-world cycles
+           and whispers in game, inventory access and which version you are
+           running.</p>
         <p>If you want your inventory, the Baro planner and the weekly tracking to
            do anything, <b>Inventory access</b> under <b>Inventory</b> is the switch
            that turns them on.</p>
