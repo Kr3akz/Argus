@@ -98,9 +98,10 @@ Every mechanism, permission and endpoint is explained in detail:
   so you can decide before you pick. → [Rivens](docs/rivens.md)
 - **The overlay window.** Open-world cycles, void fissures, your relics and goals on top
   of the running game, on a hotkey. → [Controls](docs/controls.md)
-- **Notifications** for the void fissures you care about, and for whispers in game —
-  if you like, only the ones copied from warframe.market, so a ping means someone wants
-  to trade. → [Controls](docs/controls.md)
+- **Notifications** for the void fissures you care about, a few minutes before an
+  open-world cycle flips, and for whispers in game — if you like, only the ones copied
+  from warframe.market, so a ping means someone wants to trade.
+  → [Controls](docs/controls.md)
 
 ### Planning
 
@@ -115,8 +116,13 @@ Every mechanism, permission and endpoint is explained in detail:
 - **Update vendors.** The shops that sell a Warframe instead of dropping it — Otak, Zorba,
   Acrithis, the shrine at Cetus — each price list lined up against what you already own.
   → [Vendors](docs/vendors.md)
-- **Live world state.** Open-world cycles, void fissures, the sortie, the Archon hunt,
-  Nightwave, alerts, invasions, syndicate bounties, Steel Path and Baro's countdown.
+- **Live tracker.** Every reset and rotation on one board, all six open-world cycles —
+  Earth, the Plains, Orb Vallis, Cambion Drift, the Zariman and Duviri's mood — and what
+  is left for you today. Void fissures split into normal, Steel Path and Void Storms; the
+  sortie, the Archon hunt and the arbitration schedule; every bounty board with what each
+  stage pays out; invasions, Nightwave, Teshin's offers weeks ahead, and the traders —
+  Baro, Varzia's Prime Resurgence, Darvo, Ergo Glast and Eleanor — with what you already
+  own marked, down to the Incarnon in this week's Circuit.
 - **Weekly rotation.** Everything that resets once a week — Archon Hunt, The Circuit,
   Deep and Temporal Archimedea, Netracells, Kahl's Garrison, the Descendia and the vendor
   resets — ticked off by itself wherever your own save records it.
@@ -176,64 +182,6 @@ them yourself.
 Each tab of the window, with a screenshot of every view in it. Click one to open it.
 
 <details>
-<summary><b>Live tracker</b> — cycles, fissures, sorties, Nightwave, invasions, bounties and Steel Path</summary>
-
-<br>
-
-**Overview** — the open-world cycles and Baro's next visit
-
-![Live tracker: overview](docs/img/ws-overview.webp)
-
-**Void fissures** — every open fissure with its era, mission and time left
-
-![Live tracker: void fissures](docs/img/ws-fissures.webp)
-
-**Fissure notifications** — which fissures are worth a desktop notification, with what matches right now
-
-![Live tracker: fissure notifications](docs/img/ws-fissure-notifications.webp)
-
-**Sorties** — the daily sortie and this week's Archon hunt
-
-![Live tracker: sorties](docs/img/ws-sorties.webp)
-
-**Nightwave** — daily, weekly and elite acts with their standing
-
-![Live tracker: Nightwave](docs/img/ws-nightwave.webp)
-
-**Operations** — running events and how far along they are
-
-![Live tracker: operations](docs/img/ws-operations.webp)
-
-**Steel Path** — Teshin's offering this week, and whether Incursions are on
-
-![Live tracker: Steel Path](docs/img/ws-steelpath.webp)
-
-**Invasions** — both sides, their progress and their rewards
-
-![Live tracker: invasions](docs/img/ws-invasions.webp)
-
-**Syndicates** — the bounties and missions of each syndicate, and when they rotate
-
-![Live tracker: syndicates](docs/img/ws-syndicates.webp)
-
-</details>
-
-<details>
-<summary><b>Weekly rotation</b> — everything that resets once a week</summary>
-
-<br>
-
-**Content** — Archon Hunt, The Circuit, Deep and Temporal Archimedea, Netracells, Kahl's Garrison and the Descendia, ticked off from your save where it records them
-
-![Weekly rotation: content](docs/img/weekly-content.webp)
-
-**Vendor resets** — Teshin, Bird 3, Yonta, Acrithis, Palladino and Nightwave
-
-![Weekly rotation: vendor resets](docs/img/weekly-vendors.webp)
-
-</details>
-
-<details>
 <summary><b>Mastery & goals</b> — what to build next, and what it takes</summary>
 
 <br>
@@ -265,6 +213,72 @@ Each tab of the window, with a screenshot of every view in it. Click one to open
 **Update vendors** — the Warframes you buy rather than farm, lined up against what you own
 
 ![Mastery: update vendors](docs/img/mastery-vendors.webp)
+
+</details>
+
+<details>
+<summary><b>Live tracker</b> — every clock, cycle, fissure, bounty and trader in the world right now</summary>
+
+<br>
+
+**Overview** — every reset and rotation in one row, and all six open-world cycles with a bell for a notification before they change
+
+![Live tracker: overview](docs/img/ws-overview.webp)
+
+**Today and this week** — the sortie, what standing and focus you can still earn, the Circuit picks you already own, and the traders at a glance
+
+![Live tracker: today and this week](docs/img/ws-board.webp)
+
+**Void fissures** — normal, Steel Path or Void Storm, with era, mission and time left
+
+![Live tracker: void fissures](docs/img/ws-fissures.webp)
+
+**Fissure notifications** — which fissures are worth a desktop notification, with what matches right now
+
+![Live tracker: fissure notifications](docs/img/ws-fissure-notifications.webp)
+
+**Missions** — the sortie, the Archon hunt, the arbitration running now and the next day of them
+
+![Live tracker: missions](docs/img/ws-missions.webp)
+
+**Bounties** — every bounty board; a click shows what each stage pays out, at the rotation it is on
+
+![Live tracker: bounties](docs/img/ws-bounties.webp)
+
+**Invasions** — both sides, their progress and their rewards
+
+![Live tracker: invasions](docs/img/ws-invasions.webp)
+
+**Steel Path** — Teshin's offer this week, the weeks after, and what he always has
+
+![Live tracker: Steel Path](docs/img/ws-steelpath.webp)
+
+**Nightwave** — daily, weekly and elite acts with their standing
+
+![Live tracker: Nightwave](docs/img/ws-nightwave.webp)
+
+**Traders** — Baro, Varzia's Prime Resurgence, Darvo's deal, and the four-day rotations of Ergo Glast and Eleanor
+
+![Live tracker: traders](docs/img/ws-traders.webp)
+
+**Operations** — running events, and how far the enemy fleets are with their next assault
+
+![Live tracker: operations](docs/img/ws-operations.webp)
+
+</details>
+
+<details>
+<summary><b>Weekly rotation</b> — everything that resets once a week</summary>
+
+<br>
+
+**Content** — Archon Hunt, The Circuit, Deep and Temporal Archimedea, Netracells, Kahl's Garrison and the Descendia, ticked off from your save where it records them
+
+![Weekly rotation: content](docs/img/weekly-content.webp)
+
+**Vendor resets** — Teshin, Bird 3, Yonta, Acrithis, Palladino and Nightwave
+
+![Weekly rotation: vendor resets](docs/img/weekly-vendors.webp)
 
 </details>
 
@@ -461,7 +475,7 @@ Each tab of the window, with a screenshot of every view in it. Click one to open
 
 ![Settings: overlays](docs/img/settings-overlays.webp)
 
-**Notifications** — fissures and whispers, with sound and a desktop toast
+**Notifications** — fissures, open-world cycles and whispers, with sound and a desktop toast
 
 ![Settings: notifications](docs/img/settings-notifications.webp)
 
