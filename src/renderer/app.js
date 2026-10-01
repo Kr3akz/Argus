@@ -3669,7 +3669,7 @@ const WS_PANES = [
   { key: 'overview',   label: 'Overview',      icon: 'svg:globe',     count: null },
   { key: 'fissures',   label: 'Void fissures', icon: 'img:fissure',   count: 'fissures' },
   { key: 'missions',   label: 'Missions',      icon: 'img:sortie',    count: 'missions' },
-  { key: 'bounties',   label: 'Bounties',      icon: 'img:syndicate', count: 'bounties' },
+  { key: 'bounties',   label: 'Syndicates & Bounties', icon: 'img:syndicate', count: 'bounties' },
   { key: 'invasions',  label: 'Invasions',     icon: 'img:invasion',  count: 'invasions' },
   { key: 'steelpath',  label: 'Steel Path',    icon: 'img:steelpath', count: null },
   { key: 'nightwave',  label: 'Nightwave',     icon: 'img:nightwave', count: 'nightwave' },
@@ -4667,7 +4667,10 @@ function renderTraders(tr) {
       </div>`);
   }
 
-  /* Ergo Glast und Eleanor */
+  /* Ergo Glast und Eleanor. Beide Karten tragen ueber ihren Waffen eine
+     Beschriftungszeile - bei Eleanor die Charge, bei Ergo Glast der Hinweis,
+     dass es immer alle fuenf sind. Ohne die zweite stuenden Ergo Glasts
+     Waffen eine Zeile hoeher als Eleanors daneben. */
   const v = tr.vendors;
   if (v) {
     teile.push(`
@@ -4677,8 +4680,9 @@ function renderTraders(tr) {
             <div><h3>${esc(v.tenet.vendor)}</h3><span>${esc(v.tenet.place)}</span></div>
             <span class="ws-bsyn-eta">new bonuses in ${wsUhr(v.tenet.expiry)}</span>
           </div>
+          <span class="ws-circuit-label">Tenet weapons · always all five</span>
           <div class="ws-picks">${v.tenet.items.map(p => wsPick(p)).join('')}</div>
-          <p class="ws-bsyn-note">Always all five. Every four days each weapon rolls a new progenitor element and bonus — those are not published, check them at the relay.</p>
+          <p class="ws-bsyn-note">Every four days each weapon rolls a new progenitor element and bonus. Those are not published — check them at the relay.</p>
         </div>
         <div class="ws-trader">
           <div class="ws-trader-head">

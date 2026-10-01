@@ -50,7 +50,7 @@ follow [semantic versioning](https://semver.org/lang/en/).
   requirement, and a click shows what each stage pays out at the rotation it is
   on, straight from DE's drop tables. The Holdfasts, Cavia and The Hex roll
   their missions in the game itself; for them, the fixed tiers and their
-  rewards. The faction syndicates' seven nodes of the day sit underneath.
+  rewards. Above them, the seven nodes each faction syndicate marks today.
 - **The arbitration schedule.** The arbitration running now and the next 24
   hours of them, with mission type and faction.
 - **Traders.** Baro's list with what you own, Varzia's Prime Resurgence with
@@ -69,7 +69,10 @@ follow [semantic versioning](https://semver.org/lang/en/).
   tracker and the weekly rotation.
 - The live tracker no longer has your profile card on top — it needs the room,
   and your profile is one click away on the Mastery tab.
-- *Alerts* moved onto the *Missions* page and *Syndicates* became *Bounties*.
+- *Alerts* moved onto the *Missions* page, and *Syndicates* is now
+  *Syndicates & Bounties*.
+- Steel Path and Void Storm fissures stand out by a tint in the corner of
+  their card, and the tabs of the live tracker run the full width of the page.
 
 ### Fixed
 

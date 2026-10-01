@@ -2823,9 +2823,12 @@ select option { background: var(--panel); color: var(--text); }
     linear-gradient(100deg, rgb(var(--t-deep) / .94) 0%, rgb(var(--t-deep) / .78) 38%, rgb(var(--t-deep) / .34) 100%);
 }
 .ws-cycle-card:hover::before { transform: scale(1.07); opacity: .78; }
-/* Das letzte Fuenftel der Phase: die Kontur wird kraeftiger. Kein Blinken -
-   das Fenster steht oft stundenlang offen. */
-.ws-cycle-card.is-urgent { border-color: rgb(var(--tone) / .62); }
+/* Das letzte Fuenftel der Phase: die Restzeit wird gold, wie in der
+   Fristen-Leiste darueber. Zuerst wurde hier die KONTUR kraeftiger - und weil
+   Erde, Zariman und Duviri lange Phasen haben, standen gerade sie minutenlang
+   so da und sahen aus, als haetten sie eine dickere, unsaubere Linie als die
+   anderen. Die Kontur bleibt deshalb bei allen sechs gleich. */
+.ws-cycle-card.is-urgent .ws-cycle-time .ws-clock { color: var(--gold); }
 
 /* Offizielle Landschaftsbilder aus dem Warframe-Wiki. */
 .ws-cycle-card.map-earth::before   { background-image: url('assets/worlds/earth.jpg'); }
@@ -4461,8 +4464,10 @@ select option { background: var(--panel); color: var(--text); }
   padding: 15px 17px 13px;
 }
 /* Eine seltene Belohnung (Katalysator, Reaktor, Forma, Waffenteile) als
-   Kante links - ein Zustand, keine Farbe der Karte. */
-.ws-invasion-card.is-rare { box-shadow: inset 3px 0 0 rgb(var(--t-gold) / .75); }
+   goldener Schein aus der Ecke, wie bei den Riven-Karten. */
+.ws-invasion-card.is-rare {
+  background: radial-gradient(120% 90% at 0% 0%, rgb(var(--t-gold) / .11), transparent 55%), var(--surface);
+}
 .ws-inv-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 11px; }
 .ws-inv-head b { font-size: 13.5px; }
 .ws-inv-head span { font-size: 11.5px; color: var(--text-3); }
@@ -5128,6 +5133,11 @@ select option { background: var(--panel); color: var(--text); }
 .ws-navtab.active b { color: var(--accent); }
 .ws-navtab.zero { opacity: .5; }
 .ws-navtab .ws-stat-ic { width: 18px; height: 18px; display: grid; place-items: center; }
+/* Im Live-Tracker fuellt die Leiste die ganze Zeile - sie endet rechts dort,
+   wo auch alles darunter endet. Endete sie kurz davor, sah das aus wie ein
+   Rest. Die Reiter wachsen dafuer mit, der Inhalt bleibt mittig. Nur hier:
+   Einstellungen und Rivens benutzen dieselben Reiter in kuerzerer Reihe. */
+#ws-nav .ws-navtab { flex: 1 1 auto; justify-content: center; }
 
 /* Zustand der Datenquelle */
 .ws-source {
@@ -5203,13 +5213,24 @@ select option { background: var(--panel); color: var(--text); }
 .ws-reset.is-urgent b { color: var(--gold); }
 
 /* ---------- Uebersicht: das Brett ---------- */
+/* Beide Spalten enden unten auf derselben Hoehe. Was der kuerzeren fehlt,
+   bekommt ihr UNTERSTES Panel - und das Risse-Raster nutzt die Hoehe, indem
+   es seine Zeilen streckt. Zuerst teilten sich alle Panels den Rest; dann
+   stand unter "Today" ein Loch, das wie vergessener Inhalt aussah. */
 .ws-dash {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr);
   gap: 14px;
-  align-items: start;
+  align-items: stretch;
 }
 .ws-dash-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.ws-dash-col > .ws-panel:last-child { flex: 1 0 auto; display: flex; flex-direction: column; }
+.ws-dash-col > .ws-panel:last-child > .ws-panel-body { flex: 1; display: flex; flex-direction: column; }
+.ws-dash-col > .ws-panel:last-child .ws-fissure-matrix {
+  flex: 1; grid-template-rows: auto; grid-auto-rows: 1fr; align-items: stretch;
+}
+.ws-dash-col > .ws-panel:last-child .ws-fm-cell { align-items: center; }
+.ws-dash-col > .ws-panel:last-child :is(.ws-fm-tier, .ws-fm-head) { align-self: center; }
 @media (max-width: 1100px) { .ws-dash { grid-template-columns: 1fr; } }
 
 .ws-panel {
@@ -5274,9 +5295,16 @@ button.ws-row:hover { background: rgb(var(--t-fg) / .04); }
   font-size: 12px; color: var(--text-2); font-weight: 550; white-space: nowrap;
   font-variant-numeric: tabular-nums; grid-column: 4;
 }
-/* Ein Zustand als Kante links - Gold fuer Baro, Akzent fuer die Anomalie. */
-.ws-row.tone-gold   { box-shadow: inset 2px 0 0 rgb(var(--t-gold) / .7); }
-.ws-row.tone-accent { box-shadow: inset 2px 0 0 rgb(var(--t-accent) / .7); }
+/* Gold fuer Baro, Akzent fuer die Anomalie - als Schein aus der Ecke, nicht
+   als Kante: die Zeile soll sich abheben, ohne einen Strich zu tragen. */
+.ws-row.tone-gold   { background: radial-gradient(70% 180% at 0% 0%, rgb(var(--t-gold) / .11), transparent 70%); }
+.ws-row.tone-accent { background: radial-gradient(70% 180% at 0% 0%, rgb(var(--t-accent) / .11), transparent 70%); }
+button.ws-row.tone-gold:hover {
+  background: radial-gradient(70% 180% at 0% 0%, rgb(var(--t-gold) / .15), transparent 70%), rgb(var(--t-fg) / .04);
+}
+button.ws-row.tone-accent:hover {
+  background: radial-gradient(70% 180% at 0% 0%, rgb(var(--t-accent) / .15), transparent 70%), rgb(var(--t-fg) / .04);
+}
 
 /* Erledigte Sortie-Missionen als Punkte - dieselbe Sprache wie im
    Wochenreiter (.wk-pip). */
@@ -5465,10 +5493,23 @@ button.ws-row:hover { background: rgb(var(--t-fg) / .04); }
 
 .ws-fissure-tags { display: inline-flex; align-items: center; gap: 4px; }
 .ws-fissure-tags .ws-tag { margin-left: 0; }
-/* Steel Path und Void Storm als Kante links - die Art ist ein Zustand der
-   Karte, die Aera steht schon als Marke darauf. */
-.ws-fissure-card.mode-hard  { box-shadow: inset 2px 0 0 rgb(var(--t-red) / .7); }
-.ws-fissure-card.mode-storm { box-shadow: inset 2px 0 0 rgb(var(--t-accent) / .7); }
+/* Steel Path und Void Storm als Schein aus der Ecke oben links - dieselbe
+   Sprache wie die Riven-Karten. Zuerst stand hier eine farbige Kante links;
+   die wirkte wie eine Schablone und ist rausgeflogen (siehe Memory
+   argus-designsprache-flach). Ein Benachrichtigungs-Treffer (weiter unten)
+   behaelt seinen eigenen, kraeftigeren Schein samt Kontur. */
+.ws-fissure-card.mode-hard {
+  background: radial-gradient(120% 90% at 0% 0%, rgb(var(--t-red) / .13), transparent 55%), var(--surface-2);
+}
+.ws-fissure-card.mode-hard:hover {
+  background: radial-gradient(120% 90% at 0% 0%, rgb(var(--t-red) / .18), transparent 55%), var(--surface-3);
+}
+.ws-fissure-card.mode-storm {
+  background: radial-gradient(120% 90% at 0% 0%, rgb(var(--t-accent) / .13), transparent 55%), var(--surface-2);
+}
+.ws-fissure-card.mode-storm:hover {
+  background: radial-gradient(120% 90% at 0% 0%, rgb(var(--t-accent) / .18), transparent 55%), var(--surface-3);
+}
 .ws-fissure-eta { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ws-fissure-eta.is-urgent { color: var(--gold); }
 
@@ -5564,17 +5605,24 @@ button.ws-row:hover { background: rgb(var(--t-fg) / .04); }
   color: var(--text-3); margin: 4px 0 3px;
 }
 .ws-rw-items { display: flex; flex-direction: column; }
-/* Seltenheit als Kante links - Bronze, Silber, Gold wie im ganzen Haus. */
+/* Seltenheit als Punkt vor dem Namen - Bronze, Silber, Gold wie im ganzen
+   Haus. Keine Kante links: die wirkte schablonenhaft. */
 .ws-rw {
-  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
-  padding: 2px 0 2px 8px; font-size: 12px; color: var(--text-2);
-  box-shadow: inset 2px 0 0 rgb(var(--t-fg) / .1);
+  display: flex; align-items: center; gap: 8px;
+  padding: 2px 0; font-size: 12px; color: var(--text-2);
 }
+.ws-rw::before {
+  content: ''; flex-shrink: 0;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: rgb(var(--t-fg) / .18);
+}
+.ws-rw span { flex: 1; min-width: 0; }
 .ws-rw b { font-size: 11px; font-weight: 600; color: var(--text-3); font-variant-numeric: tabular-nums; }
-.ws-rw.is-bronze { box-shadow: inset 2px 0 0 rgb(var(--t-bronze) / .6); }
-.ws-rw.is-silver { box-shadow: inset 2px 0 0 rgb(var(--t-silver) / .7); }
-.ws-rw.is-gold   { box-shadow: inset 2px 0 0 rgb(var(--t-gold) / .8); color: var(--text); }
-.ws-rw.is-gold b { color: var(--gold); }
+.ws-rw.is-bronze::before { background: rgb(var(--t-bronze) / .85); }
+.ws-rw.is-silver::before { background: rgb(var(--t-silver) / .9); }
+.ws-rw.is-gold::before   { background: rgb(var(--t-gold)); }
+.ws-rw.is-gold           { color: var(--text); }
+.ws-rw.is-gold b         { color: var(--gold); }
 
 .ws-bsyn.is-unpublished .ws-job-row { grid-template-columns: 64px minmax(0, 1fr) auto 18px; }
 
@@ -5607,7 +5655,9 @@ button.ws-row:hover { background: rgb(var(--t-fg) / .04); }
   background: rgb(var(--t-fg) / .03);
 }
 .ws-trade-item.is-owned .ws-pick-img img { opacity: .55; }
-.ws-trade-item.is-missing { box-shadow: inset 2px 0 0 rgb(var(--t-gold) / .6); }
+.ws-trade-item.is-missing {
+  background: radial-gradient(110% 130% at 0% 0%, rgb(var(--t-gold) / .10), transparent 60%), rgb(var(--t-fg) / .03);
+}
 .ws-trade-body { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .ws-trade-body b { font-size: 12.5px; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ws-trade-body span { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--text-3); }
