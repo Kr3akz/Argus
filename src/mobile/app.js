@@ -59,7 +59,7 @@ function parseRoute() {
   /* Frisch aus dem QR-Code steht #pair=... in der Adresse - dann geht es um
      die Kopplung, also "More". */
   if (/^#pair=/.test(location.hash)) return { tab: 'more', sub: null };
-  const [tab, sub] = location.hash.replace(/^#/, '').split('/');
+  const [tab, sub] = pc.routeHash(location.hash).split('/');
   return { tab: TABS.some(t => t.key === tab) ? tab : 'live', sub: sub || null };
 }
 let route = parseRoute();
@@ -160,19 +160,31 @@ function fehlerSeite(m, was) {
 
 /* Unterwegs: was nur am PC steht - je Seite ein eigener Satz, damit nicht
    "Your the foundry" aus einem Baukasten herausfaellt. */
+/* Titel, Text, und wohin der Knopf in der Ansicht vom PC springt. */
 const NUR_AM_PC = {
-  foundry: ['The foundry lives on your PC', 'What is building and when it is done comes from the game on your PC.'],
-  goals: ['Your goals live on your PC', 'Your goals and the shopping list come from Argus on your PC.'],
-  inventory: ['Your inventory lives on your PC', 'Relics, prime sets, parts and mods come from the game on your PC.']
+  foundry: ['The foundry lives on your PC', 'What is building and when it is done comes from the game on your PC.',
+            'foundry', 'Open foundry'],
+  goals: ['Your goals live on your PC', 'Your goals and the shopping list come from Argus on your PC.',
+          'foundry/goals', 'Open goals'],
+  inventory: ['Your inventory lives on your PC', 'Relics, prime sets, parts and mods come from the game on your PC.',
+              'inventory/relics', 'Open inventory']
 };
 
-function pcNoetig(was) {
-  const [titel, text] = NUR_AM_PC[was];
+/* Ein Knopf in die Ansicht vom PC - gleich an der richtigen Stelle, nicht
+   erst auf der Startseite. Ohne Kopplung fuehrt er zum Koppeln. */
+function zumPc(ziel, label, klasse = 'primary') {
   const p = pairing.current();
+  return p
+    ? `<a class="btn ${klasse}" href="${esc(pairing.pcViewUrl(p, ziel))}" target="_blank" rel="noopener">${Icon.pc(18)} ${esc(label)}</a>`
+    : `<button class="btn ${klasse}" data-go="#more">Pair with your PC</button>`;
+}
+
+function pcNoetig(was) {
+  const [titel, text, ziel, label] = NUR_AM_PC[was];
   return `<div class="empty"><div class="big">🖥</div><h3>${esc(titel)}</h3>
-    <p>${esc(text)} At home, in the same Wi-Fi, open it from there.</p>
-    ${p ? `<a class="btn primary" href="${esc(pairing.pcViewUrl(p))}" target="_blank" rel="noopener">${Icon.pc(18)} Open my PC</a>`
-        : '<button class="btn primary" data-go="#more">Pair with your PC</button>'}</div>`;
+    <p>${esc(text)}</p>
+    ${zumPc(ziel, label)}
+    ${pairing.current() ? '<p class="muted small" style="margin:12px auto 0">Works at home, in the same Wi-Fi as your PC.</p>' : ''}</div>`;
 }
 
 /** Ein Hinweis ueber dem Inhalt, wenn er nicht frisch ist. */
@@ -207,7 +219,8 @@ function seiteInventar() {
   const page = route.sub || (MODE === 'pc' ? 'relics' : 'prices');
   if (page === 'prices') {
     return {
-      head: (MODE === 'pc' ? '' : '<div class="note">Your inventory lives on your PC — open Argus there to see it. Prices work anywhere.</div>')
+      head: (MODE === 'pc' ? '' : `<div class="note pc-note"><span>Your relics, sets, parts and mods are on your PC.
+          Price checks work anywhere.</span>${zumPc('inventory/relics', 'Open inventory', 'small')}</div>`)
         + Inv.priceSearch(st),
       body: Inv.renderPrices(st)
     };

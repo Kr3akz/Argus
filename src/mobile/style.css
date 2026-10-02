@@ -282,6 +282,10 @@ a { color: rgb(var(--t-accent-text)); }
 .note.ok { background: rgb(var(--t-green) / .1); color: rgb(var(--t-green-text)); }
 .note.accent { background: rgb(var(--t-accent) / .1); color: rgb(var(--t-accent-text)); }
 .note b { color: var(--text); }
+/* Hinweis mit Knopf rechts daneben (Inventar unterwegs). */
+.note.pc-note { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.note.pc-note > span { flex: 1 1 180px; min-width: 0; }
+.note.pc-note .btn { flex: 0 0 auto; }
 
 .steps { list-style: none; padding: 0; margin: 4px 0 14px; counter-reset: s; }
 .steps li { position: relative; padding: 0 0 12px 38px; counter-increment: s; font-size: 14.5px; line-height: 1.45; color: var(--text-2); }

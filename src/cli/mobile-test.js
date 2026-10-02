@@ -100,7 +100,7 @@ registerHooks({
 });
 
 const laden = async rel => import(pathToFileURL(path.join(MOBILE, rel)).href + '?browser');
-let web, ui, Live, Foundry, Inv, Drops, More, pairing, core;
+let web, ui, Live, Foundry, Inv, Drops, More, pairing, pcQuelle, core;
 try {
   web = await laden('lib/source-web.js');
   ui = await laden('lib/ui.js');
@@ -110,6 +110,7 @@ try {
   Drops = await laden('views/drops.js');
   More = await laden('views/more.js');
   pairing = await laden('lib/pairing.js');
+  pcQuelle = await laden('lib/source-pc.js');
   core = {
     ws: await import(CORE_URL + 'worldstate.js?browser'),
     view: await import(CORE_URL + 'world-view.js?browser'),
@@ -247,6 +248,15 @@ try {
   const reg = pairing.registerUrl(gelesen, { toJSON: () => ({ endpoint: 'https://web.push.apple.com/x', keys: { p256dh: 'a', auth: 'b' } }) });
   ok('Push-Abo geht an /pair/push des PCs', reg.startsWith('http://192.168.178.20:47120/pair/push?t='));
   ok('"Mein PC" traegt die Kennung hinter #', pairing.pcViewUrl(gelesen).startsWith('http://192.168.178.20:47120/#t='));
+  /* Ein Tipp statt zwei: der Knopf in Foundry und Inventar springt gleich an
+     die richtige Stelle - und dort bleibt die Seite stehen, nur die Kennung
+     verschwindet aus der Adresse. */
+  const sprung = pairing.pcViewUrl(gelesen, 'foundry/goals');
+  ok('Sprung zum PC: Seite vor der Kennung', sprung === `http://192.168.178.20:47120/#foundry/goals&t=${gelesen.token}`, sprung);
+  for (const [hash, seite] of [
+    ['#foundry/goals&t=' + gelesen.token, 'foundry/goals'], ['#t=' + gelesen.token, ''],
+    ['#inventory/relics', 'inventory/relics'], ['', '']
+  ]) ok(`Seite aus "${hash.slice(0, 22)}${hash.length > 22 ? '…' : ''}" -> "${seite}"`, pcQuelle.routeHash(hash) === seite, pcQuelle.routeHash(hash));
 
   /* "More" in jedem Zustand. */
   const push = { ios: true, android: false, standalone: false, supported: true, needsInstall: true, permission: 'default' };

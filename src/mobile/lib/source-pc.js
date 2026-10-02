@@ -12,12 +12,22 @@ import * as store from './store.js';
 
 const TOKEN = 'lan.token';
 
-/** Die Kennung aus #t=... uebernehmen und aus der Adresszeile nehmen. */
+/**
+ * Die Seite aus der Adresse, ohne die Kennung: "#foundry/goals&t=..." ->
+ * "foundry/goals", "#t=..." -> "".
+ */
+export function routeHash(hash) {
+  return String(hash || '').replace(/^#/, '').split('&').filter(teil => teil && !/^t=/.test(teil)).join('&');
+}
+
+/** Die Kennung aus #t=... uebernehmen und aus der Adresszeile nehmen - die
+    Seite dahinter (#foundry&t=...) bleibt stehen. */
 export function adoptToken() {
   const m = /[#&]t=([A-Za-z0-9_-]{20,100})/.exec(location.hash);
   if (m) {
     store.set(TOKEN, m[1]);
-    history.replaceState(null, '', location.pathname + location.search);
+    const seite = routeHash(location.hash);
+    history.replaceState(null, '', location.pathname + location.search + (seite ? `#${seite}` : ''));
   }
   return store.get(TOKEN, null);
 }

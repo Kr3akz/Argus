@@ -172,5 +172,11 @@ export function registerUrl(pc, sub) {
   return `${pc.url}/pair/push?t=${encodeURIComponent(pc.token)}&s=${b64urlText(JSON.stringify(sub.toJSON()))}`;
 }
 
-/** Die App, wie der PC sie zuhause ausliefert - mit allen eigenen Daten. */
-export const pcViewUrl = pc => `${pc.url}/#t=${encodeURIComponent(pc.token)}`;
+/**
+ * Die App, wie der PC sie zuhause ausliefert - mit allen eigenen Daten.
+ * `ziel` ist die Seite, auf der sie aufgeht ("foundry/goals"); die Kennung
+ * steht dahinter und wird dort gleich aus der Adresse genommen
+ * (source-pc.adoptToken).
+ */
+export const pcViewUrl = (pc, ziel = '') =>
+  `${pc.url}/#${ziel ? `${ziel}&` : ''}t=${encodeURIComponent(pc.token)}`;

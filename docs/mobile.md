@@ -14,10 +14,10 @@ It does two things:
   searches the **drop tables**, checks **warframe.market prices**, and receives the
   **notifications** Argus on your PC sends: new void fissures, a cycle about to change, a
   finished foundry, a whisper in game.
-- **At home** — in the same Wi-Fi as your PC, while Argus runs there — **Open my PC**
-  shows your **foundry**, your **goals** with the shopping list, your **inventory** (relics,
-  prime sets and parts, valuable mods) with **prices**, and the live tracker with everything
-  you already own ticked off.
+- **At home** — in the same Wi-Fi as your PC, while Argus runs there — one tap on **Open
+  foundry**, **Open goals** or **Open inventory** shows your **foundry**, your **goals** with
+  the shopping list, your **inventory** (relics, prime sets and parts, valuable mods) with
+  **prices**, and the live tracker with everything you already own ticked off.
 
 Nothing has to be installed from a store, and no account is involved.
 
@@ -65,10 +65,17 @@ independent — turn the toast off and keep the phone on if you play on a single
 
 Notifications only come while **Argus runs on the PC** — it is the one sending them.
 
-## At home: Open my PC
+## At home: your foundry, goals and inventory
 
-**More → Open my PC** opens the app as Argus on your PC serves it, with your own data. On an
-iPhone it opens in a small browser sheet over the app; **Done** brings you back.
+**Foundry** and **Inventory** in the app each have a button — **Open foundry**, **Open goals**,
+**Open inventory** — that opens exactly that page as Argus on your PC serves it, with your own
+data. **More → Open my PC** opens the same view at its start. On an iPhone it opens in a small
+browser sheet over the app; **Done** brings you back.
+
+Why a view of its own: the app comes from a secure address (https), which is what lets an
+iPhone deliver notifications to it at all, and a page from a secure address may not load
+anything from your PC's plain address at home. Your PC's data therefore stays with the view
+your PC serves — it never passes through GitHub or anywhere else.
 
 This needs **Phone access over Wi-Fi** to be on (**Settings → Phone**). Pairing turns it
 on; you can turn it off again at any time — notifications keep working without it.

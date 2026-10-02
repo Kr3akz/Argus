@@ -27,8 +27,8 @@ follow [semantic versioning](https://semver.org/lang/en/).
   [kr3akz.github.io/Argus/app](https://kr3akz.github.io/Argus/app/) — nothing from an app
   store, no account, no server in between. Pair it once with a QR code under
   **Settings → Phone**. On the go it shows the live tracker, searches the drop tables and
-  checks prices. At home, in the same Wi-Fi, **Open my PC** shows your foundry, your goals
-  with the shopping list, and your relics, prime sets and parts with their prices. On an
+  checks prices. At home, in the same Wi-Fi, one tap opens your foundry, your goals with the
+  shopping list, and your relics, prime sets and parts with their prices. On an
   iPhone, add it to the home screen when the app asks — that is what lets it receive
   notifications.
 - **Notifications on your phone.** Fissures, a cycle about to change, a finished foundry
