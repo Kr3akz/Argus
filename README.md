@@ -33,7 +33,8 @@ While you play, it works inside the game — prices under the four cards of a re
 screen, your relics ranked on the selection screen, riven rolls side by side while you
 cycle. It does all of that by *looking*: it never changes the game, and never logs in to
 Warframe as you. Your inventory comes from the game already running on your PC,
-read-only, only if you allow it, and it never leaves your machine.
+read-only, only if you allow it, and it never goes out to the internet — the only place
+it can go is a phone you pair yourself, inside your own Wi-Fi.
 
 **Windows only.** The panels over the game, the log reader and the inventory lookup rely
 on Windows APIs. Free and open source under the GPL.
@@ -63,7 +64,7 @@ In short:
 - **No network interception.** It never sniffs or intercepts the game's encrypted network
   traffic, which would break Warframe's EULA.
 - **Nothing is asked of DE in your name.** No sign-in, no borrowed session, no API calls
-  on your behalf — and your inventory never leaves the machine.
+  on your behalf — and your inventory never goes out to the internet.
 - **Read-only and opt-in.** Memory reading is strictly read-only (`PROCESS_VM_READ`),
   happens only when you ask for it or after a zone load, and stays switched off unless you
   turn it on.
@@ -100,8 +101,19 @@ Every mechanism, permission and endpoint is explained in detail:
   of the running game, on a hotkey. → [Controls](docs/controls.md)
 - **Notifications** for the void fissures you care about, a few minutes before an
   open-world cycle flips, and for whispers in game — if you like, only the ones copied
-  from warframe.market, so a ping means someone wants to trade.
-  → [Controls](docs/controls.md)
+  from warframe.market, so a ping means someone wants to trade. On Windows, and on your
+  phone if you pair one. → [Controls](docs/controls.md)
+
+### On your phone
+
+- **Argus as a web app on your phone** — no app store, no account, no server in between.
+  Pair it once with a QR code under **Settings → Phone**.
+- **On the go:** the live tracker, the drop tables and price checks, and the
+  notifications from your PC — a fissure, a cycle about to flip, a finished foundry, a
+  whisper — even when the app is closed. On an iPhone, from the home screen.
+- **At home:** your foundry, your goals with the shopping list, your relics, prime sets
+  and their prices — straight from Argus on your PC, over your own Wi-Fi.
+  → [Argus on your phone](docs/mobile.md)
 
 ### Planning
 
@@ -459,7 +471,7 @@ Each tab of the window, with a screenshot of every view in it. Click one to open
 </details>
 
 <details>
-<summary><b>Settings</b> — hotkeys, themes, overlays, notifications, inventory access and version</summary>
+<summary><b>Settings</b> — hotkeys, themes, overlays, notifications, your phone, inventory access and version</summary>
 
 <br>
 
@@ -561,6 +573,7 @@ are verified, and where your data is kept.
 |---|---|
 | [Install, updates and first run](docs/install.md) | Download, the SmartScreen warning, the first start, updates and where your data is kept |
 | [Controls, windows and settings](docs/controls.md) | The two windows, hotkeys, cursor mode, and everything under Settings |
+| [Argus on your phone](docs/mobile.md) | Pairing an iPhone or Android phone, notifications on the go, your own data at home |
 | [Relic rewards](docs/relics.md) | The price tags on a reward screen and the relic recommendation on the selection screen |
 | [Rivens](docs/rivens.md) | Grades, veiled rivens, the riven finder and the panels on the cycle screen |
 | [Inventory](docs/inventory.md) | Mods, arcanes and relics — cards, data sheets and drop locations |

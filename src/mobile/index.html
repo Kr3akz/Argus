@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <!-- viewport-fit=cover: die App zeichnet bis unter die Notch und die
+       Home-Leiste; die Abstaende dafuer kommen aus env(safe-area-inset-*)
+       in style.css. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- Die Import-Map steht als einziges Skript im Dokument - und ein Skript
+       im Dokument braucht in der CSP seinen Hash. src/cli/mobile-test.js
+       rechnet ihn nach und faellt, wenn jemand die Map aendert, ohne den
+       Hash mitzuziehen. connect-src nennt genau die Quellen, die die App
+       unterwegs selbst abfragt (lib/source-web.js); zuhause ist es 'self',
+       der PC. -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' 'sha256-NDQ4qesB6vILWc/hhsNJ7GpKi1IpR1a6YGvNkfCxTlc='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://api.warframestat.us https://drops.warframestat.us https://api.warframe.market; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0a0d12">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Argus">
+  <title>Argus</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">{"imports":{"node:fs":"./shims/node-fs.js","node:fs/promises":"./shims/node-fs-promises.js","node:path":"./shims/node-path.js","node:url":"./shims/node-url.js"}}</script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="top">
+    <div class="top-row">
+      <img class="top-logo" src="assets/icons/logo.png" alt="">
+      <h1 id="top-title">Argus</h1>
+      <span class="source" id="source"></span>
+      <button class="icon-btn" id="btn-refresh" aria-label="Refresh"></button>
+    </div>
+    <nav class="subnav" id="subnav" aria-label="Sections"></nav>
+  </header>
+
+  <main id="view" class="view" tabindex="-1"></main>
+
+  <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
+
+  <nav class="tabbar" id="tabbar" aria-label="Tabs"></nav>
+
+  <noscript><p class="noscript">Argus needs JavaScript to run.</p></noscript>
+</body>
+</html>

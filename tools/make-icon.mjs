@@ -379,10 +379,10 @@ function daraufSetzen(dst, dstSize, src, zielBreite, farbe) {
   }
 }
 
-function programmSymbol(size, auge) {
+function programmSymbol(size, auge, { plattenRadius = PLATTE_RADIUS, augeBreite = AUGE_BREITE } = {}) {
   const dst = Buffer.alloc(size * size * 4);
   if (PLATTE_FARBE) {
-    const radius = size * PLATTE_RADIUS;
+    const radius = size * plattenRadius;
     const rb = RAND_FARBE ? size * RAND_BREITE : 0;
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
@@ -410,7 +410,7 @@ function programmSymbol(size, auge) {
       }
     }
   }
-  daraufSetzen(dst, size, aufInhaltBeschneiden(auge), Math.round(size * AUGE_BREITE), AUGE_FARBE);
+  daraufSetzen(dst, size, aufInhaltBeschneiden(auge), Math.round(size * augeBreite), AUGE_FARBE);
   return dst;
 }
 
@@ -471,5 +471,30 @@ for (const m of MASKEN) {
   writeFileSync(ziel, png);
   console.log(`${ziel} (${m.groesse}x${m.groesse}, ${(png.length / 1024).toFixed(1)} KB)`);
 }
+
+/* 4. Die Handy-App (src/mobile/icons).
+      iOS und Android legen ihre eigene Form ueber das Symbol - abgerundet,
+      rund, je nach Geraet. Die Platte geht deshalb bis an den Rand und hat
+      keine eigene Rundung: durchsichtige Ecken fuellt iOS schwarz, und unter
+      der Rundung des Systems saesse eine zweite. Das Auge ist kleiner als am
+      PC - bei "maskable" (Android) muss es in den inneren 80 % stehen, die
+      jede Maske stehen laesst.
+      Das Abzeichen ist die nackte Silhouette: Android faerbt es in der
+      Statusleiste selbst ein und nimmt davon nur die Deckung. */
+const OUT_MOBILE = path.join(ROOT, 'src', 'mobile', 'icons');
+mkdirSync(OUT_MOBILE, { recursive: true });
+for (const [name, size, augeBreite] of [
+  ['icon-192.png', 192, 0.62],
+  ['icon-512.png', 512, 0.62],
+  ['apple-touch-icon.png', 180, 0.62],
+  ['icon-maskable-512.png', 512, 0.5]
+]) {
+  const png = encodePNG(size, size, programmSymbol(size, whiteSrc, { plattenRadius: 0, augeBreite }));
+  writeFileSync(path.join(OUT_MOBILE, name), png);
+  console.log(`${path.join(OUT_MOBILE, name)} (${size}x${size}, ${(png.length / 1024).toFixed(1)} KB)`);
+}
+const badgePng = encodePNG(96, 96, resizeRGBA(aufQuadratBringen(aufInhaltBeschneiden(whiteSrc)), 96, 0.12));
+writeFileSync(path.join(OUT_MOBILE, 'badge-96.png'), badgePng);
+console.log(`${path.join(OUT_MOBILE, 'badge-96.png')} (96x96, ${(badgePng.length / 1024).toFixed(1)} KB)`);
 
 console.log('Icons and masks updated successfully.');

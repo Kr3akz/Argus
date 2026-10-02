@@ -570,7 +570,7 @@ function build({ de, wf, fetchedAt, hash = null, modified = null }) {
  * Feld je umbenennen, faellt lieber ein Relikt aus der Liste, als dass
  * stillschweigend wieder alle 773 als farmbar gelten.
  */
-function liveRelics(de) {
+export function liveRelics(de) {
   const out = new Set();
   const walk = (node) => {
     if (Array.isArray(node)) { for (const n of node) walk(n); return; }

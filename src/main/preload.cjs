@@ -125,6 +125,20 @@ contextBridge.exposeInMainWorld('api', {
   getNotifications:()          => ipcRenderer.invoke('notifications:get'),
   saveNotifications:(patch)    => ipcRenderer.invoke('notifications:save', patch),
   testNotification:()          => ipcRenderer.invoke('notifications:test'),
+  /* Das Handy: koppeln, Geraete, Zugang im WLAN - siehe core/phone.js.
+     Die Kennungen der Geraete kommen hier nie an, nur ihr Zustand. */
+  getPhone:        ()          => ipcRenderer.invoke('phone:get'),
+  setPhoneEnabled: (on)        => ipcRenderer.invoke('phone:setEnabled', on),
+  setPhoneAddress: (addr)      => ipcRenderer.invoke('phone:setAddress', addr),
+  pairPhone:       ()          => ipcRenderer.invoke('phone:pair'),
+  removePhone:     (id)        => ipcRenderer.invoke('phone:remove', id),
+  testPhone:       (id)        => ipcRenderer.invoke('phone:test', id),
+  setPhoneTypes:   (id, types) => ipcRenderer.invoke('phone:setTypes', id, types),
+  onPhoneChanged:  (cb)        => {
+    const handler = () => cb();
+    ipcRenderer.on('phone:changed', handler);
+    return () => ipcRenderer.removeListener('phone:changed', handler);
+  },
   onNotificationEvent:(cb)     => {
     const handler = (_e, data) => cb(data);
     ipcRenderer.on('notification:event', handler);

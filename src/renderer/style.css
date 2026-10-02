@@ -7225,6 +7225,75 @@ label.setting-row.is-disabled { cursor: not-allowed; }
 }
 .about-actions { display: flex; gap: 8px; flex-shrink: 0; }
 
+/* ---------- Phone: koppeln und Geraete ---------- */
+.phone-pair { padding: 6px 0 14px; }
+.phone-cta {
+  display: flex; align-items: center; justify-content: space-between; gap: 20px;
+  padding: 16px 18px;
+  border-radius: var(--r-md);
+  background: linear-gradient(135deg, rgb(var(--t-accent) / .13), rgb(var(--t-accent) / .04));
+  border: 1px solid rgb(var(--t-accent) / .18);
+}
+.phone-cta b { display: block; font-size: 14px; font-weight: 600; }
+.phone-cta span { display: block; font-size: 12px; color: var(--text-2); margin-top: 4px; line-height: 1.5; max-width: 62ch; }
+.phone-cta .btn { flex-shrink: 0; }
+
+/* Der Code auf weissem Grund, mit Rand: Kameras finden ihn auf einem dunklen
+   Fenster sonst schlechter, und das Theme darf ihn nicht einfaerben. */
+.phone-qr-wrap {
+  display: grid; grid-template-columns: 216px 1fr; gap: 22px; align-items: start;
+  padding: 16px; border-radius: var(--r-md); background: rgb(var(--t-fg) / .03);
+}
+.phone-qr { background: #fff; border-radius: calc(12px * var(--r-k)); padding: 8px; line-height: 0; }
+.phone-qr svg { width: 100%; height: auto; display: block; }
+.phone-steps { list-style: none; margin: 2px 0 0; padding: 0; counter-reset: schritt; }
+.phone-steps li {
+  position: relative; padding: 0 0 12px 34px; font-size: 12.5px; line-height: 1.5; color: var(--text-2);
+  counter-increment: schritt;
+}
+.phone-steps li b { color: var(--text); font-weight: 600; }
+.phone-steps li::before {
+  content: counter(schritt);
+  position: absolute; left: 0; top: -1px;
+  width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 11.5px; font-weight: 700;
+  background: var(--accent-sf); color: var(--accent);
+}
+.phone-steps li.done::before { content: '✓'; background: rgb(var(--t-green) / .16); color: var(--green); }
+.phone-wait { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 4px; font-size: 12px; color: var(--text-3); }
+.phone-wait .dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+  animation: phone-puls 1.4s ease-in-out infinite;
+}
+.phone-wait.ok { color: var(--green); }
+.phone-wait.ok .dot { background: var(--green); animation: none; }
+@keyframes phone-puls { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+.phone-hint { margin-top: 10px; font-size: 11.5px; color: var(--text-3); line-height: 1.5; }
+
+.phone-devices:empty { display: none; }
+.phone-devices { display: flex; flex-direction: column; gap: 8px; padding-bottom: 12px; }
+.phone-device {
+  display: grid; grid-template-columns: 36px 1fr auto; gap: 12px; align-items: center;
+  padding: 12px 14px; border-radius: var(--r-md); background: rgb(var(--t-fg) / .035);
+}
+.phone-device-icon {
+  width: 36px; height: 36px; border-radius: 50%;
+  display: grid; place-items: center; background: var(--surface-2); color: var(--text-2);
+}
+.phone-device-name { font-size: 13px; font-weight: 600; }
+.phone-device-meta { font-size: 11.5px; color: var(--text-3); margin-top: 2px; }
+.phone-device-meta.warn { color: var(--gold); }
+.phone-device-meta.ok { color: var(--green); }
+.phone-device-types { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.phone-device-types .filter-chip { font-size: 11px; padding: 4px 10px; }
+.phone-device-actions { display: flex; gap: 6px; }
+/* Ohne Push gibt es nichts zu waehlen und nichts zu testen - sichtbar
+   ausgegraut statt still wirkungslos. */
+.phone-device-types .filter-chip:disabled,
+.phone-device-actions .btn-sm:disabled { opacity: .4; cursor: default; pointer-events: none; }
+#set-phone-address { min-width: 210px; }
+
 /* ---------- Update-Fenster ---------- */
 .update-box { width: min(560px, 100%); }
 .update-head-id { display: flex; align-items: flex-start; gap: 13px; }

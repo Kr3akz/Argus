@@ -1537,6 +1537,7 @@
         <button class="ws-navtab" data-set-go="appearance">Appearance</button>
         <button class="ws-navtab" data-set-go="overlays">Overlays</button>
         <button class="ws-navtab" data-set-go="notifications">Notifications</button>
+        <button class="ws-navtab" data-set-go="phone">Phone</button>
         <button class="ws-navtab" data-set-go="inventory">Inventory</button>
         <button class="ws-navtab" data-set-go="about">About</button>
       </div>
@@ -2064,6 +2065,54 @@
           <span>Which fissures get reported — tiers, mission types, Steel Path — is set
                 in the live tracker under <b>Void fissures</b>.</span>
           <button class="btn-sm" id="set-open-fissure-notif">Open filters</button>
+        </div>
+      </div>
+
+      </div>
+
+      <!-- ---- Unterreiter: Phone ----
+           Eigener Reiter und nicht unter den Benachrichtigungen, obwohl es mit
+           ihnen anfaengt: hier geht eine Tuer auf (ein Port im WLAN), und die
+           soll man sehen, statt sie zwischen zwei Toast-Schaltern zu finden.
+           Gefuellt wird der Reiter von renderPhonePane() in app.js. -->
+      <div class="set-pane set-pane-single" data-set-pane="phone">
+
+      <div class="settings-group">
+        <div class="settings-group-head">
+          <h3>Phone</h3>
+          <p>Argus on your phone: notifications wherever you are, and your foundry, goals,
+             inventory and prices when you are home. It is a web app — nothing from an app
+             store, no account, no server in between.</p>
+        </div>
+
+        <div class="phone-pair" id="phone-pair"></div>
+        <div class="phone-devices" id="phone-devices"></div>
+
+        <label class="setting-row">
+          <div class="setting-info">
+            <b>Phone access over Wi-Fi</b>
+            <span>Lets a paired phone in the same Wi-Fi read your foundry, goals, inventory and
+                  prices from this PC — read-only, and only after pairing. Pairing turns it on.
+                  Notifications reach your phone without it.</span>
+          </div>
+          <input type="checkbox" id="set-phone-enabled" class="toggle-checkbox">
+          <span class="toggle-switch"></span>
+        </label>
+
+        <div class="setting-row hidden" id="phone-address-row">
+          <div class="setting-info">
+            <b>Address in your network</b>
+            <span>How the phone finds this PC. Only change it if this PC has several networks
+                  and the phone cannot reach it.</span>
+          </div>
+          <select id="set-phone-address"></select>
+        </div>
+
+        <div class="settings-note settings-note-row" id="phone-status-row">
+          <span id="phone-status"></span>
+          <div class="about-actions">
+            <button class="btn-sm" data-ext="https://github.com/Kr3akz/Argus/blob/main/docs/mobile.md">How it works</button>
+          </div>
         </div>
       </div>
 

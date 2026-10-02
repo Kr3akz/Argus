@@ -19,6 +19,8 @@ node_modules/
 #   scan-hint.json   Altlast: Speicheradresse aus der Zeit des API-Abrufs.
 #                    Wird nicht mehr geschrieben, darf weg.
 #   ratelimit.json   lokaler Drosselungsstand (nur noch fuer das Profil)
+#   phone.json       gekoppelte Handys: Signierschluessel des PCs, Push-Adressen
+#                    der Handys, Hashes ihrer Kennungen
 #   catalog.json     9 MB oeffentlicher Cache, wird neu geladen
 #   mods.json        2,5 MB oeffentlicher Cache, wird neu geladen
 # ---------------------------------------------------------------------------

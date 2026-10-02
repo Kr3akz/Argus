@@ -1,0 +1,354 @@
+/* Argus auf dem Handy.
+ *
+ * Die Farben sind die des Standard-Themes "Argus" aus src/renderer/style.css -
+ * dieselben Kanaele (--t-*), damit die App aussieht wie das Programm am PC.
+ * Themes des PCs kommen hier (noch) nicht an: die App laeuft auch ohne PC.
+ *
+ * Gebaut fuer den Daumen: Zeilen und Knoepfe mindestens 44 Punkt hoch, die
+ * Reiter unten, und Abstaende fuer Notch und Home-Leiste aus
+ * env(safe-area-inset-*). */
+
+:root {
+  --t-bg:          10  13  18;
+  --t-bg-hi:       16  20  28;
+  --t-panel:       22  27  37;
+  --t-fg:         255 255 255;
+  --t-text:       242 245 249;
+  --t-text-2:     168 179 194;
+  --t-text-3:     107 118 134;
+  --t-accent:      74 158 255;
+  --t-accent-hi:  102 174 255;
+  --t-accent-text:121 192 255;
+  --t-on-accent:    4  18  31;
+  --t-green:       74 222 128;
+  --t-green-text: 126 231 135;
+  --t-red:        255  92  92;
+  --t-red-text:   255 143 143;
+  --t-gold:       240 184  73;
+  --t-violet:     167 139 250;
+
+  --bg: rgb(var(--t-bg));
+  --surface:   rgb(var(--t-fg) / .05);
+  --surface-2: rgb(var(--t-fg) / .08);
+  --surface-3: rgb(var(--t-fg) / .12);
+  --line:      rgb(var(--t-fg) / .07);
+  --text:   rgb(var(--t-text));
+  --text-2: rgb(var(--t-text-2));
+  --text-3: rgb(var(--t-text-3));
+  --accent: rgb(var(--t-accent));
+  --green:  rgb(var(--t-green));
+  --red:    rgb(var(--t-red));
+  --gold:   rgb(var(--t-gold));
+
+  --r-sm: 9px;
+  --r-md: 14px;
+  --r-pill: 999px;
+
+  --top-h: 52px;
+  --tab-h: 56px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: radial-gradient(120% 60% at 50% -10%, rgb(26 33 48), transparent 60%), var(--bg);
+  background-color: var(--bg);
+  color: var(--text);
+  font: 15px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
+  overscroll-behavior-y: none;
+}
+button { font: inherit; color: inherit; }
+img { max-width: 100%; }
+a { color: rgb(var(--t-accent-text)); }
+.hidden { display: none !important; }
+.noscript { padding: 40px 20px; text-align: center; color: var(--text-2); }
+
+/* ------------------------------ Kopf ------------------------------ */
+.top {
+  position: sticky; top: 0; z-index: 20;
+  padding: calc(var(--safe-top) + 6px) calc(16px + var(--safe-right)) 0 calc(16px + var(--safe-left));
+  background: rgb(var(--t-bg) / .82);
+  -webkit-backdrop-filter: saturate(160%) blur(18px);
+  backdrop-filter: saturate(160%) blur(18px);
+  border-bottom: 1px solid var(--line);
+}
+.top-row { display: flex; align-items: center; gap: 10px; height: 44px; }
+.top-logo { width: 26px; height: 26px; opacity: .92; }
+.top h1 { font-size: 20px; font-weight: 700; margin: 0; letter-spacing: -.01em; flex: 1 0 auto; min-width: 0;
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.source {
+  font-size: 11.5px; font-weight: 600; padding: 4px 9px; border-radius: var(--r-pill);
+  background: var(--surface-2); color: var(--text-2); white-space: nowrap; max-width: 38vw;
+  overflow: hidden; text-overflow: ellipsis; flex-shrink: 1;
+}
+.source.pc::before {
+  content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--green); margin-right: 6px; vertical-align: 1px;
+}
+.source.pc { background: rgb(var(--t-green) / .14); color: rgb(var(--t-green-text)); }
+.source.stale { background: rgb(var(--t-gold) / .14); color: var(--gold); }
+.icon-btn {
+  width: 40px; height: 40px; border: 0; border-radius: 50%; background: transparent;
+  display: grid; place-items: center; color: var(--text-2); cursor: pointer; flex-shrink: 0;
+}
+.icon-btn:active { background: var(--surface-2); }
+.icon-btn.spin svg { animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Unterseiten als waagerecht wischbare Chips, wie die Reiter am PC. */
+.subnav {
+  display: flex; gap: 6px; overflow-x: auto; padding: 4px 0 10px; scrollbar-width: none;
+  margin: 0 calc(-16px - var(--safe-right)) 0 calc(-16px - var(--safe-left));
+  padding-left: calc(16px + var(--safe-left)); padding-right: calc(16px + var(--safe-right));
+}
+.subnav::-webkit-scrollbar { display: none; }
+.subnav:empty { display: none; }
+.subnav button {
+  flex-shrink: 0; border: 0; border-radius: var(--r-pill); padding: 7px 13px;
+  background: var(--surface); color: var(--text-2); font-size: 13.5px; font-weight: 600; cursor: pointer;
+}
+.subnav button.active { background: var(--text); color: rgb(var(--t-bg)); }
+.subnav .count { opacity: .6; font-weight: 500; margin-left: 4px; }
+
+/* ------------------------------ Inhalt ------------------------------ */
+.view {
+  padding: 14px calc(16px + var(--safe-right)) calc(var(--tab-h) + var(--safe-bottom) + 24px) calc(16px + var(--safe-left));
+  max-width: 760px; margin: 0 auto; outline: none;
+}
+.section { margin: 0 0 22px; }
+.section-title {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  margin: 0 2px 9px; font-size: 13px; font-weight: 700; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--text-3);
+}
+.section-title .hint {
+  text-transform: none; letter-spacing: 0; font-weight: 600; font-size: 12.5px; color: var(--text-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
+.section-title a, .section-title button {
+  text-transform: none; letter-spacing: 0; font-weight: 600; font-size: 13px;
+  color: rgb(var(--t-accent-text)); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: none;
+}
+.card {
+  background: var(--surface); border-radius: var(--r-md); padding: 14px; margin-bottom: 10px;
+}
+.card.flat { padding: 0; overflow: hidden; }
+.card h3 { margin: 0 0 4px; font-size: 16px; font-weight: 650; }
+.card .sub { color: var(--text-3); font-size: 13px; }
+.muted { color: var(--text-3); }
+.small { font-size: 12.5px; }
+.ok-text { color: rgb(var(--t-green-text)); }
+.warn-text { color: var(--gold); }
+.bad-text { color: rgb(var(--t-red-text)); }
+
+.list { background: var(--surface); border-radius: var(--r-md); overflow: hidden; margin-bottom: 10px; }
+.row {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center;
+  padding: 11px 14px; min-height: 52px; border-top: 1px solid var(--line);
+}
+.row:first-child { border-top: 0; }
+.row.tap { cursor: pointer; }
+.row.tap:active { background: var(--surface-2); }
+.row .main { min-width: 0; }
+.row .title { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .meta { font-size: 12.5px; color: var(--text-3); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .meta.wrap { white-space: normal; }
+.row .end { text-align: right; font-size: 13.5px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.row .end .meta { text-align: right; }
+.row.noicon { grid-template-columns: 1fr auto; }
+.thumb { width: 40px; height: 40px; border-radius: 10px; object-fit: contain; background: rgb(var(--t-fg) / .04); }
+.thumb.round { border-radius: 50%; }
+.thumb.sm { width: 30px; height: 30px; border-radius: 8px; }
+.glyph {
+  width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center;
+  background: var(--surface-2); color: var(--text-2); font-size: 13px; font-weight: 700;
+}
+.glyph img { width: 26px; height: 26px; object-fit: contain; }
+
+.badge {
+  display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: var(--r-pill);
+  background: var(--surface-2); color: var(--text-2); vertical-align: 1px; letter-spacing: .01em;
+}
+.badge.sp { background: rgb(var(--t-red) / .16); color: rgb(var(--t-red-text)); }
+.badge.storm { background: rgb(var(--t-violet) / .18); color: rgb(var(--t-violet)); }
+.badge.ok { background: rgb(var(--t-green) / .15); color: rgb(var(--t-green-text)); }
+.badge.warn { background: rgb(var(--t-gold) / .15); color: var(--gold); }
+.badge.accent { background: rgb(var(--t-accent) / .16); color: rgb(var(--t-accent-text)); }
+
+.bar { height: 5px; border-radius: 3px; background: var(--surface-2); overflow: hidden; margin-top: 8px; }
+.bar > i { display: block; height: 100%; width: 0; border-radius: 3px; background: var(--accent); }
+.bar.green > i { background: var(--green); }
+.bar.gold > i { background: var(--gold); }
+
+/* Uhren: die Leiste ganz oben im Live-Reiter. */
+.clocks { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px 18px; padding: 0 16px; }
+.clocks::-webkit-scrollbar { display: none; }
+.clock {
+  flex-shrink: 0; min-width: 104px; padding: 10px 12px; border-radius: var(--r-md); background: var(--surface);
+  border: 0; text-align: left; cursor: pointer;
+}
+.clock .k { font-size: 11.5px; color: var(--text-3); font-weight: 600; }
+.clock .v { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.clock.soon .v { color: var(--gold); }
+
+/* Die sechs offenen Welten. */
+.worlds { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.world { background: var(--surface); border-radius: var(--r-md); padding: 12px; min-height: 104px; position: relative; overflow: hidden; }
+.world .name { font-size: 12.5px; color: var(--text-3); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.world .state { font-size: 19px; font-weight: 750; margin-top: 2px; display: flex; align-items: center; gap: 7px; }
+.world .state img { width: 20px; height: 20px; }
+.world .left { font-size: 13px; color: var(--text-2); margin-top: 2px; font-variant-numeric: tabular-nums; }
+.world .hint { font-size: 11.5px; color: var(--text-3); margin-top: 6px; line-height: 1.35; }
+.world.day .state, .world.warm .state, .world.fass .state { color: var(--gold); }
+.world.night .state, .world.cold .state { color: rgb(var(--t-accent-text)); }
+.world.vome .state { color: rgb(var(--t-violet)); }
+.world.corpus .state { color: rgb(var(--t-accent-text)); }
+.world.grineer .state { color: rgb(var(--t-red-text)); }
+
+/* Kacheln mit einer Zahl - Fissures, Baro, Sortie auf der Uebersicht. */
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.tile { background: var(--surface); border-radius: var(--r-md); padding: 13px; border: 0; text-align: left; cursor: pointer; min-height: 86px; }
+.tile:active { background: var(--surface-2); }
+.tile .k { font-size: 12.5px; color: var(--text-3); font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.tile .k img { width: 16px; height: 16px; }
+.tile .v { font-size: 22px; font-weight: 750; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.tile .v.text { font-size: 17px; line-height: 1.25; margin-top: 6px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tile .s { font-size: 12.5px; color: var(--text-2); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Segmentschalter und Filterchips. */
+.seg { display: flex; background: var(--surface); border-radius: 10px; padding: 3px; margin-bottom: 12px; }
+.seg button {
+  flex: 1; border: 0; background: none; border-radius: 8px; padding: 8px 6px; font-size: 13.5px; font-weight: 600;
+  color: var(--text-2); cursor: pointer;
+}
+.seg button.active { background: var(--surface-3); color: var(--text); }
+.chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px 12px; padding: 0 16px; }
+.chips::-webkit-scrollbar { display: none; }
+.chip {
+  flex-shrink: 0; border: 1px solid var(--line); background: none; color: var(--text-2);
+  border-radius: var(--r-pill); padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.chip.active { background: rgb(var(--t-accent) / .16); border-color: rgb(var(--t-accent) / .35); color: rgb(var(--t-accent-text)); }
+
+/* Suche. */
+.search {
+  display: flex; align-items: center; gap: 8px; background: var(--surface-2); border-radius: 11px;
+  padding: 0 12px; margin-bottom: 12px; height: 42px;
+}
+.search svg { color: var(--text-3); flex-shrink: 0; }
+.search input {
+  flex: 1; min-width: 0; border: 0; outline: 0; background: none; color: var(--text);
+  font: inherit; font-size: 16px; /* unter 16px zoomt iOS beim Antippen hinein */
+}
+.search input::placeholder { color: var(--text-3); }
+
+/* Knoepfe. */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 46px; padding: 0 18px; border-radius: 12px; border: 0; cursor: pointer; white-space: nowrap;
+  background: var(--surface-2); color: var(--text); font-size: 15.5px; font-weight: 650; text-decoration: none;
+}
+.btn:active { transform: scale(.98); }
+.btn.primary { background: var(--accent); color: rgb(var(--t-on-accent)); }
+.btn.block { display: flex; width: 100%; }
+.btn.small { min-height: 36px; font-size: 14px; padding: 0 14px; border-radius: 10px; }
+.btn.danger { color: rgb(var(--t-red-text)); }
+.btn[disabled] { opacity: .45; pointer-events: none; }
+.btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.btn-row .btn { flex: 1 1 140px; }
+
+/* Leere Zustaende und Hinweise. */
+.empty { text-align: center; padding: 36px 18px; color: var(--text-2); }
+.empty .big { font-size: 34px; margin-bottom: 8px; }
+.empty h3 { margin: 0 0 6px; font-size: 17px; color: var(--text); }
+.empty p { margin: 0 auto 16px; max-width: 34ch; font-size: 14px; line-height: 1.5; }
+.note {
+  border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; font-size: 13.5px; line-height: 1.5;
+  background: var(--surface); color: var(--text-2);
+}
+.note.warn { background: rgb(var(--t-gold) / .1); color: var(--gold); }
+.note.ok { background: rgb(var(--t-green) / .1); color: rgb(var(--t-green-text)); }
+.note.accent { background: rgb(var(--t-accent) / .1); color: rgb(var(--t-accent-text)); }
+.note b { color: var(--text); }
+
+.steps { list-style: none; padding: 0; margin: 4px 0 14px; counter-reset: s; }
+.steps li { position: relative; padding: 0 0 12px 38px; counter-increment: s; font-size: 14.5px; line-height: 1.45; color: var(--text-2); }
+.steps li b { color: var(--text); }
+.steps li::before {
+  content: counter(s); position: absolute; left: 0; top: -1px; width: 26px; height: 26px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 13px; font-weight: 750;
+  background: rgb(var(--t-accent) / .16); color: rgb(var(--t-accent-text));
+}
+.steps li.done::before { content: '✓'; background: rgb(var(--t-green) / .16); color: rgb(var(--t-green-text)); }
+
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 13.5px; }
+.kv span { color: var(--text-3); }
+.kv b { font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Aufklappbares. */
+details.fold { background: var(--surface); border-radius: var(--r-md); margin-bottom: 10px; overflow: hidden; }
+details.fold > summary {
+  list-style: none; cursor: pointer; padding: 13px 14px; display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center;
+}
+details.fold > summary::-webkit-details-marker { display: none; }
+details.fold > summary .chev { color: var(--text-3); transition: transform .2s; }
+details.fold[open] > summary .chev { transform: rotate(90deg); }
+details.fold .body { padding: 0 14px 12px; }
+details.fold .body .row { padding-left: 0; padding-right: 0; }
+
+/* Ziele. */
+.need { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; padding: 7px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.need:first-child { border-top: 0; }
+.need .have { font-variant-numeric: tabular-nums; font-weight: 650; }
+.need .have.ok { color: rgb(var(--t-green-text)); }
+.need .have.short { color: rgb(var(--t-red-text)); }
+
+/* Waehrungen oben im Inventar. */
+.wallet { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 16px; }
+.wallet > div { background: var(--surface); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 9px; min-width: 0; }
+.wallet .wt { min-width: 0; }
+.wallet img { width: 22px; height: 22px; }
+.wallet b { display: block; font-size: 15px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wallet span { font-size: 11.5px; color: var(--text-3); display: block; }
+
+/* ------------------------------ Reiter unten ------------------------------ */
+.tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+  display: grid; grid-template-columns: repeat(5, 1fr);
+  padding: 4px var(--safe-right) calc(var(--safe-bottom) + 2px) var(--safe-left);
+  background: rgb(var(--t-bg) / .86);
+  -webkit-backdrop-filter: saturate(160%) blur(18px);
+  backdrop-filter: saturate(160%) blur(18px);
+  border-top: 1px solid var(--line);
+}
+.tabbar button {
+  border: 0; background: none; color: var(--text-3); cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0 4px; min-height: 50px;
+  font-size: 10.5px; font-weight: 600;
+}
+.tabbar button svg { width: 25px; height: 25px; }
+.tabbar button.active { color: var(--accent); }
+
+/* ------------------------------ Hinweis unten ------------------------------ */
+.toast {
+  position: fixed; left: 50%; transform: translateX(-50%); z-index: 40;
+  bottom: calc(var(--tab-h) + var(--safe-bottom) + 14px);
+  width: max-content; max-width: min(92vw, 520px); padding: 11px 16px; border-radius: 12px; text-align: center;
+  background: rgb(var(--t-panel)); color: var(--text); font-size: 14px; box-shadow: 0 10px 30px rgb(0 0 0 / .45);
+}
+
+/* Breiter Bildschirm (iPad, quer): drei Welten nebeneinander. */
+@media (min-width: 620px) {
+  .worlds { grid-template-columns: repeat(3, 1fr); }
+  .tiles { grid-template-columns: repeat(4, 1fr); }
+  .wallet { grid-template-columns: repeat(4, 1fr); }
+}

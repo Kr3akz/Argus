@@ -338,6 +338,24 @@ const Guide = (() => {
            <b>Add a shared theme</b> takes someone else’s.</p>`
     },
     {
+      id: 'phone',
+      tab: 'settings',
+      settingsPane: 'phone',
+      /* Nur der Kasten zum Koppeln: mit dem Kopf der Gruppe dazu lagen zwei
+         Rahmen halb uebereinander. Gefuellt wird er erst nach der Antwort des
+         Hauptprozesses - bis dahin hat er keine Flaeche, und der Waechter
+         setzt den Rahmen, sobald er eine hat. */
+      target: '#phone-pair',
+      place: 'bottom',
+      title: 'Argus on your phone',
+      body: `
+        <p>Pair your phone with one QR code: notifications from this PC wherever you
+           are — fissures, cycles, a finished foundry, whispers — and your foundry,
+           goals, inventory and prices when you are home.</p>
+        <p>It is a web app: nothing from an app store, no account. On an iPhone, add
+           it to the home screen when it asks.</p>`
+    },
+    {
       id: 'settings',
       tab: 'settings',
       /* Die Tour-Gruppe steht im Unterreiter General. */

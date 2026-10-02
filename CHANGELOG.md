@@ -21,6 +21,25 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+### Added
+
+- **Argus on your phone.** A web app at
+  [kr3akz.github.io/Argus/app](https://kr3akz.github.io/Argus/app/) — nothing from an app
+  store, no account, no server in between. Pair it once with a QR code under
+  **Settings → Phone**. On the go it shows the live tracker, searches the drop tables and
+  checks prices. At home, in the same Wi-Fi, **Open my PC** shows your foundry, your goals
+  with the shopping list, and your relics, prime sets and parts with their prices. On an
+  iPhone, add it to the home screen when the app asks — that is what lets it receive
+  notifications.
+- **Notifications on your phone.** Fissures, a cycle about to change, a finished foundry
+  and whispers reach the phone too, even when the app is closed. Each phone picks which
+  of the four it wants. They travel end-to-end encrypted through the phone's own push
+  service: Apple and Google see that something arrived, never what.
+- **Settings → Phone** to pair a phone, send it a test, choose its notifications, remove
+  it, and switch phone access over Wi-Fi on or off. That access is off until you pair a
+  phone, answers only devices in your own network, and only reads. Your inventory still
+  never goes out to the internet — a phone you paired can read it at home, and that is all.
+
 ## [1.21.0] - 2026-10-01
 
 ### Added

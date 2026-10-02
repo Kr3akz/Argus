@@ -99,6 +99,11 @@ src/core/     logic, entirely independent of the interface
   transactions.js local trade ledger
   updates.js      release check, download, SHA256 verification
   themes.js       themes: presets, the tones derived from them, limits, share codes
+  webpush.js      notifications to a phone: VAPID and RFC 8291 encryption, node:crypto only
+  phone.js        pairing, paired devices, delivering a notification to every phone
+  phone-server.js the server a paired phone talks to at home (port 47120, own network only)
+  phone-views.js  what the phone gets of the big answers, trimmed for a small screen
+  qrcode.js       the pairing QR code (byte mode, all 40 versions)
 src/main/     Electron main process (main window + overlay window)
 src/renderer/ interface
   index.html    main window
@@ -108,7 +113,36 @@ src/renderer/ interface
   appearance.js Settings → Appearance: gallery, editor, colour picker, sharing
   assets/mod/   frame textures for the mod cards (game assets)
   assets/icons/ sidebar symbols, used as CSS masks (colour comes from the theme)
+src/mobile/   the phone app - one set of files for GitHub Pages and for the PC at home
+  app.js        start, tabs, data, pairing; 'web' under https, 'pc' when the PC serves it
+  lib/          source-web.js (public sources on the go), source-pc.js (the PC at home),
+                pairing.js, store.js, ui.js
+  views/        live, foundry & goals, inventory & prices, drops, more
+  sw.js         service worker: push, notification taps, offline start
+  shims/        node:fs, node:path, node:url for the src/core modules the app reuses
 ```
+
+### The phone app
+
+`src/mobile` runs in two places. **GitHub Pages** serves it under https — the only way a
+phone accepts push notifications and an app on its home screen — and there it reads the
+public sources itself. **Argus on the PC** serves the same files at home
+(`core/phone-server.js`), and then everything comes from the PC.
+
+On the go, the app reuses the live-tracker and drop-table logic from `src/core` instead of
+a second copy: an import map in `index.html` points `node:fs` and friends at the stand-ins
+in `src/mobile/shims`. `node src/cli/mobile-test.js` loads the modules exactly that way and
+fails when one of them needs something the stand-ins do not provide.
+
+```bash
+npm run mobile-dev
+```
+
+serves the app with sample data on `http://localhost:47199`, as the PC would at home — open
+it with your browser's phone view. `npm run mobile-build` builds what GitHub Pages
+publishes into `dist/pages`; `.github/workflows/pages.yml` does the same on every push to
+`main` that touches the app. **One-time setup:** Settings → Pages → Source: *GitHub
+Actions*.
 
 `src/core/` knows neither Electron nor the DOM — so the logic is usable without the
 interface (see `src/cli/`).
@@ -167,6 +201,19 @@ preset stays readable (text, the ink on the accent, status colours), the limits 
 every colour dark or light where it has to be, and share codes survive the round trip —
 while a tampered one is turned away. Run it after touching `themes.js` or the `--t-*`
 channels in `style.css`.
+
+```bash
+npm run webpush-test
+npm run qr-test
+npm run phone-test
+npm run mobile-test
+```
+
+The phone: the push encryption against the worked example in RFC 8291, byte for byte; the
+pairing QR code against the format and version fields of the standard; pairing, keys,
+lockout and path handling of the server at home; and the phone app itself — its modules
+loaded as a browser loads them, every page drawn from sample data, and pairing codes that
+point anywhere but a PC in your own network turned away. None of them needs the network.
 
 ```bash
 npm run check-farm

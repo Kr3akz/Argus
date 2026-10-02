@@ -95,6 +95,8 @@ Under **Settings** are the things that always apply:
   switches tabs and marks what it is talking about, and that is all it does — no setting
   is changed along the way. When an update adds stations, it comes back once with only
   those.
+- **Phone** — pair your phone for notifications on the go and your own data at home.
+  Everything about it is in [Argus on your phone](mobile.md).
 - **Notifications on/off**, sound, and Windows desktop toasts. **Off by default** — a
   freshly installed program has not earned the right to push toasts into a running game.
   The mission types underneath are preselected anyway, so switching it on gives you

@@ -1,0 +1,88 @@
+# Veroeffentlicht die Handy-App auf GitHub Pages:
+#   https://kr3akz.github.io/Argus/app/
+#
+# WARUM GITHUB PAGES:
+#   Push-Meldungen und "Zum Home-Bildschirm" gibt es auf dem Handy nur fuer
+#   Seiten unter https. Argus selbst kann im Heimnetz nur http anbieten (siehe
+#   core/phone-server.js) - also braucht die App einen https-Ursprung, und
+#   GitHub Pages ist einer ohne eigenen Server und ohne weiteres Konto: die
+#   Releases kommen ohnehin von hier. Die Seite ist statisch; Daten liegen dort
+#   keine, und was das Handy mit dem PC austauscht, geht nie ueber GitHub.
+#
+# EINMAL VORHER, VON HAND:
+#   Settings -> Pages -> Build and deployment -> Source: "GitHub Actions".
+#   Ohne das scheitert der Schritt "Pages einrichten" mit einem Hinweis.
+#
+# WANN ES LAEUFT:
+#   Bei jedem Push auf main, der die App oder die Module beruehrt, die sie
+#   mitbenutzt - und von Hand ueber den Actions-Reiter. Anders als bei
+#   release.yml ist hier keine Versionsnummer noetig: die App auf dem Handy
+#   soll den Stand von main haben, nicht den des letzten Releases. Der
+#   Service Worker holt sich eine neue Fassung von selbst (siehe sw.js).
+
+name: Handy-App
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/mobile/**'
+      - 'src/core/**'
+      - 'src/renderer/assets/icons/**'
+      - 'src/cli/mobile-test.js'
+      - 'src/cli/fixtures/**'
+      - 'tools/build-mobile.mjs'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Nie zwei Veroeffentlichungen gleichzeitig - die zweite wartet, statt die
+# erste mittendrin abzuloesen.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  bauen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Kein npm ci: weder die Tests noch der Bau brauchen ein Paket.
+      # Faellt einer der Tests, geht die alte App nicht verloren - es wird
+      # nur nichts Neues veroeffentlicht.
+      - name: Pruefen
+        run: |
+          node src/cli/mobile-test.js
+          node src/cli/webpush-test.js
+          node src/cli/qr-test.js
+          node src/cli/phone-test.js
+
+      - name: Bauen
+        run: node tools/build-mobile.mjs dist/pages
+
+      - name: Pages einrichten
+        uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/pages
+
+  veroeffentlichen:
+    needs: bauen
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}app/
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -50,6 +50,10 @@ directories:
 # eine Kopie der Lizenz bekommt - und da asar aus ist, liegt der Quelltext
 # ohnehin im Installationsordner. Eine Fassung des Quelltexts ohne die
 # zugehoerige Lizenz daneben waere genau der Fall, den die GPL ausschliesst.
+#
+# src/mobile ist die Handy-App. Argus liefert sie im Heimnetz selbst aus
+# (core/phone-server.js), sobald unter Settings -> Phone der Zugang ueber das
+# WLAN an ist - fehlte sie im Paket, saehe das Handy zuhause nur 404.
 files:
   - package.json
   - build-info.json
@@ -57,6 +61,7 @@ files:
   - src/main/**/*
   - src/core/**/*
   - src/renderer/**/*
+  - src/mobile/**/*
   - '!**/*.md'
 
 # asar ist bewusst AUS.

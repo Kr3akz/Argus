@@ -71,8 +71,10 @@ What you are agreeing to, in plain terms:
   never touches the game's network traffic.
 - **Your password is never involved**, and neither is your session. Argus does not sign
   in anywhere and does not ask Warframe's servers for anything on your behalf.
-- **Your inventory never leaves this PC.** The running game already holds it in memory;
-  Argus reads it there and stops. Nothing is uploaded, nothing is fetched.
+- **Your inventory never goes out to the internet.** The running game already holds it in
+  memory; Argus reads it there and stops. Nothing is uploaded, nothing is fetched. The one
+  exception you can choose: a phone you pair under **Settings → Phone** can read it over
+  your own Wi-Fi ([Argus on your phone](mobile.md)).
 - **What stays on your PC:** your account ID — needed for the *public* profile page,
   the same 24 characters you could copy off warframe.com yourself — and a copy of your
   inventory, so Argus need not look again.

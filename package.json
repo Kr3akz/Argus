@@ -50,7 +50,13 @@
     "tagfrist-test": "node src/cli/tagfrist-test.js",
     "preis-test": "node src/cli/preis-test.js",
     "theme-test": "node src/cli/theme-test.js",
-    "world-test": "node src/cli/world-test.js"
+    "world-test": "node src/cli/world-test.js",
+    "webpush-test": "node src/cli/webpush-test.js",
+    "qr-test": "node src/cli/qr-test.js",
+    "phone-test": "node src/cli/phone-test.js",
+    "mobile-test": "node src/cli/mobile-test.js",
+    "mobile-dev": "node src/cli/mobile-dev.js",
+    "mobile-build": "node tools/build-mobile.mjs"
   },
   "devDependencies": {
     "electron": "^33.0.0",

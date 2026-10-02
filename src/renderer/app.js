@@ -14390,6 +14390,10 @@ function showSettingsPane(key) {
   document.querySelectorAll('#set-nav .ws-navtab').forEach(t =>
     t.classList.toggle('active', t.dataset.setGo === key));
   document.querySelector('.main-content')?.scrollTo({ top: 0 });
+  /* Das Handy fragt nur nach, solange man hinschaut: steht ein Code offen,
+     laeuft die Nachfrage weiter, sobald man zurueckkommt (renderPhonePane). */
+  if (key === 'phone') loadPhonePane();
+  else stopPhonePolling();
 }
 window.showSettingsPane = showSettingsPane;
 
@@ -14401,7 +14405,7 @@ $('set-nav')?.addEventListener('click', e => {
 /* Die Quellen unter About. Geoeffnet wird im Browser - aber nur, was der
    Hauptprozess auf seiner Liste hat (EXTERNAL_ALLOWED). */
 $('tab-settings')?.addEventListener('click', e => {
-  const link = e.target.closest('a[data-ext]');
+  const link = e.target.closest('[data-ext]');
   if (!link) return;
   e.preventDefault();
   window.api.openExternal(link.dataset.ext).catch(() => {});
@@ -14443,6 +14447,220 @@ $('set-open-fissure-notif')?.addEventListener('click', () => {
   showTab('worldstate');
   showWsPane('fissures');
   openNotificationModal();
+});
+
+/* ---------------- Handy ----------------
+
+   Settings -> Phone. Drei Zustaende fuer das Koppeln: nichts offen (der Knopf),
+   ein Code steht da und wartet aufs Handy, das Handy ist da. Waehrend ein
+   Code steht, wird alle zwei Sekunden nachgesehen - der Hauptprozess merkt
+   das Koppeln an der ersten Anfrage des Handys, und mehr als ein Blick auf
+   die Geraeteliste ist dafuer nicht noetig. */
+let phoneInfo = null;
+let phonePairing = null;    // { url, svg, deviceId, expiresAt }
+let phonePollTimer = null;
+let phoneTestNote = null;   // { id, ok, text } - Ergebnis des letzten Tests
+
+const PHONE_TYPE_LABELS = [
+  ['fissure', 'Fissures'], ['cycle', 'Cycles'], ['foundry', 'Foundry'], ['whisper', 'Whispers']
+];
+
+async function loadPhonePane() {
+  try { phoneInfo = await window.api.getPhone(); } catch { phoneInfo = null; }
+  renderPhonePane();
+}
+
+function stopPhonePolling() {
+  clearInterval(phonePollTimer);
+  phonePollTimer = null;
+}
+
+function renderPhonePane() {
+  const box = $('phone-pair');
+  if (!box) return;
+  const info = phoneInfo || { devices: [], enabled: false, addresses: [] };
+  const geraet = phonePairing ? info.devices.find(d => d.id === phonePairing.deviceId) : null;
+
+  /* Der Code ist abgelaufen oder das Geraet wurde entfernt: zurueck zum Knopf. */
+  if (phonePairing && (!geraet || (!geraet.paired && !geraet.pending))) {
+    phonePairing = null;
+    stopPhonePolling();
+  }
+
+  if (!phonePairing) {
+    box.innerHTML = `
+      <div class="phone-cta">
+        <div>
+          <b>${info.devices.length ? 'Pair another phone' : 'Pair your phone'}</b>
+          <span>Scan a code with your phone's camera. On an iPhone, add Argus to the home
+                screen when asked — that is what lets it receive notifications.</span>
+        </div>
+        <button class="btn btn-primary" id="btn-phone-pair">${Icon.phone(15)} Pair a phone</button>
+      </div>`;
+  } else {
+    const gekoppelt = !!geraet?.paired;
+    const push = !!geraet?.push;
+    const rest = Math.max(0, Math.ceil(((phonePairing.expiresAt || 0) - Date.now()) / 60000));
+    box.innerHTML = `
+      <div class="phone-qr-wrap">
+        <div class="phone-qr">${phonePairing.svg}</div>
+        <div>
+          <ol class="phone-steps">
+            <li class="${gekoppelt ? 'done' : ''}"><b>Scan this code</b> with your phone's camera and open the link.</li>
+            <li class="${gekoppelt ? 'done' : ''}"><b>iPhone:</b> tap Share, then <b>Add to Home Screen</b>, and open
+                Argus from your home screen. <b>Android:</b> just carry on in Chrome.</li>
+            <li class="${push ? 'done' : ''}">In the app, tap <b>Turn on notifications</b> and allow them.</li>
+          </ol>
+          <div class="phone-wait ${push ? 'ok' : ''}">
+            <span class="dot"></span>
+            <span>${push ? `${esc(geraet.name)} is paired — a test notification is on its way.`
+                   : gekoppelt ? `${esc(geraet.name)} is paired. Waiting for notifications to be turned on …`
+                   : `Waiting for your phone … this code works for ${rest} more minute${rest === 1 ? '' : 's'}.`}</span>
+            <button class="btn-sm" id="btn-phone-pair-done">${push || gekoppelt ? 'Done' : 'Cancel'}</button>
+          </div>
+          <div class="phone-hint">If Windows asks whether Argus may communicate on private networks,
+            allow it — otherwise the phone cannot reach this PC. Your phone has to be in the same Wi-Fi.</div>
+        </div>
+      </div>`;
+  }
+
+  /* Geraete. Ein offener Code ohne Handy steht oben als QR-Code, nicht hier. */
+  const liste = $('phone-devices');
+  if (liste) {
+    liste.innerHTML = info.devices.filter(d => d.paired).map(d => {
+      const test = phoneTestNote?.id === d.id ? phoneTestNote : null;
+      const zustand = test
+        ? { cls: test.ok ? 'ok' : 'warn', text: test.text }
+        : d.pushError === 'expired'
+          ? { cls: 'warn', text: 'Notifications stopped — the app was removed or notifications were turned off. Pair it again.' }
+          : d.pushError
+            ? { cls: 'warn', text: `Last notification failed: ${d.pushError}` }
+            : d.push
+              ? { cls: '', text: `Notifications on · last seen ${relativeAge(d.lastSeenAt)}` }
+              : { cls: '', text: `Notifications not turned on yet · last seen ${relativeAge(d.lastSeenAt)}` };
+      const chips = PHONE_TYPE_LABELS.map(([k, label]) =>
+        `<button class="filter-chip${d.types?.[k] !== false ? ' active' : ''}" data-phone-type="${k}" data-phone-id="${esc(d.id)}"
+                 ${d.push ? '' : 'disabled'}>${esc(label)}</button>`).join('');
+      return `
+        <div class="phone-device">
+          <div class="phone-device-icon">${Icon.phone(17)}</div>
+          <div>
+            <div class="phone-device-name">${esc(d.name)}</div>
+            <div class="phone-device-meta ${zustand.cls}">${esc(zustand.text)}</div>
+            <div class="phone-device-types">${chips}</div>
+          </div>
+          <div class="phone-device-actions">
+            <button class="btn-sm" data-phone-test="${esc(d.id)}" ${d.push ? '' : 'disabled'}>Test</button>
+            <button class="btn-sm danger" data-phone-remove="${esc(d.id)}" title="Unpair: this phone can no longer read from Argus or get notifications">Remove</button>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  if ($('set-phone-enabled')) $('set-phone-enabled').checked = !!info.enabled;
+
+  /* Die Adresswahl nur, wenn es wirklich etwas zu waehlen gibt. */
+  const row = $('phone-address-row');
+  const sel = $('set-phone-address');
+  if (row && sel) {
+    const adressen = info.addresses || [];
+    row.classList.toggle('hidden', adressen.length < 2);
+    const aktuell = (info.baseUrl || '').replace(/^http:\/\//, '').replace(/:\d+$/, '');
+    sel.innerHTML = adressen.map(a =>
+      `<option value="${esc(a.address)}"${a.address === aktuell ? ' selected' : ''}>${esc(a.address)} (${esc(a.iface)})</option>`).join('');
+  }
+
+  const status = $('phone-status');
+  const statusRow = $('phone-status-row');
+  if (status && statusRow) {
+    statusRow.classList.toggle('warn', !!info.error);
+    status.textContent = info.error
+      ? info.error
+      : info.running
+        ? `Phone access is on at ${info.baseUrl || 'this PC'} — reachable from your own network only.`
+        : 'Phone access over Wi-Fi is off. Notifications to paired phones still work.';
+  }
+
+  /* Nachgesehen wird nur, solange noch etwas aussteht - das Handy hat sich
+     nicht gemeldet oder Push fehlt noch - und der Bereich zu sehen ist. Wer
+     den Reiter wechselt, haelt die Nachfrage an; loadSettingsTab und
+     showSettingsPane nehmen sie beim Zurueckkommen wieder auf. Dass Push
+     da ist, meldet der Hauptprozess ohnehin selbst (phone:changed). */
+  const wartet = !!phonePairing && !geraet?.push && box.offsetParent !== null;
+  if (wartet && !phonePollTimer) phonePollTimer = setInterval(loadPhonePane, 2000);
+  else if (!wartet) stopPhonePolling();
+}
+
+$('phone-pair')?.addEventListener('click', async e => {
+  if (e.target.closest('#btn-phone-pair')) {
+    const btn = e.target.closest('#btn-phone-pair');
+    btn.disabled = true;
+    const res = await window.api.pairPhone().catch(err => ({ ok: false, error: err.message }));
+    if (res.state) phoneInfo = res.state;
+    if (!res.ok) {
+      btn.disabled = false;
+      renderPhonePane();
+      $('phone-status').textContent = res.error || 'Pairing could not start.';
+      $('phone-status-row')?.classList.add('warn');
+      return;
+    }
+    phonePairing = { url: res.url, svg: res.svg, deviceId: res.device.id, expiresAt: res.device.expiresAt };
+    renderPhonePane();
+    return;
+  }
+  if (e.target.closest('#btn-phone-pair-done')) {
+    const geraet = phoneInfo?.devices.find(d => d.id === phonePairing?.deviceId);
+    /* Abbrechen ohne Handy: den offenen Code gleich entwerten, statt ihn
+       noch eine Viertelstunde gueltig herumliegen zu lassen. */
+    if (geraet && !geraet.paired) phoneInfo = await window.api.removePhone(geraet.id).catch(() => phoneInfo);
+    phonePairing = null;
+    renderPhonePane();
+  }
+});
+
+$('phone-devices')?.addEventListener('click', async e => {
+  const typ = e.target.closest('[data-phone-type]');
+  if (typ && !typ.disabled) {
+    const id = typ.dataset.phoneId;
+    const d = phoneInfo?.devices.find(x => x.id === id);
+    if (!d) return;
+    const k = typ.dataset.phoneType;
+    phoneInfo = await window.api.setPhoneTypes(id, { [k]: d.types?.[k] === false }).catch(() => phoneInfo);
+    renderPhonePane();
+    return;
+  }
+  const test = e.target.closest('[data-phone-test]');
+  if (test) {
+    test.disabled = true;
+    const id = test.dataset.phoneTest;
+    const res = await window.api.testPhone(id).catch(err => ({ ok: false, error: err.message }));
+    if (res.state) phoneInfo = res.state;
+    phoneTestNote = { id, ok: res.ok, text: res.ok ? 'Test sent — it should show up on the phone in a few seconds.' : `Test failed: ${res.error || 'unknown error'}` };
+    renderPhonePane();
+    setTimeout(() => { if (phoneTestNote?.id === id) { phoneTestNote = null; renderPhonePane(); } }, 8000);
+    return;
+  }
+  const weg = e.target.closest('[data-phone-remove]');
+  if (weg) {
+    phoneInfo = await window.api.removePhone(weg.dataset.phoneRemove).catch(() => phoneInfo);
+    renderPhonePane();
+  }
+});
+
+$('set-phone-enabled')?.addEventListener('change', async e => {
+  phoneInfo = await window.api.setPhoneEnabled(e.target.checked).catch(() => phoneInfo);
+  renderPhonePane();
+});
+
+$('set-phone-address')?.addEventListener('change', async e => {
+  phoneInfo = await window.api.setPhoneAddress(e.target.value).catch(() => phoneInfo);
+  renderPhonePane();
+});
+
+/* Ein neues Push-Abo oder ein verlorenes kommt vom Hauptprozess - dann die
+   Liste neu, auch wenn gerade kein Code offen ist. */
+window.api.onPhoneChanged?.(() => {
+  if (document.querySelector('.set-pane.active')?.dataset.setPane === 'phone') loadPhonePane();
 });
 
 /* Die Tour von vorn. Sie schaltet sich den Reiter selbst um, hier steht
@@ -14517,6 +14735,7 @@ async function loadSettingsTab() {
   renderHotkeys();
   renderNotifToggles();
   refreshScanLogLine();
+  if (document.querySelector('.set-pane.active')?.dataset.setPane === 'phone') loadPhonePane();
   if (typeof Appearance !== 'undefined') Appearance.load();
   /* Nur, wenn der Abruf beim Start nicht durchkam - Version und Unterbau
      aendern sich waehrend einer Sitzung nicht. */

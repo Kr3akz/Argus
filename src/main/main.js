@@ -104,6 +104,13 @@ import {
 } from '../core/overframe.js';
 import * as updates from '../core/updates.js';
 import { setDataDir, setResourceDir, dataFile } from '../core/paths.js';
+/* Das Handy: Kopplung und Push (phone.js), der Server im Heimnetz
+   (phone-server.js), was er ausliefert (phone-views.js) und der QR-Code
+   zum Koppeln. */
+import * as phone from '../core/phone.js';
+import { startPhoneServer } from '../core/phone-server.js';
+import { slimDashboard, slimFoundry, slimInventory, slimDrops, dropOptions } from '../core/phone-views.js';
+import { encodeQR, qrToSvg } from '../core/qrcode.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1758,6 +1765,27 @@ async function importOverframeBuild(input) {
 /* ---------------------------- IPC ---------------------------- */
 
 /**
+ * Kanaele, die auch das Handy lesen darf.
+ *
+ * Der Server im Heimnetz (core/phone-server.js) ruft dieselben Funktionen auf
+ * wie das Fenster - aber NUR die, die hier mit phoneReadable() angemeldet
+ * sind, und nur lesend. Die Markierung steht bewusst an jedem einzelnen
+ * Kanal und nicht in einer Liste weiter unten: wer einen davon spaeter um
+ * etwas erweitert, sieht an Ort und Stelle, dass die Antwort auch ueber das
+ * WLAN geht. Was dort nichts zu suchen hat - die Account-ID, das Sitzungs-
+ * token von warframe.market, alles, was etwas aendert -, haengt an keinem
+ * dieser Kanaele.
+ *
+ * Wie zurechtgeschnitten wird, steht in core/phone-views.js; welche Fragen
+ * das Handy stellen kann, im Abschnitt "Handy" weiter unten (phoneApi).
+ */
+const phoneHandlers = new Map();
+function phoneReadable(channel, fn) {
+  phoneHandlers.set(channel, fn);
+  return fn;
+}
+
+/**
  * Ersteinrichtung.
  *
  * WARUM ES DAS BRAUCHT:
@@ -1978,7 +2006,9 @@ const EXTERNAL_ALLOWED = [
   'https://tenno.tools',
   'https://browse.wf',
   'https://wiki.warframe.com',
-  'https://overframe.gg'
+  'https://overframe.gg',
+  /* Einstellungen -> Phone: wie das Koppeln geht, Schritt fuer Schritt. */
+  'https://github.com/Kr3akz/Argus/blob/main/docs/mobile.md'
 ];
 /* Die Release-Seiten sind die eine Ausnahme von der festen Liste: ihre
    Adresse traegt die Versionsnummer und steht deshalb nicht vorher fest. Das
@@ -1997,14 +2027,14 @@ ipcMain.handle('shell:open', async (_e, url) => {
   return { ok: true };
 });
 
-ipcMain.handle('dashboard:get', async () => {
+ipcMain.handle('dashboard:get', phoneReadable('dashboard:get', async () => {
   try {
     const meta = await ensureData({ refresh: false });
     return { ok: true, data: await buildDashboard(meta) };
   } catch (err) {
     return { ok: false, error: err.message };
   }
-});
+}));
 
 ipcMain.handle('profile:refresh', async () => {
   try {
@@ -2189,7 +2219,7 @@ ipcMain.handle('worldstate:get', async (_e, force) => {
  * Es wird NIE ein Inventar-Scan angestossen: loadInventory ohne refresh
  * liest nur die Datei, die ohnehin daliegt.
  */
-ipcMain.handle('world:view', async (_e, force) => {
+ipcMain.handle('world:view', phoneReadable('world:view', async (_e, force) => {
   try {
     /* Die Uhren JEDES MAL frisch: der Weltzustand kommt bis zu 30 Sekunden
        aus dem Zwischenspeicher, und der Reiter fragt genau dann nach, wenn
@@ -2240,7 +2270,7 @@ ipcMain.handle('world:view', async (_e, force) => {
   } catch (err) {
     return { ok: false, error: err.message };
   }
-});
+}));
 
 /* Wochenrotation. Kein eigener Netzabruf: sie faellt beim Weltzustand mit
    ab (siehe core/weekly.js), teilt sich also dessen Zwischenspeicher und
@@ -2485,7 +2515,7 @@ function dropChangesSummary(ch) {
   };
 }
 
-ipcMain.handle('drops:search', async (_e, opts = {}) => {
+ipcMain.handle('drops:search', phoneReadable('drops:search', async (_e, opts = {}) => {
   try {
     const { idx } = await currentDropTables({ check: true });
     const rows = await loadDropRows(idx);
@@ -2503,7 +2533,7 @@ ipcMain.handle('drops:search', async (_e, opts = {}) => {
   } catch (err) {
     return { error: err.message, rows: [], total: 0 };
   }
-});
+}));
 
 /* Von Hand nachsehen - der Knopf im Reiter. Laedt nur, wenn der Hash sich
    geaendert hat; sonst meldet er "schon aktuell". */
@@ -2868,7 +2898,7 @@ ipcMain.handle('relics:clearTracked', async () => {
   return [];
 });
 
-ipcMain.handle('ducats:get', async () => {
+ipcMain.handle('ducats:get', phoneReadable('ducats:get', async () => {
   if (!cache.catalog) await ensureData({ refresh: false });
   const market = await loadMarketItems().catch(() => null);
   const invRes = await loadInventory({ refresh: false }).catch(() => null);
@@ -2955,7 +2985,7 @@ ipcMain.handle('ducats:get', async () => {
     pricesFetchedAt: Object.values(priceCache)[0]?.fetchedAt || null,
     hasPrices: Object.keys(priceCache).length > 0
   };
-});
+}));
 
 /**
  * Baros Einkaufszettel.
@@ -3372,7 +3402,7 @@ ipcMain.handle('trade:itemBySlug', async (_e, slug) => {
   return it ? marketItemForOrder(it) : null;
 });
 
-ipcMain.handle('trade:searchItems', async (_e, query = '') => {
+ipcMain.handle('trade:searchItems', phoneReadable('trade:searchItems', async (_e, query = '') => {
   const q = String(query || '').toLowerCase().trim();
   if (q.length < 2) return [];
   const idx = await loadMarketItems().catch(() => null);
@@ -3395,7 +3425,7 @@ ipcMain.handle('trade:searchItems', async (_e, query = '') => {
   }
   hits.sort((a, b) => a.rank - b.rank || a.name.length - b.name.length || a.name.localeCompare(b.name, 'en'));
   return hits.slice(0, 40);
-});
+}));
 
 /* ----------------------------- Contracts ----------------------------- */
 
@@ -3813,7 +3843,7 @@ async function inventoryPayload({ refresh, trigger = 'manual' }) {
  * `refresh: false` - es wird ausschliesslich gelesen, was schon dasteht.
  * Kein Netz, kein Speicherzugriff, keine Nachfrage nach der Berechtigung.
  */
-ipcMain.handle('foundry:get', async () => {
+ipcMain.handle('foundry:get', phoneReadable('foundry:get', async () => {
   try {
     if (!cache.catalog) await ensureData({ refresh: false });
     const { inventory, fetchedAt } = await loadInventory({ refresh: false });
@@ -3837,7 +3867,7 @@ ipcMain.handle('foundry:get', async () => {
     /* "Noch nie abgerufen" ist auch hier ein Zustand, kein Fehler. */
     return { ok: false, code: err.code || 'empty', error: err.message };
   }
-});
+}));
 
 /**
  * Die Rivens fuer ihren eigenen Reiter.
@@ -4993,14 +5023,14 @@ ipcMain.handle('foundry:chains', async () => {
   }
 });
 
-ipcMain.handle('inventory:get', async () => {
+ipcMain.handle('inventory:get', phoneReadable('inventory:get', async () => {
   try {
     return await inventoryPayload({ refresh: false });
   } catch (err) {
     /* "Noch nie abgerufen" ist kein Fehler, sondern ein Zustand. */
     return { ok: false, code: err.code || 'empty', error: err.message };
   }
-});
+}));
 
 ipcMain.handle('inventory:refresh', async () => {
   try {
@@ -8481,6 +8511,73 @@ ipcMain.handle('settings:hotkeys', async (_e, patch) => {
 ipcMain.handle('window:minimize', () => win && win.minimize());
 ipcMain.handle('window:close',    () => win && win.close());
 
+/* -------------------- Eine Meldung, drei Wege -------------------- */
+
+/* Wohin ein Klick auf die Meldung fuehrt - im Fenster am PC (tab) und in der
+   Handy-App (nav). Handel gibt es auf dem Handy nicht; ein Fluestern oeffnet
+   dort einfach die App. */
+const MELDUNG_ZIEL = {
+  fissure: { tab: ['worldstate', 'fissures'], nav: 'live/fissures' },
+  cycle:   { tab: ['worldstate', 'overview'], nav: 'live/worlds' },
+  foundry: { tab: ['mastery', 'foundry'],     nav: 'foundry' },
+  whisper: { tab: ['trading'],                nav: null },
+  test:    { tab: ['worldstate', 'fissures'], nav: null }
+};
+
+/**
+ * Eine Meldung - als Windows-Benachrichtigung, als Hinweis im Fenster und
+ * auf dem gekoppelten Handy.
+ *
+ * Vorher baute jede Quelle (Risse, Zyklen, Foundry, Fluestern, Testknopf)
+ * ihren Toast selbst, fuenfmal fast dasselbe. Mit dem Handy kam ein dritter
+ * Weg dazu, und der haette sonst an fuenf Stellen nachgetragen werden
+ * muessen - und an einer vergessen.
+ *
+ * Die Schalter bleiben, was sie waren: desktopToast und sound gelten fuer
+ * Windows. Ob eine Art aufs Handy geht, entscheidet jedes Geraet selbst
+ * (phone.js, types) - wer am PC die Toasts abschaltet, weil er auf einem
+ * einzigen Bildschirm spielt, will die Meldung oft gerade dann auf dem Handy.
+ *
+ * @param ev   { type, title, body, icon?, extra?, ttl?, topic? } - extra geht
+ *             nur ans Fenster, ttl/topic nur ans Handy (siehe phone.deliver)
+ * @param opts.settings  die Melde-Einstellungen, wenn der Aufrufer sie schon hat
+ * @param opts.desktop   'auto' nach desktopToast, 'always' fuer den Testknopf -
+ *                       dann kommt ein Fehler auch beim Aufrufer an
+ * @param opts.phone     false: nicht ans Handy
+ */
+async function notify(ev, { settings = null, desktop = 'auto', phone: zumHandy = true } = {}) {
+  const st = settings || (await store.load().catch(() => null))?.notifications || {};
+  const ziel = MELDUNG_ZIEL[ev.type] || MELDUNG_ZIEL.test;
+
+  if ((desktop === 'always' || st.desktopToast !== false) && Notification.isSupported()) {
+    try {
+      const n = new Notification({
+        title: ev.title,
+        body: ev.body,
+        silent: !st.sound,
+        ...(ev.icon ? { icon: ev.icon } : {})
+      });
+      n.on('click', () => {
+        if (!win) return;
+        if (win.isMinimized()) win.restore();
+        win.show();
+        win.focus();
+        win.webContents.send('navigate:tab', ...ziel.tab);
+      });
+      n.show();
+    } catch (err) {
+      console.error(`[Meldung] ${ev.type}: Windows-Benachrichtigung fehlgeschlagen:`, err.message);
+      if (desktop === 'always') throw err;
+    }
+  }
+
+  if (win && win.webContents) {
+    win.webContents.send('notification:event', { type: ev.type, title: ev.title, body: ev.body, ...(ev.extra || {}) });
+  }
+
+  if (zumHandy) pushToPhones({ type: ev.type, title: ev.title, body: ev.body, nav: ziel.nav, ttl: ev.ttl, topic: ev.topic });
+}
+
 /* -------------------- Schmiede: Wecker fuer fertige Baue -------------------- */
 
 /**
@@ -8534,32 +8631,9 @@ async function notifyFoundryDone(w) {
     ? `${w.title} can be subsumed now.`
     : `${w.title} has finished building.`;
 
-  try {
-    const st = await store.load();
-    /* Dieselbe Schalterreihe wie bei den Rissen: wer Toasts abgestellt hat,
-       will auch hier keine. */
-    if (st.notifications?.desktopToast !== false && Notification.isSupported()) {
-      const n = new Notification({
-        title,
-        body,
-        silent: !st.notifications?.sound
-      });
-      n.on('click', () => {
-        if (!win) return;
-        if (win.isMinimized()) win.restore();
-        win.show();
-        win.focus();
-        win.webContents.send('navigate:tab', 'mastery', 'foundry');
-      });
-      n.show();
-    }
-  } catch (err) {
-    console.error('[Schmiede] Benachrichtigung fehlgeschlagen:', err.message);
-  }
-
-  if (win && win.webContents) {
-    win.webContents.send('notification:event', { type: 'foundry', title, body });
-  }
+  /* Dieselbe Schalterreihe wie bei den Rissen: wer Toasts abgestellt hat,
+     will auch hier keine - siehe notify(). */
+  await notify({ type: 'foundry', title, body });
 }
 
 /* -------------------- Fluesternachrichten -------------------- */
@@ -8608,21 +8682,7 @@ async function notifyWhisper(from) {
   const title = `${from} · ${time}`;
   const body = msg ? msg.text.slice(0, 200) : 'Sent you a message in game.';
 
-  if (st.notifications?.desktopToast !== false && Notification.isSupported()) {
-    const n = new Notification({ title, body, silent: !st.notifications?.sound });
-    n.on('click', () => {
-      if (!win) return;
-      if (win.isMinimized()) win.restore();
-      win.show();
-      win.focus();
-      win.webContents.send('navigate:tab', 'trading');
-    });
-    n.show();
-  }
-
-  if (win && win.webContents) {
-    win.webContents.send('notification:event', { type: 'whisper', title, body });
-  }
+  await notify({ type: 'whisper', title, body }, { settings: st.notifications });
 }
 
 /* -------------------- Void-Riss Benachrichtigungen -------------------- */
@@ -8636,38 +8696,9 @@ async function triggerFissureNotification(fissure, settings) {
   const title = `Void fissure active: ${fissure.tier} · ${fissure.missionType}`;
   const body = `${fissure.node} (${fissure.enemy || 'Corrupted'})${fissure.isHard ? ' · [Steel Path]' : ''}\nTime left: ${fissure.eta || 'live now'}`;
 
-  // Native Windows Notification Toast
-  if (settings.desktopToast !== false && Notification.isSupported()) {
-    try {
-      const n = new Notification({
-        title,
-        body,
-        icon: iconPath,
-        silent: !settings.sound
-      });
-      n.on('click', () => {
-        if (win) {
-          if (win.isMinimized()) win.restore();
-          win.show();
-          win.focus();
-          win.webContents.send('navigate:tab', 'worldstate', 'fissures');
-        }
-      });
-      n.show();
-    } catch (err) {
-      console.error('Fehler beim Anzeigen der Benachrichtigung:', err);
-    }
-  }
-
-  // IPC Event an Renderer senden (für In-App Toast & Badge)
-  if (win && win.webContents) {
-    win.webContents.send('notification:event', {
-      type: 'fissure',
-      title,
-      body,
-      fissure
-    });
-  }
+  /* Der Riss reist im Ereignis fuers Fenster mit (In-App-Hinweis und
+     Abzeichen), nicht in der Meldung ans Handy. */
+  await notify({ type: 'fissure', title, body, icon: iconPath, extra: { fissure } }, { settings });
 }
 
 async function pollFissureTracker() {
@@ -8727,24 +8758,14 @@ function triggerCycleNotification(cycle, restMs, settings) {
   const title = `${cycle.name}: ${cycle.next} in ${min} min`;
   const body = `${cycle.label} ends at ${um}.`;
 
-  if (settings.desktopToast !== false && Notification.isSupported()) {
-    try {
-      const n = new Notification({ title, body, silent: !settings.sound });
-      n.on('click', () => {
-        if (!win) return;
-        if (win.isMinimized()) win.restore();
-        win.show();
-        win.focus();
-        win.webContents.send('navigate:tab', 'worldstate', 'overview');
-      });
-      n.show();
-    } catch (err) {
-      console.error('[Zyklen] Benachrichtigung fehlgeschlagen:', err.message);
-    }
-  }
-  if (win && win.webContents) {
-    win.webContents.send('notification:event', { type: 'cycle', title, body });
-  }
+  /* Aufs Handy mit der Restzeit als Frist: kommt die Meldung erst nach dem
+     Wechsel an (Handy war aus), ist sie nichts mehr wert. Das Thema je Uhr
+     ersetzt eine noch wartende aeltere Meldung derselben Uhr. */
+  notify({
+    type: 'cycle', title, body,
+    ttl: Math.max(60, Math.round(restMs / 1000)),
+    topic: `cycle-${cycle.key}`
+  }, { settings }).catch(err => console.error('[Zyklen] Benachrichtigung fehlgeschlagen:', err.message));
 }
 
 async function pollCycleAlerts() {
@@ -8802,38 +8823,223 @@ ipcMain.handle('notifications:test', async () => {
   const title = `[Test] Void fissure active: Axi · Void Cascade`;
   const body = `Teshub (Zariman) · [Steel Path]\nTime left: 54m (test notification)`;
 
-  if (Notification.isSupported()) {
-    try {
-      const n = new Notification({
-        title,
-        body,
-        icon: iconPath,
-        silent: !settings.sound
-      });
-      n.on('click', () => {
-        if (win) {
-          if (win.isMinimized()) win.restore();
-          win.show();
-          win.focus();
-          win.webContents.send('navigate:tab', 'worldstate', 'fissures');
-        }
-      });
-      n.show();
-    } catch (err) {
-      return { ok: false, error: err.message };
-    }
+  /* Der Testknopf zeigt den Windows-Toast IMMER - auch wenn er abgeschaltet
+     ist, denn genau das will man hier sehen. Ans Handy geht er nicht: dafuer
+     hat jedes Geraet seinen eigenen Knopf unter Settings -> Phone. */
+  try {
+    await notify({ type: 'test', title, body, icon: iconPath, extra: { fissure: testFissure } },
+                 { settings, desktop: 'always', phone: false });
+  } catch (err) {
+    return { ok: false, error: err.message };
   }
-
-  if (win && win.webContents) {
-    win.webContents.send('notification:event', {
-      type: 'test',
-      title,
-      body,
-      fissure: testFissure
-    });
-  }
-
   return { ok: true };
+});
+
+/* ------------------------------ Handy ------------------------------ */
+
+/**
+ * Der Server im Heimnetz laeuft nur, solange "Phone access over Wi-Fi" an
+ * ist (siehe phone.js, enabled). Push-Meldungen haengen nicht an ihm - die
+ * gehen ueber den Push-Dienst hinaus -, wohl aber das Koppeln und alles, was
+ * die Handy-App zuhause vom PC liest.
+ */
+let phoneServer = null;
+let phoneServerError = null;
+
+/* Welche Fragen das Handy stellen kann - jede eine der freigegebenen
+   Funktionen (phoneReadable), zurechtgeschnitten fuer den kleinen
+   Bildschirm (core/phone-views.js). Mehr gibt es nicht. */
+function callPhoneReadable(channel, ...args) {
+  const fn = phoneHandlers.get(channel);
+  if (!fn) throw new Error(`${channel} is not readable from the phone`);
+  return fn(null, ...args);
+}
+
+const phoneApi = {
+  hello: async device => ({
+    pc: { name: os.hostname(), version: app.getVersion() },
+    device: phone.publicDevice(device),
+    appUrl: phone.MOBILE_APP_URL
+  }),
+  world: async () => {
+    const res = await callPhoneReadable('world:view', false);
+    if (!res?.ok) throw new Error(res?.error || 'The world state is not reachable right now');
+    return res.data;
+  },
+  dashboard: async () => {
+    const res = await callPhoneReadable('dashboard:get');
+    if (!res?.ok) throw new Error(res?.error || 'Argus is not set up on this PC yet');
+    return slimDashboard(res.data);
+  },
+  foundry: async () => slimFoundry(await callPhoneReadable('foundry:get')),
+  inventory: async () => slimInventory(
+    await callPhoneReadable('inventory:get'),
+    await callPhoneReadable('ducats:get').catch(() => null)),
+  drops: async (_d, params) => slimDrops(await callPhoneReadable('drops:search', dropOptions(params))),
+  marketSearch: async (_d, params) => {
+    const hits = await callPhoneReadable('trade:searchItems', String(params.q || '').slice(0, 60));
+    return (hits || []).slice(0, 20).map(i => ({
+      slug: i.slug, name: i.name, image: i.image, subIcon: i.subIcon, maxRank: i.maxRank, ducats: i.ducats
+    }));
+  },
+  /* Der Preis geht durch dieselbe gedrosselte Leitung zu warframe.market wie
+     am PC (wfm-http.js) - das Handy kann sie nicht schneller machen. */
+  price: async (_d, params) => {
+    const slug = String(params.slug || '');
+    if (!/^[a-z0-9_]{1,100}$/.test(slug)) throw new Error('Unknown item');
+    const rank = params.rank === undefined || params.rank === '' ? null
+      : Math.max(0, Math.min(30, Math.round(Number(params.rank)) || 0));
+    return getPrice(slug, { rank });
+  }
+};
+
+/* Kein await auf den Push-Dienst: eine Meldung am PC wartet nicht auf
+   Apple oder Google. Was schiefgeht, steht im Protokoll und am Geraet. */
+function pushToPhones(ev) {
+  (async () => {
+    const res = await phone.deliver(ev, { baseUrl: await phoneBaseUrl() });
+    if (!res.results.length) return;
+    console.log(`[Handy] ${ev.type}: ${res.sent} zugestellt, ${res.failed} gescheitert`);
+    if (res.failed) sendToMain('phone:changed');
+  })().catch(err => console.error('[Handy] Zustellung fehlgeschlagen:', err.message));
+}
+
+/* Die Adresse im Heimnetz reist nur mit, solange der Server laeuft - sonst
+   zeigte der Knopf "Mein PC" auf dem Handy auf eine Tuer, die zu ist. */
+async function phoneBaseUrl() {
+  return phoneServer ? phone.currentBaseUrl() : null;
+}
+
+/* Nacheinander, nie zugleich: zwei Aufrufe, die beide noch keinen Server
+   sehen (Start der App und ein schneller Klick auf Pair), starteten sonst
+   zwei - und der zweite scheiterte am belegten Port und vergaesse dabei den
+   ersten, der weiterliefe. */
+let phoneServerQueue = Promise.resolve();
+function applyPhoneServer() {
+  const run = phoneServerQueue.then(applyPhoneServerNow, applyPhoneServerNow);
+  phoneServerQueue = run.catch(() => {});
+  return run;
+}
+
+function stopPhoneServer() {
+  const s = phoneServer;
+  phoneServer = null;
+  if (!s) return Promise.resolve();
+  return new Promise(resolve => {
+    s.close(() => resolve());
+    s.closeAllConnections?.();
+  });
+}
+
+async function applyPhoneServerNow() {
+  const st = await phone.loadPhone();
+  if (st.enabled && !phoneServer) {
+    try {
+      phoneServer = await startPhoneServer({
+        port: st.port,
+        api: phoneApi,
+        /* Gleich nach dem Koppeln eine Probemeldung - so weiss man am Handy
+           sofort, ob es klappt, statt auf den naechsten Riss zu warten. */
+        onPush: async device => {
+          await phone.deliver({
+            type: 'test',
+            title: 'Argus is connected',
+            body: `Notifications from ${os.hostname()} will show up here.`
+          }, { only: device.id, baseUrl: await phoneBaseUrl() });
+          sendToMain('phone:changed');
+        },
+        log: msg => console.log('[Handy]', msg)
+      });
+      phoneServerError = null;
+      console.log(`[Handy] Zugang im WLAN an, Port ${st.port}`);
+    } catch (err) {
+      phoneServer = null;
+      phoneServerError = err.code === 'EADDRINUSE'
+        ? `Port ${st.port} is already in use by another program.`
+        : err.message;
+      console.error('[Handy] Server nicht gestartet:', err.message);
+    }
+  } else if (!st.enabled && phoneServer) {
+    await stopPhoneServer();
+    console.log('[Handy] Zugang im WLAN aus');
+  }
+}
+
+async function phoneState() {
+  const d = await phone.describePhone();
+  const kandidaten = phone.lanAddresses();
+  return {
+    ...d,
+    running: !!phoneServer,
+    error: phoneServerError,
+    addresses: kandidaten.map(k => ({ address: k.address, iface: k.iface })),
+    baseUrl: await phone.currentBaseUrl()
+  };
+}
+
+ipcMain.handle('phone:get', async () => phoneState());
+
+ipcMain.handle('phone:setEnabled', async (_e, on) => {
+  await phone.setEnabled(on === true);
+  await applyPhoneServer();
+  return phoneState();
+});
+
+ipcMain.handle('phone:setAddress', async (_e, address) => {
+  await phone.setAddress(address);
+  return phoneState();
+});
+
+/**
+ * Ein Handy koppeln: Code erzeugen und als QR-Code zurueckgeben.
+ *
+ * Schaltet den Zugang im WLAN mit ein - ueber ihn kommt das Push-Abo vom
+ * Handy zurueck. Wer nur Meldungen will, kann ihn danach wieder abschalten;
+ * die Meldungen kommen weiter an.
+ */
+ipcMain.handle('phone:pair', async () => {
+  if (!(await phone.loadPhone()).enabled) await phone.setEnabled(true);
+  await applyPhoneServer();
+  if (!phoneServer) {
+    return { ok: false, error: phoneServerError || 'Phone access could not be started.', state: await phoneState() };
+  }
+  const baseUrl = await phone.currentBaseUrl();
+  if (!baseUrl) {
+    return { ok: false, error: 'This PC has no address in a home network. Is it connected to your Wi-Fi or router?', state: await phoneState() };
+  }
+  const p = await phone.createPairing({ pcName: os.hostname(), baseUrl });
+  return {
+    ok: true,
+    url: p.url,
+    device: p.device,
+    svg: qrToSvg(encodeQR(p.url, { ecc: 'M' })),
+    state: await phoneState()
+  };
+});
+
+ipcMain.handle('phone:remove', async (_e, id) => {
+  await phone.removeDevice(String(id || ''));
+  return phoneState();
+});
+
+ipcMain.handle('phone:setTypes', async (_e, id, types) => {
+  const clean = {};
+  for (const k of phone.PHONE_TYPES) if (typeof types?.[k] === 'boolean') clean[k] = types[k];
+  await phone.setTypes(String(id || ''), clean);
+  return phoneState();
+});
+
+ipcMain.handle('phone:test', async (_e, id) => {
+  const res = await phone.deliver({
+    type: 'test',
+    title: 'Argus test',
+    body: 'If you can read this, notifications reach your phone.'
+  }, { only: String(id || ''), baseUrl: await phoneBaseUrl() });
+  return {
+    ok: res.sent > 0,
+    error: res.results[0]?.error || (res.results.length ? null : 'This phone has not set up notifications yet.'),
+    state: await phoneState()
+  };
 });
 
 /* --------------------------- Updates --------------------------- */
@@ -9208,6 +9414,10 @@ app.whenReady().then(async () => {
      Start und nur im gepackten Build, siehe startUpdatePolling(). */
   startUpdatePolling();
 
+  /* Der Zugang fuers Handy im Heimnetz - nur, wenn er eingeschaltet ist
+     (Settings -> Phone). Push-Meldungen brauchen ihn nicht. */
+  applyPhoneServer().catch(err => console.error('[Handy] Start fehlgeschlagen:', err.message));
+
   app.on('activate', () => { if (!BrowserWindow.getAllWindows().length) createWindow(); });
 });
 
@@ -9224,6 +9434,8 @@ app.on('will-quit', () => {
   /* Der Erkennungsprozess haengt an dieser App und an nichts sonst. Bliebe er
      stehen, waere er ein PowerShell-Fenster ohne Fenster im Taskmanager. */
   stopOcrWorker();
+  /* Der Port gehoert Argus nur, solange Argus laeuft. */
+  stopPhoneServer();
   globalShortcut.unregisterAll();
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

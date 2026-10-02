@@ -36,6 +36,10 @@
   downloads nothing until you say so. Switchable under **Settings → About**, see
   [Updates](install.md#updates). The public game data Argus keeps current by itself —
   world state, drop tables, prices — is listed under [Endpoints](#endpoints).
+- **Your phone, only if you pair one:** notifications through the phone's own push
+  service, end-to-end encrypted, and a small server inside your own network that lets the
+  phone read your foundry, goals, inventory and prices. Both are off until you pair a
+  phone under **Settings → Phone** — see [Your phone](#your-phone).
 
 ## What the memory read actually does
 
@@ -94,9 +98,63 @@ instead* during setup never turns it on in the first place.
 | `overframe.gg` | build import, button press only |
 | `api.github.com/repos/Kr3akz/Argus/releases/latest` | update check, hourly, switchable |
 | `github.com/Kr3akz/Argus/releases/download/…` | the update itself, button press only |
+| `web.push.apple.com`, `fcm.googleapis.com`, `updates.push.services.mozilla.com` | notifications to a phone you paired — only then, end-to-end encrypted (see [Your phone](#your-phone)) |
 
-Your inventory is **not** in this table any more, and that is the point: it never leaves
-your machine, so there is no endpoint to name.
+Your inventory is **not** in this table any more, and that is the point: it never goes out
+to the internet, so there is no endpoint to name. The one place it can go is a phone you
+paired yourself, inside your own network — see below.
+
+## Your phone
+
+Pairing a phone (**Settings → Phone**) adds two things, and both stay off until you pair
+one. The user guide is [Argus on your phone](mobile.md); this is what happens underneath.
+
+**Notifications** leave the PC through the phone's own push service — Apple's for an
+iPhone, Google's for Chrome, Mozilla's for Firefox. There is no way around that service for
+a notification that arrives while the app is closed, and no server of Argus' own in
+between. Each notification is encrypted for the one phone it is meant for
+([RFC 8291](https://www.rfc-editor.org/rfc/rfc8291)): the push service sees *that*
+something arrived, when, and how big it is — not the fissure, not the whisper. Each PC
+signs with its own key ([VAPID](https://www.rfc-editor.org/rfc/rfc8292)); a phone only
+accepts notifications signed by the PC it paired with. The code is `src/core/webpush.js`,
+and `src/cli/webpush-test.js` checks it byte for byte against the worked example in the
+RFC.
+
+**Phone access over Wi-Fi** is a small web server inside Argus on **port 47120**
+(`src/core/phone-server.js`). It is what the phone talks to at home, and how pairing gets
+back to the PC.
+
+- It answers **only addresses from your own network** (192.168.x.x, 10.x, 172.16–31.x and
+  their IPv6 equivalents) and refuses everything else.
+- It answers **only a paired phone**. The pairing is a random 256-bit key; on disk Argus
+  keeps only its hash (`data/phone.json`). A pairing code nobody used expires after 15
+  minutes, and **Remove** voids a phone's key at once. The same file holds the PC's signing
+  key and each phone's push address — treat it like the rest of `data/`: with both,
+  someone could send notifications to your phone.
+- It **only reads**: the live tracker, foundry, goals, inventory summary, prices and drop
+  search — the same answers the Argus window gets, trimmed for a small screen
+  (`src/core/phone-views.js`). The only thing a phone can change is which notifications it
+  wants. Your account ID, your warframe.market session and anything that changes data are
+  not reachable from it.
+- It sends no CORS headers and checks the `Host` header, so a web page you visit cannot
+  read it — not even one that points its own name at your PC's address.
+- After 20 wrong keys from one address it stops answering that address for ten minutes.
+- **The connection inside your Wi-Fi is not encrypted.** There is no certificate a phone
+  would accept for a home address, and installing your own root certificate on a phone
+  would be the riskier trade. Someone on the same Wi-Fi who records its traffic could see
+  what your phone asks Argus — your inventory summary, your goals. Notifications are not
+  affected; they are encrypted end to end. On a network you do not trust, leave **Phone
+  access over Wi-Fi** off: notifications keep working without it.
+- Windows asks once whether Argus may communicate on private networks. Without that,
+  the phone cannot reach the PC — nothing else depends on it.
+
+**The app itself** is a static page on GitHub Pages
+([kr3akz.github.io/Argus/app](https://kr3akz.github.io/Argus/app/)), built from
+`src/mobile` by `.github/workflows/pages.yml`. It holds no data. The pairing code sits after
+the `#` in the link the QR code opens — the part of an address a browser never sends to a
+server, so GitHub never sees your PC's address or the key. On the go the app asks
+`api.warframestat.us`, `drops.warframestat.us` and `api.warframe.market` itself, the same
+public sources Argus uses on the PC; it never contacts DE.
 
 ## ⚠️ Important: do not refresh the profile too often
 

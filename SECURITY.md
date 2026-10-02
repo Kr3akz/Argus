@@ -34,6 +34,8 @@ one exists (see [Updates](docs/install.md#updates)).
 | **Credential handling** (`src/core/wfm-auth.js`) | The warframe.market password passes through once and is never stored. Anything that writes it to disk, logs it, or exposes it to the renderer. |
 | **The account ID and session key** | Both are supposed to stay in the main process. Anything that surfaces them through `preload.cjs`, a log file, or an outbound request other than to Warframe's own API. |
 | **The renderer boundary** (`src/main/preload.cjs`) | `contextIsolation` is on and the renderer has no Node access. Anything that breaks out of that, or any injection into the interface from data fetched off the network. |
+| **The phone server** (`src/core/phone-server.js`, `src/core/phone.js`) | It listens on port 47120 once a phone is paired. Anything that answers a request from outside the local network, answers the API without a valid pairing, serves a file outside `src/mobile`, `src/core` and `src/renderer/assets`, or changes anything but a phone's own notification choices. |
+| **Phone notifications** (`src/core/webpush.js`, `src/mobile/sw.js`) | Anything that lets someone other than the paired PC send notifications to a phone, or lets the push service read what a notification says. |
 
 ## What is not in scope
 
@@ -62,4 +64,8 @@ broken is by definition in scope:
 4. **The renderer cannot choose what gets downloaded or run.** It passes no URL and no
    path; both come from the main process's own last query.
 5. **Only two requests happen without a button press:** the world-state poll and the
-   hourly update check. Both are switchable.
+   hourly update check. Both are switchable. Once you pair a phone, the notifications you
+   chose for it join them — sent to that phone's push service, end-to-end encrypted.
+6. **The phone server answers only your own network, only a paired phone, and only
+   reads.** It is off until you pair a phone, and **Remove** under Settings → Phone voids a
+   pairing at once.
