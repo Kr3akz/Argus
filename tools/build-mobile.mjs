@@ -22,7 +22,7 @@
 import { readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, statSync, copyFileSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const MOBILE = path.join(ROOT, 'src', 'mobile');
@@ -88,6 +88,15 @@ for (const sub of ['icons/worldstate', 'icons/currency']) {
   }
 }
 kopieren(path.join(ASSETS, 'icons', 'logo.png'), path.join(APP, 'assets', 'icons', 'logo.png'));
+/* Und jedes Bild, das die App selbst nennt (lib/ui.js, ASSET) - etwa die
+   Symbole der Reiter. So fehlt keins, wenn dort eins dazukommt. */
+const { ASSET } = await import(pathToFileURL(path.join(MOBILE, 'lib', 'ui.js')).href);
+const genannt = Object.values(ASSET).flatMap(v => (typeof v === 'string' ? [v] : typeof v === 'object' ? Object.values(v) : []));
+for (const rel of genannt) {
+  const quelle = path.join(ASSETS, rel.replace(/^assets\//, ''));
+  if (!existsSync(quelle)) { console.error(`Bild fehlt: ${rel}`); process.exit(1); }
+  kopieren(quelle, path.join(APP, rel));
+}
 
 /* 4. Was der Service Worker vorlaedt, und seine Fassung. Die Fassung ist ein
       Hash ueber alle Dateien - aendert sich irgendeine, ist sw.js eine andere

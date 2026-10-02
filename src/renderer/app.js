@@ -14519,7 +14519,8 @@ function renderPhonePane() {
             <button class="btn-sm" id="btn-phone-pair-done">${push || gekoppelt ? 'Done' : 'Cancel'}</button>
           </div>
           <div class="phone-hint">If Windows asks whether Argus may communicate on private networks,
-            allow it — otherwise the phone cannot reach this PC. Your phone has to be in the same Wi-Fi.</div>
+            allow it — otherwise the phone cannot reach this PC. Your phone has to be in the same Wi-Fi,
+            and Windows has to treat that Wi-Fi as a private network.</div>
         </div>
       </div>`;
   }
@@ -14537,7 +14538,7 @@ function renderPhonePane() {
             ? { cls: 'warn', text: `Last notification failed: ${d.pushError}` }
             : d.push
               ? { cls: '', text: `Notifications on · last seen ${relativeAge(d.lastSeenAt)}` }
-              : { cls: '', text: `Notifications not turned on yet · last seen ${relativeAge(d.lastSeenAt)}` };
+              : { cls: 'warn', text: 'Notifications are not connected yet. On the phone: More → Turn on notifications → Connect.' };
       const chips = PHONE_TYPE_LABELS.map(([k, label]) =>
         `<button class="filter-chip${d.types?.[k] !== false ? ' active' : ''}" data-phone-type="${k}" data-phone-id="${esc(d.id)}"
                  ${d.push ? '' : 'disabled'}>${esc(label)}</button>`).join('');
@@ -14550,7 +14551,7 @@ function renderPhonePane() {
             <div class="phone-device-types">${chips}</div>
           </div>
           <div class="phone-device-actions">
-            <button class="btn-sm" data-phone-test="${esc(d.id)}" ${d.push ? '' : 'disabled'}>Test</button>
+            <button class="btn-sm" data-phone-test="${esc(d.id)}">${Icon.bell(14)} <span>Send a test</span></button>
             <button class="btn-sm danger" data-phone-remove="${esc(d.id)}" title="Unpair: this phone can no longer read from Argus or get notifications">Remove</button>
           </div>
         </div>`;
@@ -14629,15 +14630,23 @@ $('phone-devices')?.addEventListener('click', async e => {
     renderPhonePane();
     return;
   }
+  /* Wie "Send a test" bei den Riss-Meldungen: Glocke, beim Senden der
+     Kreis. Der Knopf ist immer da - auch ohne Push, dann sagt das Ergebnis,
+     welcher Schritt am Handy noch fehlt, statt dass er still ausgegraut ist. */
   const test = e.target.closest('[data-phone-test]');
   if (test) {
+    if (test.disabled) return;
     test.disabled = true;
+    test.innerHTML = Icon.refresh(14) + ' <span>Sending …</span>';
     const id = test.dataset.phoneTest;
     const res = await window.api.testPhone(id).catch(err => ({ ok: false, error: err.message }));
     if (res.state) phoneInfo = res.state;
-    phoneTestNote = { id, ok: res.ok, text: res.ok ? 'Test sent — it should show up on the phone in a few seconds.' : `Test failed: ${res.error || 'unknown error'}` };
+    phoneTestNote = {
+      id, ok: res.ok,
+      text: res.ok ? 'Test sent — it should show up on the phone in a few seconds.' : `Test failed: ${res.error || 'unknown error'}`
+    };
     renderPhonePane();
-    setTimeout(() => { if (phoneTestNote?.id === id) { phoneTestNote = null; renderPhonePane(); } }, 8000);
+    setTimeout(() => { if (phoneTestNote?.id === id) { phoneTestNote = null; renderPhonePane(); } }, res.ok ? 8000 : 20000);
     return;
   }
   const weg = e.target.closest('[data-phone-remove]');

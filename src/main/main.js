@@ -9037,7 +9037,8 @@ ipcMain.handle('phone:test', async (_e, id) => {
   }, { only: String(id || ''), baseUrl: await phoneBaseUrl() });
   return {
     ok: res.sent > 0,
-    error: res.results[0]?.error || (res.results.length ? null : 'This phone has not set up notifications yet.'),
+    error: res.results[0]?.error || (res.results.length ? null
+      : 'This phone has not connected its notifications yet. In the Argus app on the phone: More → Turn on notifications, then Connect.'),
     state: await phoneState()
   };
 });

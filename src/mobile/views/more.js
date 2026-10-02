@@ -68,7 +68,8 @@ function meldungen(env) {
         <li>Tap <b>Connect to ${esc(pc.name)}</b>. It opens a page from your PC — you need to be in the same Wi-Fi. Then come back here.</li>
       </ol>
       <a class="btn primary block" href="${esc(env.registerUrl)}" target="_blank" rel="noopener" data-act="register-open">${Icon.pc(18)} Connect to ${esc(pc.name)}</a>
-      <p class="muted small" style="margin:10px 2px 0">Nothing happens? Windows may have asked on the PC whether Argus may use the network — allow it there.</p>`;
+      <p class="muted small" style="margin:10px 2px 0">The page does not load? The phone has to be in the same Wi-Fi as the PC, and
+        Windows has to let Argus through its firewall — see <b>Settings → Phone → How it works</b> on the PC.</p>`;
   }
   return `<p class="sub" style="margin:0 0 12px">Get fissures, open-world cycles, a finished foundry and whispers on this phone — even when Argus is closed here.</p>
     <button class="btn primary block" data-act="push-on">${Icon.bell(18)} Turn on notifications</button>`;

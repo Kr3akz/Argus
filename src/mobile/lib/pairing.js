@@ -116,8 +116,15 @@ export function pushSupport() {
  * nicht erst nach der Erlaubnis.
  */
 export async function subscribe(pc) {
+  /* Zuerst fragen, noch bevor irgendetwas abgewartet wird: Safari zeigt die
+     Frage nach Mitteilungen nur unmittelbar aus einem Antippen heraus. Schon
+     ein await davor kann sie kosten - dann kommt still "nicht erlaubt"
+     zurueck, ohne dass je gefragt wurde. */
+  const frage = Notification.permission === 'granted'
+    ? Promise.resolve('granted')
+    : Promise.resolve(Notification.requestPermission());
   const reg = await navigator.serviceWorker.ready;
-  const erlaubnis = await Notification.requestPermission();
+  const erlaubnis = await frage;
   if (erlaubnis !== 'granted') {
     throw new Error(erlaubnis === 'denied'
       ? 'Notifications are blocked for Argus. Allow them in the phone settings, then try again.'

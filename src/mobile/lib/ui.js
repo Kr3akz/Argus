@@ -83,12 +83,25 @@ const svg = (inner, size = 22) =>
   `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.9"
         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
 
+const svgFilled = (inner, size = 22) =>
+  `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="currentColor" stroke="none" aria-hidden="true">${inner}</svg>`;
+
+/* Ein Bild als Maske: die Farbe kommt vom Text (aktiver Reiter blau, sonst
+   grau), genau wie in der Seitenleiste am PC (.nav-icon-mask). Der Faktor
+   gleicht aus, wie voll die Zeichnung ihr Bild fuellt - dieselben Werte wie
+   in src/renderer/style.css. */
+const maske = (pfad, size, faktor = 1) =>
+  `<span class="mask-icon" style="width:${size}px;height:${size}px;-webkit-mask-image:url('${pfad}');mask-image:url('${pfad}');transform:scale(${faktor})" aria-hidden="true"></span>`;
+
 export const Icon = {
-  live:     s => svg('<circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="12" r="4.5"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12h2.5M19 12h2.5"/><path d="m12 12 6-6"/>', s),
-  foundry:  s => svg('<path d="M14.7 6.3a4 4 0 0 1 5 5l-9.7 9.7a2.1 2.1 0 0 1-3-3l9.7-9.7Z"/><path d="M14.7 6.3 9.5 3.5 3 5l1.5 6.5 2.8 5.2"/>', s),
-  inventory:s => svg('<path d="M4 7.5h16L18.4 3.9a1 1 0 0 0-.9-.6h-11a1 1 0 0 0-.9.6L4 7.5Z"/><path d="M4 7.5h16v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-12Z"/><path d="M10 12h4"/>', s),
-  drops:    s => svg('<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8Z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/>', s),
-  more:     s => svg('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/>', s),
+  /* Die fuenf Reiter tragen die Symbole der Seitenleiste am PC (src/renderer/
+     icons.js): Live-Tracker, Mastery (dort liegen Foundry und Ziele),
+     Inventar, Drop-Tabellen und Einstellungen. */
+  live:     s => svgFilled('<path fill-rule="evenodd" clip-rule="evenodd" d="M13.06 3.02a1.22 1.22 0 0 0-2.12 0L1.29 20.06A1.22 1.22 0 0 0 2.35 21.9h19.3a1.22 1.22 0 0 0 1.06-1.84L13.06 3.02ZM12 8.3a1.2 1.2 0 0 0-1.2 1.2v4.9a1.2 1.2 0 0 0 2.4 0V9.5A1.2 1.2 0 0 0 12 8.3Zm0 8.05a1.35 1.35 0 1 0 0 2.7 1.35 1.35 0 0 0 0-2.7Z"/>', s),
+  foundry:  s => maske(ASSET.nav.mastery, s, 1.18),
+  inventory:s => maske(ASSET.nav.inventory, s, 1.12),
+  drops:    s => maske(ASSET.nav.drops, s, 1.1),
+  more:     s => svg('<line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>', s),
   refresh:  s => svg('<path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>', s),
   search:   s => svg('<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>', s),
   chevron:  s => svg('<path d="m9 18 6-6-6-6"/>', s),
@@ -103,6 +116,12 @@ export const Icon = {
    und auf GitHub Pages liegen sie unter demselben Pfad (siehe
    phone-server.js und tools/build-mobile.mjs). */
 export const ASSET = {
+  /* Die Reiter unten - dieselben Bilder wie in der Seitenleiste am PC. */
+  nav: {
+    mastery: 'assets/icons/mastered.png',
+    inventory: 'assets/icons/inventory.png',
+    drops: 'assets/icons/droptables.png'
+  },
   fissure: 'assets/icons/worldstate/fissure.png',
   steelpath: 'assets/icons/worldstate/steelpath.png',
   storm: 'assets/icons/worldstate/voidtear.png',

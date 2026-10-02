@@ -45,7 +45,13 @@ const st = Object.fromEntries(Object.entries(store.get('ui', {})).filter(([k]) =
 const merken = () => store.set('ui', Object.fromEntries(MERKEN.map(k => [k, st[k]])));
 
 /* Zustand fuer "More" im Unterwegs-Weg. */
-const env = { subscribed: false, registerUrl: null, confirmedAt: store.get('push.confirmedAt'), copied: false, inbox: [] };
+/* registerUrl steht auch im Speicher: "Connect to ..." oeffnet eine Seite
+   des PCs, und iOS laedt die App beim Zurueckkommen oft neu - ohne den
+   Speicher fing man dann wieder bei "Turn on notifications" an. */
+const env = {
+  subscribed: false, registerUrl: store.get('push.registerUrl') || null,
+  confirmedAt: store.get('push.confirmedAt'), copied: false, inbox: []
+};
 
 /* ------------------------------- Routen ------------------------------- */
 
@@ -436,6 +442,7 @@ async function aktion(act, val, el) {
       pairing.forget();
       store.del('push.confirmedAt');
       Object.assign(env, { subscribed: false, registerUrl: null, confirmedAt: null });
+      store.del('push.registerUrl');
       return render();
     }
     default:
@@ -458,6 +465,7 @@ async function codeEinfuegen() {
 function gekoppelt(p, code, { navigieren = true } = {}) {
   pairing.save({ ...p, code: String(code).replace(/^.*#pair=/, '').trim() });
   env.registerUrl = null;
+  store.del('push.registerUrl');
   toast(`Paired with ${p.name}`);
   if (navigieren) go('#more');
 }
@@ -471,6 +479,7 @@ async function pushEinschalten(btn) {
     env.subscribed = true;
     env.registerUrl = pairing.registerUrl(p, sub);
     env.confirmedAt = null;
+    store.set('push.registerUrl', env.registerUrl);
     store.del('push.confirmedAt');
   } catch (err) {
     toast(err.message, 6000);
@@ -549,6 +558,16 @@ async function swZustand() {
 
 function serviceWorker() {
   if (!('serviceWorker' in navigator) || !window.isSecureContext) return;
+  /* Uebernimmt eine neue Fassung die Seite (sw.js: skipWaiting, claim), wird
+     einmal neu geladen - sonst saehe man sie erst beim uebernaechsten Start.
+     Beim allerersten Start gibt es keinen Vorgaenger, da bleibt alles stehen. */
+  const hatteVorgaenger = !!navigator.serviceWorker.controller;
+  let neuGeladen = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hatteVorgaenger || neuGeladen) return;
+    neuGeladen = true;
+    location.reload();
+  });
   navigator.serviceWorker.register('sw.js').catch(err => console.warn('Service worker:', err.message));
   navigator.serviceWorker.addEventListener('message', async e => {
     const m = e.data || {};

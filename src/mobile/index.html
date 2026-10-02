@@ -19,7 +19,12 @@
   <meta name="theme-color" content="#0a0d12">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Schwarz statt durchscheinend: mit einer durchscheinenden Statusleiste
+       rechnet iOS bei Apps vom Home-Bildschirm die Hoehe des Bildschirms
+       nicht immer richtig, und die Leiste unten rutscht nach oben (siehe
+       auch style.css, html/body). Eine schon hinzugefuegte App behaelt die
+       alte Einstellung womoeglich, bis man sie neu hinzufuegt. -->
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Argus">
   <title>Argus</title>
   <link rel="manifest" href="manifest.webmanifest">
