@@ -21,6 +21,8 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.22.0] - 2026-10-02
+
 ### Added
 
 - **Argus on your phone.** A web app at
