@@ -245,7 +245,7 @@ export async function createPairing({ pcName, baseUrl, now = Date.now() }) {
     t: token,
     i: device.id
   }));
-  return { device: publicDevice(device), code, url: `${MOBILE_APP_URL}#pair=${code}` };
+  return { device: publicDevice(device, now), code, url: `${MOBILE_APP_URL}#pair=${code}` };
 }
 
 /** Die Gegenrichtung - fuer Tests und die Handy-App (dort in JS nachgebaut). */
