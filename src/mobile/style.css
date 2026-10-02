@@ -63,7 +63,11 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; height: 100%; }
 body {
   margin: 0;
   min-height: calc(100% + 1px);
-  background: radial-gradient(120% 60% at 50% -10%, rgb(26 33 48), transparent 60%), var(--bg);
+  /* no-repeat: der Hintergrund von body gilt fuer die ganze Seite, gemessen
+     wird er aber an html - und das ist eine Bildschirmhoehe hoch (siehe
+     oben). Wiederholt, finge der Schein nach jeder Bildschirmhoehe mit einer
+     harten Kante von vorn an. */
+  background: radial-gradient(120% 60% at 50% -10%, rgb(26 33 48), transparent 60%) no-repeat, var(--bg);
   background-color: var(--bg);
   color: var(--text);
   font: 15px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
