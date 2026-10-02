@@ -2108,9 +2108,12 @@
           <select id="set-phone-address"></select>
         </div>
 
+        <!-- Die Adresse im Heimnetz steht nur auf Wunsch da (Auge) - wer streamt,
+             soll sie nicht aus Versehen zeigen. Siehe renderPhonePane(). -->
         <div class="settings-note settings-note-row" id="phone-status-row">
           <span id="phone-status"></span>
           <div class="about-actions">
+            <button class="btn-sm hidden" id="btn-phone-show-address" type="button"></button>
             <button class="btn-sm" data-ext="https://github.com/Kr3akz/Argus/blob/main/docs/mobile.md">How it works</button>
           </div>
         </div>

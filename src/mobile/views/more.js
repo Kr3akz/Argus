@@ -148,7 +148,7 @@ export function render(env) {
       <div class="card">
         <div style="display:flex;gap:12px;align-items:center">
           <span class="glyph">${Icon.pc(20)}</span>
-          <div style="flex:1;min-width:0"><h3>${esc(pc.name)}</h3><div class="sub">${esc(pc.url.replace(/^http:\/\//, ''))} · paired ${esc(ago(pc.pairedAt))}</div></div>
+          <div style="flex:1;min-width:0"><h3>${esc(pc.name)}</h3><div class="sub">In your home network · paired ${esc(ago(pc.pairedAt))}</div></div>
         </div>
         <div class="btn-row">
           <a class="btn" href="${esc(env.pcViewUrl)}" target="_blank" rel="noopener">${Icon.pc(18)} Open my PC</a>

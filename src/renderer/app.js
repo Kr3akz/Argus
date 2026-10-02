@@ -14392,7 +14392,7 @@ function showSettingsPane(key) {
   document.querySelector('.main-content')?.scrollTo({ top: 0 });
   /* Das Handy fragt nur nach, solange man hinschaut: steht ein Code offen,
      laeuft die Nachfrage weiter, sobald man zurueckkommt (renderPhonePane). */
-  if (key === 'phone') loadPhonePane();
+  if (key === 'phone') { phoneShowAddress = false; loadPhonePane(); }
   else stopPhonePolling();
 }
 window.showSettingsPane = showSettingsPane;
@@ -14460,6 +14460,11 @@ let phoneInfo = null;
 let phonePairing = null;    // { url, svg, deviceId, expiresAt }
 let phonePollTimer = null;
 let phoneTestNote = null;   // { id, ok, text } - Ergebnis des letzten Tests
+/* Fuer Streamer: die Adresse im Heimnetz und der QR-Code (er traegt sie in
+   sich) sind verdeckt, bis man sie ausdruecklich zeigt - und beim naechsten
+   Oeffnen des Bereichs wieder verdeckt. */
+let phoneShowAddress = false;
+let phoneQrShown = false;
 
 const PHONE_TYPE_LABELS = [
   ['fissure', 'Fissures'], ['cycle', 'Cycles'], ['foundry', 'Foundry'], ['whisper', 'Whispers']
@@ -14503,7 +14508,12 @@ function renderPhonePane() {
     const rest = Math.max(0, Math.ceil(((phonePairing.expiresAt || 0) - Date.now()) / 60000));
     box.innerHTML = `
       <div class="phone-qr-wrap">
-        <div class="phone-qr">${phonePairing.svg}</div>
+        ${phoneQrShown
+          ? `<div class="phone-qr">${phonePairing.svg}</div>`
+          : `<div class="phone-qr-hidden">
+               <button class="btn-sm" id="btn-phone-qr-show" type="button">${Icon.eye(14)} <span>Show code</span></button>
+               <span>Hidden in case you are streaming — the code contains this PC's address in your network.</span>
+             </div>`}
         <div>
           <ol class="phone-steps">
             <li class="${gekoppelt ? 'done' : ''}"><b>Scan this code</b> with your phone's camera and open the link.</li>
@@ -14568,18 +14578,26 @@ function renderPhonePane() {
     row.classList.toggle('hidden', adressen.length < 2);
     const aktuell = (info.baseUrl || '').replace(/^http:\/\//, '').replace(/:\d+$/, '');
     sel.innerHTML = adressen.map(a =>
-      `<option value="${esc(a.address)}"${a.address === aktuell ? ' selected' : ''}>${esc(a.address)} (${esc(a.iface)})</option>`).join('');
+      `<option value="${esc(a.address)}"${a.address === aktuell ? ' selected' : ''}>${esc(a.iface)}${phoneShowAddress ? ` · ${esc(a.address)}` : ''}</option>`).join('');
   }
 
   const status = $('phone-status');
   const statusRow = $('phone-status-row');
   if (status && statusRow) {
     statusRow.classList.toggle('warn', !!info.error);
+    const adresse = (info.baseUrl || '').replace(/^http:\/\//, '');
     status.textContent = info.error
       ? info.error
       : info.running
-        ? `Phone access is on at ${info.baseUrl || 'this PC'} — reachable from your own network only.`
+        ? `Phone access is on${phoneShowAddress && adresse ? ` at ${adresse}` : ''} — reachable from your own network only.`
         : 'Phone access over Wi-Fi is off. Notifications to paired phones still work.';
+  }
+  const zeigen = $('btn-phone-show-address');
+  if (zeigen) {
+    zeigen.classList.toggle('hidden', !info.running || !info.baseUrl);
+    zeigen.innerHTML = phoneShowAddress
+      ? `${Icon.eyeOff(14)} <span>Hide address</span>`
+      : `${Icon.eye(14)} <span>Show address</span>`;
   }
 
   /* Nachgesehen wird nur, solange noch etwas aussteht - das Handy hat sich
@@ -14606,6 +14624,12 @@ $('phone-pair')?.addEventListener('click', async e => {
       return;
     }
     phonePairing = { url: res.url, svg: res.svg, deviceId: res.device.id, expiresAt: res.device.expiresAt };
+    phoneQrShown = false;
+    renderPhonePane();
+    return;
+  }
+  if (e.target.closest('#btn-phone-qr-show')) {
+    phoneQrShown = true;
     renderPhonePane();
     return;
   }
@@ -14654,6 +14678,11 @@ $('phone-devices')?.addEventListener('click', async e => {
     phoneInfo = await window.api.removePhone(weg.dataset.phoneRemove).catch(() => phoneInfo);
     renderPhonePane();
   }
+});
+
+$('btn-phone-show-address')?.addEventListener('click', () => {
+  phoneShowAddress = !phoneShowAddress;
+  renderPhonePane();
 });
 
 $('set-phone-enabled')?.addEventListener('change', async e => {
@@ -14744,7 +14773,7 @@ async function loadSettingsTab() {
   renderHotkeys();
   renderNotifToggles();
   refreshScanLogLine();
-  if (document.querySelector('.set-pane.active')?.dataset.setPane === 'phone') loadPhonePane();
+  if (document.querySelector('.set-pane.active')?.dataset.setPane === 'phone') { phoneShowAddress = false; loadPhonePane(); }
   if (typeof Appearance !== 'undefined') Appearance.load();
   /* Nur, wenn der Abruf beim Start nicht durchkam - Version und Unterbau
      aendern sich waehrend einer Sitzung nicht. */
