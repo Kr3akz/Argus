@@ -75,6 +75,20 @@ function meldungen(env) {
     <button class="btn primary block" data-act="push-on">${Icon.bell(18)} Turn on notifications</button>`;
 }
 
+/* Zuhause, aber noch ohne Push: die Seite vom PC kann keine Meldungen
+   empfangen (http) - das geht nur in der App von GitHub Pages. Wer diese
+   Seite selbst auf den Home-Bildschirm gelegt hat, hat das falsche Symbol. */
+function nichtVerbunden(env) {
+  const host = (() => { try { return new URL(env.hello?.appUrl).host; } catch { return 'GitHub'; } })();
+  return `<section class="section">
+    <div class="note warn"><b>Notifications are not connected on this phone yet.</b>
+      This page comes from your PC, and a phone only gets notifications in the Argus app from ${esc(host)}.${env.push?.standalone
+        ? ' The icon you opened this from leads to your PC: add the app from the button below to your home screen instead, and remove this one.'
+        : ''}</div>
+    ${env.appLink ? `<a class="btn primary block" href="${esc(env.appLink)}" target="_blank" rel="noopener">${Icon.bell(18)} Set up notifications</a>` : ''}
+  </section>`;
+}
+
 function arten(types, editable) {
   return `<div class="list">${TYPES.map(([k, label, text]) => `<div class="row noicon${editable ? ' tap' : ''}"${editable ? ` data-act="type-toggle" data-val="${k}"` : ''}>
     <div class="main"><div class="title">${esc(label)}</div><div class="meta wrap">${esc(text)}</div></div>
@@ -117,10 +131,10 @@ export function render(env) {
         <div class="card"><h3>${esc(h?.pc?.name || 'Argus')}</h3>
           <div class="sub">Argus ${esc(h?.pc?.version || '')} · paired as ${esc(h?.device?.name || 'this phone')}</div></div>
       </section>
+      ${h?.device?.push ? '' : nichtVerbunden(env)}
       <section class="section"><div class="section-title">Notifications on this phone</div>
         ${arten(env.types || h?.device?.types, true)}
-        <p class="muted small" style="margin:0 2px">Tap to switch. Which fissures and cycles count is set on the PC.
-          ${h?.device?.push ? '' : `<br>Notifications themselves are turned on in the Argus app on your home screen — <a href="${esc(h?.appUrl || '#')}" target="_blank" rel="noopener">open it</a>.`}</p>
+        <p class="muted small" style="margin:0 2px">Tap to switch. Which fissures and cycles count is set on the PC.</p>
       </section>
       ${ueber(env)}`;
   }

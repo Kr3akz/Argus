@@ -14538,7 +14538,7 @@ function renderPhonePane() {
             ? { cls: 'warn', text: `Last notification failed: ${d.pushError}` }
             : d.push
               ? { cls: '', text: `Notifications on · last seen ${relativeAge(d.lastSeenAt)}` }
-              : { cls: 'warn', text: 'Notifications are not connected yet. On the phone: More → Turn on notifications → Connect.' };
+              : { cls: 'warn', text: 'Notifications are not connected yet. On the phone, in the Argus app from kr3akz.github.io (not the page from this PC): More → Turn on notifications → Connect.' };
       const chips = PHONE_TYPE_LABELS.map(([k, label]) =>
         `<button class="filter-chip${d.types?.[k] !== false ? ' active' : ''}" data-phone-type="${k}" data-phone-id="${esc(d.id)}"
                  ${d.push ? '' : 'disabled'}>${esc(label)}</button>`).join('');

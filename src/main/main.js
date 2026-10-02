@@ -8856,8 +8856,11 @@ function callPhoneReadable(channel, ...args) {
 }
 
 const phoneApi = {
+  /* key: der oeffentliche Signierschluessel des PCs - derselbe, der im
+     QR-Code steht. Damit baut die Seite vom PC einen Kopplungscode fuer die
+     App auf GitHub Pages (pairing.pairingLink), wenn dort Push noch fehlt. */
   hello: async device => ({
-    pc: { name: os.hostname(), version: app.getVersion() },
+    pc: { name: os.hostname(), version: app.getVersion(), key: (await phone.ensureVapid()).publicKey },
     device: phone.publicDevice(device),
     appUrl: phone.MOBILE_APP_URL
   }),
@@ -9038,7 +9041,7 @@ ipcMain.handle('phone:test', async (_e, id) => {
   return {
     ok: res.sent > 0,
     error: res.results[0]?.error || (res.results.length ? null
-      : 'This phone has not connected its notifications yet. In the Argus app on the phone: More → Turn on notifications, then Connect.'),
+      : 'This phone has not connected its notifications yet. In the Argus app from kr3akz.github.io (not the page from this PC): More → Turn on notifications, then Connect.'),
     state: await phoneState()
   };
 });

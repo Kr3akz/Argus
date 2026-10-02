@@ -55,6 +55,20 @@ export function parseCode(code) {
   }
 }
 
+/**
+ * Die Gegenrichtung: ein Link in die App auf GitHub Pages, MIT Kopplungscode.
+ *
+ * Gebaut von der Seite, die der PC zuhause ausliefert. Die kann selbst keine
+ * Meldungen empfangen (http), kennt aber alles fuer den Code: die Kennung
+ * (hinter #t=), Name und Schluessel des PCs (/api/hello) und als eigene
+ * Adresse die des PCs. So fuehrt "Set up notifications" ohne neuen QR-Code
+ * in die App, die es kann.
+ */
+export function pairingLink(appUrl, { name, url, key, token, id } = {}) {
+  if (!/^https:\/\//.test(String(appUrl || '')) || !name || !url || !key || !token || !id) return null;
+  return `${appUrl}#pair=${b64urlText(JSON.stringify({ v: 1, n: name, u: url, k: key, t: token, i: id }))}`;
+}
+
 export const current = () => store.get(KEY, null);
 
 export function save(pc) {

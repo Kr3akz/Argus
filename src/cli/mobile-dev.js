@@ -57,7 +57,10 @@ function welt() {
 
 const fx = () => sample.inventory(Date.now());
 const api = {
-  hello: async device => ({ pc: { name: 'PREVIEW-PC', version: 'preview' }, device: phone.publicDevice(device), appUrl: phone.MOBILE_APP_URL }),
+  hello: async device => ({
+    pc: { name: 'PREVIEW-PC', version: 'preview', key: (await phone.ensureVapid()).publicKey },
+    device: phone.publicDevice(device), appUrl: phone.MOBILE_APP_URL
+  }),
   world: async () => welt(),
   dashboard: async () => slimDashboard(sample.dashboard()),
   foundry: async () => slimFoundry(sample.foundry()),

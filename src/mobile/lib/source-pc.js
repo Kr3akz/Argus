@@ -23,6 +23,7 @@ export function adoptToken() {
 }
 
 export const hasToken = () => !!store.get(TOKEN, null);
+export const token = () => store.get(TOKEN, null);
 
 export class Unpaired extends Error {}
 

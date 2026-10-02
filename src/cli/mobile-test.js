@@ -258,6 +258,24 @@ try {
                   subscribed: true, registerUrl: reg }),
     More.render({ mode: 'pc', hello: { pc: { name: 'KAAN-PC', version: '1.22.0' }, device: { name: 'iPhone', types: { fissure: true } } } })
   ];
+  /* Zuhause ohne Push: Warnung und ein Link in die richtige App, mit einem
+     Kopplungscode, der zu genau diesem PC und dieser Kennung fuehrt. */
+  const link = pairing.pairingLink(phone.MOBILE_APP_URL, {
+    name: gelesen.name, url: gelesen.url, key: gelesen.key, token: gelesen.token, id: gelesen.id
+  });
+  const zurueck = pairing.parseCode(link);
+  ok('Link von der Seite des PCs fuehrt in die App, mit derselben Kopplung',
+     link?.startsWith(phone.MOBILE_APP_URL + '#pair=') && zurueck?.url === gelesen.url && zurueck.token === gelesen.token
+     && zurueck.key === gelesen.key && zurueck.id === gelesen.id);
+  ok('...aber nie zu einer Adresse ohne https', pairing.pairingLink('http://boese.example/app/', { ...zurueck, name: 'x' }) === null);
+  const hello = { pc: { name: 'KAAN-PC', version: '1.22.0' }, appUrl: phone.MOBILE_APP_URL, device: { name: 'iPhone', types: {} } };
+  const ohnePush = More.render({ mode: 'pc', hello, appLink: link, push: { ...push, standalone: true } });
+  const mitPush = More.render({ mode: 'pc', hello: { ...hello, device: { ...hello.device, push: true } }, appLink: link, push });
+  ok('More: zuhause ohne Push -> Warnung und Weg in die App',
+     /not connected on this phone/.test(ohnePush) && ohnePush.includes(`href="${link}"`) && /kr3akz\.github\.io/.test(ohnePush)
+     && /icon you opened this from/.test(ohnePush));
+  ok('More: zuhause mit Push -> keine Warnung', !/not connected on this phone/.test(mitPush) && !/Set up notifications/.test(mitPush));
+  outs.push(ohnePush, mitPush);
   ok('More: Paste-Knopf ohne Kopplung', /Paste pairing code/.test(outs[0]));
   ok('More: iPhone im Browser -> Home-Bildschirm', /Add to Home Screen/.test(outs[1]) && /Copy pairing code/.test(outs[1]));
   ok('More: installiert -> Push einschalten', /Turn on notifications/.test(outs[2]));

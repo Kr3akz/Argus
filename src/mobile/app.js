@@ -236,7 +236,14 @@ function seiteMehr() {
     const m = data('hello');
     if (!pc.hasToken()) return unverbunden();
     if (!m?.data) return m?.error ? fehlerSeite(m, 'Argus on your PC') : laden();
-    return More.render({ mode: 'pc', hello: m.data, types: st.types || m.data.device?.types });
+    const h = m.data;
+    return More.render({
+      mode: 'pc', hello: h, types: st.types || h.device?.types,
+      push: pairing.pushSupport(),
+      appLink: pairing.pairingLink(h.appUrl, {
+        name: h.pc?.name, url: location.origin, key: h.pc?.key, token: pc.token(), id: h.device?.id
+      })
+    });
   }
   const p = pairing.current();
   return More.render({
