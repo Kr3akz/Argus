@@ -29,7 +29,11 @@
   <title>Argus</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png" type="image/png">
-  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <!-- ?v=2: eine neue Adresse fuer das Symbol. iOS merkt sich ein Symbol
+       (oder dass keins da war) und nimmt beim Hinzufuegen sonst womoeglich
+       das Gemerkte - dann steht nur ein "A" auf dem Home-Bildschirm. Wird das
+       Symbol geaendert, hier die Zahl erhoehen. -->
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png?v=2">
   <link rel="stylesheet" href="style.css">
   <script type="importmap">{"imports":{"node:fs":"./shims/node-fs.js","node:fs/promises":"./shims/node-fs-promises.js","node:path":"./shims/node-path.js","node:url":"./shims/node-url.js"}}</script>
   <script type="module" src="app.js"></script>

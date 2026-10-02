@@ -122,7 +122,8 @@ writeFileSync(path.join(ZIEL, 'index.html'), `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="refresh" content="0; url=app/">
-<title>Argus</title></head>
+<title>Argus</title>
+<link rel="apple-touch-icon" sizes="180x180" href="app/icons/apple-touch-icon.png?v=2"></head>
 <body style="background:#0a0d12;color:#f2f5f9;font-family:system-ui,sans-serif;padding:40px">
 <p><a href="app/" style="color:#79c0ff">Open Argus</a></p></body></html>
 `);
