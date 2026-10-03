@@ -36,7 +36,8 @@ import { loadMods, POLARITIES, RARITY_LABELS, searchMods, isAuraMod, isExilusMod
          maxRankOf } from '../core/mods.js';
 import { evaluateBuild, combineBuilds, orokinTypeFor } from '../core/builds.js';
 import { indexArcanes, searchArcanes, arcaneSlotCount, maxArcaneRank, isArcaneName } from '../core/arcanes.js';
-import { fetchWorldState } from '../core/worldstate.js';
+import { fetchWorldState, setWorldStateContext } from '../core/worldstate.js';
+import { loadWorldNames, rememberWorldNames } from '../core/world-names.js';
 import { buildWorldView } from '../core/world-view.js';
 import { loadArbitrationSchedule } from '../core/arbitrations.js';
 import { loadIncursionSchedule } from '../core/incursions.js';
@@ -87,7 +88,7 @@ import { scanRivenInWorker, pickCurrent, pickNewRoll } from '../core/riven-scan.
 import { buildRelicPick, eraFromScreen } from '../core/relic-pick.js';
 import { recognise } from '../core/ocr-host.js';
 import { buildCraftChains, inventoryXP, mergeXP } from '../core/craftchains.js';
-import { buildBaroOffer } from '../core/baro.js';
+import { buildBaroOffer, normalizeStorePath } from '../core/baro.js';
 import { subsumedSuits } from '../core/helminth.js';
 import { buildVaultIndex, vaultStatus } from '../core/vault.js';
 import {
@@ -2200,6 +2201,24 @@ ipcMain.handle('vendors:get', async () => {
   } catch (err) {
     return { ok: false, error: err.message };
   }
+});
+
+/* DEs eigener Weltzustand nennt Knoten und Items nur bei ihrer Kennung
+   ("SolNode102", ".../StoreItems/..."). Die Namen dazu liegen hier im
+   Hauptprozess - siehe setWorldStateContext in core/worldstate.js. Der
+   Katalog fehlt, bis ihn jemand geladen hat; dann helfen das Gelernte und
+   die Notnamen. */
+setWorldStateContext(async () => {
+  await loadSolNodes().catch(() => null);
+  return {
+    node: nodeInfo,
+    item: p => {
+      const it = cache.catalog?.byUniqueName?.get(normalizeStorePath(p));
+      return it?.name ? stripGameTag(it.name) : null;
+    },
+    names: await loadWorldNames(),
+    remember: rememberWorldNames
+  };
 });
 
 ipcMain.handle('worldstate:get', async (_e, force) => {

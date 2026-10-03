@@ -18,6 +18,8 @@ import {
 } from '../core/world-view.js';
 import { parseArbitrationText, arbitrationWindow } from '../core/arbitrations.js';
 import { parseIncursionText, incursionWindow } from '../core/incursions.js';
+import { mergeDeWorldState, isDeWorldState, deMs } from '../core/worldstate-de.js';
+import { DE, WFS, KNOTEN } from './fixtures/worldstate-de.js';
 
 let fehler = 0;
 const ok = (label, cond, extra = '') => {
@@ -143,6 +145,99 @@ console.log('\n=== Weltzustand formatieren ===');
   ok('The Hex: da, aber unveroeffentlicht', hex && !hex.published && !hex.jobs.length);
   ok('Syndikatsmissionen: Steel Meridian mit Knoten', ws.factionMissions.some(s => s.syndicate === 'Steel Meridian' && s.nodes.length === 2));
   ok('sechs Uhren dabei', ws.cycles.length === 6);
+}
+
+console.log('\n=== DEs eigener Weltzustand ===');
+{
+  /* Zwei gleichzeitige Abrufe vom 2026-10-03 - siehe fixtures/worldstate-de.js.
+     warframestat.us fuehrte dabei alles, was DE fuehrte; damit laesst sich
+     jeder Abschnitt einmal gegen die fertigen Namen pruefen. */
+  const now = t('2026-10-03T01:24:23Z');
+  const node = id => KNOTEN[id] ? { name: KNOTEN[id].value, type: KNOTEN[id].type, enemy: KNOTEN[id].enemy } : null;
+  const gleich = (a, b, keys) => JSON.stringify(keys.map(k => a?.[k])) === JSON.stringify(keys.map(k => b?.[k]));
+  const AKT = '/Lotus/Types/Challenges/Seasons/Daily/SeasonDailyKillEnemiesWithFire';
+
+  ok('deMs liest $numberLong', deMs({ $date: { $numberLong: '1790990965284' } }) === 1790990965284);
+  ok('Fehlerseite ist kein Weltzustand', !isDeWorldState({ error: 'x' }) && isDeWorldState(DE));
+
+  /* 1. Beide Quellen kennen dieselben Eintraege. */
+  const beide = mergeDeWorldState(DE, WFS, { node, now });
+  ok('Zeitstempel von DE, nicht von warframestat.us', beide.data.timestamp === '2026-10-03T01:23:50.000Z', beide.data.timestamp);
+  ok('gleiche Risse: der fertige Eintrag von warframestat.us',
+     beide.data.fissures.length === 7 && beide.data.fissures.every(f => WFS.fissures.includes(f)));
+  const inv = beide.data.invasions.find(i => i.id === '6abfb307a0febc86d023bfdf');
+  ok('Invasion: Name von warframestat.us, Stand von DE', inv?.desc === 'Corpus Siege' && inv.count === 14382,
+     `${inv?.desc} ${inv?.count}`);
+
+  const buch = {};
+  for (const [art, k, v] of beide.learned) (buch[art] ||= {})[k] = v;
+  ok('gelernt: Kopfgeld-Name', buch.job?.['/Lotus/Types/Gameplay/Eidolon/Jobs/CaptureBountyCapTwo'] === 'Spy Catcher');
+  ok('gelernt: Isolation Vault ueber die Kammer', buch.job?.['vault:ChamberB'] === 'Isolation Vault Chamber B');
+  ok('gelernt: Sortie-Bedingung', buch.modifier?.SORTIE_MODIFIER_EXIMUS?.modifier === 'Eximus Stronghold');
+  ok('gelernt: Missionstyp aus der Sortie', buch.mission?.MT_ASSAULT === 'Assault');
+  ok('gelernt: Nightwave-Akt und Standing je Topf', buch.challenge?.[AKT]?.title === 'Arsonist' && buch.standing?.elite === 7000);
+  ok('gelernt: jedes Paar nur einmal', new Set(beide.learned.map(([a, k]) => a + '|' + k)).size === beide.learned.length);
+  ok('Bekanntes wird nicht neu gelernt', mergeDeWorldState(DE, WFS, { node, names: buch, now }).learned.length === 0);
+
+  /* 2. warframestat.us fehlt: was Argus selbst daraus macht, muss genau das
+        sein, was warframestat.us gemeldet hat. */
+  const eigen = mergeDeWorldState(DE, null, { node, names: buch, now }).data;
+  const RISS = ['id', 'activation', 'expiry', 'node', 'missionType', 'enemy', 'tier', 'tierNum', 'isStorm', 'isHard'];
+  ok('Risse und Stuerme: Knoten, Typ, Gegner, Aera wie warframestat.us',
+     WFS.fissures.every(f => gleich(eigen.fissures.find(x => x.id === f.id), f, RISS)));
+  ok('Sortie: Boss und Bedingungen', gleich(eigen.sortie, WFS.sortie, ['id', 'boss', 'faction', 'expiry'])
+     && eigen.sortie.variants.every((v, i) => gleich(v, WFS.sortie.variants[i], ['node', 'missionType', 'modifier', 'modifierDescription'])));
+  ok('Archon: Missionen', gleich(eigen.archonHunt, WFS.archonHunt, ['id', 'boss', 'faction', 'expiry'])
+     && eigen.archonHunt.missions.every((m, i) => gleich(m, WFS.archonHunt.missions[i], ['node', 'type'])));
+  const JOB = ['uniqueName', 'type', 'enemyLevels', 'standingStages', 'minMR'];
+  ok('Kopfgelder: Namen, Stufen, Standing',
+     ['CetusSyndicate', 'EntratiSyndicate'].every(tag => {
+       const w = WFS.syndicateMissions.find(s => s.id.endsWith(tag));
+       const e = eigen.syndicateMissions.find(s => s.id === w.id);
+       return e && e.syndicate === w.syndicate && w.jobs.every((j, i) => gleich(e.jobs[i], j, JOB));
+     }));
+  ok('Narmer: in Cetus nur bei Tag',
+     eigen.syndicateMissions.find(s => s.syndicateKey === 'CetusSyndicate').jobs[2].timeBound === 'day');
+  const arbiter = WFS.syndicateMissions.find(s => s.id.endsWith('ArbitersSyndicate'));
+  ok('Syndikatsknoten mit Namen', gleich(eigen.syndicateMissions.find(s => s.id === arbiter.id), arbiter, ['syndicate', 'nodes']));
+  ok('Alert: Titel, Ort, Belohnung', gleich(eigen.alerts[0].mission, WFS.alerts[0].mission, ['description', 'node', 'type', 'faction'])
+     && gleich(eigen.alerts[0].mission.reward, WFS.alerts[0].mission.reward, ['items', 'credits']));
+  ok('Baro: Ort, Zeiten, Waren', gleich(eigen.voidTrader, WFS.voidTrader, ['id', 'activation', 'expiry', 'character', 'location', 'inventory']));
+  ok('Darvo', gleich(eigen.dailyDeals[0], WFS.dailyDeals[0], ['id', 'item', 'uniqueName', 'salePrice', 'discount', 'total', 'sold', 'expiry']));
+  ok('Nightwave: Akte mit Titel und Standing', WFS.nightwave.activeChallenges.every(c =>
+     gleich(eigen.nightwave.activeChallenges.find(x => x.id === c.id), c, ['title', 'desc', 'reputation', 'isDaily', 'isElite', 'expiry'])));
+
+  /* Die Fortschrittsformel - mit den Zaehlerstaenden, die warframestat.us
+     selbst meldete, muss genau dessen Prozentzahl herauskommen. */
+  ok('Invasion: Fortschritt wie warframestat.us, auch gegen die Infestation', WFS.invasions.every(w => {
+    const roh = DE.Invasions.find(i => i._id.$oid === w.id);
+    const e = mergeDeWorldState({ ...DE, Invasions: [{ ...roh, Count: w.count }] }, null, { node, now }).data.invasions[0];
+    return Math.abs(e.completion - w.completion) < 1e-9;
+  }));
+
+  /* 3. warframestat.us haengt: alter Stand in den Abschnitten, die DE fuehrt,
+        und dazu, was DE gar nicht fuehrt. */
+  const steelPath = { currentReward: { name: 'Kitgun Riven Mod', cost: 75 } };
+  const hinterher = { ...WFS, steelPath, sortie: { ...WFS.sortie, id: 'gestern' },
+                      fissures: WFS.fissures.slice(0, 2), syndicateMissions: [] };
+  const m = mergeDeWorldState(DE, hinterher, { node, names: buch, now }).data;
+  ok('Haengt die Quelle: Sortie von heute, mit Namen', m.sortie.id === '6abfd17e1aa7ec1cbc7dffbc' && m.sortie.boss === 'General Sargas Ruk');
+  ok('Haengt die Quelle: fehlende Risse kommen von DE', m.fissures.length === 7);
+  ok('Haengt die Quelle: Kopfgelder trotzdem da',
+     m.syndicateMissions.find(s => s.syndicateKey === 'CetusSyndicate')?.jobs[1].type === 'Spy Catcher');
+  ok('Was DE nicht fuehrt, bleibt von warframestat.us', m.steelPath === steelPath);
+
+  /* 4. Ganz ohne Namen: Notnamen aus der Kennung, nichts Erfundenes. */
+  const roh = mergeDeWorldState(DE, null, { now }).data;
+  ok('ohne Knotentabelle: Kennung bleibt stehen', roh.fissures[0].node === 'SolNode102');
+  ok('Kopfgeld ohne Namen: "Bounty"', roh.syndicateMissions.find(s => s.syndicateKey === 'CetusSyndicate').jobs[0].type === 'Bounty');
+  ok('Akt ohne Namen: aus dem Pfad, Standing unbekannt',
+     roh.nightwave.activeChallenges[0].title === 'Kill Enemies With Fire' && roh.nightwave.activeChallenges[0].reputation === null,
+     roh.nightwave.activeChallenges[0].title);
+  const ws = formatWorldState(roh, { now, source: 'de' });
+  ok('Kopfgelder auch unter "CetusSyndicate" bei den Ostrons',
+     ws.bounties.find(b => b.key === 'ostrons')?.jobs.length === 3 && ws.bounties.find(b => b.key === 'entrati')?.jobs.length === 2);
+  ok('Syndikatsknoten ohne Namen: Kennungen, aber da', ws.factionMissions.some(s => s.nodes.includes('SolNode113')));
 }
 
 console.log('\n=== Arbitrations-Plan ===');

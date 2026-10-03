@@ -14,8 +14,9 @@
 - **No automation, no input simulation**
 - **No request to Warframe's servers on your behalf.** Argus never signs in, never
   borrows your session, and never speaks to DE's API as if it were the game client.
-  The only thing it asks DE for is your **public** profile — the same page anyone can
-  open without logging in.
+  The only things it asks DE for are public: your **public** profile — the same page
+  anyone can open without logging in — and the world state, the same public file the
+  game itself reads, with nothing about you attached.
 - **Read-only memory access** to the game process, for two things, and **only if you
   switched it on**: the inventory the running game already holds
   (`inventory-scan.js`), and your account ID for the public profile lookup
@@ -88,8 +89,9 @@ instead* during setup never turns it on in the first place.
 |---|---|
 | `api.warframe.com/cdn/getProfileViewingData.php` | your public profile |
 | `cdn.jsdelivr.net/.../warframe-exports-data` | DE's item catalogue + images |
-| `api.warframestat.us` | world state, cycles, fissures, syndicate augment locations |
-| `api.tenno.tools` | void fissures when warframestat.us lags behind, and its whole world state if it is down |
+| `api.warframe.com/cdn/worldState.php` | the world state as the game sees it — fissures, bounties, sortie, archon hunt, invasions, Baro, Darvo, Nightwave; at most every 30 seconds, while something in Argus shows it |
+| `api.warframestat.us` | the names for that world state, the parts DE's feed does not carry (Steel Path, events, Varzia, the Circuit), the node table, syndicate augment locations — and the whole world state if DE's feed does not answer |
+| `api.tenno.tools` | void fissures, and failing that its whole world state — only when DE's feed does not answer and warframestat.us lags behind or is down |
 | `browse.wf/arbys.txt` | the arbitration schedule — at most once a week, only the next 60 days are kept |
 | `browse.wf/sp-incursions.txt` | the Steel Path incursion schedule — at most once a week, only the next 60 days are kept |
 | `drops.warframestat.us` | DE's drop tables for relics, mods, arcanes and the Drop tables tab — a small fingerprint at start-up and every six hours, the full tables only when it changed |

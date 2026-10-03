@@ -232,6 +232,8 @@ const sourceIsStale = () => (sourceLag() ?? 0) > STALE_MS;
  * warframestat.us liefert zeitweise stundenalte Staende. Dann sind alle Risse
  * abgelaufen und alle Zyklen laengst umgeschlagen - die Anzeige waere nicht
  * falsch, aber wertlos, und sieht ohne Hinweis nach einem Fehler der App aus.
+ * Seit DEs eigener Weltzustand die erste Quelle ist, trifft das nur noch den
+ * Rueckfall, wenn DE nicht antwortet.
  */
 function renderStale() {
   const el = $('ov-stale');

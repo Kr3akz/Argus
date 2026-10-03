@@ -3766,9 +3766,11 @@ function zeigeBaroPlaner() {
 /**
  * Zustand der Datenquelle.
  *
- * warframestat.us faellt zeitweise aus oder liefert veraltete Staende. Ohne
+ * Die Quellen fallen zeitweise aus oder liefern veraltete Staende. Ohne
  * diesen Hinweis sieht der Nutzer nur eine leere Riss-Liste und haelt es fuer
- * einen Fehler der App - genau das ist am 2026-08-20 passiert.
+ * einen Fehler der App - genau das ist am 2026-08-20 passiert. Seit DEs
+ * eigener Weltzustand die erste Quelle ist, kommt das nur noch vor, wenn
+ * auch der nicht antwortet.
  */
 function renderWsSource(d) {
   const box = $('ws-source');
@@ -3781,7 +3783,7 @@ function renderWsSource(d) {
   let art = null, text = '';
   if (d.error) {
     art = 'down';
-    text = `The data source (warframestat.us) is not answering: ${d.error}. `
+    text = `The world state is not answering: ${d.error}. `
          + 'What you see is the last thing that loaded — the cycles are calculated and stay right regardless.';
   } else if (alterMin !== null && alterMin > 15) {
     art = 'stale';

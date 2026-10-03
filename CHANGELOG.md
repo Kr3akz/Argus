@@ -21,6 +21,17 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+### Changed
+
+- **The live tracker no longer lags behind.** Fissures, void storms, bounties, the sortie,
+  the archon hunt, invasions, alerts, Baro, Darvo and the Nightwave acts now come straight
+  from the game's own world-state feed — seconds old, where the old source was at times an
+  hour or more behind. warframestat.us still supplies the names and everything the feed
+  does not carry, like Teshin, Varzia, events and the Circuit. If it falls behind, Argus
+  uses the names it has already seen; if the game's feed does not answer, everything works
+  as before. The phone app on the go still reads warframestat.us directly — at home it gets
+  the fresh state from your PC.
+
 ## [1.22.0] - 2026-10-02
 
 ### Added

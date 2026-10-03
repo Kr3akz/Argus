@@ -1,14 +1,87 @@
 /**
  * Warframe World-State Live-Tracker
- * Holt offizielle DE-Echtzeitdaten über die warframestat.us API mit
- * automatischem tenno.tools Live-Fallback bei Ausfällen oder veraltetem Server-Stand.
+ *
+ * Zwei Quellen, gleichzeitig gefragt:
+ *   - DEs eigener Weltzustand (api.warframe.com) bestimmt, WAS gerade laeuft
+ *     und WANN es endet. Er kommt vom CDN des Spiels und ist Sekunden alt.
+ *   - warframestat.us liefert die lesbaren Namen dazu und alles, was DE gar
+ *     nicht fuehrt (Teshins Kreis, Ereignisse, Varzia, Circuit ...).
+ *   Wie beides zusammenkommt, steht in core/worldstate-de.js.
+ *
+ * Antwortet DE nicht, laeuft alles wie vorher ueber warframestat.us, mit
+ * tenno.tools als Rueckfall bei veraltetem oder ausgefallenem Stand.
  */
 import { buildWeekly } from './weekly.js';
 import { computeCycles, computeWorldCycles } from './cycles.js';
+import { DE_WORLDSTATE_URL, isDeWorldState, deTimestamp, mergeDeWorldState } from './worldstate-de.js';
 
 let cachedWorldstate = null;
 let lastFetchedAt = 0;
 const CACHE_TTL_MS = 30000; // 30 Sekunden Cache
+
+/* Was zum Uebersetzen von DEs Rohform gebraucht wird und nur der
+   Hauptprozess hat: Knotentabelle, Katalog, das Gelernte und wohin Neues
+   geschrieben wird. Eine Funktion, weil sich der Katalog zur Laufzeit
+   einstellt. Ohne sie klappt der Abruf trotzdem - dann mit Kennungen statt
+   Namen. Diese Datei selbst bleibt dadurch frei von Dateizugriffen: das
+   Handy laedt sie im Browser. */
+let umfeld = null;
+
+/**
+ * @param fn  async () => ({ node(id), item(path), names, remember(learned) })
+ */
+export function setWorldStateContext(fn) {
+  umfeld = typeof fn === 'function' ? fn : null;
+}
+
+async function holeJson(url, ms) {
+  const res = await fetch(url, {
+    headers: { 'User-Agent': 'Argus/2.0' },
+    signal: AbortSignal.timeout(ms)
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+/* Jede Quelle meldet { data } oder { error } - ein Ausfall der einen soll
+   die andere nicht mitreissen. */
+const versuch = p => p.then(data => ({ data }), err => ({ data: null, error: err.message }));
+
+async function holeDe() {
+  const d = await holeJson(DE_WORLDSTATE_URL, 8000);
+  if (!isDeWorldState(d)) throw new Error('no world state in the response');
+  return d;
+}
+
+/**
+ * Der Weltzustand aus DEs Rohform, mit den Namen von warframestat.us.
+ * null, wenn dabei etwas schiefgeht - dann uebernimmt der alte Weg.
+ */
+async function ausDe(de, wfs, cycles, now) {
+  try {
+    const ctx = (umfeld && await Promise.resolve().then(umfeld).catch(() => null)) || {};
+    const { data, learned } = mergeDeWorldState(de, wfs, { ...ctx, now });
+    if (learned.length && ctx.remember) {
+      Promise.resolve(ctx.remember(learned))
+        .catch(err => console.warn('[WorldState] Namen nicht gespeichert:', err.message));
+    }
+
+    const formatted = formatWorldState(data, {
+      source: wfs ? 'de+warframestat' : 'de',
+      sourceTimestamp: deTimestamp(de),
+      cycles,
+      now
+    });
+    /* Ohne warframestat.us fehlen der Wochenansicht Circuit, Archimedea und
+       Teshin. Ein halbes Geruest waere schlimmer als die ehrliche Meldung,
+       dass sie gerade nicht zu haben ist. */
+    if (!wfs) formatted.weekly = null;
+    return formatted;
+  } catch (err) {
+    console.warn('[WorldState] DEs Weltzustand nicht verwertbar:', err.message);
+    return null;
+  }
+}
 
 const TIER_NUMS = {
   Lith: 1,
@@ -19,25 +92,31 @@ const TIER_NUMS = {
   Omnia: 6
 };
 
+let laufenderAbruf = null;
+
 export async function fetchWorldState({ force = false } = {}) {
   const now = Date.now();
   if (!force && cachedWorldstate && (now - lastFetchedAt < CACHE_TTL_MS)) {
     return cachedWorldstate;
   }
 
-  let data = null;
-  let primaryError = null;
-
-  try {
-    const res = await fetch('https://api.warframestat.us/pc/', {
-      headers: { 'User-Agent': 'Argus/2.0' },
-      signal: AbortSignal.timeout(8000)
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    data = await res.json();
-  } catch (err) {
-    primaryError = err.message;
+  /* Overlay, Live-Tracker und Riss-Melder fragen gern im selben Augenblick,
+     und jeder Abruf geht an zwei Quellen - eine davon auf demselben Host wie
+     DEs Profil-API, die pro IP drosselt. Wer kommt, waehrend schon einer
+     laeuft, bekommt dessen Ergebnis, statt einen zweiten loszuschicken. */
+  if (!laufenderAbruf) {
+    laufenderAbruf = abrufen(now).finally(() => { laufenderAbruf = null; });
   }
+  return laufenderAbruf;
+}
+
+async function abrufen(now) {
+  const [de, wfs] = await Promise.all([
+    versuch(holeDe()),
+    versuch(holeJson('https://api.warframestat.us/pc/', 8000))
+  ]);
+  const data = wfs.data;
+  const primaryError = wfs.error || null;
 
   /* Die drei Freiland-Zyklen kommen NICHT aus der Antwort, sondern aus der
      Uhr - siehe core/cycles.js. Sie laufen nach einem festen Takt, und die
@@ -45,7 +124,19 @@ export async function fetchWorldState({ force = false } = {}) {
      ein abgelaufener Ablaufzeitpunkt sieht aus wie ein gueltiger. */
   const cycles = computeCycles();
 
-  /* Risse aus der Primaerquelle formatieren und pruefen */
+  if (de.data) {
+    const formatted = await ausDe(de.data, data, cycles, now);
+    if (formatted) {
+      cachedWorldstate = formatted;
+      lastFetchedAt = now;
+      return formatted;
+    }
+  } else {
+    console.warn('[WorldState] DEs Weltzustand nicht erreichbar:', de.error);
+  }
+
+  /* Ab hier der alte Weg: DE antwortet nicht. Risse aus warframestat.us
+     formatieren und pruefen. */
   let fissures = data?.fissures ? formatFissures(data.fissures) : [];
   let sourceName = 'warframestat';
 
@@ -141,7 +232,8 @@ const LEERE_ZUSAETZE = Object.freeze({
  * Hauptprozess auf der Live-Antwort und in den Tests auf einem gespeicherten
  * Abzug. Was sie braucht, bekommt sie herein - auch die Uhrzeit.
  *
- * @param data  die rohe Antwort (api.warframestat.us/pc)
+ * @param data  die rohe Antwort (api.warframestat.us/pc) - oder dieselbe
+ *              Form, mit DEs eigenem Stand verschnitten (core/worldstate-de.js)
  * @param opts.fissures        schon gepruefte Risse (z. B. aus dem Rueckfall);
  *                             fehlen sie, kommen sie aus `data`
  * @param opts.source          Name der Quelle fuer die Anzeige

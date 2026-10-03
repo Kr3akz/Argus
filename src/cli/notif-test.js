@@ -10,8 +10,17 @@
  *   node src/cli/notif-test.js
  */
 import { matchesFissureFilter, canonicalMissionType } from '../core/fissure-filter.js';
-import { fetchWorldState } from '../core/worldstate.js';
+import { fetchWorldState, setWorldStateContext } from '../core/worldstate.js';
+import { loadSolNodes, nodeInfo } from '../core/solnodes.js';
+import { loadWorldNames } from '../core/world-names.js';
 import * as store from '../core/store.js';
+
+/* Dieselben Namen wie in der App: DEs Weltzustand nennt die Knoten nur bei
+   ihrer Kennung, und der Filter vergleicht Missionstypen und Orte. */
+setWorldStateContext(async () => {
+  await loadSolNodes().catch(() => null);
+  return { node: nodeInfo, names: await loadWorldNames() };
+});
 
 const einstellungen = (missionTypes, extra = {}) => ({
   enabled: true,
