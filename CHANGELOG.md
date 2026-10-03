@@ -21,6 +21,8 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.23.0] - 2026-10-03
+
 ### Changed
 
 - **The live tracker no longer lags behind.** Fissures, void storms, bounties, the sortie,
