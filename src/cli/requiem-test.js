@@ -28,7 +28,7 @@ import path from 'node:path';
 import {
   REQUIEMS, OULL, ANTIVIRUS, MAX_CHARGES, modStock, guaranteedLiches, requiemStock,
   nemesisKind, readNemesis, nemesisFromInventory, checkStab, stabOutcome,
-  solveRequiem, simulateHunt, SEQUENCE_COUNT, cleanHunt
+  solveRequiem, simulateHunt, SEQUENCE_COUNT, cleanHunt, decodeGuess, mergeStabs
 } from '../core/requiem.js';
 import { dataFile } from '../core/paths.js';
 
@@ -122,7 +122,7 @@ console.log('\n=== Teil 2: Gegner aus dem Inventar ===\n');
   ok('Coda ueber die Fraktion', nemesisKind(coda) === 'coda');
   ok('Sister ueber die Fraktion', nemesisKind({ Faction: 'FC_CORPUS' }) === 'sister');
   ok('Sister ueber die Vorlage', nemesisKind({ manifest: '/Lotus/Types/Enemies/Corpus/Lawyers/LawyerManifest' }) === 'sister');
-  ok('neues Feld faellt auf', same(readNemesis({ ...aktiv, GuessHistory: [1, 2] }).extra, ['GuessHistory']));
+  ok('neues Feld faellt auf', same(readNemesis({ ...aktiv, Hints: [0] }).extra, ['Hints']));
 
   const { active, history } = nemesisFromInventory({ Nemesis: aktiv, NemesisHistory: [alt2020, coda] });
   ok('aktiv und Geschichte, neueste zuerst', active?.id === 'n1787091747127' && same(history.map(h => h.kind), ['coda', 'lich']));
@@ -294,6 +294,59 @@ console.log('\n=== Teil 6: Stichbuch ===\n');
     else process.env.ARGUS_DATA_DIR = before;
     await rm(dir, { recursive: true, force: true });
   }
+}
+
+/* ------------------------------------------------------------------------
+   Teil 6b: Stiche aus dem Spiel (GuessHistory)
+   ------------------------------------------------------------------------ */
+console.log('\n=== Teil 6b: Stiche aus dem Inventar ===\n');
+{
+  /* Gemessen: Kaans erster Stich, Lohk · Xata · Oull, am 1. Platz gescheitert
+     (im Lich-Profil abgelesen) - im Inventar danach GuessHistory = [6160]. */
+  const g = decodeGuess(6160);
+  ok('6160 = Lohk · Xata · Oull, gescheitert am 1.', same(g?.mods, ['lohk', 'xata', 'oull']) && g.result === 0, JSON.stringify(g));
+  const code = (a, b, c, o) => a | (b << 4) | (c << 8) | (o << 12);
+  ok('Code 2 = am 2. gescheitert', decodeGuess(code(7, 6, 5, 2)).result === 1);
+  ok('Code 0 = durch', decodeGuess(code(7, 6, 5, 0)).result === 3);
+  ok('Codes 3 und 4 bleiben ungelesen', decodeGuess(code(7, 6, 5, 3)).result === null && decodeGuess(code(7, 6, 5, 4)).result === null);
+  ok('Oull am gescheiterten Platz -> ungelesen', decodeGuess(code(8, 6, 5, 1)).result === null);
+  ok('doppeltes Requiem -> kein Stich', decodeGuess(code(1, 1, 5, 1)) === null);
+  ok('Index ueber Oull -> kein Stich', decodeGuess(code(9, 1, 5, 1)) === null);
+
+  const nem = readNemesis({ Rank: 1, d: { $date: { $numberLong: '1' } }, GuessHistory: [6160], HintProgress: 27 });
+  ok('readNemesis liest die Stiche und kennt die Felder', nem.guesses.length === 1 && nem.murmurProgress === 27 && !nem.extra.length, JSON.stringify(nem.extra));
+
+  const SNAP = 1000;
+  const game = [decodeGuess(6160)];
+  const hand = { mods: ['lohk', 'xata', 'oull'], result: 0, at: 900 };
+
+  let m = mergeStabs(game, [hand], SNAP);
+  ok('Handeintrag und Spielstich werden einer', m.stabs.length === 1 && m.stabs[0].source === 'game' && m.stabs[0].bookIndex === 0 && !m.stale.length);
+
+  m = mergeStabs(game, [{ ...hand, result: 1 }], SNAP);
+  ok('anderer Ausgang von Hand -> das Spiel gilt', m.stabs[0].result === 0 && m.stabs[0].corrected);
+
+  const later = { mods: ['oull', 'lohk', 'xata'], result: 1, at: 1100 };
+  m = mergeStabs(game, [hand, later], SNAP);
+  ok('neuer Stich nach dem Inventarstand zaehlt von Hand', m.stabs.length === 2 && m.stabs[1].source === 'manual' && m.stabs[1].bookIndex === 1);
+
+  const typo = { mods: ['lohk', 'vome', 'oull'], result: 0, at: 800 };
+  m = mergeStabs(game, [typo], SNAP);
+  ok('aelterer Eintrag ohne Gegenstueck -> ausgegraut', m.stabs.length === 1 && m.stabs[0].source === 'game' && m.stale.length === 1 && m.stale[0].bookIndex === 0);
+
+  const unread = [decodeGuess(code(0, 1, 8, 3))];
+  m = mergeStabs(unread, [], SNAP);
+  ok('ungelesener Spielstich ohne Handeintrag zaehlt nicht', m.stabs[0].unread && m.stabs[0].result === null);
+  m = mergeStabs(unread, [{ mods: ['lohk', 'xata', 'oull'], result: 3, at: 900 }], SNAP);
+  ok('... mit Handeintrag gilt dessen Ausgang', !m.stabs[0].unread && m.stabs[0].result === 3);
+
+  m = mergeStabs(null, [hand, later], SNAP);
+  ok('ohne Spielstiche bleibt alles von Hand', m.stabs.length === 2 && m.stabs.every(s => s.source === 'manual') && !m.stale.length);
+
+  /* Kaans Stand vom Abend: Lohk per Murmur bekannt, der erste Stich aus dem
+     Spiel - die Rechnung muss dasselbe sagen wie mit dem Handeintrag. */
+  const r = solveRequiem({ hints: ['lohk'], stabs: mergeStabs(game, [], SNAP).stabs }, { allowOull: true });
+  ok('Rechnung mit dem Spielstich: 84 Folgen uebrig', r.count === 84, String(r.count));
 }
 
 /* ------------------------------------------------------------------------

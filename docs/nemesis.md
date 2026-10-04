@@ -17,8 +17,9 @@ Three views:
 - **Past hunts** — every Lich, Sister and Technocyte Coda you have defeated, with the stabs
   Argus logged for them.
 
-Your adversary, your requiems and your past hunts come from your last inventory fetch. The
-stabs you log are kept on your PC in `requiem.json`, next to your goals. Without an
+Your adversary, your requiems, your past hunts — and the stabs you have made — come from your
+last inventory fetch. A stab you log by hand counts right away and is kept on your PC in
+`requiem.json`, next to your goals, until the inventory has it too. Without an
 inventory — on console, or with the game closed — you can track a hunt **by hand**: the
 suggestions work exactly the same, only the charges and the adversary card are missing.
 
@@ -79,6 +80,22 @@ The draft under *Record a stab* is already set to the suggestion. If you follow 
 only thing left after the stab is one click on how it went. Clicking a slot and then a
 requiem changes it; picking a requiem that is already on another slot swaps the two.
 
+## Stabs from the game
+
+The game keeps every stab on your Lich, and Argus reads them from your inventory. They show
+up in the log marked **Game** — exactly what the Lich's profile in the game shows, and they
+cannot be removed. A stab you log by hand is marked **Logged** until the next inventory
+fetch, usually when you are back on your ship; then the game's entry takes its place. If
+the two disagree, the game wins.
+
+A logged stab the game does not know — though the inventory is newer than the stab — is
+greyed out as **Not in game** and does not count. Most likely the requiems were mixed up
+when it was logged; remove it and log the right ones.
+
+For a stab that failed on the 3rd requiem, or one that worked, Argus cannot read yet how far
+it got: the game's code for it has not been seen yet. Such a stab is shown as *Not readable
+yet* and counts as soon as you log it by hand with the same requiems.
+
 ## In the overlay
 
 While a hunt is running, the overlay window shows the next stab with its chance, and four
@@ -124,12 +141,21 @@ sequence that worked. Hunts you tracked by hand show up here once you end them.
 
 ## Not measured yet
 
-- **Logging stabs by itself.** The game shows your stabs in the Lich's profile, so it keeps
-  them somewhere — but no inventory fetched so far had a Lich with a stab or a murmur on it,
-  so it is not known how. When your inventory carries fields Argus does not know, it writes
-  them to `argus.log` (`[Requiem] Unbekannte Felder am Nemesis`). Lines about your Lich in
-  the game's log go there as well (`[Requiem] Log:`). Both are there to find out whether a
-  later version can log stabs without a click.
+- **How a stab is stored.** Measured on one real stab (Lohk, Xata, Oull, failed on the
+  1st, as the Lich's profile showed): the inventory then held `GuessHistory: [6160]` —
+  0x1810, read in groups of four bits from the bottom: Lohk, Xata, Oull in slot order, and
+  1 for how far it got. Every reading that fits that 1 also means 2 for a stab that failed on
+  the 2nd, and 0 can only mean it worked — so those are read too. The codes for a failed 3rd
+  requiem and for a stab that worked are still open; Argus writes unreadable ones to
+  `argus.log` (`[Requiem] Am Nemesis noch nicht gelesen`), along with any field on your
+  Lich it does not know.
+- **Murmurs.** The inventory carries the murmur progress (`HintProgress`), but how the
+  game keeps the requiems a murmur has named is not known yet — mark them by hand. The
+  progress itself is not shown, as its scale is not known either.
+- **The game's log** tells that a stab happened and that it was wrong
+  (`KuvaLichFinisher ending encounter for wrong stab`), and which requiems are on the
+  Parazon at mission start — but not their order or which slot failed. Lines about your Lich
+  go to `argus.log` (`[Requiem] Log:`).
 - **Murmurs reveal requiems in random order.** Argus treats every sequence that fits what
   you logged as equally likely; if the game revealed requiems in a pattern, the chances
   shown would be slightly off. The ruling-out itself does not depend on it.

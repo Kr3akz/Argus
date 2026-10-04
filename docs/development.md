@@ -203,7 +203,8 @@ Checks Liches & Sisters: charges read from the inventory, the adversary and its 
 which stabs are valid, and the suggestion — played through against all 336 sequences with
 0 to 3 requiems known, with and without Oull, where it has to stay within the worst cases
 the Warframe wiki gives (18, 13, 8 and 3 failed stabs). Also the stab log in a throwaway
-folder, including two clicks at once. No network needed.
+folder, including two clicks at once, and the game's own record of a stab (GuessHistory) -
+decoded from a real one and merged with what was logged by hand. No network needed.
 
 ```bash
 npm run theme-test

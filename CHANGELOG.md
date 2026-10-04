@@ -30,8 +30,9 @@ follow [semantic versioning](https://semver.org/lang/en/).
   rules out every sequence that no longer fits, and suggests the stab most likely to
   finish it — with how many stabs it can still take at most, and on average. Murmurs go in
   with a click, and Oull is used where it saves stabs. Your adversary — progenitor, level,
-  territory — comes straight from your inventory. Without one you can track a hunt by
-  hand, on console too.
+  territory — comes straight from your inventory, and so do the stabs you have made: once
+  you are back on your ship, the log fills in from the game itself. Without an inventory
+  you can track a hunt by hand, on console too.
 - **The next stab in the overlay.** While you hunt, the overlay window shows the next stab
   with four buttons for how it went, so logging it does not mean leaving the game.
 - **Requiem charges.** Every requiem with the charges left on each copy, how many more

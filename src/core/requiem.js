@@ -234,16 +234,50 @@ export function requiemStock(inventory, catalog = null) {
 /**
  * Was das Spiel ueber einen Nemesis fuehrt und was davon hier gelesen wird.
  * Alles, was NICHT in dieser Liste steht, meldet readNemesis unter `extra` -
- * so faellt auf, wenn das Spiel neue Felder mitschickt (etwa die Stiche, die
- * es im Profil des Lichs anzeigt). Kaans Lich hatte beim Messen noch keinen
- * Stich und keinen Murmur hinter sich, deshalb fehlen solche Felder hier.
+ * so faellt auf, wenn das Spiel neue Felder mitschickt. Genau so kamen
+ * GuessHistory und HintProgress heraus (Kaans erster Stich, 2026-10-04); wie
+ * das Spiel die von Murmurs genannten Requiems fuehrt, ist noch offen.
  */
 const KNOWN_NEMESIS_FIELDS = new Set([
   'fp', 'manifest', 'KillingSuit', 'killingDamageType', 'ShoulderHelmet',
   'WeaponIdx', 'AgentIdx', 'BirthNode', 'Faction', 'Rank', 'k', 'Traded', 'd',
   'InfNodes', 'PrevOwners', 'HenchmenKilled', 'MissionCount', 'SecondInCommand',
-  'Weakened', 'pendingWeaken'
+  'Weakened', 'pendingWeaken', 'GuessHistory', 'HintProgress'
 ]);
+
+/**
+ * Ein Stich, wie das Spiel ihn in GuessHistory ablegt.
+ *
+ * GEMESSEN an Kaans erstem Stich (2026-10-04): Lohk, Xata, Oull eingesteckt,
+ * am ersten Platz gescheitert (im Lich-Profil abgelesen), im Inventar danach
+ * GuessHistory = [6160]. 6160 = 0x1810, von unten in Vierergruppen gelesen:
+ * 0, 1, 8 - Lohk (ImmortalOneMod), Xata (ImmortalTwoMod), Oull (Wildcard),
+ * genau in der Reihenfolge der Plaetze - und darueber eine 1.
+ *
+ * Die oberste Gruppe sagt, wie der Stich ausging. Gemessen ist nur die 1
+ * (gescheitert am ersten Platz). Drei Lesarten passen dazu: die Nummer des
+ * gescheiterten Platzes, ein Bit je falschem Platz, oder die Zahl der
+ * geprueften Plaetze. Alle drei meinen mit 2 "gescheitert am zweiten", und
+ * eine 0 kann nur "durch" heissen (oder kommt gar nicht vor). Bei 3 und 4
+ * gehen sie auseinander - dritter Platz oder Erfolg. Solche Stiche nimmt
+ * Argus deshalb NICHT allein aus dem Spiel, sondern nur zusammen mit einem
+ * Eintrag von Hand mit denselben Requiems (siehe mergeStabs); der erste
+ * davon im Protokoll klaert, welche Lesart stimmt.
+ */
+const GUESS_OUTCOMES = { 0: 3, 1: 0, 2: 1 };   // Code -> wie weit der Stich kam
+
+export function decodeGuess(code) {
+  if (!Number.isInteger(code) || code < 0) return null;
+  const idx = [code & 15, (code >> 4) & 15, (code >> 8) & 15];
+  if (idx.some(i => i > OULL_IDX) || new Set(idx).size !== 3) return null;
+  const outcome = Math.floor(code / 4096);
+  const result = Object.hasOwn(GUESS_OUTCOMES, outcome) ? GUESS_OUTCOMES[outcome] : null;
+  const mods = idx.map(i => IDX_TO_KEY[i]);
+  /* Oull besteht immer - scheitert ein Stich laut Code an Oull, ist die
+     Lesart falsch, nicht der Stich. */
+  const valid = result == null || result === 3 || mods[result] !== OULL.key;
+  return { mods, result: valid ? result : null, code, outcome };
+}
 
 /** Die drei Arten, mit dem, was die Oberflaeche zu ihnen sagt. */
 export const NEMESIS_KINDS = {
@@ -302,6 +336,16 @@ export function readNemesis(raw) {
           .map(n => ({ node: n.Node, influence: Number(n.Influence) || 0 }))
       : [],
     minionsKilled: Number.isFinite(raw.HenchmenKilled) ? raw.HenchmenKilled : null,
+    /* Die Stiche, wie das Spiel sie fuehrt (aelteste zuerst). Ein Stich mit
+       unbekanntem Ausgang bleibt mit result: null drin - wegwerfen hiesse,
+       ihn zu unterschlagen. */
+    guesses: Array.isArray(raw.GuessHistory)
+      ? raw.GuessHistory.map(decodeGuess).filter(Boolean)
+      : [],
+    /* Murmur-Fortschritt, roh. Gemessen: 6 nach einer Mission mit Thralls, 27
+       nach dem ersten Stich, 34 spaeter - die Skala ist noch nicht bekannt,
+       deshalb steht die Zahl nirgends in der Oberflaeche. */
+    murmurProgress: Number.isFinite(raw.HintProgress) ? raw.HintProgress : null,
     finished: raw.k === true,
     traded: raw.Traded === true,
     prevOwners: Number(raw.PrevOwners) || 0,
@@ -516,6 +560,70 @@ export function cleanHunt(hunt) {
   const stabs = (hunt?.stabs || []).filter(s => !checkStab(s))
     .map(s => ({ mods: [...s.mods], result: s.result, at: Number(s.at) || null }));
   return { hints, stabs };
+}
+
+const sameMods = (a, b) => a.length === b.length && a.every((k, i) => k === b[i]);
+
+/**
+ * Die Stiche des Spiels und die von Hand zu EINER Liste.
+ *
+ * Das Spiel weiss es besser - GuessHistory ist, was im Lich-Profil steht.
+ * Von Hand eingetragen wird trotzdem, denn das Inventar kommt erst mit der
+ * Rueckkehr aufs Schiff (oder einem Abruf); bis dahin steht der Stich nur
+ * im Stichbuch. Zusammengefuehrt wird ueber die Requiems:
+ *
+ *   - Jeder Spielstich holt sich den ersten noch freien Handeintrag mit
+ *     denselben drei Requiems. Der Ausgang kommt vom Spiel, wo der Code
+ *     lesbar ist, sonst vom Handeintrag (Codes 3 und 4, siehe decodeGuess).
+ *     Ohne beides steht der Stich als "noch nicht lesbar" da und zaehlt
+ *     nicht mit.
+ *   - Handeintraege, die kein Spielstich geholt hat, zaehlen, wenn sie NACH
+ *     dem Inventarstand eingetragen wurden: die kennt das Spiel noch nicht.
+ *   - Aeltere ohne Gegenstueck kennt das Spiel nicht, obwohl es sie kennen
+ *     muesste - meist ein Vertipper bei den Requiems. Sie zaehlen nicht und
+ *     stehen ausgegraut zum Loeschen da (`stale`).
+ *
+ * Ohne Spielstiche (alte Inventare, Konsole, Zug von Hand) bleibt alles, wie
+ * es von Hand eingetragen ist.
+ *
+ * @param game       readNemesis(...).guesses, oder [] / null
+ * @param manual     Stiche aus dem Stichbuch ({ mods, result, at })
+ * @param snapshotAt Stand des Inventars in ms (LastInventorySync), oder null
+ * @returns { stabs, stale } - stabs mit source 'game' | 'manual', bookIndex
+ *          fuer alles, was im Stichbuch steht (zum Loeschen)
+ */
+export function mergeStabs(game, manual, snapshotAt = null) {
+  const book = (manual || []).map((s, bookIndex) => ({ ...s, bookIndex }));
+  if (!game || !game.length) {
+    return { stabs: book.map(s => ({ ...s, source: 'manual' })), stale: [] };
+  }
+
+  const used = new Set();
+  const stabs = [];
+  for (const g of game) {
+    const m = book.find(b => !used.has(b.bookIndex) && sameMods(b.mods, g.mods));
+    if (m) used.add(m.bookIndex);
+    const result = g.result ?? m?.result ?? null;
+    stabs.push({
+      mods: [...g.mods],
+      result,
+      source: 'game',
+      at: m?.at ?? null,
+      bookIndex: m ? m.bookIndex : null,
+      /* Gab es einen Handeintrag mit anderem Ausgang, gilt das Spiel. */
+      corrected: !!(m && g.result != null && m.result !== g.result),
+      unread: result == null,
+      code: g.code
+    });
+  }
+
+  const stale = [];
+  for (const b of book) {
+    if (used.has(b.bookIndex)) continue;
+    if (snapshotAt != null && b.at != null && b.at > snapshotAt) stabs.push({ ...b, source: 'manual' });
+    else stale.push({ ...b, source: 'manual' });
+  }
+  return { stabs, stale };
 }
 
 /**

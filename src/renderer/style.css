@@ -14039,3 +14039,21 @@ label.te-row { cursor: pointer; user-select: none; }
 .ov-req-res button:disabled { opacity: .35; cursor: default; }
 .ov-req-msg { padding: 4px 2px 0; font-size: 9.5px; color: var(--text-3); }
 .ov-req-msg.is-warn { color: rgb(var(--t-red-text)); }
+
+/* Woher ein Stich kommt - ein Wort hinter dem Ausgang: aus dem Spiel (also
+   aus dem Inventar, wie im Lich-Profil), hier eingetragen, oder ausgegraut,
+   weil das Spiel ihn nicht kennt. */
+.nem-src {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: calc(4px * var(--r-k));
+  background: rgb(var(--t-fg) / .08);
+  color: var(--text-3);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 650;
+  letter-spacing: .02em;
+  cursor: help;
+}
+.nem-src.is-game { background: rgb(var(--t-accent) / .14); color: rgb(var(--t-accent-text)); }
+.nem-stab.is-stale { opacity: .55; }

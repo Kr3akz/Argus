@@ -82,7 +82,7 @@ import { buildBaseSets } from '../core/basesets.js';
 import { foundryQueue } from '../core/foundry.js';
 import { buildRivens, rivenView, rivensForShownWeapon } from '../core/rivens.js';
 import { REQUIEMS, OULL, NEMESIS_KINDS, TRANSMUTE_COUNT, requiemStock, nemesisFromInventory,
-         solveRequiem } from '../core/requiem.js';
+         solveRequiem, mergeStabs } from '../core/requiem.js';
 import * as requiemHunts from '../core/requiem-hunts.js';
 import { loadDispositions } from '../core/dispositions.js';
 import { RIVEN_ATTRS, rivenClass, labelWants } from '../core/riven-wants.js';
@@ -4085,12 +4085,21 @@ const planetOfNode = name => /\(([^)]+)\)\s*$/.exec(name || '')?.[1] || null;
    (siehe KNOWN_NEMESIS_FIELDS in requiem.js). */
 let requiemExtraLogged = '';
 function logNemesisExtras(rawNemesis, active) {
-  if (!active?.extra?.length) return;
-  const sig = active.id + ':' + active.extra.join(',');
+  if (!active) return;
+  /* Dazu die Stiche, deren Ausgang Argus noch nicht lesen kann (Codes 3 und
+     4, siehe decodeGuess) - mit dem, was im Lich-Profil steht, klaert einer
+     davon die Lesart fuer alle. */
+  const unread = active.guesses.filter(g => g.result == null).map(g => `${g.code} (${g.mods.join(' · ')})`);
+  const parts = [
+    ...active.extra.map(k => `${k}=${JSON.stringify(rawNemesis?.[k]).slice(0, 400)}`),
+    ...(unread.length ? [`unlesbare Stiche: ${unread.join(', ')}`] : []),
+    ...(active.extra.length || unread.length ? [`GuessHistory=${JSON.stringify(rawNemesis?.GuessHistory)}`, `HintProgress=${rawNemesis?.HintProgress}`] : [])
+  ];
+  if (!parts.length) return;
+  const sig = active.id + ':' + parts.join(',');
   if (sig === requiemExtraLogged) return;
   requiemExtraLogged = sig;
-  const values = active.extra.map(k => `${k}=${JSON.stringify(rawNemesis?.[k]).slice(0, 400)}`);
-  console.log('[Requiem] Unbekannte Felder am Nemesis:', values.join(' | '));
+  console.log('[Requiem] Am Nemesis noch nicht gelesen:', parts.join(' | '));
 }
 
 let requiemPriceRun = null;
@@ -4235,15 +4244,25 @@ async function requiemView() {
     };
   };
 
-  /* ---- Der Zug und die Rechnung ---- */
+  /* ---- Der Zug und die Rechnung ----
+     Die Stiche kommen, wo es geht, aus dem Spiel (GuessHistory), und von Hand
+     nur, was das Inventar noch nicht kennt - siehe mergeStabs. Gerechnet wird
+     mit allem, dessen Ausgang feststeht. */
   const cur = currentHunt(active, book);
   const usable = stock
     ? new Set([...stock.requiems, stock.oull].filter(r => r.usable > 0).map(r => r.key))
     : null;
-  const huntForSolve = cur.hunt || (cur.id ? { hints: [], stabs: [] } : null);
-  const solution = huntForSolve
-    ? solveRequiem(huntForSolve, { allowOull: book.prefs.allowOull, usable })
+  const fromGame = cur.id && active && cur.id === active.id ? active.guesses : null;
+  const merged = mergeStabs(fromGame, cur.hunt?.stabs || [], syncedAt || fetchedAt || null);
+  const countable = merged.stabs.filter(s => !s.unread);
+  const solution = cur.id
+    ? solveRequiem({ hints: cur.hunt?.hints || [], stabs: countable }, { allowOull: book.prefs.allowOull, usable })
     : null;
+  /* Die Rechnung nennt verdaechtige Stiche nach ihrer Stelle unter den
+     gezaehlten - die Oberflaeche zeigt die volle Liste. */
+  if (solution?.suspects) {
+    solution.suspects.stabs = solution.suspects.stabs.map(i => merged.stabs.indexOf(countable[i]));
+  }
 
   /* ---- Geschichte: besiegte Gegner, mit den Stichen, die Argus kennt ---- */
   const past = history.map(h => {
@@ -4268,7 +4287,9 @@ async function requiemView() {
       kind: cur.hunt?.kind || cur.template?.kind || 'lich',
       startedAt: cur.hunt?.startedAt || null,
       hints: cur.hunt?.hints || [],
-      stabs: cur.hunt?.stabs || []
+      stabs: merged.stabs,
+      stale: merged.stale,
+      fromGame: !!fromGame?.length
     } : null,
     solution,
     prefs: book.prefs,

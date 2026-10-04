@@ -485,30 +485,56 @@ const Nemesis = (() => {
       </div>`;
   }
 
+  /** Eine Zeile im Verlauf - aus dem Spiel, von Hand, oder ausgegraut. */
+  function stabRow(st, n, { suspect = false, stale = false } = {}) {
+    const read = Number.isInteger(st.result);
+    const marks = st.mods.map((k, j) => {
+      const state = !read ? 'skip' : st.result === 3 || j < st.result ? 'ok' : j === st.result ? 'bad' : 'skip';
+      const word = !read ? 'not readable yet' : state === 'ok' ? 'right' : state === 'bad' ? 'wrong' : 'not tested';
+      return `<span class="nem-mini is-${state}" title="${esc(`${nameOf(k)}: ${word}`)}">${glyph(k, 'nem-mini-img')}</span>`;
+    }).join('');
+    const text = !read ? 'Not readable yet' : st.result === 3 ? 'It worked' : `Failed on ${ORD[st.result]}`;
+
+    /* Woher der Eintrag kommt, in einem Wort. Ein Stich aus dem Spiel ist
+       nicht loeschbar - er steht im Lich-Profil; loeschen laesst sich nur,
+       was hier eingetragen wurde und noch nicht im Inventar steht. */
+    let src = '', srcTip = '';
+    if (stale) { src = 'Not in game'; srcTip = 'Logged here, but your inventory does not have this stab - it is not counted. Check the requiems and remove it.'; }
+    else if (st.source === 'game') {
+      src = 'Game';
+      srcTip = st.unread
+        ? 'Your inventory has this stab, but Argus cannot read yet how far it got. Log it here with the same requiems and it counts.'
+        : st.corrected ? 'From your inventory - it says otherwise than what was logged here, and the game wins.'
+        : 'From your inventory, as the Lich profile shows it';
+    } else if (data.hunt.fromGame) { src = 'Logged'; srcTip = 'Logged here - your next inventory fetch confirms it'; }
+
+    const canRemove = st.source !== 'game' && Number.isInteger(st.bookIndex);
+    const key = 'stab:' + st.bookIndex;
+    return `
+      <div class="nem-stab${suspect ? ' is-suspect' : ''}${read && st.result === 3 ? ' is-win' : ''}${stale || st.unread ? ' is-stale' : ''}">
+        <span class="nem-stab-n">${n}</span>
+        <span class="nem-stab-mods">${marks}</span>
+        <span class="nem-stab-names">${st.mods.map(k => esc(nameOf(k))).join(' · ')}</span>
+        <span class="nem-stab-res">${text}${src ? ` <i class="nem-src${st.source === 'game' ? ' is-game' : ''}" title="${esc(srcTip)}">${esc(src)}</i>` : ''}</span>
+        <span class="nem-stab-at">${esc(fmtShort(st.at))}</span>
+        ${canRemove
+          ? `<button class="nem-x" data-remove="${st.bookIndex}" title="Remove this stab">${armed === key ? 'Remove?' : Icon.close(12)}</button>`
+          : '<span></span>'}
+      </div>`;
+  }
+
   /** Die Stiche bisher, neueste unten - so, wie man sie gemacht hat. */
   function logHtml() {
     const h = data.hunt;
     const sus = new Set(data.solution?.contradiction ? data.solution.suspects.stabs : []);
-    const rows = h.stabs.map((st, i) => {
-      const marks = st.mods.map((k, j) => {
-        const state = st.result === 3 || j < st.result ? 'ok' : j === st.result ? 'bad' : 'skip';
-        return `<span class="nem-mini is-${state}" title="${esc(`${nameOf(k)}: ${state === 'ok' ? 'right' : state === 'bad' ? 'wrong' : 'not tested'}`)}">${glyph(k, 'nem-mini-img')}</span>`;
-      }).join('');
-      const text = st.result === 3 ? 'It worked' : `Failed on ${ORD[st.result]}`;
-      return `
-        <div class="nem-stab${sus.has(i) ? ' is-suspect' : ''}${st.result === 3 ? ' is-win' : ''}">
-          <span class="nem-stab-n">#${i + 1}</span>
-          <span class="nem-stab-mods">${marks}</span>
-          <span class="nem-stab-names">${st.mods.map(k => esc(nameOf(k))).join(' · ')}</span>
-          <span class="nem-stab-res">${text}</span>
-          <span class="nem-stab-at">${esc(fmtShort(st.at))}</span>
-          <button class="nem-x" data-remove="${i}" title="Remove this stab">${armed === 'stab:' + i ? 'Remove?' : Icon.close(12)}</button>
-        </div>`;
-    }).join('');
+    const rows = h.stabs.map((st, i) => stabRow(st, `#${i + 1}`, { suspect: sus.has(i) })).join('');
+    const stale = (h.stale || []).map(st => stabRow(st, '–', { stale: true })).join('');
     return `
       <div class="nem-panel nem-log">
         <div class="nem-head"><span class="nem-k">Stabs so far</span><span class="nem-count">${nf(h.stabs.length)}</span></div>
         ${rows || '<p class="nem-text is-soft">Nothing yet. After each stab, put in what you equipped and how far it got - Argus keeps the log and works out the next one.</p>'}
+        ${stale}
+        ${h.fromGame ? '<p class="nem-text is-soft">Stabs marked <b>Game</b> come straight from your inventory. What you log here counts until the next inventory fetch confirms it.</p>' : ''}
       </div>`;
   }
 
