@@ -92,9 +92,12 @@ A logged stab the game does not know — though the inventory is newer than the 
 greyed out as **Not in game** and does not count. Most likely the requiems were mixed up
 when it was logged; remove it and log the right ones.
 
-For a stab that failed on the 3rd requiem, or one that worked, Argus cannot read yet how far
-it got: the game's code for it has not been seen yet. Such a stab is shown as *Not readable
-yet* and counts as soon as you log it by hand with the same requiems.
+**A stab that worked needs no logging either.** Once the right sequence is in, the game marks
+your Lich as *weakened* — every Lich, Sister and Coda you have beaten carries that mark in your
+inventory. With the next inventory fetch Argus sees it, ends the hunt and shows the sequence.
+The same mark tells the two codes apart that Argus has not seen yet: on a weakened Lich the
+last stab is the one that worked, on any other the code means the 3rd requiem was wrong.
+Logging it by hand still shows it right away, before you are back on your ship.
 
 ## In the overlay
 
@@ -145,10 +148,12 @@ sequence that worked. Hunts you tracked by hand show up here once you end them.
   1st, as the Lich's profile showed): the inventory then held `GuessHistory: [6160]` —
   0x1810, read in groups of four bits from the bottom: Lohk, Xata, Oull in slot order, and
   1 for how far it got. Every reading that fits that 1 also means 2 for a stab that failed on
-  the 2nd, and 0 can only mean it worked — so those are read too. The codes for a failed 3rd
-  requiem and for a stab that worked are still open; Argus writes unreadable ones to
-  `argus.log` (`[Requiem] Am Nemesis noch nicht gelesen`), along with any field on your
-  Lich it does not know.
+  the 2nd, and 0 can only mean it worked — so those are read too. For 3 and 4 the readings
+  disagree; Argus decides them by whether the Lich is weakened (above).
+- **The weakened mark on a running hunt.** Seen on every adversary in your history, not yet on
+  a Lich that is still active. The first time it shows up, Argus writes it to `argus.log`
+  together with the code of the last stab (`[Requiem] Am Nemesis noch nicht gelesen`) —
+  along with anything else on your Lich it does not know.
 - **Murmurs.** The inventory carries the murmur progress (`HintProgress`), but how the
   game keeps the requiems a murmur has named is not known yet — mark them by hand. The
   progress itself is not shown, as its scale is not known either.

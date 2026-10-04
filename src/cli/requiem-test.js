@@ -28,7 +28,7 @@ import path from 'node:path';
 import {
   REQUIEMS, OULL, ANTIVIRUS, MAX_CHARGES, modStock, guaranteedLiches, requiemStock,
   nemesisKind, readNemesis, nemesisFromInventory, checkStab, stabOutcome,
-  solveRequiem, simulateHunt, SEQUENCE_COUNT, cleanHunt, decodeGuess, mergeStabs
+  solveRequiem, simulateHunt, SEQUENCE_COUNT, cleanHunt, decodeGuess, mergeStabs, resolveGuesses
 } from '../core/requiem.js';
 import { dataFile } from '../core/paths.js';
 
@@ -308,7 +308,7 @@ console.log('\n=== Teil 6b: Stiche aus dem Inventar ===\n');
   const code = (a, b, c, o) => a | (b << 4) | (c << 8) | (o << 12);
   ok('Code 2 = am 2. gescheitert', decodeGuess(code(7, 6, 5, 2)).result === 1);
   ok('Code 0 = durch', decodeGuess(code(7, 6, 5, 0)).result === 3);
-  ok('Codes 3 und 4 bleiben ungelesen', decodeGuess(code(7, 6, 5, 3)).result === null && decodeGuess(code(7, 6, 5, 4)).result === null);
+  ok('Codes 3 und 4 allein nicht lesbar', decodeGuess(code(7, 6, 5, 3)).result === null && decodeGuess(code(7, 6, 5, 4)).result === null);
   ok('Oull am gescheiterten Platz -> ungelesen', decodeGuess(code(8, 6, 5, 1)).result === null);
   ok('doppeltes Requiem -> kein Stich', decodeGuess(code(1, 1, 5, 1)) === null);
   ok('Index ueber Oull -> kein Stich', decodeGuess(code(9, 1, 5, 1)) === null);
@@ -343,6 +343,22 @@ console.log('\n=== Teil 6b: Stiche aus dem Inventar ===\n');
   m = mergeStabs(null, [hand, later], SNAP);
   ok('ohne Spielstiche bleibt alles von Hand', m.stabs.length === 2 && m.stabs.every(s => s.source === 'manual') && !m.stale.length);
 
+  /* Geschwaecht = die Folge ist drin. Dann geht der letzte Stich durch, und
+     ohne Schwaechung heissen 3 und 4 "am dritten gescheitert". */
+  const c3 = decodeGuess(code(0, 1, 2, 3)), c4 = decodeGuess(code(0, 1, 2, 4)), c0 = decodeGuess(code(0, 1, 2, 0));
+  ok('nicht geschwaecht: Code 3 und 4 = am 3. gescheitert', same(resolveGuesses([c3, c4], false).map(g => g.result), [2, 2]));
+  ok('geschwaecht: letzter Stich mit Code 3 = durch', same(resolveGuesses([game[0], c3], true).map(g => g.result), [0, 3]));
+  ok('geschwaecht: Code 0 bleibt durch', resolveGuesses([c0], true)[0].result === 3);
+  ok('geschwaecht, letzter Code klar gescheitert -> bleibt gescheitert', resolveGuesses([game[0]], true)[0].result === 0);
+  ok('Oull auf Platz 3 kann nicht am 3. scheitern', resolveGuesses([decodeGuess(code(0, 1, 8, 3))], false)[0].result === null);
+  ok('readNemesis liest die Schwaechung (auch pendingWeaken)',
+    readNemesis({ d: { $date: { $numberLong: '1' } }, pendingWeaken: true, GuessHistory: [code(0, 1, 2, 4)] }).guesses[0].result === 3);
+
+  const weak = solveRequiem({ stabs: [{ mods: ['lohk', 'xata', 'oull'], result: 0 }] }, { weakened: true });
+  ok('geschwaecht ohne gelungenen Stich: Jagd vorbei, kein Vorschlag', weak.done && weak.weakened && !weak.best && weak.finalMods === null);
+  const weakKnown = solveRequiem({ hints: ['lohk', 'xata', 'jahu'], stabs: [{ mods: ['lohk', 'xata', 'jahu'], result: 1 }] }, { weakened: true });
+  ok('... steht die Folge fest, wird sie genannt', same(weakKnown.finalMods, ['lohk', 'jahu', 'xata']));
+
   /* Kaans Stand vom Abend: Lohk per Murmur bekannt, der erste Stich aus dem
      Spiel - die Rechnung muss dasselbe sagen wie mit dem Handeintrag. */
   const r = solveRequiem({ hints: ['lohk'], stabs: mergeStabs(game, [], SNAP).stabs }, { allowOull: true });
@@ -361,13 +377,19 @@ console.log('\n=== Teil 7: Lich-Zeilen im Log ===\n');
   /* Wortlaut aus Kaans EE.log vom 04.10.2026. */
   const KEEP = [
     '21.050 Script [Info]: CheckNemesisKilled.lua: [NEMESIS] Checking for nemesis of faction 1',
-    '187.159 Script [Info]: SetupNemesis.lua: setting up nemesis KuvaLichTransmissionAvatar15'
+    '187.159 Script [Info]: SetupNemesis.lua: setting up nemesis KuvaLichTransmissionAvatar15',
+    /* Der erste echte Stich - die Zeile, die das erste Muster verpasst hat. */
+    '7998.591 Script [Info]: NemesisBait.lua: NemesisBait activated for Kr3aKz',
+    '8006.603 Game [Info]: FinisherAction::Execute for explicit finisher /Lotus/Types/Enemies/Grineer/Vip/KuvaLich/KuvaLichHackFailA',
+    '8011.796 Script [Info]: KuvaLichFinisher.lua: KuvaLichFinisher ending encounter for wrong stab'
   ];
   const DROP = [
     '19.023 Sys [Info]: Spot-loading /Lotus/Weapons/Infested/InfestedLich/LongGuns/1999InfShotgun/1999InfShotgun.lua during batch loading!',
     '21.611 Script [Info]: Background.lua: NemesisGenerator generating profile',
     '18.871 Sys [Error]: Unknown property: NemesisHistory[3].pendingWeaken',
-    '24.076 Sys [Info]: Spot-building /Lotus/Sounds/Lotus/TransmissionSets/Kingpins/KuvaLichA'
+    '24.076 Sys [Info]: Spot-building /Lotus/Sounds/Lotus/TransmissionSets/Kingpins/KuvaLichA',
+    '8041.712 Sys [Info]: Consumable slot 17 - /Lotus/Types/Restoratives/Consumable/NemesisBait: 3',
+    '7845.799 Game [Info]: /Lotus/Types/Restoratives/Consumable/NemesisBait'
   ];
   for (const l of [...KEEP, ...DROP]) w.handleLine(l);
   w.stop();

@@ -314,16 +314,22 @@ const Nemesis = (() => {
     }
 
     if (s.done) {
+      /* Die Folge kann fehlen: das Spiel fuehrt den Lich als geschwaecht,
+         ohne dass Argus den gelungenen Stich gesehen hat (siehe
+         resolveGuesses). Dann zaehlt nur, DASS es geklappt hat. */
       const mods = s.finalMods;
-      const oull = mods.includes('oull');
+      const oull = !!mods?.includes('oull');
+      const next = data.hunt.source === 'manual'
+        ? 'When you are done with the final fight, end this hunt and it moves to your past hunts.'
+        : 'Vanquish or convert it in the final fight; once your inventory shows it as defeated, it moves to your past hunts.';
       return `
         <div class="nem-next is-done">
           <div class="nem-head"><span class="nem-k">Sequence found</span><span class="nem-chance">${Icon.check(14)} it worked</span></div>
-          ${slotsHtml(mods)}
-          <p class="nem-text">Each of these requiems lost one charge with that stab${oull ? ' - Oull too' : ''}.
-          ${data.hunt.source === 'manual'
-            ? 'When you are done with the final fight, end this hunt and it moves to your past hunts.'
-            : 'Vanquish or convert it in the final fight; once your inventory shows it as defeated, it moves to your past hunts.'}</p>
+          ${mods ? slotsHtml(mods) : ''}
+          <p class="nem-text">${mods
+            ? `Each of these requiems lost one charge with that stab${oull ? ' - Oull too' : ''}.`
+            : 'Your inventory shows your Lich as weakened - the right sequence went in. Argus did not see which stab it was, so the requiems are not listed here.'}
+          ${s.weakened || data.nemesis?.weakened ? 'The game says so itself, no need to log it. ' : ''}${next}</p>
         </div>`;
     }
 
@@ -438,7 +444,7 @@ const Nemesis = (() => {
         <div class="nem-palette">${palette}</div>
         <div class="nem-results">
           ${res}
-          <button class="btn btn-primary nem-res-ok" data-res="3" ${ready ? '' : 'disabled'}>${Icon.check(14)}<span>It worked</span></button>
+          <button class="btn btn-primary nem-res-ok" data-res="3" ${ready ? '' : 'disabled'} title="All three were right. Your inventory shows it too once you are back on your ship - logging it here just shows it sooner.">${Icon.check(14)}<span>It worked</span></button>
         </div>
       </div>`;
   }

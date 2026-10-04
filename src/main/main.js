@@ -4090,10 +4090,14 @@ function logNemesisExtras(rawNemesis, active) {
      4, siehe decodeGuess) - mit dem, was im Lich-Profil steht, klaert einer
      davon die Lesart fuer alle. */
   const unread = active.guesses.filter(g => g.result == null).map(g => `${g.code} (${g.mods.join(' · ')})`);
+  /* Das erste Mal geschwaecht: der Code des gelungenen Stichs ist genau die
+     Messung, die decodeGuess noch fehlt (siehe resolveGuesses). */
+  const last = active.guesses[active.guesses.length - 1];
   const parts = [
     ...active.extra.map(k => `${k}=${JSON.stringify(rawNemesis?.[k]).slice(0, 400)}`),
     ...(unread.length ? [`unlesbare Stiche: ${unread.join(', ')}`] : []),
-    ...(active.extra.length || unread.length ? [`GuessHistory=${JSON.stringify(rawNemesis?.GuessHistory)}`, `HintProgress=${rawNemesis?.HintProgress}`] : [])
+    ...(active.weakened ? [`geschwaecht (Weakened=${rawNemesis?.Weakened}, pendingWeaken=${rawNemesis?.pendingWeaken}), letzter Stich ${last ? `${last.code} (${last.mods.join(' · ')})` : 'keiner'}`] : []),
+    ...(active.extra.length || unread.length || active.weakened ? [`GuessHistory=${JSON.stringify(rawNemesis?.GuessHistory)}`, `HintProgress=${rawNemesis?.HintProgress}`] : [])
   ];
   if (!parts.length) return;
   const sig = active.id + ':' + parts.join(',');
@@ -4240,7 +4244,8 @@ async function requiemView() {
       nodes,
       planets,
       minionsKilled: n.minionsKilled,
-      traded: n.traded
+      traded: n.traded,
+      weakened: n.weakened
     };
   };
 
@@ -4252,11 +4257,13 @@ async function requiemView() {
   const usable = stock
     ? new Set([...stock.requiems, stock.oull].filter(r => r.usable > 0).map(r => r.key))
     : null;
-  const fromGame = cur.id && active && cur.id === active.id ? active.guesses : null;
+  const ownNemesis = !!(cur.id && active && cur.id === active.id);
+  const fromGame = ownNemesis ? active.guesses : null;
   const merged = mergeStabs(fromGame, cur.hunt?.stabs || [], syncedAt || fetchedAt || null);
   const countable = merged.stabs.filter(s => !s.unread);
   const solution = cur.id
-    ? solveRequiem({ hints: cur.hunt?.hints || [], stabs: countable }, { allowOull: book.prefs.allowOull, usable })
+    ? solveRequiem({ hints: cur.hunt?.hints || [], stabs: countable },
+        { allowOull: book.prefs.allowOull, usable, weakened: ownNemesis && active.weakened })
     : null;
   /* Die Rechnung nennt verdaechtige Stiche nach ihrer Stelle unter den
      gezaehlten - die Oberflaeche zeigt die volle Liste. */

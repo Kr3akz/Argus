@@ -386,9 +386,17 @@ const RE_CHAT_CONNECTED = /IRC connected/;
  *
  * Die Ladezeilen fuer Waffen, Klaenge und Lieder ("Spot-loading
  * .../InfestedLich/...") nennen nur einen Pfad und bleiben draussen.
+ *
+ * "Lich" OHNE Wortgrenze: beim ersten echten Stich (2026-10-04) ging genau
+ * die Zeile durch, auf die es ankam - "KuvaLichFinisher.lua: KuvaLichFinisher
+ * ending encounter for wrong stab" -, weil hinter "Lich" kein Wortende kommt.
+ * Draussen bleibt dagegen der Vorrat an Requiem Ultimatums ("Consumable slot
+ * 17 - .../NemesisBait: 3"): der steht bei jedem Zonenwechsel im Log, in
+ * Kaans Sitzung zwanzigmal. Das Aktivieren selbst ("NemesisBait.lua:
+ * NemesisBait activated") bleibt drin.
  */
-const RE_NEMESIS_TAP   = /\[NEMESIS\]|Nemesis|Requiem|Parazon|Lich\b|Murmur/i;
-const RE_NEMESIS_NOISE = /Spot-(?:loading|building)|ResourceLoader|Resloader|Resource load|Unknown property|SongItem|TransmissionSets|generating profile|\/Sounds\//;
+const RE_NEMESIS_TAP   = /\[NEMESIS\]|Nemesis|Requiem|Parazon|Lich|Murmur|\bstab\b/i;
+const RE_NEMESIS_NOISE = /Spot-(?:loading|building)|ResourceLoader|Resloader|Resource load|Unknown property|SongItem|TransmissionSets|generating profile|Consumable slot|^\S+ Game \[Info\]: \/Lotus\/Types\/Restoratives\/|\/Sounds\//;
 const WHISPER_LOGIN_QUIET_SEC = 10;
 
 const STATE_BY_TAG = {

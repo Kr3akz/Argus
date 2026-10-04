@@ -259,10 +259,8 @@ const KNOWN_NEMESIS_FIELDS = new Set([
  * gescheiterten Platzes, ein Bit je falschem Platz, oder die Zahl der
  * geprueften Plaetze. Alle drei meinen mit 2 "gescheitert am zweiten", und
  * eine 0 kann nur "durch" heissen (oder kommt gar nicht vor). Bei 3 und 4
- * gehen sie auseinander - dritter Platz oder Erfolg. Solche Stiche nimmt
- * Argus deshalb NICHT allein aus dem Spiel, sondern nur zusammen mit einem
- * Eintrag von Hand mit denselben Requiems (siehe mergeStabs); der erste
- * davon im Protokoll klaert, welche Lesart stimmt.
+ * gehen sie auseinander - dritter Platz oder Erfolg. Das entscheidet
+ * resolveGuesses ueber die Markierung des Lichs (siehe dort).
  */
 const GUESS_OUTCOMES = { 0: 3, 1: 0, 2: 1 };   // Code -> wie weit der Stich kam
 
@@ -277,6 +275,35 @@ export function decodeGuess(code) {
      Lesart falsch, nicht der Stich. */
   const valid = result == null || result === 3 || mods[result] !== OULL.key;
   return { mods, result: valid ? result : null, code, outcome };
+}
+
+/**
+ * Die Codes 3 und 4 und der Erfolg - ueber die Markierung des Lichs.
+ *
+ * Jeder Gegner, den Kaan seit Ende 2020 besiegt hat, steht in NemesisHistory
+ * mit Weakened und pendingWeaken - auch die Codas, deren "Schwaechung" das
+ * volle Antivirus-Band ist. Geschwaecht heisst also: die Unsterblichkeit ist
+ * gebrochen, die richtige Folge ist drin. Am aktiven Lich ist das noch nicht
+ * gesehen worden (Kaans laufender Lich hatte erst einen Fehlstich); das erste
+ * Mal schreibt main.js ins Protokoll.
+ *
+ *   - Geschwaecht: der LETZTE Stich ging durch, egal welcher Code - es sei
+ *     denn, sein Code sagt klar "gescheitert" (1, 2). Dann fuehrt das Spiel
+ *     den gelungenen Stich gar nicht in GuessHistory, und die Jagd ist trotzdem
+ *     vorbei (`weakened` an der Rechnung, siehe solveRequiem).
+ *   - Nicht geschwaecht: ein Erfolg kann es nicht gewesen sein, also heissen
+ *     3 und 4 "gescheitert am dritten" - in jeder der drei Lesarten, in der
+ *     sie ueberhaupt vorkommen.
+ */
+export function resolveGuesses(guesses, weakened = false) {
+  return guesses.map((g, i) => {
+    const last = i === guesses.length - 1;
+    if (weakened && last && (g.result === 3 || g.result == null)) return { ...g, result: 3 };
+    if (!weakened && g.result == null && (g.outcome === 3 || g.outcome === 4) && g.mods[2] !== OULL.key) {
+      return { ...g, result: 2 };
+    }
+    return g;
+  });
 }
 
 /** Die drei Arten, mit dem, was die Oberflaeche zu ihnen sagt. */
@@ -324,6 +351,7 @@ function mongoDate(d) {
 export function readNemesis(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const createdAt = mongoDate(raw.d);
+  const weakened = raw.Weakened === true || raw.pendingWeaken === true;
   return {
     id: createdAt ? `n${createdAt}` : null,
     kind: nemesisKind(raw),
@@ -340,8 +368,10 @@ export function readNemesis(raw) {
        unbekanntem Ausgang bleibt mit result: null drin - wegwerfen hiesse,
        ihn zu unterschlagen. */
     guesses: Array.isArray(raw.GuessHistory)
-      ? raw.GuessHistory.map(decodeGuess).filter(Boolean)
+      ? resolveGuesses(raw.GuessHistory.map(decodeGuess).filter(Boolean), weakened)
       : [],
+    /* Die Folge ist drin - siehe resolveGuesses. */
+    weakened,
     /* Murmur-Fortschritt, roh. Gemessen: 6 nach einer Mission mit Thralls, 27
        nach dem ersten Stich, 34 spaeter - die Skala ist noch nicht bekannt,
        deshalb steht die Zahl nirgends in der Oberflaeche. */
@@ -636,8 +666,11 @@ export function mergeStabs(game, manual, snapshotAt = null) {
  *                        null (Bestand unbekannt - dann gilt alles als da)
  * @param opts.outlook    false spart den Entscheidungsbaum (nur der Test
  *                        braucht das, er spielt Hunderte Jagden durch)
+ * @param opts.weakened   das Spiel fuehrt den Lich als geschwaecht - die Folge
+ *                        ist drin, auch wenn kein Stich mit "durch" vorliegt
+ *                        (siehe resolveGuesses)
  */
-export function solveRequiem(hunt, { allowOull = true, usable = null, outlook: wantOutlook = true } = {}) {
+export function solveRequiem(hunt, { allowOull = true, usable = null, outlook: wantOutlook = true, weakened = false } = {}) {
   const { hints: hintKeys, stabs: stabKeys } = cleanHunt(hunt);
   const hints = hintKeys.map(k => KEY_TO_IDX.get(k));
   const stabs = stabKeys.map(s => ({ mods: toIdx(s.mods), result: s.result }));
@@ -652,15 +685,20 @@ export function solveRequiem(hunt, { allowOull = true, usable = null, outlook: w
     count: n,
     hints: hintKeys,
     stabs: stabKeys,
-    done: !!success,
-    finalMods: success ? success.mods : null
+    done: !!success || weakened,
+    finalMods: success ? success.mods : null,
+    /* Vorbei, aber ohne den Stich, der es geschafft hat - dann sagt die
+       Oberflaeche nur, DASS es geklappt hat. */
+    weakened: weakened && !success
   };
 
   if (!n) {
+    /* Ist der Lich geschwaecht, ist die Jagd vorbei - ein Widerspruch im
+       Verlauf aendert daran nichts mehr. */
     return {
       ...base,
-      contradiction: true,
-      suspects: findSuspects(hints, stabs),
+      contradiction: !weakened,
+      suspects: weakened ? null : findSuspects(hints, stabs),
       slots: [{}, {}, {}], inSequence: {}, known: [null, null, null],
       best: null, bestOwned: null, outlook: null, oullOutlook: null
     };
@@ -681,9 +719,12 @@ export function solveRequiem(hunt, { allowOull = true, usable = null, outlook: w
     return i >= 0 ? IDX_TO_KEY[i] : null;
   });
 
-  if (success) {
+  if (success || weakened) {
     return {
-      ...base, contradiction: false, suspects: null,
+      ...base,
+      /* Steht die Folge ohne gelungenen Stich trotzdem fest, ist sie die. */
+      finalMods: base.finalMods || (known.every(Boolean) ? known : null),
+      contradiction: false, suspects: null,
       slots, inSequence, known,
       best: null, bestOwned: null, outlook: null, oullOutlook: null
     };
