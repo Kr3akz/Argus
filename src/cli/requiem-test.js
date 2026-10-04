@@ -387,7 +387,7 @@ console.log('\n=== Teil 7: Lich-Zeilen im Log ===\n');
     '187.159 Script [Info]: SetupNemesis.lua: setting up nemesis KuvaLichTransmissionAvatar15',
     /* Der erste echte Stich - die Zeile, die das erste Muster verpasst hat. */
     '7998.591 Script [Info]: NemesisBait.lua: NemesisBait activated for Kr3aKz',
-    '8006.603 Game [Info]: FinisherAction::Execute for explicit finisher /Lotus/Types/Enemies/Grineer/Vip/KuvaLich/KuvaLichHackFailA',
+    '8006.603 Game [Info]: FinisherAction::SetExplicitFinisher TennoFinisherAction finisher /Lotus/Types/Enemies/Grineer/Vip/KuvaLich/KuvaLichHackFailA mAttacker /NONE mVictim /NONE mFinisherIndex 4294967295 mFinisher /NONE',
     '8011.796 Script [Info]: KuvaLichFinisher.lua: KuvaLichFinisher ending encounter for wrong stab'
   ];
   const DROP = [
@@ -396,7 +396,11 @@ console.log('\n=== Teil 7: Lich-Zeilen im Log ===\n');
     '18.871 Sys [Error]: Unknown property: NemesisHistory[3].pendingWeaken',
     '24.076 Sys [Info]: Spot-building /Lotus/Sounds/Lotus/TransmissionSets/Kingpins/KuvaLichA',
     '8041.712 Sys [Info]: Consumable slot 17 - /Lotus/Types/Restoratives/Consumable/NemesisBait: 3',
-    '7845.799 Game [Info]: /Lotus/Types/Restoratives/Consumable/NemesisBait'
+    '7845.799 Game [Info]: /Lotus/Types/Restoratives/Consumable/NemesisBait',
+    /* Die doppelte Zeile zum selben Finisher, ein Thrall, ein Erscheinungswurf. */
+    '8006.603 Game [Info]: FinisherAction::Execute for explicit finisher /Lotus/Types/Enemies/Grineer/Vip/KuvaLich/KuvaLichHackFailA',
+    '2604.596 Game [Info]: FinisherAction::SetExplicitFinisher TennoFinisherAction finisher /Lotus/Types/Enemies/Grineer/Vip/KuvaLich/KuvaLichFinisherMarineBackD mAttacker /NONE mVictim /NONE',
+    '2607.907 Script [Info]: NemesisMission.lua: nemesis roll: 0.706524670124054'
   ];
   const names = [];
   w.on('nemesis-name', ev => names.push(ev.name));
