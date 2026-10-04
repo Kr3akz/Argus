@@ -13509,6 +13509,11 @@ label.te-row { cursor: pointer; user-select: none; }
 }
 .nem-fact b { font-size: 14px; font-weight: 600; }
 .nem-fact small { font-size: 11.5px; font-weight: 500; color: var(--text-3); }
+/* Der Murmur-Ring - wie unter "Known Requiems" im Spiel, von oben im
+   Uhrzeigersinn. */
+.nem-ring { width: 14px; height: 14px; margin-right: 6px; vertical-align: -2px; transform: rotate(-90deg); }
+.nem-ring circle { fill: none; stroke: rgb(var(--t-fg) / .14); stroke-width: 2.4; }
+.nem-ring circle.is-fill { stroke: var(--accent); stroke-linecap: round; }
 .nem-nodes { display: flex; flex-wrap: wrap; gap: 6px; }
 .nem-node {
   padding: 3px 10px;

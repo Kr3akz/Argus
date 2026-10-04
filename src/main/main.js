@@ -82,7 +82,7 @@ import { buildBaseSets } from '../core/basesets.js';
 import { foundryQueue } from '../core/foundry.js';
 import { buildRivens, rivenView, rivensForShownWeapon } from '../core/rivens.js';
 import { REQUIEMS, OULL, NEMESIS_KINDS, TRANSMUTE_COUNT, requiemStock, nemesisFromInventory,
-         solveRequiem, mergeStabs } from '../core/requiem.js';
+         solveRequiem, mergeStabs, murmurState } from '../core/requiem.js';
 import * as requiemHunts from '../core/requiem-hunts.js';
 import { loadDispositions } from '../core/dispositions.js';
 import { RIVEN_ATTRS, rivenClass, labelWants } from '../core/riven-wants.js';
@@ -4089,7 +4089,10 @@ function logNemesisExtras(rawNemesis, active) {
   /* Dazu die Stiche, deren Ausgang Argus noch nicht lesen kann (Oull an
      einem geprueften Platz, unbekannte Bits - siehe decodeGuess). Mit dem,
      was im Lich-Profil steht, klaert einer davon die Lesart fuer alle. */
-  const unread = active.guesses.filter(g => g.result == null).map(g => `${g.code} (${g.mods.join(' · ')})`);
+  const unread = [
+    ...active.guesses.filter(g => g.result == null).map(g => `${g.code} (${g.mods.join(' · ')})`),
+    ...(active.unknownGuesses || []).map(c => `${c} (Requiems unbekannt)`)
+  ];
   /* Das erste Mal geschwaecht: der Code des gelungenen Stichs ist genau die
      Messung, die decodeGuess noch fehlt (siehe resolveGuesses). */
   const last = active.guesses[active.guesses.length - 1];
@@ -4294,7 +4297,9 @@ async function requiemView() {
   return {
     inventory: invState ? null : { fetchedAt, syncedAt: syncedAt || null },
     invState,
-    nemesis: decorate(active),
+    /* Der Murmur-Ring nur am laufenden Gegner - an den besiegten sagt er
+       nichts mehr. */
+    nemesis: active ? { ...decorate(active), murmur: NEMESIS_KINDS[active.kind]?.requiems ? murmurState(active) : null } : null,
     hunt: cur.id ? {
       id: cur.id,
       source: cur.hunt?.source || cur.template?.source || 'manual',

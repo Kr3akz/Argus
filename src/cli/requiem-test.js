@@ -28,7 +28,8 @@ import path from 'node:path';
 import {
   REQUIEMS, OULL, ANTIVIRUS, MAX_CHARGES, modStock, guaranteedLiches, requiemStock,
   nemesisKind, readNemesis, nemesisFromInventory, checkStab, stabOutcome,
-  solveRequiem, simulateHunt, SEQUENCE_COUNT, cleanHunt, decodeGuess, mergeStabs, resolveGuesses
+  solveRequiem, simulateHunt, SEQUENCE_COUNT, cleanHunt, decodeGuess, mergeStabs, resolveGuesses,
+  murmurState, MURMUR_STEP, NEMESIS_KINDS
 } from '../core/requiem.js';
 import { dataFile } from '../core/paths.js';
 
@@ -308,19 +309,23 @@ console.log('\n=== Teil 6: Stichbuch ===\n');
    ------------------------------------------------------------------------ */
 console.log('\n=== Teil 6b: Stiche aus dem Inventar ===\n');
 {
-  /* Gemessen an Kaans ersten beiden Stichen (Ausgang im Lich-Profil und im
+  /* Gemessen an Kaans ersten drei Stichen (Ausgang im Lich-Profil und im
      EE.log abgelesen): Lohk · Xata · Oull, am 1. Platz gescheitert -> 6160;
-     Fass · Lohk · Oull, Fass richtig, am 2. gescheitert -> 26629. */
+     Fass · Lohk · Oull, Fass richtig, am 2. gescheitert -> 26629;
+     Fass · Xata · Oull, durch -> 174357 (Oull dort als 9). */
   const g = decodeGuess(6160);
   ok('6160 = Lohk · Xata · Oull, gescheitert am 1.', same(g?.mods, ['lohk', 'xata', 'oull']) && g.result === 0, JSON.stringify(g));
   const g2 = decodeGuess(26629);
   ok('26629 = Fass · Lohk · Oull, gescheitert am 2.', same(g2?.mods, ['fass', 'lohk', 'oull']) && g2.result === 1 && same(g2.marks, [2, 1, 0]), JSON.stringify(g2));
+  const g3 = decodeGuess(174357);
+  ok('174357 = Fass · Xata · Oull, durch', same(g3?.mods, ['fass', 'xata', 'oull']) && g3.result === 3 && same(g3.marks, [2, 2, 2]), JSON.stringify(g3));
 
   /* Je Platz zwei Bits ab Bit 12: 1 falsch, 2 richtig, 0 nicht geprueft. */
   const code = (a, b, c, ...marks) => marks.reduce((v, mk, i) => v | (mk << (12 + 2 * i)), a | (b << 4) | (c << 8));
-  ok('Hilfsfunktion trifft die gemessenen Codes', code(0, 1, 8, 1) === 6160 && code(5, 0, 8, 2, 1) === 26629);
+  ok('Hilfsfunktion trifft die gemessenen Codes', code(0, 1, 8, 1) === 6160 && code(5, 0, 8, 2, 1) === 26629 && code(5, 1, 9, 2, 2, 2) === 174357);
   ok('gefolgert: am 3. gescheitert', decodeGuess(code(7, 6, 5, 2, 2, 1)).result === 2);
-  ok('gefolgert: durch', decodeGuess(code(7, 6, 5, 2, 2, 2)).result === 3);
+  ok('durch ohne Oull', decodeGuess(code(7, 6, 5, 2, 2, 2)).result === 3);
+  ok('Oull zweimal (8 und 9) -> kein Stich', decodeGuess(code(8, 9, 5, 2, 2, 2)) === null);
   ok('Oull als richtig markiert besteht', decodeGuess(code(7, 8, 5, 2, 2, 1)).result === 2);
   ok('Oull am gescheiterten Platz -> ungelesen', decodeGuess(code(8, 6, 5, 1)).result === null);
   ok('Luecke vor dem Fehler -> ungelesen', decodeGuess(code(7, 6, 5, 0, 1)).result === null);
@@ -329,11 +334,30 @@ console.log('\n=== Teil 6b: Stiche aus dem Inventar ===\n');
   ok('unbekannte Markierung 3 -> ungelesen', decodeGuess(code(7, 6, 5, 2, 3)).result === null);
   ok('Bits ueber dem dritten Platz -> ungelesen', decodeGuess(code(7, 6, 5, 2, 2, 2) + (1 << 18)).result === null);
   ok('doppeltes Requiem -> kein Stich', decodeGuess(code(1, 1, 5, 1)) === null);
-  ok('Index ueber Oull -> kein Stich', decodeGuess(code(9, 1, 5, 1)) === null);
+  ok('Nummer ueber Oull (10) -> kein Stich', decodeGuess(code(10, 1, 5, 1)) === null);
 
   const nem = readNemesis({ Rank: 2, d: { $date: { $numberLong: '1' } }, GuessHistory: [6160, 26629], HintProgress: 20, Hints: [5] });
   ok('readNemesis liest die Stiche und kennt die Felder',
     same(nem.guesses.map(x => x.result), [0, 1]) && nem.murmurProgress === 20 && same(nem.hints, ['fass']) && !nem.extra.length, JSON.stringify(nem.extra));
+  const odd = readNemesis({ d: { $date: { $numberLong: '1' } }, GuessHistory: [6160, code(10, 1, 5, 1)] });
+  ok('unlesbarer Code fehlt in den Stichen, steht aber fuers Protokoll bereit', odd.guesses.length === 1 && same(odd.unknownGuesses, [code(10, 1, 5, 1)]));
+
+  /* Kaans Lich nach dem dritten Stich, wie er im Inventar stand: geschwaecht,
+     Xata ohne Murmur unter den bekannten (Fortschritt 24 von 60). */
+  const won = readNemesis({ Rank: 2, d: { $date: { $numberLong: '1' } }, Weakened: true, GuessHistory: [6160, 26629, 174357], HintProgress: 24, Hints: [5, 1] });
+  const wonSol = solveRequiem({ hints: won.hints, stabs: won.guesses }, { weakened: won.weakened });
+  ok('dritter Stich: Jagd vorbei, die Folge steht da', wonSol.done && same(wonSol.finalMods, ['fass', 'xata', 'oull']) && !wonSol.weakened, JSON.stringify(wonSol.finalMods));
+
+  /* Murmur-Ring, gemessen auf Kaans Bildschirmfotos: 5 -> 7,8 %, 20 -> 32,6 %
+     (dazu je gut zwei Grad, die die weichen Enden schlucken). */
+  const ring = p => murmurState({ murmurProgress: p, hints: ['fass'] });
+  const arc = p => ring(p).share * 360;
+  ok('Murmur: Schwelle 60 trifft beide Fotos bis auf die weichen Enden', MURMUR_STEP === 60
+    && [[5, 27.9], [20, 117.5]].every(([p, seen]) => arc(p) - seen > 0 && arc(p) - seen < 3));
+  ok('Murmur: 20 = ein Drittel, ein Requiem bekannt', Math.abs(murmurState(nem).share - 1 / 3) < 1e-9 && murmurState(nem).known === 1);
+  ok('Murmur: ueber der Schwelle bleibt es voll', ring(75).share === 1);
+  ok('Murmur: alle drei bekannt -> nichts mehr', murmurState({ murmurProgress: 10, hints: ['fass', 'lohk', 'xata'] }) === null);
+  ok('Murmur: ohne Fortschritt im Inventar -> nichts', murmurState({ murmurProgress: null, hints: [] }) === null && murmurState(null) === null);
 
   const SNAP = 1000;
   const game = [decodeGuess(6160)];
@@ -453,13 +477,16 @@ if (existsSync(invFile)) {
   const { active, history } = nemesisFromInventory(inv);
   if (active) console.log(`  Aktiv: ${active.kind}, Level ${active.level}, ${active.influence.length} Knoten, unbekannte Felder: ${active.extra.join(',') || 'keine'}`);
   /* Die Probe aus dem Kopf von requiem.js: jeder besiegte Lich und jede
-     Sister kostet drei Ladungen. Gilt nur, solange nie ein angebrauchtes
-     Requiem gehandelt oder transmutiert wurde - deshalb nur als Auskunft. */
+     Sister kostet drei Ladungen - der aktive auch schon, sobald er
+     geschwaecht ist (gemessen: Kaans dritter Stich nahm Fass, Xata und Oull
+     je eine). Gilt nur, solange nie ein angebrauchtes Requiem gehandelt oder
+     transmutiert wurde - deshalb nur als Auskunft. */
   const used = [...(inv.Upgrades || [])]
     .filter(u => /\/Immortal\/Immortal/.test(u.ItemType))
     .reduce((s, u) => s + (JSON.parse(u.UpgradeFingerprint || '{}').lvl || 0), 0);
-  const beaten = history.filter(h => h.kind === 'lich' || h.kind === 'sister').length;
-  console.log(`  Probe: ${used} verbrauchte Ladungen, ${beaten} besiegte Liches/Sisters x 3 = ${beaten * 3}`
+  const beaten = history.filter(h => h.kind === 'lich' || h.kind === 'sister').length
+    + (active?.weakened && NEMESIS_KINDS[active.kind]?.requiems ? 1 : 0);
+  console.log(`  Probe: ${used} verbrauchte Ladungen, ${beaten} besiegte oder geschwaechte Liches/Sisters x 3 = ${beaten * 3}`
     + (used === beaten * 3 ? '  (passt)' : '  (weicht ab - gehandelt oder transmutiert?)'));
 } else {
   console.log('\n(Teil 8 uebersprungen - keine data/inventory.json)');

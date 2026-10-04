@@ -30,8 +30,9 @@ follow [semantic versioning](https://semver.org/lang/en/).
   have named, both read straight from your inventory — and how many stabs it can still take
   at most, and on average. Oull is used where it saves stabs. A new stab shows up once you
   are back on your ship, a stab that worked included; log it in the tab or the overlay to
-  see the next suggestion right away. Your adversary's progenitor, level and territory come
-  from the inventory too. Without one you can track a hunt by hand, on console too.
+  see the next suggestion right away. Your adversary's progenitor, level, territory and
+  murmur progress come from the inventory too. Without one you can track a hunt by hand,
+  on console too.
 - **The next stab in the overlay.** While you hunt, the overlay window shows the next stab
   with four buttons for how it went, so logging it does not mean leaving the game.
 - **Requiem charges.** Every requiem with the charges left on each copy, how many more

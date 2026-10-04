@@ -248,35 +248,42 @@ const KNOWN_NEMESIS_FIELDS = new Set([
 /**
  * Ein Stich, wie das Spiel ihn in GuessHistory ablegt.
  *
- * GEMESSEN an Kaans ersten beiden Stichen (2026-10-04, der Ausgang jeweils im
+ * GEMESSEN an Kaans ersten drei Stichen (2026-10-04, der Ausgang jeweils im
  * Lich-Profil und im EE.log abgelesen):
  *
- *   6160  = 0x1810   Lohk · Xata · Oull - am 1. Platz gescheitert
- *   26629 = 0x6805   Fass · Lohk · Oull - 1. Platz richtig, am 2. gescheitert
+ *   6160   = 0x1810    Lohk · Xata · Oull - am 1. Platz gescheitert
+ *   26629  = 0x6805    Fass · Lohk · Oull - 1. Platz richtig, am 2. gescheitert
+ *   174357 = 0x2A915   Fass · Xata · Oull - durch, der Lich war danach geschwaecht
  *
  * Die unteren drei Vierergruppen sind die Requiems in der Reihenfolge der
- * Plaetze, nummeriert wie ihre Pfade: 0 Lohk (ImmortalOneMod) bis 7 Khra,
- * 8 Oull (Wildcard). Darueber steht je Platz ein Paar Bits, der erste Platz
- * zuunterst: 1 = falsch, 2 = richtig, 0 = nicht mehr geprueft. 0x1 heisst
- * also "erster falsch", 0x6 = 0b0110 "erster richtig, zweiter falsch".
+ * Plaetze, nummeriert wie ihre Pfade: 0 Lohk (ImmortalOneMod) bis 7 Khra.
+ * Oull (Wildcard) steht als 8 drin, solange der Stich nicht bis zu ihm kam,
+ * und als 9, wo er bestanden hat (beim dritten Stich).
+ *
+ * Darueber steht je Platz ein Paar Bits, der erste Platz zuunterst:
+ * 1 = falsch, 2 = richtig, 0 = nicht mehr geprueft. 0x1 heisst also "erster
+ * falsch", 0x6 = 0b0110 "erster richtig, zweiter falsch", 0x2A = 0b101010
+ * "alle drei richtig".
  *
  * Die ERSTE Lesart (die oberste Gruppe sei die Nummer des gescheiterten
  * Platzes) hatte fuer den zweiten Stich 0x2805 erwartet - der Code 6 hat sie
- * widerlegt.
+ * widerlegt. Die zweite hat den Erfolg (0b101010) richtig vorhergesagt.
  *
- * Daraus folgt, aber NOCH NICHT GESEHEN: am dritten gescheitert = 0b011010,
- * durch = 0b101010. Offen ist auch, wie Oull markiert wird, wenn der Stich
- * bis zu ihm kommt - eine 2 laege nahe. Was nicht ins Muster passt, bleibt
- * ungelesen (result: null), und main.js schreibt den Code ins Protokoll.
+ * NOCH NICHT GESEHEN: am dritten gescheitert (0b011010 nach dieser Lesart),
+ * und Oull auf dem ersten oder zweiten Platz. Was nicht ins Muster passt,
+ * bleibt ungelesen (result: null), und main.js schreibt den Code ins
+ * Protokoll.
  */
 const MARK_WRONG = 1;
 const MARK_RIGHT = 2;
 
+/* Die Nummer im Code als Requiem - Oull hat zwei, siehe oben. */
+const keyOfCode = i => i < N ? IDX_TO_KEY[i] : i === OULL_IDX || i === OULL_IDX + 1 ? OULL.key : null;
+
 export function decodeGuess(code) {
   if (!Number.isInteger(code) || code < 0) return null;
-  const idx = [code & 15, (code >> 4) & 15, (code >> 8) & 15];
-  if (idx.some(i => i > OULL_IDX) || new Set(idx).size !== 3) return null;
-  const mods = idx.map(i => IDX_TO_KEY[i]);
+  const mods = [code & 15, (code >> 4) & 15, (code >> 8) & 15].map(keyOfCode);
+  if (mods.includes(null) || new Set(mods).size !== 3) return null;
   const marks = [(code >> 12) & 3, (code >> 14) & 3, (code >> 16) & 3];
   /* Bits ueber dem dritten Paar: unbekannt, also nicht raten. */
   return { mods, marks, code, result: code < 0x40000 ? readMarks(marks, mods) : null };
@@ -384,24 +391,58 @@ export function readNemesis(raw) {
     guesses: Array.isArray(raw.GuessHistory)
       ? resolveGuesses(raw.GuessHistory.map(decodeGuess).filter(Boolean), weakened)
       : [],
+    /* Codes, in denen nicht einmal die Requiems zu lesen sind - sie fehlen
+       in guesses und stehen nur im Protokoll (siehe main.js). */
+    unknownGuesses: Array.isArray(raw.GuessHistory)
+      ? raw.GuessHistory.filter(c => !decodeGuess(c))
+      : [],
     /* Die Folge ist drin - siehe resolveGuesses. */
     weakened,
-    /* Die Requiems, die Murmurs genannt haben - als Index wie in
+    /* Die Requiems, die das Spiel als bekannt fuehrt - als Index wie in
        GuessHistory. GEMESSEN am 2026-10-04: nach Kaans erstem Murmur stand
-       dort [5], und das Spiel hatte Fass genannt (ImmortalSixMod, Index 5). */
+       dort [5], und das Spiel hatte Fass genannt (ImmortalSixMod, Index 5).
+       Nach dem dritten Stich kam Xata dazu ([5, 1]) - ohne Murmur, der
+       Fortschritt stand bei 24 von 60: auch ein Requiem, das ein Stich als
+       richtig erkannt hat, landet hier. */
     hints: Array.isArray(raw.Hints)
       ? [...new Set(raw.Hints.filter(i => Number.isInteger(i) && i >= 0 && i < N).map(i => IDX_TO_KEY[i]))]
       : [],
     /* Murmur-Fortschritt, roh. Gemessen: 6 nach einer Mission mit Thralls, 27
        nach dem ersten Stich, 34 spaeter, 5 nach dem Murmur, der Fass nannte -
        er zaehlt also auf das naechste Requiem hin und faengt danach neu an.
-       Wo die Schwelle liegt, ist offen; deshalb steht er nirgends. */
+       Die Schwelle steht bei murmurState. */
     murmurProgress: Number.isFinite(raw.HintProgress) ? raw.HintProgress : null,
     finished: raw.k === true,
     traded: raw.Traded === true,
     prevOwners: Number(raw.PrevOwners) || 0,
     extra: Object.keys(raw).filter(k => !KNOWN_NEMESIS_FIELDS.has(k))
   };
+}
+
+/**
+ * Wie weit der naechste Murmur ist.
+ *
+ * GEMESSEN am 2026-10-04 am Ring unter "Known Requiems" im Spiel, auf zwei
+ * Bildschirmfotos von Kaan (beide auf dem Weg zum zweiten Requiem): bei
+ * HintProgress 5 war der helle Bogen 27,9 Grad lang (7,8 %), bei 20 waren es
+ * 117,5 Grad (32,6 %). Mit 60 als Schwelle waeren es 30 und 120 Grad - beide
+ * Male gut zwei Grad mehr, die die weich auslaufenden Enden des Bogens
+ * schlucken. Ohne diesen Versatz passt keine gemeinsame Schwelle (61,3 gegen
+ * 64,5). Fuers erste Requiem passt 60 auch (34 Punkte vor der Mission, 5 Rest
+ * danach), gemessen ist es dort nicht, fuers dritte ebenso wenig.
+ */
+export const MURMUR_STEP = 60;
+
+/**
+ * @param nemesis readNemesis(...)
+ * @returns null, wenn es nichts zu zeigen gibt (kein Fortschritt im Inventar,
+ *          alle drei Requiems genannt), sonst { progress, step, share, known }
+ */
+export function murmurState(nemesis) {
+  const progress = nemesis?.murmurProgress;
+  const known = nemesis?.hints?.length ?? 0;
+  if (!Number.isFinite(progress) || progress < 0 || known >= 3) return null;
+  return { progress, step: MURMUR_STEP, share: Math.min(1, progress / MURMUR_STEP), known };
 }
 
 /** Der aktive Gegner und die besiegten, neueste zuerst. */

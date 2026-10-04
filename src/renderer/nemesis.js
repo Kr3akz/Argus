@@ -196,6 +196,21 @@ const Nemesis = (() => {
     return `<div class="nem-fact"><span>${esc(k)}</span><b>${v}</b></div>`;
   }
 
+  /** Der Ring unter "Known Requiems" im Spiel, im Kleinen. */
+  function murmurFact(m) {
+    const r = 6, c = 2 * Math.PI * r;
+    const fill = m.share > 0
+      ? `<circle cx="8" cy="8" r="${r}" class="is-fill" stroke-dasharray="${(m.share * c).toFixed(2)} ${c.toFixed(2)}"/>`
+      : '';
+    const tip = `From your inventory: ${m.progress} of ${m.step} murmur points - the ring under Known Requiems in the game. `
+      + `When it is full, a murmur names another requiem of the sequence (${m.known} of 3 known).`;
+    return `
+      <div class="nem-fact" title="${esc(tip)}">
+        <span>Next murmur</span>
+        <b><svg class="nem-ring" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="${r}"/>${fill}</svg>${pct(m.share)}</b>
+      </div>`;
+  }
+
   /** Der Gegner: aus dem Inventar, oder ein Zug von Hand. */
   function foeHtml() {
     const d = data;
@@ -223,6 +238,7 @@ const Nemesis = (() => {
               ${n.level ? fact('Level', `${n.level}<small> of 5</small>`) : ''}
               ${terr ? fact('Territory', terr) : ''}
               ${n.minions && n.minionsKilled != null ? fact(`${n.minions} defeated`, nf(n.minionsKilled)) : ''}
+              ${n.murmur && !d.solution?.done ? murmurFact(n.murmur) : ''}
               ${n.createdAt ? fact('Hunting since', esc(fmtDate(n.createdAt))) : ''}
             </div>
             ${nodes}
@@ -469,7 +485,7 @@ const Nemesis = (() => {
           <span class="nem-rq">${glyph(m.key)}<b>${esc(m.name)}</b></span>
           <button class="nem-murmur${hints.has(m.key) ? ' is-on' : ''}${fromGame.has(m.key) ? ' is-game' : ''}" data-hint="${esc(m.key)}"
                   ${fromGame.has(m.key) ? 'disabled' : ''}
-                  title="${fromGame.has(m.key) ? 'Revealed by a murmur - from your inventory'
+                  title="${fromGame.has(m.key) ? 'Known from your inventory - a murmur named it, or a stab found it'
                          : hints.has(m.key) ? 'Marked by hand - click to undo. Your inventory takes over once it has the murmur too.'
                          : 'Mark as revealed by a murmur'}">
             ${hints.has(m.key) ? Icon.check(11) + '<span>Known</span>' : '<span>Known?</span>'}
