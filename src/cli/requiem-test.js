@@ -308,20 +308,32 @@ console.log('\n=== Teil 6: Stichbuch ===\n');
    ------------------------------------------------------------------------ */
 console.log('\n=== Teil 6b: Stiche aus dem Inventar ===\n');
 {
-  /* Gemessen: Kaans erster Stich, Lohk · Xata · Oull, am 1. Platz gescheitert
-     (im Lich-Profil abgelesen) - im Inventar danach GuessHistory = [6160]. */
+  /* Gemessen an Kaans ersten beiden Stichen (Ausgang im Lich-Profil und im
+     EE.log abgelesen): Lohk · Xata · Oull, am 1. Platz gescheitert -> 6160;
+     Fass · Lohk · Oull, Fass richtig, am 2. gescheitert -> 26629. */
   const g = decodeGuess(6160);
   ok('6160 = Lohk · Xata · Oull, gescheitert am 1.', same(g?.mods, ['lohk', 'xata', 'oull']) && g.result === 0, JSON.stringify(g));
-  const code = (a, b, c, o) => a | (b << 4) | (c << 8) | (o << 12);
-  ok('Code 2 = am 2. gescheitert', decodeGuess(code(7, 6, 5, 2)).result === 1);
-  ok('Code 0 = durch', decodeGuess(code(7, 6, 5, 0)).result === 3);
-  ok('Codes 3 und 4 allein nicht lesbar', decodeGuess(code(7, 6, 5, 3)).result === null && decodeGuess(code(7, 6, 5, 4)).result === null);
+  const g2 = decodeGuess(26629);
+  ok('26629 = Fass · Lohk · Oull, gescheitert am 2.', same(g2?.mods, ['fass', 'lohk', 'oull']) && g2.result === 1 && same(g2.marks, [2, 1, 0]), JSON.stringify(g2));
+
+  /* Je Platz zwei Bits ab Bit 12: 1 falsch, 2 richtig, 0 nicht geprueft. */
+  const code = (a, b, c, ...marks) => marks.reduce((v, mk, i) => v | (mk << (12 + 2 * i)), a | (b << 4) | (c << 8));
+  ok('Hilfsfunktion trifft die gemessenen Codes', code(0, 1, 8, 1) === 6160 && code(5, 0, 8, 2, 1) === 26629);
+  ok('gefolgert: am 3. gescheitert', decodeGuess(code(7, 6, 5, 2, 2, 1)).result === 2);
+  ok('gefolgert: durch', decodeGuess(code(7, 6, 5, 2, 2, 2)).result === 3);
+  ok('Oull als richtig markiert besteht', decodeGuess(code(7, 8, 5, 2, 2, 1)).result === 2);
   ok('Oull am gescheiterten Platz -> ungelesen', decodeGuess(code(8, 6, 5, 1)).result === null);
+  ok('Luecke vor dem Fehler -> ungelesen', decodeGuess(code(7, 6, 5, 0, 1)).result === null);
+  ok('Pruefung bricht ohne Fehler ab -> ungelesen', decodeGuess(code(7, 6, 5, 2)).result === null);
+  ok('Markierung hinter dem Fehler -> ungelesen', decodeGuess(code(7, 6, 5, 1, 1)).result === null);
+  ok('unbekannte Markierung 3 -> ungelesen', decodeGuess(code(7, 6, 5, 2, 3)).result === null);
+  ok('Bits ueber dem dritten Platz -> ungelesen', decodeGuess(code(7, 6, 5, 2, 2, 2) + (1 << 18)).result === null);
   ok('doppeltes Requiem -> kein Stich', decodeGuess(code(1, 1, 5, 1)) === null);
   ok('Index ueber Oull -> kein Stich', decodeGuess(code(9, 1, 5, 1)) === null);
 
-  const nem = readNemesis({ Rank: 1, d: { $date: { $numberLong: '1' } }, GuessHistory: [6160], HintProgress: 27 });
-  ok('readNemesis liest die Stiche und kennt die Felder', nem.guesses.length === 1 && nem.murmurProgress === 27 && !nem.extra.length, JSON.stringify(nem.extra));
+  const nem = readNemesis({ Rank: 2, d: { $date: { $numberLong: '1' } }, GuessHistory: [6160, 26629], HintProgress: 20, Hints: [5] });
+  ok('readNemesis liest die Stiche und kennt die Felder',
+    same(nem.guesses.map(x => x.result), [0, 1]) && nem.murmurProgress === 20 && same(nem.hints, ['fass']) && !nem.extra.length, JSON.stringify(nem.extra));
 
   const SNAP = 1000;
   const game = [decodeGuess(6160)];
@@ -341,7 +353,9 @@ console.log('\n=== Teil 6b: Stiche aus dem Inventar ===\n');
   m = mergeStabs(game, [typo], SNAP);
   ok('aelterer Eintrag ohne Gegenstueck -> ausgegraut', m.stabs.length === 1 && m.stabs[0].source === 'game' && m.stale.length === 1 && m.stale[0].bookIndex === 0);
 
-  const unread = [decodeGuess(code(0, 1, 8, 3))];
+  /* Oull auf einem geprueften Platz mit einer Markierung, die noch niemand
+     gesehen hat - die offene Frage aus decodeGuess. */
+  const unread = [decodeGuess(code(0, 1, 8, 2, 2, 3))];
   m = mergeStabs(unread, [], SNAP);
   ok('ungelesener Spielstich ohne Handeintrag zaehlt nicht', m.stabs[0].unread && m.stabs[0].result === null);
   m = mergeStabs(unread, [{ mods: ['lohk', 'xata', 'oull'], result: 3, at: 900 }], SNAP);
@@ -350,16 +364,15 @@ console.log('\n=== Teil 6b: Stiche aus dem Inventar ===\n');
   m = mergeStabs(null, [hand, later], SNAP);
   ok('ohne Spielstiche bleibt alles von Hand', m.stabs.length === 2 && m.stabs.every(s => s.source === 'manual') && !m.stale.length);
 
-  /* Geschwaecht = die Folge ist drin. Dann geht der letzte Stich durch, und
-     ohne Schwaechung heissen 3 und 4 "am dritten gescheitert". */
-  const c3 = decodeGuess(code(0, 1, 2, 3)), c4 = decodeGuess(code(0, 1, 2, 4)), c0 = decodeGuess(code(0, 1, 2, 0));
-  ok('nicht geschwaecht: Code 3 und 4 = am 3. gescheitert', same(resolveGuesses([c3, c4], false).map(g => g.result), [2, 2]));
-  ok('geschwaecht: letzter Stich mit Code 3 = durch', same(resolveGuesses([game[0], c3], true).map(g => g.result), [0, 3]));
-  ok('geschwaecht: Code 0 bleibt durch', resolveGuesses([c0], true)[0].result === 3);
+  /* Geschwaecht = die Folge ist drin. Dann ging der letzte Stich durch, auch
+     wenn sein Code nicht zu lesen ist. */
+  const oullOpen = unread[0];
+  ok('nicht geschwaecht: ungelesen bleibt ungelesen', resolveGuesses([game[0], oullOpen], false)[1].result === null);
+  ok('geschwaecht: letzter ungelesener Stich = durch', same(resolveGuesses([game[0], oullOpen], true).map(x => x.result), [0, 3]));
+  ok('geschwaecht: nur der letzte', resolveGuesses([oullOpen, game[0]], true)[0].result === null);
   ok('geschwaecht, letzter Code klar gescheitert -> bleibt gescheitert', resolveGuesses([game[0]], true)[0].result === 0);
-  ok('Oull auf Platz 3 kann nicht am 3. scheitern', resolveGuesses([decodeGuess(code(0, 1, 8, 3))], false)[0].result === null);
   ok('readNemesis liest die Schwaechung (auch pendingWeaken)',
-    readNemesis({ d: { $date: { $numberLong: '1' } }, pendingWeaken: true, GuessHistory: [code(0, 1, 2, 4)] }).guesses[0].result === 3);
+    readNemesis({ d: { $date: { $numberLong: '1' } }, pendingWeaken: true, GuessHistory: [code(0, 1, 8, 2, 2, 3)] }).guesses[0].result === 3);
 
   const weak = solveRequiem({ stabs: [{ mods: ['lohk', 'xata', 'oull'], result: 0 }] }, { weakened: true });
   ok('geschwaecht ohne gelungenen Stich: Jagd vorbei, kein Vorschlag', weak.done && weak.weakened && !weak.best && weak.finalMods === null);
@@ -370,6 +383,12 @@ console.log('\n=== Teil 6b: Stiche aus dem Inventar ===\n');
      Spiel - die Rechnung muss dasselbe sagen wie mit dem Handeintrag. */
   const r = solveRequiem({ hints: ['lohk'], stabs: mergeStabs(game, [], SNAP).stabs }, { allowOull: true });
   ok('Rechnung mit dem Spielstich: 84 Folgen uebrig', r.count === 84, String(r.count));
+
+  /* Kaans echter Stand nach dem zweiten Stich: Fass per Murmur, beide Stiche
+     aus dem Spiel. Fass steht damit auf Platz 1, Lohk nicht auf Platz 2. */
+  const r2 = solveRequiem({ hints: nem.hints, stabs: mergeStabs(nem.guesses, [hand], SNAP).stabs }, { allowOull: true });
+  ok('nach dem zweiten Stich: 36 Folgen, Fass vorne', r2.count === 36 && r2.known[0] === 'fass' && !r2.slots[1].lohk, `${r2.count} ${JSON.stringify(r2.known)}`);
+  ok('... naechster Stich Fass, ein neues Requiem, Oull', r2.best.mods[0] === 'fass' && r2.best.mods[2] === 'oull' && !['lohk', 'fass', 'oull'].includes(r2.best.mods[1]), r2.best.mods.join(' · '));
 }
 
 /* ------------------------------------------------------------------------

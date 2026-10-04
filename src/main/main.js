@@ -4086,9 +4086,9 @@ const planetOfNode = name => /\(([^)]+)\)\s*$/.exec(name || '')?.[1] || null;
 let requiemExtraLogged = '';
 function logNemesisExtras(rawNemesis, active) {
   if (!active) return;
-  /* Dazu die Stiche, deren Ausgang Argus noch nicht lesen kann (Codes 3 und
-     4, siehe decodeGuess) - mit dem, was im Lich-Profil steht, klaert einer
-     davon die Lesart fuer alle. */
+  /* Dazu die Stiche, deren Ausgang Argus noch nicht lesen kann (Oull an
+     einem geprueften Platz, unbekannte Bits - siehe decodeGuess). Mit dem,
+     was im Lich-Profil steht, klaert einer davon die Lesart fuer alle. */
   const unread = active.guesses.filter(g => g.result == null).map(g => `${g.code} (${g.mods.join(' · ')})`);
   /* Das erste Mal geschwaecht: der Code des gelungenen Stichs ist genau die
      Messung, die decodeGuess noch fehlt (siehe resolveGuesses). */

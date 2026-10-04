@@ -248,62 +248,76 @@ const KNOWN_NEMESIS_FIELDS = new Set([
 /**
  * Ein Stich, wie das Spiel ihn in GuessHistory ablegt.
  *
- * GEMESSEN an Kaans erstem Stich (2026-10-04): Lohk, Xata, Oull eingesteckt,
- * am ersten Platz gescheitert (im Lich-Profil abgelesen), im Inventar danach
- * GuessHistory = [6160]. 6160 = 0x1810, von unten in Vierergruppen gelesen:
- * 0, 1, 8 - Lohk (ImmortalOneMod), Xata (ImmortalTwoMod), Oull (Wildcard),
- * genau in der Reihenfolge der Plaetze - und darueber eine 1.
+ * GEMESSEN an Kaans ersten beiden Stichen (2026-10-04, der Ausgang jeweils im
+ * Lich-Profil und im EE.log abgelesen):
  *
- * Die oberste Gruppe sagt, wie der Stich ausging. Gemessen ist nur die 1
- * (gescheitert am ersten Platz). Drei Lesarten passen dazu: die Nummer des
- * gescheiterten Platzes, ein Bit je falschem Platz, oder die Zahl der
- * geprueften Plaetze. Alle drei meinen mit 2 "gescheitert am zweiten", und
- * eine 0 kann nur "durch" heissen (oder kommt gar nicht vor). Bei 3 und 4
- * gehen sie auseinander - dritter Platz oder Erfolg. Das entscheidet
- * resolveGuesses ueber die Markierung des Lichs (siehe dort).
+ *   6160  = 0x1810   Lohk · Xata · Oull - am 1. Platz gescheitert
+ *   26629 = 0x6805   Fass · Lohk · Oull - 1. Platz richtig, am 2. gescheitert
+ *
+ * Die unteren drei Vierergruppen sind die Requiems in der Reihenfolge der
+ * Plaetze, nummeriert wie ihre Pfade: 0 Lohk (ImmortalOneMod) bis 7 Khra,
+ * 8 Oull (Wildcard). Darueber steht je Platz ein Paar Bits, der erste Platz
+ * zuunterst: 1 = falsch, 2 = richtig, 0 = nicht mehr geprueft. 0x1 heisst
+ * also "erster falsch", 0x6 = 0b0110 "erster richtig, zweiter falsch".
+ *
+ * Die ERSTE Lesart (die oberste Gruppe sei die Nummer des gescheiterten
+ * Platzes) hatte fuer den zweiten Stich 0x2805 erwartet - der Code 6 hat sie
+ * widerlegt.
+ *
+ * Daraus folgt, aber NOCH NICHT GESEHEN: am dritten gescheitert = 0b011010,
+ * durch = 0b101010. Offen ist auch, wie Oull markiert wird, wenn der Stich
+ * bis zu ihm kommt - eine 2 laege nahe. Was nicht ins Muster passt, bleibt
+ * ungelesen (result: null), und main.js schreibt den Code ins Protokoll.
  */
-const GUESS_OUTCOMES = { 0: 3, 1: 0, 2: 1 };   // Code -> wie weit der Stich kam
+const MARK_WRONG = 1;
+const MARK_RIGHT = 2;
 
 export function decodeGuess(code) {
   if (!Number.isInteger(code) || code < 0) return null;
   const idx = [code & 15, (code >> 4) & 15, (code >> 8) & 15];
   if (idx.some(i => i > OULL_IDX) || new Set(idx).size !== 3) return null;
-  const outcome = Math.floor(code / 4096);
-  const result = Object.hasOwn(GUESS_OUTCOMES, outcome) ? GUESS_OUTCOMES[outcome] : null;
   const mods = idx.map(i => IDX_TO_KEY[i]);
-  /* Oull besteht immer - scheitert ein Stich laut Code an Oull, ist die
-     Lesart falsch, nicht der Stich. */
-  const valid = result == null || result === 3 || mods[result] !== OULL.key;
-  return { mods, result: valid ? result : null, code, outcome };
+  const marks = [(code >> 12) & 3, (code >> 14) & 3, (code >> 16) & 3];
+  /* Bits ueber dem dritten Paar: unbekannt, also nicht raten. */
+  return { mods, marks, code, result: code < 0x40000 ? readMarks(marks, mods) : null };
 }
 
 /**
- * Die Codes 3 und 4 und der Erfolg - ueber die Markierung des Lichs.
+ * Wie weit der Stich kam: 0-2 = an diesem Platz gescheitert, 3 = durch,
+ * null = passt nicht ins Muster. Richtig bis zum ersten falschen Platz,
+ * dahinter nichts mehr geprueft - alles andere ist kein Stich, wie ihn das
+ * Spiel prueft.
+ */
+function readMarks(marks, mods) {
+  for (let i = 0; i < 3; i++) {
+    if (marks[i] === MARK_RIGHT) continue;
+    /* Oull besteht immer - scheitert ein Stich laut Code an Oull, ist die
+       Lesart falsch, nicht der Stich. */
+    const rest = marks.slice(i + 1).every(m => m === 0);
+    return marks[i] === MARK_WRONG && rest && mods[i] !== OULL.key ? i : null;
+  }
+  return 3;
+}
+
+/**
+ * Der gelungene Stich - ueber die Markierung des Lichs, wenn sein Code nicht
+ * zu lesen ist.
  *
  * Jeder Gegner, den Kaan seit Ende 2020 besiegt hat, steht in NemesisHistory
  * mit Weakened und pendingWeaken - auch die Codas, deren "Schwaechung" das
  * volle Antivirus-Band ist. Geschwaecht heisst also: die Unsterblichkeit ist
  * gebrochen, die richtige Folge ist drin. Am aktiven Lich ist das noch nicht
- * gesehen worden (Kaans laufender Lich hatte erst einen Fehlstich); das erste
- * Mal schreibt main.js ins Protokoll.
+ * gesehen worden; das erste Mal schreibt main.js ins Protokoll.
  *
- *   - Geschwaecht: der LETZTE Stich ging durch, egal welcher Code - es sei
- *     denn, sein Code sagt klar "gescheitert" (1, 2). Dann fuehrt das Spiel
- *     den gelungenen Stich gar nicht in GuessHistory, und die Jagd ist trotzdem
- *     vorbei (`weakened` an der Rechnung, siehe solveRequiem).
- *   - Nicht geschwaecht: ein Erfolg kann es nicht gewesen sein, also heissen
- *     3 und 4 "gescheitert am dritten" - in jeder der drei Lesarten, in der
- *     sie ueberhaupt vorkommen.
+ * Geschwaecht und der LETZTE Stich ungelesen: der ging durch (etwa mit Oull
+ * auf einem Platz, dessen Markierung noch nicht gesehen ist). Sagt sein Code
+ * klar "gescheitert", fuehrt das Spiel den gelungenen Stich gar nicht in
+ * GuessHistory, und die Jagd ist trotzdem vorbei (`weakened` an der Rechnung,
+ * siehe solveRequiem).
  */
 export function resolveGuesses(guesses, weakened = false) {
-  return guesses.map((g, i) => {
-    const last = i === guesses.length - 1;
-    if (weakened && last && (g.result === 3 || g.result == null)) return { ...g, result: 3 };
-    if (!weakened && g.result == null && (g.outcome === 3 || g.outcome === 4) && g.mods[2] !== OULL.key) {
-      return { ...g, result: 2 };
-    }
-    return g;
-  });
+  if (!weakened) return guesses;
+  return guesses.map((g, i) => i === guesses.length - 1 && g.result == null ? { ...g, result: 3 } : g);
 }
 
 /** Die drei Arten, mit dem, was die Oberflaeche zu ihnen sagt. */
@@ -611,7 +625,7 @@ const sameMods = (a, b) => a.length === b.length && a.every((k, i) => k === b[i]
  *
  *   - Jeder Spielstich holt sich den ersten noch freien Handeintrag mit
  *     denselben drei Requiems. Der Ausgang kommt vom Spiel, wo der Code
- *     lesbar ist, sonst vom Handeintrag (Codes 3 und 4, siehe decodeGuess).
+ *     lesbar ist, sonst vom Handeintrag (siehe decodeGuess).
  *     Ohne beides steht der Stich als "noch nicht lesbar" da und zaehlt
  *     nicht mit.
  *   - Handeintraege, die kein Spielstich geholt hat, zaehlen, wenn sie NACH

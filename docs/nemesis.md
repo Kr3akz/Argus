@@ -96,9 +96,9 @@ when it was logged; remove it and log the right ones.
 **A stab that worked needs no logging either.** Once the right sequence is in, the game marks
 your Lich as *weakened* — every Lich, Sister and Coda you have beaten carries that mark in your
 inventory. With the next inventory fetch Argus sees it, ends the hunt and shows the sequence.
-The same mark tells the two codes apart that Argus has not seen yet: on a weakened Lich the
-last stab is the one that worked, on any other the code means the 3rd requiem was wrong.
-Logging it by hand still shows it right away, before you are back on your ship.
+The same mark covers a stab whose code Argus cannot read yet: on a weakened Lich, the last
+stab is the one that worked. Logging it by hand still shows it right away, before you are
+back on your ship.
 
 ## In the overlay
 
@@ -145,12 +145,15 @@ sequence that worked. Hunts you tracked by hand show up here once you end them.
 
 ## Not measured yet
 
-- **How a stab is stored.** Measured on one real stab (Lohk, Xata, Oull, failed on the
-  1st, as the Lich's profile showed): the inventory then held `GuessHistory: [6160]` —
-  0x1810, read in groups of four bits from the bottom: Lohk, Xata, Oull in slot order, and
-  1 for how far it got. Every reading that fits that 1 also means 2 for a stab that failed on
-  the 2nd, and 0 can only mean it worked — so those are read too. For 3 and 4 the readings
-  disagree; Argus decides them by whether the Lich is weakened (above).
+- **How a stab that gets further is stored.** Measured on two real stabs, as the Lich's
+  profile showed them: Lohk, Xata, Oull failed on the 1st and became `6160` in
+  `GuessHistory`; Fass, Lohk, Oull failed on the 2nd and became `26629`. Read in groups of
+  four bits from the bottom, that is the three requiems in slot order (Lohk 0 … Khra 7,
+  Oull 8), and above them two bits per slot, the 1st lowest: 1 wrong, 2 right, 0 not
+  checked. A stab that fails on the 3rd and one that works follow from that, but neither
+  has been seen yet — nor how Oull is marked once a stab gets to it. Argus shows anything
+  that does not fit as *not readable yet* and writes it to `argus.log`; on a weakened
+  Lich, the last stab counts as the one that worked (above).
 - **The weakened mark on a running hunt.** Seen on every adversary in your history, not yet on
   a Lich that is still active. The first time it shows up, Argus writes it to `argus.log`
   together with the code of the last stab (`[Requiem] Am Nemesis noch nicht gelesen`) —
@@ -159,10 +162,12 @@ sequence that worked. Hunts you tracked by hand show up here once you end them.
   `Hints: [5]` — the same numbering as the stabs (Lohk 0 … Fass 5 … Khra 7). The murmur
   progress (`HintProgress`) counted up to that murmur (6, 27, 34) and started over at 5
   after it; where it tips over is not known, so it is not shown.
-- **The game's log** tells that a stab happened and that it was wrong
-  (`KuvaLichFinisher ending encounter for wrong stab`), and which requiems are on the
-  Parazon at mission start — but not their order or which slot failed. Lines about your Lich
-  go to `argus.log` (`[Requiem] Log:`).
+- **The game's log** tells how a stab goes while it happens: a line for every right
+  requiem (`lich finisher success. passcodenumber: 1`), and the finisher that plays on a
+  wrong one ends in the slot's letter (`KuvaLichHackFailB` for the 2nd). At mission start
+  it lists the requiems on the Parazon — on both stabs so far in reverse slot order. Argus
+  does not use any of it: the inventory has the same once the mission ends. Lines about
+  your Lich go to `argus.log` (`[Requiem] Log:`).
 - **Murmurs reveal requiems in random order.** Argus treats every sequence that fits what
   you logged as equally likely; if the game revealed requiems in a pattern, the chances
   shown would be slightly off. The ruling-out itself does not depend on it.
