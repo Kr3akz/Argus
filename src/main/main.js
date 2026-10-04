@@ -4261,8 +4261,14 @@ async function requiemView() {
   const fromGame = ownNemesis ? active.guesses : null;
   const merged = mergeStabs(fromGame, cur.hunt?.stabs || [], syncedAt || fetchedAt || null);
   const countable = merged.stabs.filter(s => !s.unread);
+  /* Murmurs: was das Spiel fuehrt (Nemesis.Hints), dazu was von Hand
+     markiert ist - das zaehlt, bis das Inventar den Murmur auch hat. Die
+     des Spiels zuerst: sind es zusammen mehr als drei, war einer von Hand
+     falsch, und cleanHunt schneidet hinten ab. */
+  const gameHints = ownNemesis ? active.hints : [];
+  const hints = [...new Set([...gameHints, ...(cur.hunt?.hints || [])])];
   const solution = cur.id
-    ? solveRequiem({ hints: cur.hunt?.hints || [], stabs: countable },
+    ? solveRequiem({ hints, stabs: countable },
         { allowOull: book.prefs.allowOull, usable, weakened: ownNemesis && active.weakened })
     : null;
   /* Die Rechnung nennt verdaechtige Stiche nach ihrer Stelle unter den
@@ -4293,7 +4299,8 @@ async function requiemView() {
       source: cur.hunt?.source || cur.template?.source || 'manual',
       kind: cur.hunt?.kind || cur.template?.kind || 'lich',
       startedAt: cur.hunt?.startedAt || null,
-      hints: cur.hunt?.hints || [],
+      hints,
+      gameHints,
       stabs: merged.stabs,
       stale: merged.stale,
       fromGame: !!fromGame?.length

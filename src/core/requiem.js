@@ -235,14 +235,14 @@ export function requiemStock(inventory, catalog = null) {
  * Was das Spiel ueber einen Nemesis fuehrt und was davon hier gelesen wird.
  * Alles, was NICHT in dieser Liste steht, meldet readNemesis unter `extra` -
  * so faellt auf, wenn das Spiel neue Felder mitschickt. Genau so kamen
- * GuessHistory und HintProgress heraus (Kaans erster Stich, 2026-10-04); wie
- * das Spiel die von Murmurs genannten Requiems fuehrt, ist noch offen.
+ * GuessHistory, HintProgress und Hints heraus (Kaans erster Stich und erster
+ * Murmur, 2026-10-04).
  */
 const KNOWN_NEMESIS_FIELDS = new Set([
   'fp', 'manifest', 'KillingSuit', 'killingDamageType', 'ShoulderHelmet',
   'WeaponIdx', 'AgentIdx', 'BirthNode', 'Faction', 'Rank', 'k', 'Traded', 'd',
   'InfNodes', 'PrevOwners', 'HenchmenKilled', 'MissionCount', 'SecondInCommand',
-  'Weakened', 'pendingWeaken', 'GuessHistory', 'HintProgress'
+  'Weakened', 'pendingWeaken', 'GuessHistory', 'HintProgress', 'Hints'
 ]);
 
 /**
@@ -372,9 +372,16 @@ export function readNemesis(raw) {
       : [],
     /* Die Folge ist drin - siehe resolveGuesses. */
     weakened,
+    /* Die Requiems, die Murmurs genannt haben - als Index wie in
+       GuessHistory. GEMESSEN am 2026-10-04: nach Kaans erstem Murmur stand
+       dort [5], und das Spiel hatte Fass genannt (ImmortalSixMod, Index 5). */
+    hints: Array.isArray(raw.Hints)
+      ? [...new Set(raw.Hints.filter(i => Number.isInteger(i) && i >= 0 && i < N).map(i => IDX_TO_KEY[i]))]
+      : [],
     /* Murmur-Fortschritt, roh. Gemessen: 6 nach einer Mission mit Thralls, 27
-       nach dem ersten Stich, 34 spaeter - die Skala ist noch nicht bekannt,
-       deshalb steht die Zahl nirgends in der Oberflaeche. */
+       nach dem ersten Stich, 34 spaeter, 5 nach dem Murmur, der Fass nannte -
+       er zaehlt also auf das naechste Requiem hin und faengt danach neu an.
+       Wo die Schwelle liegt, ist offen; deshalb steht er nirgends. */
     murmurProgress: Number.isFinite(raw.HintProgress) ? raw.HintProgress : null,
     finished: raw.k === true,
     traded: raw.Traded === true,

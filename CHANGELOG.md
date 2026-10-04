@@ -25,14 +25,13 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ### Added
 
-- **Liches & Sisters, a new tab.** After each stab on your Kuva Lich or Sister of Parvos,
-  put in the three requiems you equipped and how far the stab got. Argus keeps the log,
-  rules out every sequence that no longer fits, and suggests the stab most likely to
-  finish it — with how many stabs it can still take at most, and on average. Murmurs go in
-  with a click, and Oull is used where it saves stabs. Your adversary — progenitor, level,
-  territory — comes straight from your inventory, and so do the stabs you have made: once
-  you are back on your ship, the log fills in from the game itself. Without an inventory
-  you can track a hunt by hand, on console too.
+- **Liches & Sisters, a new tab.** Argus works out the stab most likely to finish your Kuva
+  Lich or Sister of Parvos — from every stab you have made and every requiem your murmurs
+  have named, both read straight from your inventory — and how many stabs it can still take
+  at most, and on average. Oull is used where it saves stabs. A new stab shows up once you
+  are back on your ship, a stab that worked included; log it in the tab or the overlay to
+  see the next suggestion right away. Your adversary's progenitor, level and territory come
+  from the inventory too. Without one you can track a hunt by hand, on console too.
 - **The next stab in the overlay.** While you hunt, the overlay window shows the next stab
   with four buttons for how it went, so logging it does not mean leaving the game.
 - **Requiem charges.** Every requiem with the charges left on each copy, how many more

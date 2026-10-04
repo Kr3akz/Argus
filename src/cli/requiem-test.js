@@ -122,7 +122,11 @@ console.log('\n=== Teil 2: Gegner aus dem Inventar ===\n');
   ok('Coda ueber die Fraktion', nemesisKind(coda) === 'coda');
   ok('Sister ueber die Fraktion', nemesisKind({ Faction: 'FC_CORPUS' }) === 'sister');
   ok('Sister ueber die Vorlage', nemesisKind({ manifest: '/Lotus/Types/Enemies/Corpus/Lawyers/LawyerManifest' }) === 'sister');
-  ok('neues Feld faellt auf', same(readNemesis({ ...aktiv, Hints: [0] }).extra, ['Hints']));
+  ok('neues Feld faellt auf', same(readNemesis({ ...aktiv, SomethingNew: [0] }).extra, ['SomethingNew']));
+  /* Gemessen: nach Kaans erstem Murmur stand Hints: [5] im Inventar, und das
+     Spiel hatte Fass genannt. */
+  ok('Murmur aus dem Inventar: 5 = Fass', same(readNemesis({ ...aktiv, Hints: [5] }).hints, ['fass']));
+  ok('unbrauchbare Murmur-Indizes fallen weg', same(readNemesis({ ...aktiv, Hints: [5, 5, 8, -1, 'x'] }).hints, ['fass']));
 
   const { active, history } = nemesisFromInventory({ Nemesis: aktiv, NemesisHistory: [alt2020, coda] });
   ok('aktiv und Geschichte, neueste zuerst', active?.id === 'n1787091747127' && same(history.map(h => h.kind), ['coda', 'lich']));

@@ -14057,3 +14057,8 @@ label.te-row { cursor: pointer; user-select: none; }
 }
 .nem-src.is-game { background: rgb(var(--t-accent) / .14); color: rgb(var(--t-accent-text)); }
 .nem-stab.is-stale { opacity: .55; }
+
+/* Ein Murmur aus dem Inventar steht fest: derselbe Zustand wie von Hand
+   markiert, nur ohne Klick. */
+.nem-murmur.is-game { cursor: default; }
+.nem-murmur.is-game:hover { background: rgb(var(--t-accent) / .16); color: var(--accent); }

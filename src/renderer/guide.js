@@ -213,10 +213,11 @@ const Guide = (() => {
       place: 'bottom',
       title: 'Liches & Sisters',
       body: `
-        <p>Your Kuva Lich or Sister of Parvos, straight from your inventory. After
-           each stab, put in the three requiems you equipped and how far the stab
-           got — Argus keeps the log and works out the stab most likely to finish
-           it, and how many it can still take at most.</p>
+        <p>Your Kuva Lich or Sister of Parvos, straight from your inventory — with
+           every stab you have made and every requiem your murmurs have named. From
+           that, Argus works out the stab most likely to finish it, and how many it
+           can still take at most. Log a stab yourself to see the next one before you
+           are back on your ship.</p>
         <p><b>Requiem mods</b> shows the charges left on every requiem and what to
            restock first. The next stab also sits in the overlay over the game, with
            one click for how it went.</p>`

@@ -453,6 +453,8 @@ const Nemesis = (() => {
   function boardHtml() {
     const s = data.solution;
     const hints = new Set(data.hunt.hints);
+    /* Was das Spiel als Murmur fuehrt, steht fest - der Knopf zeigt es nur. */
+    const fromGame = new Set(data.hunt.gameHints || []);
     const rows = data.mods.filter(m => m.key !== 'oull').map(m => {
       const inSeq = s?.inSequence?.[m.key] ?? 0;
       const cells = [0, 1, 2].map(i => {
@@ -464,8 +466,11 @@ const Nemesis = (() => {
       return `
         <div class="nem-row${inSeq >= 1 ? ' is-in' : ''}${inSeq <= 0 && !s?.contradiction ? ' is-gone' : ''}">
           <span class="nem-rq">${glyph(m.key)}<b>${esc(m.name)}</b></span>
-          <button class="nem-murmur${hints.has(m.key) ? ' is-on' : ''}" data-hint="${esc(m.key)}"
-                  title="${hints.has(m.key) ? 'Revealed by a murmur - click to undo' : 'Mark as revealed by a murmur'}">
+          <button class="nem-murmur${hints.has(m.key) ? ' is-on' : ''}${fromGame.has(m.key) ? ' is-game' : ''}" data-hint="${esc(m.key)}"
+                  ${fromGame.has(m.key) ? 'disabled' : ''}
+                  title="${fromGame.has(m.key) ? 'Revealed by a murmur - from your inventory'
+                         : hints.has(m.key) ? 'Marked by hand - click to undo. Your inventory takes over once it has the murmur too.'
+                         : 'Mark as revealed by a murmur'}">
             ${hints.has(m.key) ? Icon.check(11) + '<span>Known</span>' : '<span>Known?</span>'}
           </button>
           ${cells}
@@ -486,7 +491,7 @@ const Nemesis = (() => {
         </div>
         <div class="nem-board-foot">
           <button class="filter-chip${data.prefs.allowOull ? ' active' : ''}" data-nem-oull aria-pressed="${data.prefs.allowOull}">Use Oull in suggestions</button>
-          <span class="hint">Murmurs name the requiems, never their slot - mark them as they come in.</span>
+          <span class="hint">Murmurs name the requiems, never their slot. Argus takes them from your inventory - mark one by hand to use it before your next fetch.</span>
         </div>
       </div>`;
   }
@@ -751,9 +756,13 @@ const Nemesis = (() => {
       return;
     }
     if (t.dataset.hint && h) {
-      const set = new Set(h.hints);
+      /* Gespeichert werden nur die von Hand markierten - was das Spiel
+         fuehrt, kommt bei jedem Abruf ohnehin wieder. */
+      const game = new Set(h.gameHints || []);
+      if (game.has(t.dataset.hint)) return;
+      const set = new Set(h.hints.filter(k => !game.has(k)));
       if (set.has(t.dataset.hint)) set.delete(t.dataset.hint);
-      else if (set.size >= 3) { notice = 'A sequence has only three requiems - undo one of the known ones first.'; render(); return; }
+      else if (set.size + game.size >= 3) { notice = 'A sequence has only three requiems - undo one of the known ones first.'; render(); return; }
       else set.add(t.dataset.hint);
       send({ op: 'hints', id: h.id, hints: [...set] });
       return;

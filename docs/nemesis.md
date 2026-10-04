@@ -38,8 +38,9 @@ stab tells you exactly one of four things:
 | It worked | all three are right |
 
 **Murmurs** from Thralls and Hounds name requiems that are in the sequence, never their
-slot. Mark them under *What you know* as they come in. **Oull** fits every slot: it always
-passes, without telling you which requiem belongs there.
+slot. Argus takes them from your inventory; under *What you know* you can mark one by hand
+to use it before your next fetch. **Oull** fits every slot: it always passes, without
+telling you which requiem belongs there.
 
 ## The suggestion
 
@@ -154,9 +155,10 @@ sequence that worked. Hunts you tracked by hand show up here once you end them.
   a Lich that is still active. The first time it shows up, Argus writes it to `argus.log`
   together with the code of the last stab (`[Requiem] Am Nemesis noch nicht gelesen`) —
   along with anything else on your Lich it does not know.
-- **Murmurs.** The inventory carries the murmur progress (`HintProgress`), but how the
-  game keeps the requiems a murmur has named is not known yet — mark them by hand. The
-  progress itself is not shown, as its scale is not known either.
+- **Murmurs.** Measured on the first one: the game named Fass, and the inventory then held
+  `Hints: [5]` — the same numbering as the stabs (Lohk 0 … Fass 5 … Khra 7). The murmur
+  progress (`HintProgress`) counted up to that murmur (6, 27, 34) and started over at 5
+  after it; where it tips over is not known, so it is not shown.
 - **The game's log** tells that a stab happened and that it was wrong
   (`KuvaLichFinisher ending encounter for wrong stab`), and which requiems are on the
   Parazon at mission start — but not their order or which slot failed. Lines about your Lich

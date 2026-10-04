@@ -150,10 +150,10 @@ Every mechanism, permission and endpoint is explained in detail:
   S to F — taken from which stats the *pricey* rivens of that weapon carry on
   warframe.market, not from guesswork. Veiled rivens with their challenges.
   → [Rivens](docs/rivens.md)
-- **Liches & Sisters.** Log how each requiem stab went — in the window or in the overlay —
-  and Argus works out the stab most likely to finish your Kuva Lich or Sister of Parvos,
-  and how many it can still take at most. The charges left on every requiem, what to
-  restock first, and every adversary you have beaten. → [Liches & Sisters](docs/nemesis.md)
+- **Liches & Sisters.** Your stabs on a Kuva Lich or Sister of Parvos and the requiems your
+  murmurs have named, read straight from the game — and from that the stab most likely to
+  finish it, and how many it can still take at most. The charges left on every requiem,
+  what to restock first, and every adversary you have beaten. → [Liches & Sisters](docs/nemesis.md)
 - **Ducats & Baro.** What every prime part is worth melted against sold, what can no
   longer be farmed, a relic planner, and Baro's manifest lined up against what you
   already own. → [Ducats and Baro](docs/baro.md)
