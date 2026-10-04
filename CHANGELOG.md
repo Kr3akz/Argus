@@ -21,6 +21,8 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.24.0] - 2026-10-04
+
 ### Added
 
 - **Liches & Sisters, a new tab.** After each stab on your Kuva Lich or Sister of Parvos,
