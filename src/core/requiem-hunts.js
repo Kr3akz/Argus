@@ -45,7 +45,13 @@ function normalize(id, raw) {
        RE_SQUAD_NEMESIS in logwatch.js. */
     name: typeof raw?.name === 'string' && raw.name.trim() ? raw.name.trim().slice(0, 40) : null,
     hints,
-    stabs
+    stabs,
+    /* Was das Spiel ueber den Zug fuehrte, roh - siehe rememberGame. */
+    gameCodes: Array.isArray(raw?.gameCodes)
+      ? raw.gameCodes.filter(c => Number.isInteger(c) && c >= 0).slice(0, 100)
+      : [],
+    gameHints: cleanHunt({ hints: raw?.gameHints }).hints,
+    gameAt: Number(raw?.gameAt) || null
   };
 }
 
@@ -143,6 +149,27 @@ export async function setName(id, template, name) {
   const s = await loadHunts();
   if (s.hunts[id]?.name === clean) return s;
   return change(id, template, hunt => { hunt.name = clean; });
+}
+
+/**
+ * Stiche und Murmurs, wie das Spiel sie am aktiven Gegner fuehrt, ins Buch
+ * abschreiben - roh als GuessHistory-Codes, damit eine spaeter verbesserte
+ * Lesart (decodeGuess) auch fuer alte Zuege gilt.
+ *
+ * WARUM: NemesisHistory behaelt sie nicht. Gemessen am 2026-10-04 an Caku
+ * Imorr: aktiv standen GuessHistory [6160, 26629, 174357] und Hints [5, 1]
+ * am Lich, besiegt nur noch Stammdaten, Rank, k und Weakened. Ohne die
+ * Abschrift kannte die Geschichte nur, was von Hand eingetragen war.
+ *
+ * `at` ist der Stand des Inventars (syncedAt). Ein Handeintrag danach kennt
+ * das Spiel noch nicht und zaehlt im Rueckblick mit (siehe summarizeHunt).
+ */
+export function rememberGame(id, template, { codes = [], hints = [], at = null } = {}) {
+  return change(id, template, hunt => {
+    hunt.gameCodes = [...codes];
+    hunt.gameHints = [...hints];
+    hunt.gameAt = Number(at) || Date.now();
+  });
 }
 
 export function finishHunt(id) {

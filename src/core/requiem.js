@@ -719,6 +719,34 @@ export function mergeStabs(game, manual, snapshotAt = null) {
 }
 
 /**
+ * Ein Zug im Rueckblick: wie viele Stiche, wie viele davon gescheitert, und
+ * welche Folge durchging.
+ *
+ * Die Stiche des Spiels kommen aus der Abschrift im Buch (gameCodes, siehe
+ * rememberGame in requiem-hunts.js) - NemesisHistory behaelt sie nicht. Von
+ * Hand eingetragene zaehlen wie beim laufenden Zug (mergeStabs): mit einem
+ * Spielstich als einer, nach der letzten Abschrift (gameAt) zusaetzlich,
+ * davor ohne Gegenstueck gar nicht.
+ *
+ * @param hunt      ein Zug aus dem Stichbuch
+ * @param weakened  der Gegner war geschwaecht - ein ungelesener letzter Stich
+ *                  ging durch (siehe resolveGuesses)
+ */
+export function summarizeHunt(hunt, weakened = false) {
+  const codes = Array.isArray(hunt?.gameCodes) ? hunt.gameCodes : [];
+  const game = resolveGuesses(codes.map(decodeGuess).filter(Boolean), weakened);
+  const own = cleanHunt(hunt);
+  const { stabs } = mergeStabs(game.length ? game : null, own.stabs, hunt?.gameAt ?? null);
+  const success = stabs.find(s => s.result === 3) || null;
+  return {
+    stabs: stabs.length,
+    failed: stabs.filter(s => s.result != null && s.result < 3).length,
+    sequence: success ? success.mods : null,
+    hints: [...new Set([...(hunt?.gameHints || []), ...own.hints])]
+  };
+}
+
+/**
  * Das Ergebnis fuer einen Zug: was noch moeglich ist, wie wahrscheinlich jedes
  * Requiem auf jedem Platz steht, und welcher Stich als naechster.
  *

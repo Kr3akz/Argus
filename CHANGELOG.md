@@ -39,8 +39,8 @@ follow [semantic versioning](https://semver.org/lang/en/).
   Liches or Sisters they cover whatever the sequence, and what to restock first — with the
   price of a fresh copy and the requiem relics you own that drop it. The antivirus mods for
   the Technocyte Coda are listed too.
-- **Past hunts.** Every Lich, Sister and Coda you have defeated, with the stabs Argus
-  logged for them.
+- **Past hunts.** Every Lich, Sister and Coda you have defeated, with the stabs and the
+  sequence Argus kept for them — the game itself forgets both once a Lich is defeated.
 
 ### Fixed
 

@@ -82,7 +82,7 @@ import { buildBaseSets } from '../core/basesets.js';
 import { foundryQueue } from '../core/foundry.js';
 import { buildRivens, rivenView, rivensForShownWeapon } from '../core/rivens.js';
 import { REQUIEMS, OULL, NEMESIS_KINDS, TRANSMUTE_COUNT, requiemStock, nemesisFromInventory,
-         solveRequiem, mergeStabs, murmurState } from '../core/requiem.js';
+         solveRequiem, mergeStabs, murmurState, summarizeHunt } from '../core/requiem.js';
 import * as requiemHunts from '../core/requiem-hunts.js';
 import { loadDispositions } from '../core/dispositions.js';
 import { RIVEN_ATTRS, rivenClass, labelWants } from '../core/riven-wants.js';
@@ -3662,6 +3662,13 @@ async function inventoryPayload({ refresh, trigger = 'manual' }) {
     console.warn('[Wallet] Kontostand nicht vermerkt:', err.message);
   }
 
+  /* Die Stiche des Spiels ins Stichbuch, solange der Lich lebt - besiegt
+     steht er ohne sie in NemesisHistory. Wie die Gegenprobe eine Zugabe. */
+  if (!res.fromCache) {
+    await rememberNemesisGame(res.inventory, res.syncedAt || res.fetchedAt)
+      .catch(err => console.log('[Requiem] Stiche nicht abgeschrieben:', err.message));
+  }
+
   const mastered = new Set([
     ...(res.inventory?.XPInfo || []).map(e => e.ItemType),
     ...(res.inventory?.Suits || []).map(e => e.ItemType),
@@ -4127,6 +4134,31 @@ function refreshRequiemPrices(missing) {
     .finally(() => { requiemPriceRun = null; });
 }
 
+/**
+ * Stiche und Murmurs des aktiven Gegners ins Stichbuch abschreiben - die
+ * Geschichte behaelt sie nicht (siehe rememberGame in requiem-hunts.js).
+ *
+ * Geschrieben wird nur, wenn sich etwas geaendert hat - oder wenn ein
+ * Handeintrag juenger ist als die letzte Abschrift und ein neuerer Stand
+ * vorliegt: der sagt dann, ob das Spiel den Stich kennt (summarizeHunt
+ * zaehlt Handeintraege nach gameAt mit).
+ */
+async function rememberNemesisGame(inventory, at, book = null) {
+  const { active } = nemesisFromInventory(inventory);
+  if (!active?.id || !NEMESIS_KINDS[active.kind]?.requiems) return;
+  const raw = inventory?.Nemesis;
+  const codes = Array.isArray(raw?.GuessHistory) ? raw.GuessHistory.filter(c => Number.isInteger(c) && c >= 0) : [];
+  if (!codes.length && !active.hints.length) return;
+  const have = (book || await requiemHunts.loadHunts()).hunts[active.id];
+  const sameList = (a, b) => (a || []).length === b.length && b.every((x, i) => a[i] === x);
+  const changed = !have || !sameList(have.gameCodes, codes) || !sameList(have.gameHints, active.hints);
+  const newer = !!(have && at && at > (have.gameAt || 0) && have.stabs.some(s => (s.at || 0) > (have.gameAt || 0)));
+  if (!changed && !newer) return;
+  await requiemHunts.rememberGame(active.id,
+    { source: 'inventory', kind: active.kind, createdAt: active.createdAt },
+    { codes, hints: active.hints, at });
+}
+
 /** Welcher Zug gerade dran ist, und als was er angelegt wuerde. */
 function currentHunt(active, book) {
   if (active && NEMESIS_KINDS[active.kind]?.requiems && active.id) {
@@ -4160,6 +4192,8 @@ async function requiemView() {
   const book = await requiemHunts.loadHunts();
   const { active, history } = nemesisFromInventory(inventory);
   logNemesisExtras(inventory?.Nemesis, active);
+  await rememberNemesisGame(inventory, syncedAt || fetchedAt, book)
+    .catch(err => console.log('[Requiem] Stiche nicht abgeschrieben:', err.message));
 
   /* ---- Bestand, mit Bild und Marktpreis eines frischen Exemplars ---- */
   const stock = requiemStock(inventory, catalog);
@@ -4284,7 +4318,7 @@ async function requiemView() {
   /* ---- Geschichte: besiegte Gegner, mit den Stichen, die Argus kennt ---- */
   const past = history.map(h => {
     const tracked = book.hunts[h.id] || null;
-    return { ...decorate(h), hunt: tracked ? summarizeHunt(tracked) : null };
+    return { ...decorate(h), hunt: tracked ? summarizeHunt(tracked, h.weakened) : null };
   });
   /* Handzuege, die beendet sind, stehen mit in der Geschichte. */
   const manualDone = Object.values(book.hunts)
@@ -4327,16 +4361,6 @@ async function requiemView() {
 }
 
 /* Was die Geschichte von einem Zug zeigt. */
-function summarizeHunt(h) {
-  const success = h.stabs.find(s => s.result === 3) || null;
-  return {
-    stabs: h.stabs.length,
-    failed: h.stabs.filter(s => s.result < 3).length,
-    sequence: success ? success.mods : null,
-    hints: h.hints
-  };
-}
-
 ipcMain.handle('requiem:get', async () => {
   try {
     return { ok: true, data: await requiemView() };

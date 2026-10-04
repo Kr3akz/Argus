@@ -29,7 +29,7 @@ import {
   REQUIEMS, OULL, ANTIVIRUS, MAX_CHARGES, modStock, guaranteedLiches, requiemStock,
   nemesisKind, readNemesis, nemesisFromInventory, checkStab, stabOutcome,
   solveRequiem, simulateHunt, SEQUENCE_COUNT, cleanHunt, decodeGuess, mergeStabs, resolveGuesses,
-  murmurState, MURMUR_STEP, NEMESIS_KINDS
+  murmurState, MURMUR_STEP, NEMESIS_KINDS, summarizeHunt
 } from '../core/requiem.js';
 import { dataFile } from '../core/paths.js';
 
@@ -294,6 +294,15 @@ console.log('\n=== Teil 6: Stichbuch ===\n');
     await hunts.setName(id, template, '  Caku Imorr  ');
     ok('Name gemerkt (ohne Leerraum)', (await hunts.loadHunts()).hunts[id].name === 'Caku Imorr');
 
+    /* Die Abschrift aus dem Spiel - NemesisHistory behaelt sie nicht. */
+    const fresh = 'n1790000000000';
+    await hunts.rememberGame(fresh, template, { codes: [6160, 26629, 174357, -1, 1.5], hints: ['fass', 'xata', 'bogus'], at: 5000 });
+    s = await hunts.loadHunts();
+    ok('Abschrift legt den Zug an und behaelt nur Brauchbares',
+      same(s.hunts[fresh]?.gameCodes, [6160, 26629, 174357]) && same(s.hunts[fresh].gameHints, ['fass', 'xata']) && s.hunts[fresh].gameAt === 5000,
+      JSON.stringify(s.hunts[fresh]));
+    ok('... ohne die Handeintraege anzufassen', s.hunts[fresh].stabs.length === 0 && same(s.hunts[id].gameCodes, []));
+
     await hunts.setPrefs({ allowOull: false });
     ok('Oull abschalten bleibt gespeichert', (await hunts.loadHunts()).prefs.allowOull === false);
     ok('Datei liegt im Wegwerf-Ordner', existsSync(dataFile('requiem.json')) && dataFile('requiem.json').startsWith(dir));
@@ -347,6 +356,20 @@ console.log('\n=== Teil 6b: Stiche aus dem Inventar ===\n');
   const won = readNemesis({ Rank: 2, d: { $date: { $numberLong: '1' } }, Weakened: true, GuessHistory: [6160, 26629, 174357], HintProgress: 24, Hints: [5, 1] });
   const wonSol = solveRequiem({ hints: won.hints, stabs: won.guesses }, { weakened: won.weakened });
   ok('dritter Stich: Jagd vorbei, die Folge steht da', wonSol.done && same(wonSol.finalMods, ['fass', 'xata', 'oull']) && !wonSol.weakened, JSON.stringify(wonSol.finalMods));
+
+  /* Im Rueckblick: Caku Imorr, wie er nach dem Kampf im Buch steht - die
+     Abschrift der drei Spielstiche und Kaans erster Stich von Hand. */
+  const book = { gameCodes: [6160, 26629, 174357], gameHints: ['fass', 'xata'], gameAt: 2000, hints: [],
+                 stabs: [{ mods: ['lohk', 'xata', 'oull'], result: 0, at: 900 }] };
+  let sum = summarizeHunt(book, true);
+  ok('Rueckblick: drei Stiche, zwei gescheitert, die Folge', sum.stabs === 3 && sum.failed === 2 && same(sum.sequence, ['fass', 'xata', 'oull']) && same(sum.hints, ['fass', 'xata']), JSON.stringify(sum));
+  sum = summarizeHunt({ ...book, gameCodes: [] });
+  ok('Rueckblick ohne Abschrift: nur von Hand', sum.stabs === 1 && sum.failed === 1 && sum.sequence === null);
+  sum = summarizeHunt({ ...book, stabs: [...book.stabs, { mods: ['lohk', 'vome', 'oull'], result: 0, at: 1500 }] });
+  ok('Rueckblick: alter Handeintrag ohne Gegenstueck zaehlt nicht', sum.stabs === 3);
+  sum = summarizeHunt({ ...book, gameCodes: [6160, 26629], stabs: [...book.stabs, { mods: ['fass', 'xata', 'oull'], result: 3, at: 2500 }] });
+  ok('Rueckblick: Handeintrag nach der letzten Abschrift zaehlt', sum.stabs === 3 && same(sum.sequence, ['fass', 'xata', 'oull']), JSON.stringify(sum));
+  ok('Rueckblick: ungelesener Stich gilt nicht als gescheitert', summarizeHunt({ gameCodes: [code(0, 1, 8, 2, 2, 3)], stabs: [] }).failed === 0);
 
   /* Murmur-Ring, gemessen auf Kaans Bildschirmfotos: 5 -> 7,8 %, 20 -> 32,6 %
      (dazu je gut zwei Grad, die die weichen Enden schlucken). */

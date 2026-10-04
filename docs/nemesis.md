@@ -145,6 +145,12 @@ Every defeated adversary from your inventory: when it was created, its progenito
 level it ended on, and — if you tracked it in Argus — how many stabs it took and the
 sequence that worked. Hunts you tracked by hand show up here once you end them.
 
+The game forgets a Lich's stabs and murmurs once it is defeated: in your inventory's
+history it keeps little more than the progenitor, the level and that it is gone. So while
+a hunt runs, Argus copies what the game knows about it into `requiem.json` with every
+inventory fetch — a hunt Argus has seen since its first stab or murmur shows up here
+complete.
+
 ## Not measured yet
 
 - **A stab that fails on the 3rd.** Measured on three real stabs, as the Lich's profile
@@ -162,9 +168,13 @@ sequence that worked. Hunts you tracked by hand show up here once you end them.
   requiem: 5 points filled 8 % of it, 20 points a third. The progress starts over after
   each murmur. Whether the 1st and 3rd take 60 as well is not measured; the 1st fits it.
   Murmurs and stabs use the same numbering (`Hints: [5]` was Fass).
-- **Where a weakened Lich waits.** After the final stab its territory shrinks to one
-  Railjack node (`CrewBattleNode557` on the first Lich measured) that Argus has no name for
-  yet, so the card shows the code.
+- **The final fight.** After the final stab the Lich's territory shrinks to one Railjack
+  node, *Kuva Lich Confrontation (Saturn Proxima)* for the first Lich measured
+  (`CrewBattleNode557`). Argus' node table does not have it, so the card shows the code. In
+  the log: `NemesisAssassinate.lua: Starting` when you board, the choice
+  (`KuvaLichKillConvertChoiceCinematic`) and `Lich killed, unlocking door`. Vanquished, the
+  Lich moved to the history with `k: true` and `Weakened: true`; whether a converted one
+  looks any different there is not measured yet.
 - **The game's log** tells how a stab goes while it happens: a line for every right
   requiem (`lich finisher success. passcodenumber: 1`, the last one with
   `final stab: true`), and the finisher that plays on a wrong one ends in the slot's letter
