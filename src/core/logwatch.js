@@ -101,6 +101,31 @@ const SELECT_TIMER_GRACE_MS = 2000;
    wird emittiert. */
 const ACTIVITY_DEBOUNCE_MS = 5000;
 
+/* ----- Ein neues Inventar im Speicher des Spiels (C1) -----------------
+ *
+ * Gemessen am 04.10.2026 an Kaans EE.log und am Heap. Zwei Augenblicke:
+ *
+ *   - Missionsende: das Spiel schreibt die Ergebnisse und meldet
+ *       Script [Info]: EndOfMatch.lua: DbUpdateComplete
+ *     Ab da liegt eine Kopie mit neuem LastInventorySync im Heap - ein Scan
+ *     um 21:48:28 fand den gelungenen Requiem-Stich 19 s VOR der Rueckkehr
+ *     aufs Schiff, und die Kopie vom Schlusskampf trug den Stempel 22:28:14
+ *     (DbUpdateComplete um 22:28:12).
+ *   - Anmeldung und jede Rueckkehr aufs Schiff:
+ *       Sys [Info]: OnInventoryResults, body size=1293609
+ *       Sys [Info]: OnInventoryResults completed in 63ms
+ *     Davor steht oft "Using cached inventory data instead of performing
+ *     sync" - dann bringt die Ankunft den Stand des Commits. Die gemeldete
+ *     Groesse ist byte-genau die Laenge der Kopie im Heap (siehe
+ *     rankCandidates in inventory-scan.js).
+ *
+ * Gemeldet wird bei der "completed"-Zeile: dann ist die Kopie fertig.
+ */
+const RE_INV_CACHED    = /Using cached inventory data instead of performing sync/;
+const RE_INV_SIZE      = /OnInventoryResults, body size=(\d+)/;
+const RE_INV_DONE      = /OnInventoryResults completed in \d+ms/;
+const RE_MISSION_SAVED = /EndOfMatch\.lua: DbUpdateComplete/;
+
 /* ----- Spielereignisse, die auf ein veraendertes Inventar hindeuten ----- */
 const RE_MISSION_END = /MatchingService::LeaveSquad/;
 const RE_ORBITER     = /(?:TennoShipAvatar|TennoMotion).*Setting PM_|Created\s+\S*ThemedMainMenu\.swf/;
@@ -450,6 +475,8 @@ export class LogWatcher extends EventEmitter {
     this.selectGuard = null;      // Notbremse, siehe armSelectGuard()
     this.busy = false;
     this.lastActivity = 0;          // Zeitstempel des letzten game-activity
+    this.invBytes = null;           // gemeldete Laenge der naechsten Ankunft, siehe RE_INV_DONE
+    this.invCached = false;
     this.chatConnectedAt = null;    // Laufzeituhr beim Chat-Login, siehe RE_CHAT_CONNECTED
     /* Zeilen, die ueber den Debugkanal kamen und deren Echo in der Datei noch
        aussteht. Siehe GESEHEN_MAX. */
@@ -583,6 +610,20 @@ export class LogWatcher extends EventEmitter {
    * der Debugkanal laeuft, hat er sie verpasst, und dann hoert wahrscheinlich
    * ein anderes Programm mit.
    */
+  /** Commit am Missionsende und Ankunft des Inventars - siehe RE_INV_DONE. */
+  watchInventory(line) {
+    if (RE_INV_CACHED.test(line)) { this.invCached = true; return; }
+    const size = RE_INV_SIZE.exec(line);
+    if (size) { this.invBytes = Number(size[1]); return; }
+    if (RE_INV_DONE.test(line)) {
+      this.emit('inventory-arrived', { kind: this.invCached ? 'cached' : 'sync', bytes: this.invBytes, at: Date.now() });
+      this.invBytes = null;
+      this.invCached = false;
+      return;
+    }
+    if (RE_MISSION_SAVED.test(line)) this.emit('inventory-arrived', { kind: 'mission', bytes: null, at: Date.now() });
+  }
+
   handleLine(line, quelle = 'datei') {
     if (quelle === 'datei' && dbwin.isActive()) this.verpasst++;
 
@@ -593,6 +634,9 @@ export class LogWatcher extends EventEmitter {
     if (RE_NEMESIS_TAP.test(line) && !RE_NEMESIS_NOISE.test(line)) {
       this.emit('nemesis-line', { line, at: Date.now() });
     }
+
+    /* Auch vor den Abzweigungen: ein neues Inventar, siehe RE_INV_DONE. */
+    this.watchInventory(line);
 
     if (RE_CHAT_CONNECTED.test(line)) {
       this.chatConnectedAt = logSeconds(line);

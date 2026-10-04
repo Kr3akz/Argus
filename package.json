@@ -34,6 +34,7 @@
     "relic-test": "node src/cli/relic-test.js",
     "riven-test": "node src/cli/riven-test.js",
     "requiem-test": "node src/cli/requiem-test.js",
+    "autosync-test": "node src/cli/autosync-test.js",
     "relic-pick-test": "node src/cli/relic-pick-test.js",
     "drop-search-test": "node src/cli/drop-search-test.js",
     "logquellen-test": "node src/cli/logquellen-test.js",

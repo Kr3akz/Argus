@@ -63,10 +63,11 @@ network, **no session key is read at all any more.**
 
 Two consequences worth knowing:
 
-- **It needs a zone load.** The game only puts the inventory in memory when it loads a
-  zone. If you have been in your orbiter for a while, travel to a relay or your dojo and
-  back, then fetch. Without that, Argus finds nothing and simply keeps the last known
-  state.
+- **It needs a zone load or a finished mission.** The game puts a fresh inventory in
+  memory when you log in, when it loads a zone and when it saves a finished mission — and
+  says so in its log, which is when Argus's auto-sync reads it. If you have been in your
+  orbiter for a while and fetch by hand, travel to a relay or your dojo and back first.
+  Without that, Argus finds nothing and simply keeps the last known state.
 - **All or nothing.** Older, partly overwritten copies of the inventory also linger in
   memory. Argus checks every candidate for the fields it cannot do without and refuses
   anything incomplete, rather than showing you an inventory that is quietly missing half

@@ -66,7 +66,7 @@ In short:
 - **Nothing is asked of DE in your name.** No sign-in, no borrowed session, no API calls
   on your behalf — and your inventory never goes out to the internet.
 - **Read-only and opt-in.** Memory reading is strictly read-only (`PROCESS_VM_READ`),
-  happens only when you ask for it or after a zone load, and stays switched off unless you
+  happens only when you ask for it or when the game has just received a new inventory, and stays switched off unless you
   turn it on.
 - **Built-in rate limiting.** The one thing fetched from DE — your *public* profile — has
   mandatory cooldowns to protect you from their IP login throttles.

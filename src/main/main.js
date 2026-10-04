@@ -147,8 +147,71 @@ let relicAutoShow = true;
    kostet rund zehn Sekunden Rechenzeit, und game-activity feuert bei jedem
    Missionsende. Aktualitaet kostet das nichts, weil das Spiel das Inventar
    ohnehin nur beim Laden einer Zone in den Speicher legt. */
-const AUTO_SYNC_MIN_MS = 3 * 60 * 1000;
+const AUTO_SYNC_MIN_MS = 3 * 60 * 1000;   // gilt nur noch fuer starteWochenScan
 let lastAutoSyncAt = 0;
+
+/**
+ * Auto-Sync (C1): gelesen wird, wenn das Spiel ein neues Inventar meldet -
+ * am Missionsende und bei jeder Ankunft (siehe RE_INV_DONE in logwatch.js) -,
+ * dazu nach einem Handel.
+ *
+ * FRUEHER loesten Missionsende-, Orbiter- und Handelszeilen aus, gedeckelt
+ * auf einen Scan alle 3 Minuten. RE_ORBITER trifft aber jede Ausweichrolle:
+ * am 04.10.2026 liefen drei Scans mitten im Railjack-Kampf, alle auf dem
+ * alten Stand, und die Sperre verschluckte danach die echte Ankunft
+ * (22:28:28) - den neuen Stand brachte erst ein Klick auf "Fetch inventory".
+ *
+ * KEINE ZEITSPERRE MEHR: Ankuenfte sind selten (Anmeldung, je Mission zwei),
+ * und ein schmaler Scan kostete gemessen 2,3 s. Laeuft schon einer, wird
+ * genau einer nachgeholt, mit dem juengsten Anlass. Geht ein Scan leer aus
+ * (das Spiel baut die Kopie gerade um), folgt nach 20 s ein zweiter Versuch.
+ */
+let autoSyncRunning = false;
+let autoSyncQueued = null;
+let autoSyncRetry = null;
+
+async function requestAutoSync(reason, bytes = null, attempt = 1) {
+  if (autoSyncRunning) { autoSyncQueued = { reason, bytes }; return; }
+  clearTimeout(autoSyncRetry);
+  autoSyncRunning = true;
+  try {
+    const cfg = await loadConfig();
+    /* Beide Schalter muessen an sein: inventoryScan erlaubt den Speicher-
+       zugriff ueberhaupt, inventoryAutoSync den automatischen Abruf.
+       inventoryAutoSync fehlt in alten Konfigurationen - dann gilt AN. */
+    if (cfg.inventoryScan !== true || cfg.inventoryAutoSync === false) return;
+
+    lastAutoSyncAt = Date.now();
+    console.log('[AutoSync] Inventar-Scan:', reason
+      + (bytes ? ` (${bytes} Byte gemeldet)` : '') + (attempt > 1 ? ', zweiter Versuch' : ''));
+    const payload = await inventoryPayload({ refresh: true, trigger: 'autosync', expectBytes: bytes });
+    sendToMain('inventory:updated', payload.data);
+    /* Das Overlay zeigt die Requiem-Jagd - Gegner und Ladungen stehen im
+       Inventar. Das Hauptfenster erfaehrt es ueber inventory:updated. */
+    sendToOverlay('requiem:changed', {});
+
+    const { skipped, scanExact } = payload.data || {};
+    if (skipped && attempt === 1) {
+      console.log(`[AutoSync] Nichts gelesen (${skipped}) - zweiter Versuch in 20 s`);
+      autoSyncRetry = setTimeout(() => requestAutoSync(reason, bytes, 2), 20000);
+    } else if (skipped) {
+      console.log(`[AutoSync] Wieder nichts gelesen (${skipped})`);
+    } else if (scanExact === false) {
+      /* Die gemeldete Laenge passte zu keiner Kopie mit dem neuesten Stand -
+         die Messung vom 04.10.2026 gilt dann nicht, und das soll man sehen. */
+      console.log(`[AutoSync] Gelesene Kopie passt nicht byte-genau zu ${bytes} Byte`);
+    }
+  } catch (err) {
+    console.error('[AutoSync] Fehlgeschlagen:', err.message);
+  } finally {
+    autoSyncRunning = false;
+    if (autoSyncQueued) {
+      const next = autoSyncQueued;
+      autoSyncQueued = null;
+      requestAutoSync(next.reason, next.bytes);
+    }
+  }
+}
 /* Bildschirmerkennung der vier Belohnungen. Abschaltbar, weil dafuer ein
    Bildschirmfoto entsteht - auch wenn es den Rechner nie verlaesst. */
 let relicScan = true;
@@ -3629,10 +3692,10 @@ async function attachCards(view) {
 }
 
 /** Gemeinsamer Aufbau fuer get und refresh. */
-async function inventoryPayload({ refresh, trigger = 'manual' }) {
+async function inventoryPayload({ refresh, trigger = 'manual', expectBytes = null }) {
   if (!cache.catalog) await ensureData({ refresh: false });
 
-  const res = await loadInventory({ refresh, trigger });
+  const res = await loadInventory({ refresh, trigger, expectBytes });
 
   /* Frisch vom Server: ab hier ist die Datei wieder die Wahrheit, und was wir
      selbst mitgezaehlt haben, steckt schon darin. fromCache faellt nur weg,
@@ -3850,6 +3913,10 @@ async function inventoryPayload({ refresh, trigger = 'manual' }) {
          eine Absage kommt jetzt ueber res.message, wenn kein Inventar im
          Speicher lag. */
       gate: { allowed: true, reason: null, message: null, waitText: null },
+      /* Fuer den Auto-Sync: ging der Scan leer aus (Code), und passte die
+         Kopie byte-genau zur gemeldeten Ankunft? Siehe requestAutoSync. */
+      skipped: res.skipped || null,
+      scanExact: res.stats?.chosen?.exact ?? null,
       /* Durch INVENTORY_ERRORS uebersetzen, nicht roh durchreichen.
          Sonst steht im Fenster "The inventory span could not be parsed" - der
          Satz aus inventory-scan.js, der fuer die Fehlersuche gedacht ist und
@@ -8251,40 +8318,17 @@ function startLogWatcher() {
       }
     }
 
-    try {
-      const cfg = await loadConfig();
-      /* Beide Schalter muessen an sein: inventoryScan erlaubt den Speicher-
-         zugriff ueberhaupt, inventoryAutoSync den automatischen Abruf.
-         inventoryAutoSync fehlt in alten Konfigurationen - dann gilt AN. */
-      if (cfg.inventoryScan !== true) return;
-      if (cfg.inventoryAutoSync === false) return;
+    /* Ein Handel aendert das Inventar, ohne dass das Spiel eine Ankunft
+       meldet - er bleibt Ausloeser. Missionsende und Orbiter nicht mehr:
+       siehe requestAutoSync. */
+    if (ev.trigger === 'trade') requestAutoSync('Handel');
+  });
 
-      /* FRUEHER stand hier die Drosselungspruefung von DE. Die ist weg: der
-         Abruf geht nicht mehr an DEs API, sondern in den Speicher des eigenen
-         Spiels - es gibt niemanden mehr zu schonen.
-         Was BLEIBT, ist eine Ruecksicht auf die eigene Maschine. Ein Scan
-         kostet rund zehn Sekunden Rechenzeit; bei jedem Missionsende einen zu
-         starten waere waehrend einer Farmrunde spuerbar. Der Mindestabstand
-         unten deckelt das - und er kostet nichts an Aktualitaet, weil das
-         Spiel das Inventar ohnehin nur beim Laden einer Zone in den Speicher
-         legt. */
-      const since = Date.now() - lastAutoSyncAt;
-      if (since < AUTO_SYNC_MIN_MS) {
-        console.log('[AutoSync] Übersprungen:', ev.trigger,
-                    `(letzter Scan vor ${Math.round(since / 1000)}s)`);
-        return;
-      }
-      lastAutoSyncAt = Date.now();
-
-      console.log('[AutoSync] Inventar-Scan ausgelöst durch:', ev.trigger);
-      const payload = await inventoryPayload({ refresh: true, trigger: 'autosync' });
-      sendToMain('inventory:updated', payload.data);
-      /* Das Overlay zeigt die Requiem-Jagd - Gegner und Ladungen stehen im
-         Inventar. Das Hauptfenster erfaehrt es ueber inventory:updated. */
-      sendToOverlay('requiem:changed', {});
-    } catch (err) {
-      console.error('[AutoSync] Fehlgeschlagen:', err.message);
-    }
+  /* ----- Auto-Sync: lesen, wenn das Spiel ein neues Inventar meldet ----- */
+  logWatcher.on('inventory-arrived', ev => {
+    const why = ev.kind === 'mission' ? 'Missionsende'
+      : ev.kind === 'cached' ? 'Rueckkehr aufs Schiff' : 'Inventar vom Server';
+    requestAutoSync(why, ev.bytes);
   });
 
   logWatcher.start();
@@ -9822,6 +9866,15 @@ app.whenReady().then(async () => {
   /* Liest ab jetzt EE.log mit - beginnt am Dateiende, damit nicht die
      Belohnung von vorgestern als frischer Fund erscheint. */
   startLogWatcher();
+
+  /* Laeuft das Spiel schon, kam seine letzte Ankunft vor dem Start - die
+     sieht der Log-Beobachter nicht mehr (er beginnt am Dateiende). Einmal
+     nachlesen, statt bis zum naechsten Missionsende den alten Stand zu
+     zeigen. Frueher erledigte das die erste Spielzeile nach dem Start
+     (siehe requestAutoSync). */
+  findGameProcessIds()
+    .then(pids => { if (pids.length) requestAutoSync('Start von Argus'); })
+    .catch(() => {});
 
   // Hintergrund-Überwachung für Void-Risse starten (alle 45 Sekunden)
   pollFissureTracker();

@@ -44,6 +44,12 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ### Fixed
 
+- **Auto-sync reads your inventory when the game has a new one.** It used to start on any
+  sign of activity, at most every three minutes — a dodge roll mid-mission counted, so it
+  read the old inventory again and again during a mission, and then skipped the read
+  right after it. Now it reads when the game saves a finished mission and when you are
+  back on your ship, without a waiting time, and picks the newest copy in memory by the
+  size the game reports for it.
 - The Requiem Eterna relic now has its picture in the relic planner and the overlay.
 
 ## [1.23.0] - 2026-10-03

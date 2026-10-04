@@ -207,6 +207,17 @@ folder, including two clicks at once, and the game's own record of a stab (Guess
 decoded from a real one and merged with what was logged by hand. No network needed.
 
 ```bash
+npm run autosync-test
+```
+
+Checks when the auto-sync reads the inventory: the log lines that announce a new one (a
+saved mission, an arrival from the server or from the game's cache) with real wording
+from `EE.log`, that a dodge roll or leaving a squad no longer counts, and which copy in
+memory wins when two have the same timestamp — the one exactly as long as the game said.
+With an `EE.log` present it also counts how often the trigger would have fired in it.
+No game and no network needed.
+
+```bash
 npm run theme-test
 ```
 

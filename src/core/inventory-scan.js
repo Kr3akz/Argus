@@ -461,9 +461,32 @@ function lostInRepair(text, data) {
  * Der Scan laeuft rund zehn Sekunden am Stueck und wuerde das Fenster genauso
  * lange einfrieren. Aus dem Hauptprozess IMMER diesen Weg nehmen.
  */
+/**
+ * Die Reihenfolge, in der die Fundstellen probiert werden: zuerst die
+ * Feldabdeckung, dann der Stand (LastInventorySync), dann die Laenge, die
+ * das Spiel bei der letzten Ankunft gemeldet hat, zuletzt die Groesse.
+ *
+ * WARUM DIE GEMELDETE LAENGE (C1, gemessen am 2026-10-04): die Heap-Kopie
+ * ist byte-genau so lang wie "OnInventoryResults, body size=<n>" im EE.log -
+ * 1293609 gegen 1293609, ohne ein Byte davor oder dahinter. Haben zwei
+ * Kopien denselben Stand, entschied bisher die Groesse, und die aeltere kann
+ * die groessere sein (am 2026-09-28 war die neue 107 Byte kleiner).
+ *
+ * Nach dem Stand, nicht davor: die Laenge gilt fuer die letzte ANKUNFT, der
+ * Commit am Missionsende bringt eine neuere Kopie, ohne eine Laenge zu nennen.
+ */
+export function rankCandidates(candidates, expectBytes = null) {
+  const exact = c => (expectBytes && c.bytes === expectBytes ? 1 : 0);
+  return candidates.sort((a, b) =>
+    b.fields.length - a.fields.length
+    || (b.syncedAt || 0) - (a.syncedAt || 0)
+    || exact(b) - exact(a)
+    || b.bytes - a.bytes);
+}
+
 export function scanInventoryInWorker({ maxSeconds = 180, timeoutMs = 240000,
-                                        wide = true } = {}) {
-  return runInWorker({ job: 'inventory', options: { maxSeconds, wide } }, timeoutMs);
+                                        wide = true, expectBytes = null } = {}) {
+  return runInWorker({ job: 'inventory', options: { maxSeconds, wide, expectBytes } }, timeoutMs);
 }
 
 /**
@@ -473,7 +496,7 @@ export function scanInventoryInWorker({ maxSeconds = 180, timeoutMs = 240000,
  * scanInventoryInWorker() aufrufen, nicht direkt.
  */
 export async function scanInventory({ maxSeconds = 120, keepText = false,
-                                      wide = true } = {}) {
+                                      wide = true, expectBytes = null } = {}) {
   const procmem = await import('./procmem.js').catch(() => null);
   if (!procmem) return fail('koffi_missing', 'The memory module could not be loaded.');
   if (!procmem.isSupported()) {
@@ -600,7 +623,10 @@ export async function scanInventory({ maxSeconds = 120, keepText = false,
           backward: cand.backward,
           forward: cand.forward,
           startsWithBrace: cand.text.startsWith('{'),
-          syncedAt: cand.syncedAt || null
+          syncedAt: cand.syncedAt || null,
+          /* Passt die Kopie byte-genau zur gemeldeten Ankunft? null, wenn
+             keine Laenge vorlag (Knopfdruck, Missionsende). */
+          exact: expectBytes ? cand.bytes === expectBytes : null
         },
         fieldsInSpan: cand.fields.length,
         repaired: parsed.repaired,
@@ -632,10 +658,7 @@ export async function scanInventory({ maxSeconds = 120, keepText = false,
          Kandidaten und nicht an dieser Funktion - sonst wuerde jede Scheibe
          aus dem ersten Durchgang ein zweites Mal geparst. */
       const select = () => {
-        candidates.sort((a, b) =>
-          b.fields.length - a.fields.length
-          || (b.syncedAt || 0) - (a.syncedAt || 0)
-          || b.bytes - a.bytes);
+        rankCandidates(candidates, expectBytes);
 
         const attempted = [];
         let lastAttemptError = null;

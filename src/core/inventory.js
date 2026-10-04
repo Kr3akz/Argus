@@ -71,6 +71,7 @@ async function readCache(dataDir) {
  */
 export async function loadInventory({ dataDir = defaultDataDir(), refresh = false,
                                       trigger = 'manual',
+                                      expectBytes = null,
                                       force = false } = {}) {   // eslint-disable-line no-unused-vars
   await mkdir(dataDir, { recursive: true });
   const cacheFile = path.join(dataDir, CACHE);
@@ -89,7 +90,9 @@ export async function loadInventory({ dataDir = defaultDataDir(), refresh = fals
      in den Arbeitsspeicher zurueck - einmal auf Knopfdruck ist das in Ordnung,
      alle drei Minuten im Hintergrund waehrend einer Farmrunde nicht.
      Siehe inventory-scan.js, Abschnitt `wide`. */
-  const res = await scanInventoryInWorker({ wide: trigger !== 'autosync' });
+  /* expectBytes: die Laenge, die das Spiel bei der Ankunft gemeldet hat -
+     siehe rankCandidates in inventory-scan.js. */
+  const res = await scanInventoryInWorker({ wide: trigger !== 'autosync', expectBytes });
 
   /* HIER und nirgends sonst: das ist die eine Stelle, durch die jeder Scan
      geht - Knopfdruck, Auto-Sync, Wochenansicht, Ersteinrichtung -, und sie
