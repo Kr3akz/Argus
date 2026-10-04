@@ -290,6 +290,9 @@ console.log('\n=== Teil 6: Stichbuch ===\n');
     await hunts.deleteHunt(manual.id);
     ok('loeschen', !(await hunts.loadHunts()).hunts[manual.id]);
 
+    await hunts.setName(id, template, '  Caku Imorr  ');
+    ok('Name gemerkt (ohne Leerraum)', (await hunts.loadHunts()).hunts[id].name === 'Caku Imorr');
+
     await hunts.setPrefs({ allowOull: false });
     ok('Oull abschalten bleibt gespeichert', (await hunts.loadHunts()).prefs.allowOull === false);
     ok('Datei liegt im Wegwerf-Ordner', existsSync(dataFile('requiem.json')) && dataFile('requiem.json').startsWith(dir));
@@ -395,9 +398,19 @@ console.log('\n=== Teil 7: Lich-Zeilen im Log ===\n');
     '8041.712 Sys [Info]: Consumable slot 17 - /Lotus/Types/Restoratives/Consumable/NemesisBait: 3',
     '7845.799 Game [Info]: /Lotus/Types/Restoratives/Consumable/NemesisBait'
   ];
+  const names = [];
+  w.on('nemesis-name', ev => names.push(ev.name));
   for (const l of [...KEEP, ...DROP]) w.handleLine(l);
+  /* Der Name des Lichs aus der Missionszeile - Wortlaut vom 04.10.2026. Der
+     Knoten muss dabei weiter stimmen. */
+  const missions = [];
+  w.on('squad-mission', ev => missions.push(ev.node));
+  w.handleLine('2574.284 Net [Info]: Set squad mission: {"difficulty":0.42500001192093,"name":"SolNode45_Nemesis","nemesis":{"faction":0,"name":"Caku Imorr","rank":1}}');
+  w.handleLine('2600.000 Net [Info]: Set squad mission: {"difficulty":0.5,"name":"SolNode45"}');
   w.stop();
-  ok('Lich-Zeilen werden mitgeschrieben', same(seen, KEEP), JSON.stringify(seen));
+  ok('Lich-Zeilen werden mitgeschrieben', same(seen.slice(0, KEEP.length), KEEP), JSON.stringify(seen));
+  ok('Name des Lichs aus der Missionszeile', same(names, ['Caku Imorr']), JSON.stringify(names));
+  ok('... und der Knoten stimmt weiter', same(missions, ['SolNode45', 'SolNode45']), JSON.stringify(missions));
 }
 
 /* ------------------------------------------------------------------------

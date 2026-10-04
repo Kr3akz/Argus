@@ -284,6 +284,20 @@ const RE_EQUIP = /Dialog::CreateOkCancel\(description=.*?\bequip\s+(\S+)\s+(\S+)
 const RE_SQUAD_MISSION = /Set squad mission:\s*(\{[^}]*\})/;
 
 /**
+ * Der Name des eigenen Lichs. Steht nirgends im Inventar - dort gibt es nur
+ * Fingerabdruck und Vorlage, aus denen das Spiel den Namen selbst baut. Die
+ * Missionszeile nennt ihn, wenn das Ziel ein Knoten des Lichs ist
+ * (gemessen am 04.10.2026):
+ *
+ *   Net [Info]: Set squad mission: {"difficulty":0.425,"name":"SolNode45_Nemesis",
+ *               "nemesis":{"faction":0,"name":"Caku Imorr","rank":1}}
+ *
+ * RE_SQUAD_MISSION oben liest davon nur bis zur ersten schliessenden Klammer
+ * - das reicht fuer den Knoten, der Name braucht ein eigenes Muster.
+ */
+const RE_SQUAD_NEMESIS = /Set squad mission:.*"nemesis"\s*:\s*\{[^}]*"name"\s*:\s*"([^"]+)"/;
+
+/**
  * Die Mission, die gerade GELADEN wird - also die, in der man dann steht.
  *
  * Nachgemessen am 28.09.2026:
@@ -394,9 +408,16 @@ const RE_CHAT_CONNECTED = /IRC connected/;
  * 17 - .../NemesisBait: 3"): der steht bei jedem Zonenwechsel im Log, in
  * Kaans Sitzung zwanzigmal. Das Aktivieren selbst ("NemesisBait.lua:
  * NemesisBait activated") bleibt drin.
+ *
+ * Ebenso draussen: die Gnadenstoesse an Thralls (KuvaLichFinisherMarine...,
+ * drei bis vier Zeilen je Thrall - die Zahl steht ohnehin als HenchmenKilled
+ * im Inventar), die doppelte "FinisherAction::Execute"-Zeile zu jedem
+ * Finisher und die Wuerfe, ob der Lich erscheint ("nemesis roll", alle
+ * halbe Minute). Gemessen am 04.10.2026: sonst ist die Obergrenze in main.js
+ * nach rund 75 Thralls erreicht, und der Stich danach fehlt im Protokoll.
  */
 const RE_NEMESIS_TAP   = /\[NEMESIS\]|Nemesis|Requiem|Parazon|Lich|Murmur|\bstab\b/i;
-const RE_NEMESIS_NOISE = /Spot-(?:loading|building)|ResourceLoader|Resloader|Resource load|Unknown property|SongItem|TransmissionSets|generating profile|Consumable slot|^\S+ Game \[Info\]: \/Lotus\/Types\/Restoratives\/|\/Sounds\//;
+const RE_NEMESIS_NOISE = /Spot-(?:loading|building)|ResourceLoader|Resloader|Resource load|Unknown property|SongItem|TransmissionSets|generating profile|Consumable slot|FinisherAction::Execute|KuvaLichFinisherMarine|nemesis roll|^\S+ Game \[Info\]: \/Lotus\/Types\/Restoratives\/|\/Sounds\//;
 const WHISPER_LOGIN_QUIET_SEC = 10;
 
 const STATE_BY_TAG = {
@@ -694,6 +715,8 @@ export class LogWatcher extends EventEmitter {
     if (squad) {
       const m = readMission(squad[1]);
       if (m.node || m.tier) this.emit('squad-mission', { ...m, loaded: false, at: Date.now() });
+      const nemesis = RE_SQUAD_NEMESIS.exec(line);
+      if (nemesis) this.emit('nemesis-name', { name: nemesis[1].trim(), at: Date.now() });
     } else if (loaded) {
       this.emit('squad-mission', { ...readMission(loaded[1]), loaded: true, at: Date.now() });
     } else if (RE_LEFT_MISSION.test(line)) {

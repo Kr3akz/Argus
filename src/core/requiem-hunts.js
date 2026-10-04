@@ -41,6 +41,9 @@ function normalize(id, raw) {
     createdAt: Number(raw?.createdAt) || null,
     startedAt: Number(raw?.startedAt) || null,
     finishedAt: Number(raw?.finishedAt) || null,
+    /* Der Name, den das Spiel dem Lich gegeben hat - aus dem Log, siehe
+       RE_SQUAD_NEMESIS in logwatch.js. */
+    name: typeof raw?.name === 'string' && raw.name.trim() ? raw.name.trim().slice(0, 40) : null,
     hints,
     stabs
   };
@@ -131,6 +134,15 @@ export function setHints(id, template, hints) {
 export function startManual(kind) {
   const id = 'm' + Date.now();
   return change(id, { source: 'manual', kind: NEMESIS_KINDS[kind]?.requiems ? kind : 'lich' }, () => {});
+}
+
+/** Den Namen merken, sobald das Log ihn nennt. Gleicher Name: nichts tun. */
+export async function setName(id, template, name) {
+  const clean = String(name || '').trim().slice(0, 40);
+  if (!clean) return loadHunts();
+  const s = await loadHunts();
+  if (s.hunts[id]?.name === clean) return s;
+  return change(id, template, hunt => { hunt.name = clean; });
 }
 
 export function finishHunt(id) {

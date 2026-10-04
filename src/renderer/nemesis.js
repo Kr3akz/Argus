@@ -213,7 +213,8 @@ const Nemesis = (() => {
           <div class="nem-foe-art">${n.progenitor ? `<img src="${esc(n.progenitor.image)}" alt="">` : ''}</div>
           <div class="nem-foe-main">
             <div class="nem-foe-top">
-              <b>Your ${esc(n.label)}</b>
+              <b>${n.name ? esc(n.name) : `Your ${esc(n.label)}`}</b>
+              ${n.name ? `<span class="trade-chip chip-neutral">${esc(n.label)}</span>` : ''}
               ${n.traded ? '<span class="trade-chip chip-neutral">Traded</span>' : ''}
               ${d.inventory ? `<span class="nem-asof">as of ${esc(fmtShort(d.inventory.syncedAt || d.inventory.fetchedAt))}</span>` : ''}
             </div>
@@ -695,8 +696,8 @@ const Nemesis = (() => {
           <div class="nem-past fac-${esc((h.faction || (h.kind === 'sister' ? 'corpus' : h.kind === 'coda' ? 'infested' : 'grineer')).toLowerCase())}">
             <div class="nem-past-art">${h.progenitor ? `<img src="${esc(h.progenitor.image)}" alt="">` : ''}</div>
             <div class="nem-past-main">
-              <b>${esc(h.label)}</b>
-              <span>${[h.createdAt ? fmtDate(h.createdAt) : null, h.progenitor ? `Progenitor ${h.progenitor.name}` : null, h.manual ? 'tracked by hand' : null].filter(Boolean).map(esc).join(' · ')}</span>
+              <b>${esc(h.name || h.label)}</b>
+              <span>${[h.name ? h.label : null, h.createdAt ? fmtDate(h.createdAt) : null, h.progenitor ? `Progenitor ${h.progenitor.name}` : null, h.manual ? 'tracked by hand' : null].filter(Boolean).map(esc).join(' · ')}</span>
             </div>
             ${h.level ? `<span class="nem-past-level" title="The level it had at the end">Level ${h.level}</span>` : '<span></span>'}
             <div class="nem-past-hunt">${tracked}</div>

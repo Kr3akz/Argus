@@ -4245,7 +4245,8 @@ async function requiemView() {
       planets,
       minionsKilled: n.minionsKilled,
       traded: n.traded,
-      weakened: n.weakened
+      weakened: n.weakened,
+      name: book.hunts[n.id]?.name || null
     };
   };
 
@@ -4286,7 +4287,7 @@ async function requiemView() {
   const manualDone = Object.values(book.hunts)
     .filter(h => h.source === 'manual' && h.finishedAt)
     .map(h => ({
-      id: h.id, kind: h.kind, label: NEMESIS_KINDS[h.kind]?.label || 'Adversary',
+      id: h.id, kind: h.kind, label: NEMESIS_KINDS[h.kind]?.label || 'Adversary', name: h.name || null,
       manual: true, createdAt: h.startedAt, finishedAt: h.finishedAt, hunt: summarizeHunt(h)
     }));
 
@@ -7807,6 +7808,25 @@ function startLogWatcher() {
      Abschnitt Riven-Overlay weiter oben. */
   logWatcher.on('riven-cycle', ev => {
     onRivenCycle(ev).catch(err => console.error('[Riven] Overlay-Ablauf:', err.message));
+  });
+
+  /* Der Name des Lichs - steht nur in der Missionszeile, nie im Inventar.
+     Gemerkt wird er beim aktiven Gegner; ein Name aus einer fremden Mission
+     (bei einem Mitspieler) wuerde beim naechsten eigenen ueberschrieben. */
+  logWatcher.on('nemesis-name', async ev => {
+    try {
+      const { inventory } = await loadInventory({ refresh: false }).catch(() => ({ inventory: null }));
+      const { active } = nemesisFromInventory(inventory);
+      if (!active?.id || !NEMESIS_KINDS[active.kind]?.requiems) return;
+      const before = (await requiemHunts.loadHunts()).hunts[active.id]?.name || null;
+      if (before === ev.name) return;
+      await requiemHunts.setName(active.id, { source: 'inventory', kind: active.kind, createdAt: active.createdAt }, ev.name);
+      console.log('[Requiem] Name des Lichs aus dem Log:', ev.name);
+      sendToMain('requiem:changed', {});
+      sendToOverlay('requiem:changed', {});
+    } catch (err) {
+      console.log('[Requiem] Name nicht gemerkt:', err.message);
+    }
   });
 
   /* Lich- und Sister-Zeilen nur ins Protokoll - siehe RE_NEMESIS_TAP in
