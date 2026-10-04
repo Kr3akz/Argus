@@ -2,7 +2,7 @@
  * Die gefuehrte Tour durch Argus - einmal beim ersten Start, danach auf Wunsch.
  *
  * WARUM EIN SCHEINWERFER UND KEIN TEXTFENSTER:
- *   Elf Reiter, in jedem drei bis fuenf Ansichten. Eine Seite Text darueber
+ *   Zwoelf Reiter, in jedem drei bis fuenf Ansichten. Eine Seite Text darueber
  *   liest niemand, und wer sie liest, muss die Begriffe danach erst wieder in
  *   der Oberflaeche suchen. Deshalb zeigt jede Station auf das Stueck Fenster,
  *   von dem sie redet: der Reiter wird umgeschaltet, die Stelle ausgeschnitten,
@@ -36,7 +36,7 @@ const Guide = (() => {
 
   /* ---------------- Die Stationen ----------------
 
-     tab / wsPane / masteryMode / settingsPane / rivenPane schalten vor dem
+     tab / wsPane / masteryMode / settingsPane / rivenPane / nemesisPane schalten vor dem
      Messen um - ein Ziel in einem versteckten Reiter hat keine Geometrie.
      Die Kennung (id) ist mehr als ein Name: sie wird als "gesehen"
      gespeichert, und eine neue Kennung laesst die Tour nach einem Update
@@ -72,7 +72,7 @@ const Guide = (() => {
       pad: 6,
       title: 'Everything lives in this rail',
       body: `
-        <p>Eleven tabs, top to bottom, roughly in the order you need them: what you
+        <p>Twelve tabs, top to bottom, roughly in the order you need them: what you
            still have to master, what is happening <em>right now</em>, what resets
            <em>this week</em>, what you own and what it is worth — and, further
            down, the pages you look things up in.</p>
@@ -204,6 +204,22 @@ const Guide = (() => {
         <p><b>Veiled</b> lists the ones you have not revealed yet, with their
            challenges. The <b>Riven finder</b> searches warframe.market auctions by
            weapon and stats — that part works without inventory access.</p>`
+    },
+    {
+      id: 'nemesis',
+      tab: 'nemesis',
+      nemesisPane: 'hunt',
+      target: '#nem-nav',
+      place: 'bottom',
+      title: 'Liches & Sisters',
+      body: `
+        <p>Your Kuva Lich or Sister of Parvos, straight from your inventory. After
+           each stab, put in the three requiems you equipped and how far the stab
+           got — Argus keeps the log and works out the stab most likely to finish
+           it, and how many it can still take at most.</p>
+        <p><b>Requiem mods</b> shows the charges left on every requiem and what to
+           restock first. The next stab also sits in the overlay over the game, with
+           one click for how it went.</p>`
     },
     {
       id: 'ducats',
@@ -744,6 +760,7 @@ const Guide = (() => {
       window.showSettingsPane(st.settingsPane);
     if (st.rivenPane && typeof window.showRivenPane === 'function')
       window.showRivenPane(st.rivenPane);
+    if (st.nemesisPane && typeof Nemesis !== 'undefined') Nemesis.showPane(st.nemesisPane);
     if (st.masteryMode && typeof window.setMasteryMode === 'function')
       window.setMasteryMode(st.masteryMode);
 

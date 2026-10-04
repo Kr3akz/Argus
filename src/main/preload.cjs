@@ -63,6 +63,19 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('rivens:changed', handler);
     return () => ipcRenderer.removeListener('rivens:changed', handler);
   },
+  /* Requiem-Helfer: Gegner, Bestand und Geschichte aus der Inventardatei,
+     die Stiche aus dem Stichbuch. update nimmt { op, id, ... } - siehe
+     requiem:update in main.js. */
+  getRequiem:      ()          => ipcRenderer.invoke('requiem:get'),
+  updateRequiem:   (action)    => ipcRenderer.invoke('requiem:update', action),
+  /* Meldet sich, wenn sich am Stand etwas getan hat, das der Fragende nicht
+     selbst ausgeloest hat: Preise kamen nach, ein neues Inventar, ein Stich im
+     anderen Fenster (Overlay oder Hauptfenster). */
+  onRequiemChanged:(cb)        => {
+    const handler = (_e, info) => cb(info);
+    ipcRenderer.on('requiem:changed', handler);
+    return () => ipcRenderer.removeListener('requiem:changed', handler);
+  },
   /* Riven-Finder: Auswahllisten, Wuensche einer Waffe, Suche. */
   getRivenFinderRef: ()        => ipcRenderer.invoke('rivens:finder-ref'),
   getRivenWants:   (slug)      => ipcRenderer.invoke('rivens:wants', slug),

@@ -40,12 +40,21 @@ export const RELIC_STATES = ['Intact', 'Exceptional', 'Flawless', 'Radiant'];
  * existiert nicht. Das trifft auch Requiem-Relikte, die sich gar nicht polieren
  * lassen: ihr Inventarpfad endet ohne Metall, ihr Bild liegt trotzdem unter
  * ...Bronze.png. Deshalb wird das Suffix hier immer angehaengt, nie geraten.
+ *
+ * DIE EINE AUSNAHME ist Requiem Eterna (T5VoidProjectionImmortalOmniA): weder
+ * Inventarpfad noch Bild tragen ein Metall. Nachgemessen am 2026-10-04 im
+ * Bilderspiegel: ...ImmortalOmniA.png gibt es, ...ImmortalOmniABronze.png
+ * nicht - vorher stand das Relikt im Planer und im Overlay ohne Bild da. Der
+ * Inventar-Reiter hatte dafuer schon seinen Rueckfall (relicImagePair in
+ * inventory-items.js).
  */
 const METAL_BY_STATE = { Intact: 'Bronze', Exceptional: 'Silver', Flawless: 'Gold', Radiant: 'Platinum' };
+const WITHOUT_METAL = /ImmortalOmni[A-Z]?$/;
 
 /** Basispfad + Zustand -> uniqueName des zugehoerigen Bildes. */
 export function relicIconPath(base, state = 'Intact') {
   if (!base) return null;
+  if (WITHOUT_METAL.test(base)) return base;
   return base + (METAL_BY_STATE[state] || 'Bronze');
 }
 export const RELIC_TIERS  = ['Lith', 'Meso', 'Neo', 'Axi', 'Requiem', 'Omnia'];

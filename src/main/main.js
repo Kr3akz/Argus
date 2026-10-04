@@ -81,6 +81,9 @@ import {
 import { buildBaseSets } from '../core/basesets.js';
 import { foundryQueue } from '../core/foundry.js';
 import { buildRivens, rivenView, rivensForShownWeapon } from '../core/rivens.js';
+import { REQUIEMS, OULL, NEMESIS_KINDS, TRANSMUTE_COUNT, requiemStock, nemesisFromInventory,
+         solveRequiem } from '../core/requiem.js';
+import * as requiemHunts from '../core/requiem-hunts.js';
 import { loadDispositions } from '../core/dispositions.js';
 import { RIVEN_ATTRS, rivenClass, labelWants } from '../core/riven-wants.js';
 import * as rivenMarket from '../core/riven-market.js';
@@ -2323,7 +2326,10 @@ async function starteWochenScan() {
   console.log('[Weekly] Inventarstand ist aus einer alten Woche - Scan gestartet');
 
   inventoryPayload({ refresh: true, trigger: 'weekly' })
-    .then(payload => sendToMain('inventory:updated', payload.data))
+    .then(payload => {
+      sendToMain('inventory:updated', payload.data);
+      sendToOverlay('requiem:changed', {});
+    })
     .catch(err => console.error('[Weekly] Nachlesen fehlgeschlagen:', err.message));
 
   return true;
@@ -4055,6 +4061,303 @@ ipcMain.handle('rivens:finder-search', async (_e, opts = {}) => {
     };
   } catch (err) {
     return { ok: false, error: err.message, rateLimited: err?.status === 429 };
+  }
+});
+
+/* ======================================================================
+   Requiem-Helfer: Kuva Liches und Sisters of Parvos.
+
+   Gegner, Bestand und Geschichte kommen aus dem Inventar auf der Platte (kein
+   Speicherzugriff), die Stiche aus dem Stichbuch (requiem-hunts.js),
+   gerechnet wird in requiem.js. Ins Netz geht hoechstens der Preis eines
+   frischen Requiems - im Hintergrund, nur was der Preisspeicher nicht hat,
+   einmal je Sitzung.
+   ====================================================================== */
+
+/* Was DEs Export einem Namen voranstellt ("<ARCHWING> Agkuza"), muss weg. */
+const plainName = s => String(s || '').replace(/<[^>]*>\s*/g, '').trim();
+
+/* "Everest (Earth)" -> "Earth". */
+const planetOfNode = name => /\(([^)]+)\)\s*$/.exec(name || '')?.[1] || null;
+
+/* Felder am Nemesis, die Argus nicht kennt, einmal je Satz ins Protokoll -
+   daran laesst sich spaeter ablesen, wie das Spiel Stiche und Murmurs fuehrt
+   (siehe KNOWN_NEMESIS_FIELDS in requiem.js). */
+let requiemExtraLogged = '';
+function logNemesisExtras(rawNemesis, active) {
+  if (!active?.extra?.length) return;
+  const sig = active.id + ':' + active.extra.join(',');
+  if (sig === requiemExtraLogged) return;
+  requiemExtraLogged = sig;
+  const values = active.extra.map(k => `${k}=${JSON.stringify(rawNemesis?.[k]).slice(0, 400)}`);
+  console.log('[Requiem] Unbekannte Felder am Nemesis:', values.join(' | '));
+}
+
+let requiemPriceRun = null;
+let requiemPricesTried = false;
+
+/**
+ * Preise frischer Requiems (Rang 0 = drei Ladungen) nachholen, die der
+ * Speicher nicht oder nur alt hat. Einmal je Sitzung - die Preise bewegen
+ * sich in Platin-Einern, und der Markt soll nicht bei jedem Aufschlagen
+ * gefragt werden. Fertig meldet sich der Reiter ueber requiem:changed.
+ */
+function refreshRequiemPrices(missing) {
+  if (requiemPricesTried || requiemPriceRun || !missing.length) return;
+  requiemPricesTried = true;
+  requiemPriceRun = getRankedPrices(missing.map(slug => ({ slug, rank: 0 })))
+    .then(() => sendToMain('requiem:changed', {}))
+    .catch(err => console.log('[Requiem] Preise nicht geholt:', err.message))
+    .finally(() => { requiemPriceRun = null; });
+}
+
+/** Welcher Zug gerade dran ist, und als was er angelegt wuerde. */
+function currentHunt(active, book) {
+  if (active && NEMESIS_KINDS[active.kind]?.requiems && active.id) {
+    const template = { source: 'inventory', kind: active.kind, createdAt: active.createdAt };
+    return { id: active.id, template, hunt: book.hunts[active.id] || null };
+  }
+  if (active) return { id: null, template: null, hunt: null };   // eine Coda: kein Raetsel
+  const manual = Object.values(book.hunts)
+    .filter(h => h.source === 'manual' && !h.finishedAt)
+    .sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0))[0] || null;
+  return { id: manual?.id || null, template: null, hunt: manual };
+}
+
+async function requiemView() {
+  if (!cache.catalog) await ensureData({ refresh: false });
+  const catalog = cache.catalog;
+
+  let inventory = null, fetchedAt = null, syncedAt = null, invState = null;
+  try {
+    ({ inventory, fetchedAt, syncedAt } = await loadInventory({ refresh: false }));
+  } catch (err) {
+    /* "Noch nie abgerufen" ist ein Zustand, kein Fehler - der Reiter geht
+       dann von Hand weiter. */
+    invState = { code: err.code || 'empty', error: err.message };
+  }
+
+  if (!cache.market) cache.market = await loadMarketItems().catch(() => null);
+  if (!cache.relicTables) cache.relicTables = await loadRelicTables().catch(() => null);
+  await loadSolNodes().catch(() => null);
+
+  const book = await requiemHunts.loadHunts();
+  const { active, history } = nemesisFromInventory(inventory);
+  logNemesisExtras(inventory?.Nemesis, active);
+
+  /* ---- Bestand, mit Bild und Marktpreis eines frischen Exemplars ---- */
+  const stock = requiemStock(inventory, catalog);
+  const missingPrices = [];
+  const withMarket = async (row, path) => {
+    const slug = findMarketItem(cache.market, { uniqueName: path })?.slug || null;
+    const price = slug ? await cachedPrice(slug, { rank: 0 }) : null;
+    if (slug && (!price || price.stale)) missingPrices.push(slug);
+    return { ...row, image: imageUrl(path, 128), slug, price: price ? { min: price.min ?? null, median: price.median ?? null, stale: !!price.stale } : null };
+  };
+  /* Auch ohne Inventar braucht der Reiter die neun Requiems mit Bild und
+     Namen - fuer die Murmurs, die Stiche und die Wahrscheinlichkeiten. */
+  const mods = await Promise.all([...REQUIEMS, OULL].map(async (r, i) => {
+    const owned = stock ? (i < REQUIEMS.length ? stock.requiems[i] : stock.oull) : null;
+    const name = plainName(catalog?.byUniqueName?.get(r.path)?.name) || r.name;
+    return withMarket({ key: r.key, name, owned }, r.path);
+  }));
+  const antivirus = stock
+    ? await Promise.all(stock.antivirus.map(a => withMarket(a, a.path)))
+    : null;
+  refreshRequiemPrices([...new Set(missingPrices)]);
+
+  /* ---- Requiem-Relikte im Bestand und welche Requiems drinstecken ----
+     Die Schluessel der Droptabelle schreiben "Requiem ETERNA", der Markt
+     "Requiem Eterna" - verglichen wird deshalb ohne Gross/klein. */
+  const relicByLower = new Map([...(cache.relicTables?.byKey?.keys() || [])].map(k => [k.toLowerCase(), k]));
+  const requiemNames = new Map(mods.map(m => [m.name.toLowerCase(), m.key]));
+  const relics = [];
+  if (inventory) {
+    for (const r of ownedRelics(inventory, cache.market).values()) {
+      if (!/^Requiem\b/i.test(r.key)) continue;
+      const tableKey = relicByLower.get(r.key.toLowerCase());
+      const rewards = tableKey ? rewardsFor(cache.relicTables, tableKey, r.state)?.rewards || [] : [];
+      relics.push({
+        key: r.key,
+        count: r.count,
+        image: r.image,
+        requiems: rewards
+          .filter(w => requiemNames.has(String(w.itemName).toLowerCase()))
+          .map(w => ({ key: requiemNames.get(String(w.itemName).toLowerCase()), chance: w.chance }))
+      });
+    }
+    relics.sort((a, b) => a.key.localeCompare(b.key, 'en', { numeric: true }));
+  }
+  /* Woher jedes Requiem kommt - aus allen Requiem-Relikten der Droptabelle,
+     nicht nur den eigenen. Geschrieben wie beim Markt: "Requiem ETERNA" wird
+     "Requiem Eterna", die roemischen Zahlen bleiben. */
+  const relicLabel = key => key.replace(/^Requiem (\S+)$/, (m, n) =>
+    /^[IVX]+$/.test(n) ? m : 'Requiem ' + n.charAt(0) + n.slice(1).toLowerCase());
+  const relicSources = {};
+  for (const relic of cache.relicTables?.relics || []) {
+    if (relic.tier !== 'Requiem') continue;
+    const label = relicLabel(relic.key);
+    for (const w of relic.states.Intact || []) {
+      const key = requiemNames.get(String(w.itemName).toLowerCase());
+      if (!key) continue;
+      (relicSources[key] ||= []).push({ relic: label, chance: w.chance });
+    }
+  }
+
+  /* ---- Der Gegner ---- */
+  const decorate = n => {
+    if (!n) return null;
+    const kind = NEMESIS_KINDS[n.kind] || null;
+    const nodes = n.influence.map(x => {
+      const info = nodeInfo(x.node);
+      return { node: x.node, influence: x.influence, name: info?.name || x.node, type: info?.type || null };
+    });
+    const planets = [...new Set(nodes.map(x => planetOfNode(x.name)).filter(Boolean))];
+    const birth = n.birthNode ? nodeInfo(n.birthNode) : null;
+    return {
+      id: n.id,
+      kind: n.kind,
+      label: kind?.label || 'Adversary',
+      faction: kind?.faction || null,
+      minions: kind?.minions || null,
+      requiems: !!kind?.requiems,
+      createdAt: n.createdAt,
+      level: n.level,
+      progenitor: n.progenitor ? {
+        name: plainName(catalog?.byUniqueName?.get(n.progenitor)?.name) || n.progenitor.split('/').pop(),
+        image: imageUrl(n.progenitor, 256)
+      } : null,
+      birth: birth ? { name: birth.name, type: birth.type } : null,
+      nodes,
+      planets,
+      minionsKilled: n.minionsKilled,
+      traded: n.traded
+    };
+  };
+
+  /* ---- Der Zug und die Rechnung ---- */
+  const cur = currentHunt(active, book);
+  const usable = stock
+    ? new Set([...stock.requiems, stock.oull].filter(r => r.usable > 0).map(r => r.key))
+    : null;
+  const huntForSolve = cur.hunt || (cur.id ? { hints: [], stabs: [] } : null);
+  const solution = huntForSolve
+    ? solveRequiem(huntForSolve, { allowOull: book.prefs.allowOull, usable })
+    : null;
+
+  /* ---- Geschichte: besiegte Gegner, mit den Stichen, die Argus kennt ---- */
+  const past = history.map(h => {
+    const tracked = book.hunts[h.id] || null;
+    return { ...decorate(h), hunt: tracked ? summarizeHunt(tracked) : null };
+  });
+  /* Handzuege, die beendet sind, stehen mit in der Geschichte. */
+  const manualDone = Object.values(book.hunts)
+    .filter(h => h.source === 'manual' && h.finishedAt)
+    .map(h => ({
+      id: h.id, kind: h.kind, label: NEMESIS_KINDS[h.kind]?.label || 'Adversary',
+      manual: true, createdAt: h.startedAt, finishedAt: h.finishedAt, hunt: summarizeHunt(h)
+    }));
+
+  return {
+    inventory: invState ? null : { fetchedAt, syncedAt: syncedAt || null },
+    invState,
+    nemesis: decorate(active),
+    hunt: cur.id ? {
+      id: cur.id,
+      source: cur.hunt?.source || cur.template?.source || 'manual',
+      kind: cur.hunt?.kind || cur.template?.kind || 'lich',
+      startedAt: cur.hunt?.startedAt || null,
+      hints: cur.hunt?.hints || [],
+      stabs: cur.hunt?.stabs || []
+    } : null,
+    solution,
+    prefs: book.prefs,
+    mods,
+    stock: stock ? {
+      guaranteed: stock.guaranteed,
+      defiled: stock.defiled,
+      transmuteCount: TRANSMUTE_COUNT
+    } : null,
+    antivirus,
+    relics,
+    relicSources,
+    history: [...past, ...manualDone].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+  };
+}
+
+/* Was die Geschichte von einem Zug zeigt. */
+function summarizeHunt(h) {
+  const success = h.stabs.find(s => s.result === 3) || null;
+  return {
+    stabs: h.stabs.length,
+    failed: h.stabs.filter(s => s.result < 3).length,
+    sequence: success ? success.mods : null,
+    hints: h.hints
+  };
+}
+
+ipcMain.handle('requiem:get', async () => {
+  try {
+    return { ok: true, data: await requiemView() };
+  } catch (err) {
+    console.log('[Requiem] Ansicht fehlgeschlagen:', err.message);
+    return { ok: false, error: err.message };
+  }
+});
+
+/**
+ * Eine Aenderung am Stichbuch. Die Oberflaeche schickt nur die Kennung des
+ * Zugs - als was ein neuer Zug angelegt wird, entscheidet der Hauptprozess
+ * selbst aus dem Inventar. Ein Zug, den es weder im Buch noch als aktiven
+ * Gegner gibt, wird nicht angelegt.
+ */
+ipcMain.handle('requiem:update', async (e, action = {}) => {
+  try {
+    const id = typeof action.id === 'string' && /^[nm]\d+$/.test(action.id) ? action.id : null;
+    let template = null;
+    if (id?.startsWith('n')) {
+      const { inventory } = await loadInventory({ refresh: false }).catch(() => ({ inventory: null }));
+      const { active } = nemesisFromInventory(inventory);
+      if (active?.id === id && NEMESIS_KINDS[active.kind]?.requiems) {
+        template = { source: 'inventory', kind: active.kind, createdAt: active.createdAt };
+      }
+    }
+
+    switch (action.op) {
+      case 'record':
+        await requiemHunts.recordStab(id, template, { mods: action.mods, result: action.result });
+        break;
+      case 'remove':
+        await requiemHunts.removeStab(id, action.index);
+        break;
+      case 'hints':
+        await requiemHunts.setHints(id, template, action.hints);
+        break;
+      case 'prefs':
+        await requiemHunts.setPrefs({ allowOull: action.allowOull });
+        break;
+      case 'start':
+        await requiemHunts.startManual(action.kind);
+        break;
+      case 'finish':
+        await requiemHunts.finishHunt(id);
+        break;
+      case 'delete':
+        await requiemHunts.deleteHunt(id);
+        break;
+      default:
+        return { ok: false, error: 'Unknown action.' };
+    }
+    /* Das jeweils andere Fenster zieht nach: ein Stich im Overlay erscheint
+       im Reiter, einer im Reiter im Overlay. Wer gefragt hat, bekommt den
+       neuen Stand ohnehin als Antwort. */
+    const fromOverlay = overlayWin && !overlayWin.isDestroyed() && e.sender === overlayWin.webContents;
+    if (fromOverlay) sendToMain('requiem:changed', {});
+    else sendToOverlay('requiem:changed', {});
+    return { ok: true, data: await requiemView() };
+  } catch (err) {
+    if (!requiemHunts.isHuntError(err)) console.log('[Requiem] Speichern fehlgeschlagen:', err.message);
+    return { ok: false, error: requiemHunts.isHuntError(err) ? err.message : 'Could not save that - see argus.log.' };
   }
 });
 
@@ -7471,6 +7774,14 @@ function startLogWatcher() {
     onRivenCycle(ev).catch(err => console.error('[Riven] Overlay-Ablauf:', err.message));
   });
 
+  /* Lich- und Sister-Zeilen nur ins Protokoll - siehe RE_NEMESIS_TAP in
+     logwatch.js. Hoechstens 300 je Sitzung, falls das Spiel gespraechig ist. */
+  let nemesisLines = 0;
+  logWatcher.on('nemesis-line', ev => {
+    if (++nemesisLines > 300) return;
+    console.log('[Requiem] Log:', String(ev.line).trim().slice(0, 300));
+  });
+
   /* Jemand fluestert - eine NEUE Unterhaltung, siehe RE_WHISPER_TAB. */
   logWatcher.on('whisper', ev => {
     notifyWhisper(ev.from).catch(err =>
@@ -7884,6 +8195,9 @@ function startLogWatcher() {
       console.log('[AutoSync] Inventar-Scan ausgelöst durch:', ev.trigger);
       const payload = await inventoryPayload({ refresh: true, trigger: 'autosync' });
       sendToMain('inventory:updated', payload.data);
+      /* Das Overlay zeigt die Requiem-Jagd - Gegner und Ladungen stehen im
+         Inventar. Das Hauptfenster erfaehrt es ueber inventory:updated. */
+      sendToOverlay('requiem:changed', {});
     } catch (err) {
       console.error('[AutoSync] Fehlgeschlagen:', err.message);
     }

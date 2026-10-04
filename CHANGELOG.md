@@ -21,6 +21,28 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+### Added
+
+- **Liches & Sisters, a new tab.** After each stab on your Kuva Lich or Sister of Parvos,
+  put in the three requiems you equipped and how far the stab got. Argus keeps the log,
+  rules out every sequence that no longer fits, and suggests the stab most likely to
+  finish it — with how many stabs it can still take at most, and on average. Murmurs go in
+  with a click, and Oull is used where it saves stabs. Your adversary — progenitor, level,
+  territory — comes straight from your inventory. Without one you can track a hunt by
+  hand, on console too.
+- **The next stab in the overlay.** While you hunt, the overlay window shows the next stab
+  with four buttons for how it went, so logging it does not mean leaving the game.
+- **Requiem charges.** Every requiem with the charges left on each copy, how many more
+  Liches or Sisters they cover whatever the sequence, and what to restock first — with the
+  price of a fresh copy and the requiem relics you own that drop it. The antivirus mods for
+  the Technocyte Coda are listed too.
+- **Past hunts.** Every Lich, Sister and Coda you have defeated, with the stabs Argus
+  logged for them.
+
+### Fixed
+
+- The Requiem Eterna relic now has its picture in the relic planner and the overlay.
+
 ## [1.23.0] - 2026-10-03
 
 ### Changed

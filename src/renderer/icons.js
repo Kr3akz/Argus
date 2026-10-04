@@ -124,6 +124,9 @@ const Icon = {
      Symbol (catMods), das auch im Katalog "Other" heisst - zwei Bedeutungen
      fuer ein Bild. */
   riven: s => `<span class="nav-icon-mask icon-riven" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
+  /* Das Zeichen der Requiem-Relikte fuer Liches & Sisters - dieselbe Maske,
+     die im Live-Tracker vor den Requiem-Rissen steht. */
+  requiem: s => `<span class="nav-icon-mask icon-requiem" style="width:${s}px;height:${s}px;" aria-hidden="true"></span>`,
   /* Eigene Reitersymbole fuer Notizen und Droptabellen. Vorher standen dort
      die gezeichneten `codex` und `crate`; beide bleiben im Satz, `crate`
      wird an anderer Stelle noch gebraucht. */

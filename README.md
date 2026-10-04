@@ -98,7 +98,8 @@ Every mechanism, permission and endpoint is explained in detail:
   stand next to each other — every stat marked better or worse, and a grade for both —
   so you can decide before you pick. → [Rivens](docs/rivens.md)
 - **The overlay window.** Open-world cycles, void fissures, your relics and goals on top
-  of the running game, on a hotkey. → [Controls](docs/controls.md)
+  of the running game, on a hotkey — and, while you hunt a Lich, the next requiem stab with
+  one click for how it went. → [Controls](docs/controls.md)
 - **Notifications** for the void fissures you care about, a few minutes before an
   open-world cycle flips, and for whispers in game — if you like, only the ones copied
   from warframe.market, so a ping means someone wants to trade. On Windows, and on your
@@ -149,6 +150,10 @@ Every mechanism, permission and endpoint is explained in detail:
   S to F — taken from which stats the *pricey* rivens of that weapon carry on
   warframe.market, not from guesswork. Veiled rivens with their challenges.
   → [Rivens](docs/rivens.md)
+- **Liches & Sisters.** Log how each requiem stab went — in the window or in the overlay —
+  and Argus works out the stab most likely to finish your Kuva Lich or Sister of Parvos,
+  and how many it can still take at most. The charges left on every requiem, what to
+  restock first, and every adversary you have beaten. → [Liches & Sisters](docs/nemesis.md)
 - **Ducats & Baro.** What every prime part is worth melted against sold, what can no
   longer be farmed, a relic planner, and Baro's manifest lined up against what you
   already own. → [Ducats and Baro](docs/baro.md)
@@ -353,6 +358,25 @@ Each tab of the window, with a screenshot of every view in it. Click one to open
 **Riven finder** — warframe.market auctions by weapon and stats, next to the stats that weapon's pricey rivens carry (seller names blurred here)
 
 ![Rivens: riven finder](docs/img/rivens-finder.webp)
+
+</details>
+
+<details>
+<summary><b>Liches & Sisters</b> — the requiem sequence in as few stabs as possible</summary>
+
+<br>
+
+**Hunt** — your adversary, the stab most likely to work next, and how likely each requiem sits in each slot
+
+![Liches & Sisters: hunt](docs/img/nemesis-hunt.webp)
+
+**Requiem mods** — the charges left on every requiem, and what to restock first
+
+![Liches & Sisters: requiem mods](docs/img/nemesis-mods.webp)
+
+**Past hunts** — every Lich, Sister and Coda you have beaten
+
+![Liches & Sisters: past hunts](docs/img/nemesis-history.webp)
 
 </details>
 
@@ -576,6 +600,7 @@ are verified, and where your data is kept.
 | [Argus on your phone](docs/mobile.md) | Pairing an iPhone or Android phone, notifications on the go, your own data at home |
 | [Relic rewards](docs/relics.md) | The price tags on a reward screen and the relic recommendation on the selection screen |
 | [Rivens](docs/rivens.md) | Grades, veiled rivens, the riven finder and the panels on the cycle screen |
+| [Liches & Sisters](docs/nemesis.md) | The requiem sequence, the stab suggestion, charges and what to restock |
 | [Inventory](docs/inventory.md) | Mods, arcanes and relics — cards, data sheets and drop locations |
 | [Foundry, chains, vault & subsume](docs/foundry.md) | What is building, which weapons eat other weapons, which primes are vaulted, and which frames you have subsumed |
 | [Update vendors](docs/vendors.md) | The shops that sell a Warframe — their prices, what of it you own, and where the numbers come from |

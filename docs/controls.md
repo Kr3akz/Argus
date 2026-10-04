@@ -22,7 +22,7 @@ Both shortcuts are freely assignable under **Settings**.
 
 ## Two windows
 
-The **main window** is the full interface with all eleven tabs — meant for a second
+The **main window** is the full interface with all twelve tabs — meant for a second
 monitor. It stays open when the overlay appears: both run at once, on separate screens.
 
 The **overlay** is a window of its own with its own interface (`overlay.html`), not a
@@ -34,6 +34,8 @@ only what is decided in the next few minutes:
   highlighted, the rest stays visible below
 - tracked relics from the relic planner — with expected value, most expensive reward,
   and how many fissures of their era are open right now
+- while you hunt a Lich or Sister, the next requiem stab with its chance, and one click
+  for how it went — see [Liches & Sisters](nemesis.md)
 - your open farming goals
 
 Anything under five minutes turns gold.

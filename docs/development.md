@@ -97,6 +97,8 @@ src/core/     logic, entirely independent of the interface
   wfm-orders.js   own orders, other players' offers, trade history
   wfm-auctions.js contracts: riven, lich and sister auctions
   transactions.js local trade ledger
+  requiem.js      Liches & Sisters: requiem charges, the adversary, the next stab
+  requiem-hunts.js  the stabs you logged (requiem.json)
   updates.js      release check, download, SHA256 verification
   themes.js       themes: presets, the tones derived from them, limits, share codes
   webpush.js      notifications to a phone: VAPID and RFC 8291 encryption, node:crypto only
@@ -111,6 +113,7 @@ src/renderer/ interface
   style.css     every window; all themeable colours are the --t-* channels in :root
   theme.js      puts the chosen theme on each window before it first draws
   appearance.js Settings → Appearance: gallery, editor, colour picker, sharing
+  nemesis.js    the Liches & Sisters tab
   assets/mod/   frame textures for the mod cards (game assets)
   assets/icons/ sidebar symbols, used as CSS masks (colour comes from the theme)
 src/mobile/   the phone app - one set of files for GitHub Pages and for the PC at home
@@ -191,6 +194,16 @@ Checks the Drop tables tab against the real tables in `data/`: relic rarities, e
 drops counted once with both rolls, the ordering of a node, the filters, and the
 comparison between two states of the tables (built from a copy with three known
 changes).
+
+```bash
+npm run requiem-test
+```
+
+Checks Liches & Sisters: charges read from the inventory, the adversary and its history,
+which stabs are valid, and the suggestion — played through against all 336 sequences with
+0 to 3 requiems known, with and without Oull, where it has to stay within the worst cases
+the Warframe wiki gives (18, 13, 8 and 3 failed stabs). Also the stab log in a throwaway
+folder, including two clicks at once. No network needed.
 
 ```bash
 npm run theme-test

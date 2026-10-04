@@ -624,6 +624,14 @@ body:has(#app:not(.hidden)) .titlebar-brand::after {
   transform: scale(1.3);
 }
 
+/* Das Zeichen der Requiem-Relikte - fuellt seine Flaeche fast ganz aus,
+   deshalb kaum vergroessert. */
+.icon-requiem {
+  -webkit-mask-image: url('assets/icons/worldstate/relic-requiem.png');
+  mask-image: url('assets/icons/worldstate/relic-requiem.png');
+  transform: scale(1.08);
+}
+
 .icon-narmer {
   -webkit-mask-image: url('assets/icons/narmer.png');
   mask-image: url('assets/icons/narmer.png');
@@ -13429,3 +13437,605 @@ label.te-row { cursor: pointer; user-select: none; }
   cursor: help;
 }
 .dt-tries:empty { cursor: default; }
+
+/* ---------------- Liches & Sisters ---------------- */
+/*
+ * Dieselbe flache Sprache wie die Rivens: Flaechen ohne Rahmen, Farbe als
+ * Schein aus der Ecke. Der Gegner traegt die Farbe seiner Fraktion, der
+ * naechste Stich das Rot der Requiem-Relikte, ein Zustand (geschafft,
+ * Widerspruch, leer) Gruen oder Rot - nie als Kante.
+ *
+ * Die Requiem-Zeichen sind weisse Linienbilder aus DEs Export und stehen
+ * deshalb ohne eigene Unterlage auf der dunklen Flaeche.
+ */
+.nem-pane { display: none; }
+.nem-pane.active { display: block; animation: fade .2s var(--ease); }
+
+.nem-foe, .nem-past { --fac: var(--t-requiem); }
+.nem-foe.fac-grineer, .nem-past.fac-grineer   { --fac: var(--fac-grineer); }
+.nem-foe.fac-corpus, .nem-past.fac-corpus     { --fac: var(--fac-corpus); }
+.nem-foe.fac-infested, .nem-past.fac-infested { --fac: var(--fac-infested); }
+
+.nem-glyph { display: block; width: 40px; height: 40px; object-fit: contain; flex-shrink: 0; }
+.nem-glyph.is-blank { border-radius: 50%; background: var(--surface-2); }
+
+.nem-k {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.nem-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.nem-head .hint { text-align: right; }
+.nem-count { font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.nem-text { margin-top: 12px; font-size: 12.5px; line-height: 1.55; color: var(--text-2); }
+.nem-text.is-soft { color: var(--text-3); }
+
+/* ---------- Der Gegner ---------- */
+.nem-foe {
+  display: flex;
+  align-items: stretch;
+  gap: 18px;
+  margin-bottom: 14px;
+  padding: 16px 18px;
+  border-radius: var(--r-md);
+  background:
+    radial-gradient(120% 90% at 0% 0%, rgb(var(--fac) / .13), transparent 55%),
+    var(--surface);
+}
+.nem-foe-art {
+  display: grid;
+  place-items: center;
+  width: 88px;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: calc(12px * var(--r-k));
+  background: rgba(0, 0, 0, .25);
+}
+.nem-foe-art img { width: 100%; height: 100%; max-height: 120px; object-fit: contain; }
+.nem-foe-main { display: flex; flex-direction: column; gap: 10px; flex: 1; min-width: 0; }
+.nem-foe-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.nem-foe-top b { font-size: 16px; font-weight: 650; }
+.nem-asof { margin-left: auto; font-size: 11.5px; color: var(--text-3); }
+.nem-facts { display: flex; flex-wrap: wrap; gap: 8px 28px; }
+.nem-fact { display: flex; flex-direction: column; gap: 1px; }
+.nem-fact span {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.nem-fact b { font-size: 14px; font-weight: 600; }
+.nem-fact small { font-size: 11.5px; font-weight: 500; color: var(--text-3); }
+.nem-nodes { display: flex; flex-wrap: wrap; gap: 6px; }
+.nem-node {
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+.nem-node i { margin-left: 6px; font-style: normal; color: var(--text-3); }
+.nem-foe-actions { display: flex; flex-direction: column; justify-content: center; gap: 8px; }
+
+/* ---------- Kein Zug ---------- */
+.nem-empty {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 40px 34px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  text-align: center;
+}
+.nem-empty-ic { display: grid; place-items: center; margin-bottom: 12px; color: rgb(var(--t-requiem)); }
+.nem-empty b { display: block; margin-bottom: 8px; font-size: 15px; }
+.nem-empty p { font-size: 13px; line-height: 1.6; color: var(--text-3); }
+.nem-empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 18px; }
+.nem-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-bottom: 14px;
+  padding: 11px 15px;
+  border-radius: var(--r-sm);
+  background: rgb(var(--t-accent) / .1);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+.nem-note svg { flex-shrink: 0; margin-top: 2px; color: var(--accent); }
+
+/* ---------- Zwei Spalten, unten buendig ---------- */
+.nem-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr);
+  align-items: stretch;
+  gap: 14px;
+}
+.nem-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.nem-col > :last-child { flex: 1; }
+@media (max-width: 1180px) { .nem-cols { grid-template-columns: 1fr; } }
+
+.nem-panel, .nem-next {
+  padding: 15px 16px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+/* ---------- Der naechste Stich ---------- */
+.nem-next {
+  background:
+    radial-gradient(120% 90% at 0% 0%, rgb(var(--t-requiem) / .12), transparent 55%),
+    var(--surface);
+}
+.nem-next.is-done {
+  background:
+    radial-gradient(120% 90% at 0% 0%, rgb(var(--t-green) / .12), transparent 55%),
+    var(--surface);
+}
+.nem-next.is-error {
+  background:
+    radial-gradient(120% 90% at 0% 0%, rgb(var(--t-red) / .13), transparent 55%),
+    var(--surface);
+}
+.nem-chance { font-size: 13px; font-weight: 650; color: var(--text); font-variant-numeric: tabular-nums; }
+.nem-next.is-done .nem-chance { display: inline-flex; align-items: center; gap: 6px; color: var(--green); }
+
+.nem-seq { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.nem-seq-slot {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 8px 11px;
+  border-radius: calc(12px * var(--r-k));
+  background: rgba(0, 0, 0, .22);
+}
+.nem-seq-slot .nem-glyph { width: 56px; height: 56px; }
+.nem-seq-slot b { font-size: 13.5px; font-weight: 650; }
+.nem-seq-slot.is-oull b { color: rgb(var(--t-accent-text)); }
+.nem-seq-slot.is-empty { background: rgb(var(--t-red) / .1); }
+.nem-ord {
+  position: absolute;
+  top: 7px;
+  left: 9px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.nem-flag {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: rgb(var(--t-red-text));
+}
+/* Der Ersatzstich darunter: dieselben Plaetze als Zeile. */
+.nem-seq.is-compact .nem-seq-slot { flex-direction: row; gap: 8px; padding: 7px 10px; }
+.nem-seq.is-compact .nem-glyph { width: 26px; height: 26px; }
+.nem-seq.is-compact .nem-ord { position: static; }
+.nem-seq.is-compact b { font-size: 12.5px; }
+
+.nem-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: rgb(var(--t-red) / .1);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: rgb(var(--t-red-text));
+}
+.nem-warn svg { flex-shrink: 0; margin-top: 2px; }
+.nem-alt { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.nem-alt .nem-seq { flex: 1; }
+
+/* ---------- Eintragen ---------- */
+.nem-draft { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.nem-dslot {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px 11px 10px;
+  border: none;
+  border-radius: calc(12px * var(--r-k));
+  background: rgba(0, 0, 0, .22);
+  box-shadow: inset 0 0 0 1px transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background .15s var(--ease), box-shadow .15s var(--ease);
+}
+.nem-dslot:hover { background: rgba(0, 0, 0, .3); }
+.nem-dslot.is-sel { background: rgb(var(--t-accent) / .1); box-shadow: inset 0 0 0 1px rgb(var(--t-accent) / .65); }
+.nem-dslot .nem-glyph { width: 34px; height: 34px; }
+.nem-dslot .nem-ord { top: 6px; right: 9px; left: auto; }
+.nem-dslot b { min-width: 0; overflow: hidden; font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.nem-dslot.is-blank b { font-weight: 550; color: var(--text-3); }
+
+.nem-palette { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 6px; margin-top: 12px; }
+@media (max-width: 760px) { .nem-palette { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+.nem-pal {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 2px 6px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text-2);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background .15s var(--ease), color .15s var(--ease);
+}
+.nem-pal:hover { background: var(--surface-2); color: var(--text); }
+.nem-pal .nem-glyph { width: 28px; height: 28px; }
+.nem-pal.is-used { background: rgb(var(--t-accent) / .14); color: var(--text); }
+.nem-pal.is-empty .nem-glyph { opacity: .35; }
+.nem-pal.is-empty span { color: var(--text-3); }
+.nem-pal-pos {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  min-width: 15px;
+  height: 15px;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 9.5px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.nem-results { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
+.nem-res:hover:not(:disabled) { background: rgb(var(--t-red) / .16); color: rgb(var(--t-red-text)); }
+.nem-res:disabled, .nem-res-ok:disabled { opacity: .4; cursor: not-allowed; }
+.nem-res-ok { margin-left: auto; padding: 8px 18px; }
+
+/* ---------- Was man weiss ---------- */
+.nem-grid { display: flex; flex-direction: column; gap: 3px; }
+.nem-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) 76px repeat(3, minmax(0, 1fr)) 30px;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+}
+.nem-row.is-head {
+  padding-bottom: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.nem-row.is-head span:nth-child(n+2) { text-align: center; }
+.nem-row.is-head span:last-child { text-align: right; }
+.nem-rq { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.nem-rq .nem-glyph { width: 24px; height: 24px; }
+.nem-rq b { overflow: hidden; font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.nem-row.is-in .nem-rq b { color: rgb(var(--t-green-text)); }
+.nem-row.is-gone .nem-rq { opacity: .38; }
+
+.nem-murmur {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 24px;
+  border: none;
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: var(--text-3);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s var(--ease), color .15s var(--ease);
+}
+.nem-murmur:hover { background: var(--surface-2); color: var(--text-2); }
+.nem-murmur.is-on { background: rgb(var(--t-accent) / .16); color: var(--accent); }
+
+/* Je Platz die Wahrscheinlichkeit als Toenung - je sicherer, desto satter. */
+.nem-p {
+  display: grid;
+  place-items: center;
+  height: 26px;
+  border-radius: calc(6px * var(--r-k));
+  background: rgb(var(--t-accent) / calc(.05 + var(--p, 0) * .5));
+  color: var(--text);
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.nem-p.is-out { background: transparent; color: var(--text-3); opacity: .45; }
+.nem-p.is-sure { background: rgb(var(--t-green) / .2); color: rgb(var(--t-green-text)); }
+.nem-ch { text-align: right; font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.nem-ch.is-zero { color: rgb(var(--t-red-text)); }
+
+.nem-board-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgb(var(--t-fg) / .05);
+}
+
+/* ---------- Die Stiche ---------- */
+.nem-stab {
+  display: grid;
+  grid-template-columns: 26px auto minmax(0, 1fr) auto auto 64px;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 6px;
+  border-top: 1px solid rgb(var(--t-fg) / .05);
+  font-size: 12.5px;
+}
+.nem-head + .nem-stab { border-top: none; }
+.nem-stab.is-suspect { border-radius: var(--r-sm); background: rgb(var(--t-red) / .09); }
+.nem-stab-n { color: var(--text-3); font-variant-numeric: tabular-nums; }
+.nem-stab-mods { display: inline-flex; gap: 4px; }
+.nem-mini {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: calc(6px * var(--r-k));
+  background: rgba(0, 0, 0, .22);
+}
+.nem-mini-img { width: 18px; height: 18px; object-fit: contain; }
+.nem-mini.is-ok { background: rgb(var(--t-green) / .18); }
+.nem-mini.is-bad { background: rgb(var(--t-red) / .22); }
+.nem-mini.is-skip .nem-mini-img { opacity: .35; }
+.nem-stab-names { overflow: hidden; color: var(--text-2); text-overflow: ellipsis; white-space: nowrap; }
+.nem-stab-res { font-weight: 600; white-space: nowrap; }
+.nem-stab.is-win .nem-stab-res { color: var(--green); }
+.nem-stab-at { font-size: 11.5px; color: var(--text-3); white-space: nowrap; }
+.nem-x {
+  justify-self: end;
+  display: inline-grid;
+  place-items: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  border: none;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--text-3);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background .15s var(--ease), color .15s var(--ease);
+}
+.nem-x:hover { background: rgb(var(--t-red) / .16); color: rgb(var(--t-red-text)); }
+
+/* ---------- Requiem-Mods ---------- */
+.nem-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 1100px) { .nem-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.nem-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.nem-stat b { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.nem-stat span { font-size: 12px; line-height: 1.45; color: var(--text-3); }
+
+.nem-restock { display: flex; flex-direction: column; gap: 6px; }
+.nem-rs {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+}
+.nem-rs.is-urgent {
+  background:
+    radial-gradient(120% 90% at 0% 0%, rgb(var(--t-red) / .14), transparent 55%),
+    var(--surface);
+}
+.nem-rs .nem-glyph { width: 32px; height: 32px; }
+.nem-rs > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.nem-rs > div b { font-size: 13.5px; }
+.nem-rs > div span { font-size: 12px; color: var(--text-3); }
+.nem-rs-via { font-size: 12px; color: var(--text-2); text-align: right; }
+
+.nem-modgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+.nem-mod {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding: 14px 15px 11px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.nem-mod.is-zero {
+  background:
+    radial-gradient(120% 90% at 0% 0%, rgb(var(--t-red) / .11), transparent 55%),
+    var(--surface);
+}
+.nem-mod.is-low {
+  background:
+    radial-gradient(120% 90% at 0% 0%, rgb(var(--t-gold) / .10), transparent 55%),
+    var(--surface);
+}
+.nem-mod-top { display: flex; align-items: center; gap: 11px; }
+.nem-mod-title { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
+.nem-mod-title b { font-size: 14px; font-weight: 650; }
+.nem-mod-title span { overflow: hidden; font-size: 11.5px; color: var(--text-3); text-overflow: ellipsis; white-space: nowrap; }
+
+/* Die Ladungen wie im Spiel als leuchtende Punkte, ein Paeckchen je Exemplar. */
+.nem-copies { display: flex; flex-wrap: wrap; gap: 8px; min-height: 19px; }
+.nem-copy {
+  display: inline-flex;
+  gap: 3px;
+  padding: 5px 7px;
+  border-radius: var(--r-pill);
+  background: rgba(0, 0, 0, .22);
+}
+.nem-copy i { width: 7px; height: 7px; border-radius: 50%; background: rgb(var(--t-fg) / .14); }
+.nem-copy i.on { background: rgb(var(--t-requiem)); box-shadow: 0 0 6px rgb(var(--t-requiem) / .6); }
+.nem-none { font-size: 12px; color: var(--text-3); }
+.nem-mod-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 9px;
+  border-top: 1px solid rgb(var(--t-fg) / .05);
+  font-size: 11.5px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+/* Platin im festen Verkaufsblau, wie ueberall in Argus. */
+.nem-price { font-weight: 650; color: #79c0ff; }
+.nem-price.is-stale { opacity: .6; }
+
+.nem-relics { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+.nem-relic {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+}
+.nem-relic img { width: 40px; height: 40px; object-fit: contain; }
+.nem-relic div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.nem-relic b { font-size: 13px; }
+.nem-relic small { font-weight: 600; color: var(--text-3); }
+.nem-relic span { font-size: 11.5px; color: var(--text-3); }
+
+.nem-avgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.nem-av {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 12px 8px;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  text-align: center;
+}
+.nem-av .nem-glyph { width: 34px; height: 34px; }
+.nem-av b { font-size: 12.5px; }
+.nem-av span { font-size: 11.5px; color: var(--text-3); }
+.nem-av.is-zero { opacity: .55; }
+.riven-subhead small { margin-left: 6px; font-size: 12px; font-weight: 500; color: var(--text-3); }
+
+/* ---------- Besiegte Gegner ---------- */
+.nem-totals { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.nem-total {
+  padding: 6px 12px;
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.nem-total b { margin-right: 3px; font-weight: 700; color: var(--text); }
+.nem-past-list { display: flex; flex-direction: column; gap: 8px; }
+.nem-past {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  border-radius: var(--r-md);
+  background:
+    radial-gradient(120% 90% at 0% 0%, rgb(var(--fac) / .1), transparent 55%),
+    var(--surface);
+}
+.nem-past-art {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  overflow: hidden;
+  border-radius: calc(10px * var(--r-k));
+  background: rgba(0, 0, 0, .25);
+}
+.nem-past-art img { width: 100%; height: 100%; object-fit: contain; }
+.nem-past-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.nem-past-main b { font-size: 14px; }
+.nem-past-main span { font-size: 12px; color: var(--text-3); }
+.nem-past-level {
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--text-2);
+}
+.nem-past-hunt { display: flex; align-items: center; justify-content: flex-end; gap: 10px; font-size: 12px; color: var(--text-2); }
+.nem-past-hunt .is-soft { color: var(--text-3); }
+
+/* Nach dem Erfolg: was fuer den naechsten Gegner fehlt, knapper als im
+   Bestand selbst. */
+.nem-head .linkish { font-size: 12px; }
+.nem-rs.is-compact { padding: 8px 12px; background: rgba(0, 0, 0, .18); }
+
+/* ---------- Requiem im Overlay ----------
+   Dieselbe knappe Sprache wie die Zeilen darueber: eine Flaeche mit Schein
+   aus der Ecke im Rot der Requiem-Relikte, darunter eine Zeile kleiner
+   Pillen wie die Aera-Chips. Ein Klick traegt den gezeigten Stich ein. */
+.ov-req-seq {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 9px;
+  border-radius: var(--r-sm);
+  background:
+    radial-gradient(120% 100% at 0% 0%, rgb(var(--t-requiem) / .13), transparent 60%),
+    var(--surface);
+  box-shadow: inset 0 1px 0 rgb(var(--t-fg) / .04);
+}
+.ov-req-slot { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.ov-req-slot img { width: 20px; height: 20px; object-fit: contain; flex-shrink: 0; }
+.ov-req-slot b { overflow: hidden; font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.ov-req-slot.is-oull b { color: rgb(var(--t-accent-text)); }
+.ov-req-slot.is-empty b { color: rgb(var(--t-red-text)); }
+.ov-req-chance {
+  padding-left: 4px;
+  font: 700 10px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  color: var(--text-2);
+}
+.ov-req-res { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) 1.25fr; gap: 3px; margin-top: 4px; }
+.ov-req-res button {
+  padding: 5px 4px;
+  border: 1px solid rgb(var(--t-fg) / .07);
+  border-radius: var(--r-pill);
+  background: rgb(var(--t-fg) / .04);
+  color: var(--text-3);
+  font: 600 9px/1 var(--font-sans, system-ui, sans-serif);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background .12s ease, color .12s ease;
+}
+.ov-req-res button:hover:not(:disabled) { background: rgb(var(--t-red) / .14); color: rgb(var(--t-red-text)); }
+.ov-req-res button.is-ok:hover:not(:disabled) { background: rgb(var(--t-green) / .14); color: rgb(var(--t-green-text)); }
+.ov-req-res button:disabled { opacity: .35; cursor: default; }
+.ov-req-msg { padding: 4px 2px 0; font-size: 9.5px; color: var(--text-3); }
+.ov-req-msg.is-warn { color: rgb(var(--t-red-text)); }

@@ -213,6 +213,16 @@
           </div>
         </button>
 
+        <!-- Hinter den Rivens: auch das kommt aus dem Inventar und hat sein
+             eigenes Raetsel - die Requiem-Folge des eigenen Lichs. -->
+        <button class="nav-item" data-tab="nemesis">
+          <span class="nav-icon" data-icon="requiem"></span>
+          <div class="nav-tooltip">
+            <b>Liches &amp; Sisters</b>
+            <span>Requiem sequence, charges &amp; past hunts</span>
+          </div>
+        </button>
+
         <button class="nav-item" data-tab="ducats">
           <span class="nav-icon" data-icon="relic"></span>
           <div class="nav-tooltip">
@@ -1432,6 +1442,34 @@
         <div class="rf-resbar"><span class="rf-status" id="rf-status"></span></div>
         <div class="rf-results" id="rf-results"></div>
       </div>
+    </section>
+
+    <!-- ---------------- Liches & Sisters ---------------- -->
+    <!--
+      Die Requiem-Folge des eigenen Gegners mit moeglichst wenigen Stichen
+      finden. Gezeichnet wird in nemesis.js, gerechnet in core/requiem.js; die
+      Stiche liegen in data/requiem.json. Drei Unterreiter wie bei den Rivens.
+    -->
+    <section id="tab-nemesis" class="tabpane">
+      <div class="section-head section-head-row">
+        <div>
+          <h2>Liches &amp; Sisters</h2>
+          <p>Work out the requiem sequence in as few stabs as possible, and keep your requiems charged</p>
+        </div>
+        <button class="btn" id="btn-nem-refresh">Fetch inventory</button>
+      </div>
+
+      <div class="ws-nav riven-nav" id="nem-nav">
+        <button class="ws-navtab active" data-nem-go="hunt">Hunt</button>
+        <button class="ws-navtab" data-nem-go="mods">Requiem mods</button>
+        <button class="ws-navtab" data-nem-go="history">Past hunts <b id="nem-count-history">0</b></button>
+      </div>
+
+      <div class="inv-notice hidden" id="nem-notice"></div>
+
+      <div class="nem-pane active" data-nem-pane="hunt"><div id="nem-hunt"></div></div>
+      <div class="nem-pane" data-nem-pane="mods"><div id="nem-mods"></div></div>
+      <div class="nem-pane" data-nem-pane="history"><div id="nem-history"></div></div>
     </section>
 
     <!-- ---------------- 7. Builds ---------------- -->
@@ -2851,6 +2889,7 @@
 <script src="guide.js"></script>
 <script src="overlay-layout.js"></script>
 <script src="appearance.js"></script>
+<script src="nemesis.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -96,7 +96,7 @@ window.api.onOverlayChanged(syncOverlayBadge);
 window.api.overlayState().then(syncOverlayBadge).catch(() => {});
 
 /* ---------------- Sidebar Navigation ---------------- */
-const TABS_WITHOUT_HERO = new Set(['worldstate', 'rivens', 'drops']);
+const TABS_WITHOUT_HERO = new Set(['worldstate', 'rivens', 'nemesis', 'drops']);
 
 function showTab(name) {
   if (typeof cancelHotkeyCapture === 'function') cancelHotkeyCapture();
@@ -127,6 +127,10 @@ function showTab(name) {
   if (name === 'ducats') loadDucats();
   if (name === 'inventory') loadInventoryTab();
   if (name === 'rivens') loadRivensTab();
+  /* Immer frisch: der Reiter liest Inventar und Stichbuch von der Platte, und
+     das Inventar kann sich geaendert haben, waehrend er zu war - ein Abruf
+     aus einem anderen Reiter meldet sich nicht ueberall. */
+  if (name === 'nemesis' && typeof Nemesis !== 'undefined') Nemesis.load(true);
   if (name === 'trading') { initTradingEvents(); loadTrading(); }
   if (name === 'settings') loadSettingsTab();
 }
@@ -10222,6 +10226,8 @@ if (window.api.onInventoryUpdated) {
     /* Die Rivens haben ihren eigenen Aufruf, lesen aber dieselbe Datei. */
     rivenData = null;
     if ($('tab-rivens')?.classList.contains('active')) loadRivensTab();
+    /* Ebenso Liches & Sisters: Gegner, Ladungen und Geschichte stehen darin. */
+    if (typeof Nemesis !== 'undefined') Nemesis.invalidate();
   });
 }
 

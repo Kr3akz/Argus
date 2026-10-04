@@ -216,6 +216,19 @@ async function loadNotifSettings() {
   try { notifSettings = await window.api.getNotifications(); } catch { /* dann eben ohne Hervorhebung */ }
 }
 
+/* Die Requiem-Jagd: dieselbe Antwort, die der Reiter "Liches & Sisters"
+   bekommt. Gerechnet wird im Hauptprozess, hier nur gezeigt und geklickt. */
+let requiem = null;
+let requiemBusy = false;
+let requiemError = null;
+
+async function loadRequiem() {
+  try {
+    const res = await window.api.getRequiem();
+    if (res && res.ok) requiem = res.data;
+  } catch { /* ohne Jagd faellt nur dieser Abschnitt weg */ }
+}
+
 /* ---------------- Anzeige ---------------- */
 
 /** Rueckstand der Datenquelle in Millisekunden, oder null. */
@@ -252,6 +265,7 @@ function render() {
   renderStale();
   renderHead();
   renderRecommendedRelics();
+  renderRequiem();
   renderCycles();
   renderFissures();
   renderGoals();
@@ -591,6 +605,97 @@ function renderGoals() {
   }).join('');
 }
 
+/* ---------------- Requiem ---------------- */
+
+const REQ_ORD = ['1st', '2nd', '3rd'];
+
+/** Der Stich, den der Abschnitt zeigt und mit einem Klick eintraegt: der
+    beste, oder - wenn dem eine Ladung fehlt - der beste mit eigenem Bestand.
+    Dieselbe Wahl wie der Entwurf im Reiter (proposal in nemesis.js). */
+function requiemProposal(s) {
+  if (!s?.best) return null;
+  if (s.best.missing?.length && s.bestOwned) return { ...s.bestOwned, owned: true };
+  return s.best;
+}
+
+function renderRequiem() {
+  const sec = $('ov-req-sec');
+  if (!sec) return;
+  const r = requiem;
+  const hunt = r?.hunt;
+  const s = r?.solution;
+
+  /* Nur waehrend der Jagd. Ist die Folge gefunden, braucht der letzte Kampf
+     keine Requiems mehr - im Overlay ist jede Zeile Platz, der dem Spiel
+     fehlt. */
+  const show = !!(hunt && s && !s.done);
+  sec.classList.toggle('hidden', !show);
+  if (!show) return;
+
+  const label = hunt.kind === 'sister' ? 'Sister' : 'Lich';
+  $('ov-req-title').textContent = `Requiem · ${label}`;
+  $('ov-req-note').textContent = s.contradiction ? 'check log' : `${nf(s.count)} left`;
+
+  if (s.contradiction) {
+    $('ov-req').innerHTML = `<div class="ov-req-msg is-warn">Your stabs do not add up - open Liches &amp; Sisters in Argus and check the log.</div>`;
+    return;
+  }
+
+  const p = requiemProposal(s);
+  if (!p) { $('ov-req').innerHTML = ''; return; }
+  const modOf = k => r.mods.find(m => m.key === k);
+  const empty = p.mods.filter(k => k !== 'oull' && modOf(k)?.owned?.charges === 0);
+  const sure = p.chance >= 1;
+
+  const slots = p.mods.map((k, i) => {
+    const m = modOf(k);
+    return `
+      <span class="ov-req-slot${k === 'oull' ? ' is-oull' : ''}${empty.includes(k) ? ' is-empty' : ''}" title="${esc(`${REQ_ORD[i]}: ${m?.name || k}`)}">
+        ${m?.image ? `<img src="${esc(m.image)}" alt="">` : ''}
+        <b>${esc(m?.name || k)}</b>
+      </span>`;
+  }).join('');
+
+  const chance = sure ? 'final' : p.chance > 0
+    ? (p.chance < 0.01 ? '<1%' : Math.min(99, Math.round(p.chance * 100)) + '%')
+    : 'test';
+  const res = [0, 1, 2].map(i =>
+    `<button data-ovreq="${i}" ${p.mods[i] === 'oull' || requiemBusy ? 'disabled' : ''} title="The ${REQ_ORD[i]} requiem was wrong">✗ ${REQ_ORD[i]}</button>`).join('');
+
+  const note = requiemError
+    ? `<div class="ov-req-msg is-warn">${esc(requiemError)}</div>`
+    : empty.length
+      ? `<div class="ov-req-msg is-warn">No charges on ${esc(empty.map(k => modOf(k)?.name || k).join(', '))}</div>`
+      : p.owned
+        ? `<div class="ov-req-msg">Best stab with the requiems you own</div>`
+        : '';
+
+  $('ov-req').innerHTML = `
+    <div class="ov-req-seq" title="${sure ? 'This is the sequence' : 'Chance that this stab works'}">${slots}<span class="ov-req-chance">${chance}</span></div>
+    <div class="ov-req-res" data-mods="${esc(p.mods.join(','))}">
+      ${res}
+      <button class="is-ok" data-ovreq="3" ${requiemBusy ? 'disabled' : ''} title="All three were right">✓ Worked</button>
+    </div>
+    ${note}`;
+}
+
+async function recordRequiem(result, mods) {
+  if (requiemBusy || !requiem?.hunt) return;
+  requiemBusy = true;
+  requiemError = null;
+  renderRequiem();
+  try {
+    const res = await window.api.updateRequiem({ op: 'record', id: requiem.hunt.id, mods, result });
+    if (res && res.ok) requiem = res.data;
+    else requiemError = (res && res.error) || 'Could not save that.';
+  } catch {
+    requiemError = 'Could not save that.';
+  } finally {
+    requiemBusy = false;
+    renderRequiem();
+  }
+}
+
 function renderFoot() {
   const ts = world && world.fetchedAt ? new Date(world.fetchedAt).getTime() : null;
   $('ov-age').textContent = ts ? `As of ${relativeAge(ts)}` : 'No world state';
@@ -640,7 +745,7 @@ async function applyState(st) {
      damit das Fenster ohne Verzoegerung erscheint. */
   if (wasHidden) {
     render();
-    Promise.all([loadDashboard(), loadWorld(false), loadTrackedRelics(), loadRecommendedRelics()])
+    Promise.all([loadDashboard(), loadWorld(false), loadTrackedRelics(), loadRecommendedRelics(), loadRequiem()])
       .then(() => render())
       .catch(() => {});
   }
@@ -744,6 +849,14 @@ function initDelegates() {
     renderRecommendedRelics();
   });
 
+  /* Requiem: ein Klick traegt den gezeigten Stich mit seinem Ausgang ein. */
+  $('ov-req')?.addEventListener('click', e => {
+    const b = e.target.closest('[data-ovreq]');
+    if (!b || b.disabled) return;
+    const mods = (b.closest('[data-mods]')?.dataset.mods || '').split(',').filter(Boolean);
+    if (mods.length === 3) recordRequiem(Number(b.dataset.ovreq), mods);
+  });
+
   $('ov-goals')?.addEventListener('click', e => {
     const head = e.target.closest('[data-goal-toggle]');
     if (!head) return;
@@ -756,7 +869,7 @@ function initDelegates() {
 $('ov-exit').onclick = () => window.api.toggleOverlay();
 
 $('ov-refresh').onclick = async () => {
-  await Promise.all([loadWorld(true), loadDashboard(), loadTrackedRelics(), loadRecommendedRelics()]);
+  await Promise.all([loadWorld(true), loadDashboard(), loadTrackedRelics(), loadRecommendedRelics(), loadRequiem()]);
   render();
 };
 
@@ -847,6 +960,12 @@ window.addEventListener('keydown', e => {
 
 window.api.onOverlayChanged(applyState);
 
+/* Ein Stich im Hauptfenster eingetragen, oder ein neues Inventar: neu holen. */
+window.api.onRequiemChanged?.(async () => {
+  await loadRequiem();
+  renderRequiem();
+});
+
 /* Der Stern im Planer wirkt sofort: der Hauptprozess schickt die fertige
    Liste an beide Fenster, sobald sie sich geaendert hat. */
 window.api.onTrackedRelicsChanged(async list => {
@@ -903,7 +1022,7 @@ window.api.onFissureChanged?.(f => {
   /* Sofort, nicht erst mit dem Zustand aus dem Hauptprozess: schlaegt der
      Abruf unten fehl, stuende die Zeile sonst nie da. */
   renderHint();
-  await Promise.all([loadDashboard(), loadWorld(false), loadNotifSettings(), loadTrackedRelics(), loadRecommendedRelics()]);
+  await Promise.all([loadDashboard(), loadWorld(false), loadNotifSettings(), loadTrackedRelics(), loadRecommendedRelics(), loadRequiem()]);
   render();
 
   /* Das Fenster entsteht oft erst, WEIL gerade ein Fund gemeldet wurde - die

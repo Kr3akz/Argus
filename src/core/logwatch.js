@@ -373,6 +373,22 @@ const RE_WHISPER_TAB = /ChatRedux::AddTab: Adding tab with channel name: F(\S+) 
    lauter alte Unterhaltungen, gemeldet als neue. Die Reiter folgen dem
    Verbindungsaufbau gemessen nach 0,7 s; zehn Sekunden sind reichlich. */
 const RE_CHAT_CONNECTED = /IRC connected/;
+
+/**
+ * Zeilen rund um Lich und Sister - nur MITGESCHRIEBEN, nicht ausgewertet.
+ *
+ * Was das Spiel beim Zustechen schreibt, ist noch nicht gemessen: Kaans Log
+ * vom 04.10.2026 kannte nur die Zeilen beim Einloggen
+ * ("CheckNemesisKilled.lua: [NEMESIS] Checking for nemesis of faction 1").
+ * main.js schreibt jede Trefferzeile ins Protokoll; daran laesst sich beim
+ * naechsten echten Stich ablesen, ob Argus ihn selbst eintragen koennte,
+ * statt dass man ihn im Reiter oder im Overlay anklickt.
+ *
+ * Die Ladezeilen fuer Waffen, Klaenge und Lieder ("Spot-loading
+ * .../InfestedLich/...") nennen nur einen Pfad und bleiben draussen.
+ */
+const RE_NEMESIS_TAP   = /\[NEMESIS\]|Nemesis|Requiem|Parazon|Lich\b|Murmur/i;
+const RE_NEMESIS_NOISE = /Spot-(?:loading|building)|ResourceLoader|Resloader|Resource load|Unknown property|SongItem|TransmissionSets|generating profile|\/Sounds\//;
 const WHISPER_LOGIN_QUIET_SEC = 10;
 
 const STATE_BY_TAG = {
@@ -544,6 +560,10 @@ export class LogWatcher extends EventEmitter {
     /* Vor allen Abzweigungen unten: die meisten kehren nach ihrem Treffer
        zurueck, und eine Dialogzeile, die dort haengen bliebe, fehlte hier. */
     this.rivenCycle.handleLine(line);
+
+    if (RE_NEMESIS_TAP.test(line) && !RE_NEMESIS_NOISE.test(line)) {
+      this.emit('nemesis-line', { line, at: Date.now() });
+    }
 
     if (RE_CHAT_CONNECTED.test(line)) {
       this.chatConnectedAt = logSeconds(line);
