@@ -10231,6 +10231,42 @@ if (window.api.onInventoryUpdated) {
   });
 }
 
+/* Neuer Item-Katalog nach einem Spiel-Update (siehe checkCatalog im
+   Hauptprozess). Namen, Bilder, Bauplaene und die Mastery-Liste haengen
+   daran - alles, was davon schon gezeichnet ist, wird neu geholt. */
+if (window.api.onCatalogUpdated) {
+  window.api.onCatalogUpdated(async ({ added = [] } = {}) => {
+    checklistCache = [];
+    chainData = null;
+    vendorData = null;
+    inventoryData = null;
+    rivenData = null;
+    buildsLoaded = false;
+
+    if (!$('app')?.classList.contains('hidden')) {
+      const res = await window.api.getDashboard();
+      if (res.ok) render(res.data);
+    }
+    const aktiv = id => $(id)?.classList.contains('active');
+    if (aktiv('tab-mastery')) applyMasteryMode();
+    if (aktiv('tab-inventory')) loadInventoryTab();
+    if (aktiv('tab-ducats')) loadDucats();
+    if (aktiv('tab-rivens')) loadRivensTab();
+    if (aktiv('tab-weekly')) loadWeekly(true);
+
+    /* Nur melden, wenn etwas fuer die Mastery dazukam - eine geaenderte
+       Waffenwerte-Tabelle ist keine Nachricht wert. */
+    if (!added.length) return;
+    const shown = added.slice(0, 4).join(', ');
+    const more = added.length > 4 ? ` and ${added.length - 4} more` : '';
+    showInAppToast({
+      type: 'catalog',
+      title: 'New items from the latest game update',
+      body: `${shown}${more} — now in your mastery list.`
+    });
+  });
+}
+
 if (window.api.onInventoryStale) {
   window.api.onInventoryStale(info => {
     if (inventoryData && info.gate) {
@@ -11345,6 +11381,9 @@ function showInAppToast({ title, body, type }) {
     } else if (type === 'cycle') {
       showTab('worldstate');
       showWsPane('overview');
+    } else if (type === 'catalog') {
+      showTab('mastery');
+      setMasteryMode('catalog');
     } else {
       showTab('worldstate');
       showWsPane('fissures');

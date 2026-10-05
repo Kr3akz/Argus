@@ -90,6 +90,8 @@ instead* during setup never turns it on in the first place.
 |---|---|
 | `api.warframe.com/cdn/getProfileViewingData.php` | your public profile |
 | `cdn.jsdelivr.net/.../warframe-exports-data` | DE's item catalogue + images |
+| `api.github.com/repos/Aericio/warframe-exports-data/commits/HEAD` | whether DE's item catalogue has changed — 40 characters, at start-up and every six hours |
+| `raw.githubusercontent.com/Aericio/warframe-exports-data/…` | the catalogue's checksums (under 1 KB) after that, and the catalogue itself only when one of them changed |
 | `api.warframe.com/cdn/worldState.php` | the world state as the game sees it — fissures, bounties, sortie, archon hunt, invasions, Baro, Darvo, Nightwave; at most every 30 seconds, while something in Argus shows it |
 | `api.warframestat.us` | the names for that world state, the parts DE's feed does not carry (Steel Path, events, Varzia, the Circuit), the node table, syndicate augment locations — and the whole world state if DE's feed does not answer |
 | `api.tenno.tools` | void fissures, and failing that its whole world state — only when DE's feed does not answer and warframestat.us lags behind or is down |

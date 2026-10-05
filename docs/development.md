@@ -66,7 +66,7 @@ not a leftover.
 src/core/     logic, entirely independent of the interface
   paths.js        where data and bundled files live
   mastery.js      MR formulas (verified against a real profile)
-  catalog.js      load + cache DE's PublicExport
+  catalog.js      load + cache DE's PublicExport, renew it after a game update
   profile.js      profile fetch with throttling protection
   classify.js     clean up DE's categories
   acquisition.js  acquisition routes + realistic effort
@@ -216,6 +216,18 @@ from `EE.log`, that a dodge roll or leaving a squad no longer counts, and which 
 memory wins when two have the same timestamp — the one exactly as long as the game said.
 With an `EE.log` present it also counts how often the trigger would have fired in it.
 No game and no network needed.
+
+```bash
+npm run catalog-test
+```
+
+Checks when the item catalogue renews itself after a game update, against a mirror staged
+in memory: nothing is downloaded while the mirror's commit or DE's checksums for the seven
+files Argus reads stay the same; a new state comes whole from one commit; a cut-off or
+empty file is turned down and the old catalogue stays; a failed download is retried; with
+GitHub unreachable the catalogue is kept for a week; a catalogue from 1.24.0 is replaced on
+the first check; and a month of turned-down states no longer blocks a real one. Writes to a
+throwaway folder. No network needed.
 
 ```bash
 npm run theme-test

@@ -21,6 +21,22 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **New Warframes and weapons show up after a game update.** Argus downloaded DE's item
+  catalogue once and never again, so everything released since was missing — Narin and
+  Citrine Prime among them, with their weapons. They were not in the mastery list, could
+  not be set as goals, and those you had already mastered counted for nothing you could
+  see. Argus now checks at start-up and every six hours whether DE has changed the
+  catalogue, with two small requests, and downloads it only when it has. The new
+  catalogue takes over while Argus is running, and a note names the new items; click it
+  to see them in the catalogue.
+- **A new catalogue only replaces the old one when it is complete.** If a file arrives
+  empty or with far fewer entries than before, Argus keeps the catalogue it has and tries
+  again with the next update.
+- The mod list behind builds had the same problem and now renews along with the
+  catalogue.
+
 ## [1.24.0] - 2026-10-04
 
 ### Added

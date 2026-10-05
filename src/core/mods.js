@@ -137,11 +137,24 @@ export async function loadMods({ dataDir = defaultDataDir(), force = false } = {
   const res = await fetch(`${CDN}/ExportUpgrades_en.json`);
   if (!res.ok) throw new Error(`Mod-Katalog: HTTP ${res.status}`);
 
-  const mods = flatten(await res.json())
+  return storeMods(flatten(await res.json()), { dataDir });
+}
+
+/**
+ * Die Mods aus den Zeilen von ExportUpgrades auslesen und ablegen.
+ *
+ * Eigene Funktion, weil der Item-Katalog dieselbe Datei ohnehin holt, wenn er
+ * sich erneuert (siehe refreshCatalog in catalog.js) - die Mod-Liste wird
+ * dann aus diesem Abruf mit erneuert statt ein zweites Mal geladen.
+ */
+export async function storeMods(rows, { dataDir = defaultDataDir() } = {}) {
+  const mods = rows
     .filter(m => m.uniqueName && m.name)
     .filter(m => /\/Upgrades\/Mods\//.test(m.uniqueName));
+  if (!mods.length) throw new Error('Mod-Katalog: keine Mods im Export');
 
-  await writeFile(cacheFile, JSON.stringify({ fetchedAt: Date.now(), mods }));
+  await mkdir(dataDir, { recursive: true });
+  await writeFile(path.join(dataDir, 'mods.json'), JSON.stringify({ fetchedAt: Date.now(), mods }));
   return index(mods);
 }
 

@@ -22,7 +22,7 @@ import { readFile, writeFile, readdir } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { loadCatalog, imageUrl, cleanGameText } from '../core/catalog.js';
+import { loadCatalog, refreshCatalog, imageUrl, cleanGameText } from '../core/catalog.js';
 import { loadProfile, displayName, starChart, isValidAccountId } from '../core/profile.js';
 import { analyze, recommend, diversify, STATUS } from '../core/analyze.js';
 import { masteryRankName, progressForMR } from '../core/mastery.js';
@@ -1357,6 +1357,57 @@ async function ensureData({ refresh = false, force = false } = {}) {
   cache.profile = res.profile;
   cache.analysis = analyze(res.profile, cache.catalog);
   return { ...res, cfg };
+}
+
+/**
+ * Den Item-Katalog nach einem Spiel-Update erneuern - ohne Neustart.
+ *
+ * Ob es einen neuen Stand gibt, klaert refreshCatalog (core/catalog.js) mit
+ * zwei kleinen Anfragen; die grossen Dateien kommen nur, wenn DE eine davon
+ * geaendert hat. Hier wird der neue Stand eingesetzt: alles, was aus dem
+ * Katalog abgeleitet und zwischengespeichert ist, wird verworfen oder neu
+ * gerechnet, und das Hauptfenster erfaehrt es (catalog:updated).
+ *
+ * Wann: 20 s nach dem Start, damit der erste Blick aufs Dashboard nicht
+ * wartet, und danach alle sechs Stunden - Argus bleibt oft tagelang offen,
+ * und der Spiegel zieht DEs Update erst einige Stunden spaeter nach.
+ */
+const CATALOG_FIRST_DELAY = 20000;
+const CATALOG_INTERVAL = 6 * 60 * 60 * 1000;
+let catalogTimer = null;
+
+async function checkCatalog() {
+  if (!cache.catalog) cache.catalog = await loadCatalog();
+  const res = await refreshCatalog({ current: cache.catalog });
+  if (res.error) console.warn('[Katalog]', res.changed ? res.error : `Neuer Stand verworfen: ${res.error}`);
+  if (!res.changed) return;
+
+  cache.catalog = res.catalog;
+  if (res.mods) cache.mods = res.mods;
+  cache.arcanes = indexArcanes(cache.catalog);
+  cache.forma = null;
+  /* Ohne Profil im Speicher rechnet ensureData beim naechsten Aufruf. */
+  cache.analysis = cache.profile ? analyze(cache.profile, cache.catalog) : null;
+
+  /* Fuer die Meldung nur, was in die Mastery eingeht - ein neuer Warframe
+     und seine Waffen, nicht seine 40 Bauplaene und Glyphen. Warframes
+     zuerst: sie sind die Nachricht, und der Toast nennt nur die ersten vier
+     (beim ersten Lauf standen Narin und Citrine Prime hinter "and 2 more",
+     weil ExportWeapons vor ExportWarframes geladen wird). */
+  const neu = res.added
+    .map(i => ({ name: stripGameTag(i.name), cls: classify(i) }))
+    .filter(e => e.cls.countsForMastery)
+    .sort((a, b) => (b.cls.category === 'Suits') - (a.cls.category === 'Suits'))
+    .map(e => e.name);
+  console.log(`[Katalog] Neuer Stand: ${cache.catalog.items.length} Items, ${res.added.length} neu`
+    + (neu.length ? ` - ${neu.join(', ')}` : ''));
+  sendToMain('catalog:updated', { added: neu });
+}
+
+function startCatalogChecks() {
+  const run = () => checkCatalog().catch(err => console.warn('[Katalog] Pruefung fehlgeschlagen:', err.message));
+  setTimeout(run, CATALOG_FIRST_DELAY);
+  catalogTimer = setInterval(run, CATALOG_INTERVAL);
 }
 
 /**
@@ -9888,6 +9939,9 @@ app.whenReady().then(async () => {
      Start und nur im gepackten Build, siehe startUpdatePolling(). */
   startUpdatePolling();
 
+  /* Neue Warframes und Waffen nach einem Spiel-Update, siehe checkCatalog. */
+  startCatalogChecks();
+
   /* Der Zugang fuers Handy im Heimnetz - nur, wenn er eingeschaltet ist
      (Settings -> Phone). Push-Meldungen brauchen ihn nicht. */
   applyPhoneServer().catch(err => console.error('[Handy] Start fehlgeschlagen:', err.message));
@@ -9900,6 +9954,7 @@ app.on('will-quit', () => {
   if (notificationPollerTimer) clearInterval(notificationPollerTimer);
   if (cycleTimer) clearInterval(cycleTimer);
   if (updateTimer) clearInterval(updateTimer);
+  if (catalogTimer) clearInterval(catalogTimer);
   /* Die Verbindung IST der Status - beim Beenden faellt beides zusammen weg.
      Das ist der Rueckweg, den der Schalter verspricht: Argus zu, und
      warframe.market steht wieder so da wie ohne uns. */

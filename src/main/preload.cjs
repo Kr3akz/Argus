@@ -103,6 +103,12 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('inventory:stale', handler);
     return () => ipcRenderer.removeListener('inventory:stale', handler);
   },
+  /* Der Item-Katalog wurde nach einem Spiel-Update erneuert - { added: [Namen] }. */
+  onCatalogUpdated:(cb)        => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on('catalog:updated', handler);
+    return () => ipcRenderer.removeListener('catalog:updated', handler);
+  },
   /* Datenblatt einer Mod oder eines Arcanes. Der Inventar-Eintrag wandert
      mit, damit der Hauptprozess die Inventardatei nicht je Klick neu liest. */
   getUpgradeDetails:(u, owned) => ipcRenderer.invoke('upgrade:details', u, owned),
