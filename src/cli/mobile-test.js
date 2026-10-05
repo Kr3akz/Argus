@@ -153,7 +153,14 @@ ok('sechs Uhren', view.cycles?.length === 6);
 ok('Risse durchgereicht', view.fissures?.length === raw.fissures.length, String(view.fissures?.length));
 ok('Baro ist da', view.traders?.baro?.active === true);
 
-const kaputt = s => /undefined|NaN|\[object Object\]/.test(s);
+/* Kopplungscodes, Schluessel und Kennungen sind Zufall in base64url - und
+   darin steht frueher oder spaeter auch "NaN": am 05.10.2026 scheiterte so
+   der Pruefschritt in CI ("...emNaN3Fq..." im Kopplungscode), lokal in 2 von
+   721 Laeufen. Lange Ketten aus base64url-Zeichen zaehlen deshalb nicht als
+   Text. Ein "NaN" oder "undefined" aus einer kaputten Rechnung steht neben
+   Leerzeichen, Ziffern oder Satzzeichen, nicht mitten in 20 solchen Zeichen. */
+const ohneZufall = s => s.replace(/[A-Za-z0-9_-]{20,}/g, '');
+const kaputt = s => /undefined|NaN|\[object Object\]/.test(ohneZufall(s));
 for (const [page] of Live.PAGES) {
   const st = { fissureKind: page === 'fissures' ? 'normal' : undefined };
   const out = Live.render(view, page, st);

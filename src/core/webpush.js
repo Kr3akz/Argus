@@ -75,7 +75,22 @@ export const fromB64url = s => Buffer.from(String(s || ''), 'base64url');
 export function generateVapidKeys() {
   const ecdh = createECDH('prime256v1');
   ecdh.generateKeys();
-  return { publicKey: b64url(ecdh.getPublicKey()), privateKey: b64url(ecdh.getPrivateKey()) };
+  return { publicKey: b64url(ecdh.getPublicKey()), privateKey: b64url(scalar32(ecdh.getPrivateKey())) };
+}
+
+/**
+ * Der private Schluessel auf volle 32 Byte.
+ *
+ * getPrivateKey() laesst fuehrende Null-Bytes weg: etwa jeder 256. Schluessel
+ * kam mit 31 Byte heraus (am 05.10.2026 129 Versuche bis zum ersten;
+ * webpush-test scheiterte daran in 5 von 721 Laeufen). Unterschreiben klappte
+ * damit trotzdem - nachgeprueft unter Node 24 und unter Electron 33 -, aber
+ * JWK verlangt fuer P-256 genau 32 Byte (RFC 7518, 6.2.2.1), und ein
+ * strengerer Importer duerfte den kurzen ablehnen. Hier aufgefuellt, damit
+ * auch ein schon gespeicherter kurzer Schluessel in Ordnung geht.
+ */
+function scalar32(buf) {
+  return buf.length >= 32 ? buf : Buffer.concat([Buffer.alloc(32 - buf.length), buf]);
 }
 
 function privateKeyObject({ publicKey, privateKey }) {
@@ -84,7 +99,7 @@ function privateKeyObject({ publicKey, privateKey }) {
   return createPrivateKey({
     key: {
       kty: 'EC', crv: 'P-256',
-      d: b64url(fromB64url(privateKey)),
+      d: b64url(scalar32(fromB64url(privateKey))),
       x: b64url(pub.subarray(1, 33)),
       y: b64url(pub.subarray(33, 65))
     },
