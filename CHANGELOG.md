@@ -21,6 +21,8 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.24.2] - 2026-10-05
+
 ### Fixed
 
 - **MR XP now matches the game.** "To go until" the next rank could be off by tens of
