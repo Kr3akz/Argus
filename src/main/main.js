@@ -26,6 +26,7 @@ import { loadCatalog, refreshCatalog, imageUrl, cleanGameText } from '../core/ca
 import { loadProfile, displayName, starChart, isValidAccountId } from '../core/profile.js';
 import { analyze, recommend, diversify, STATUS } from '../core/analyze.js';
 import { masteryRankName, progressForMR } from '../core/mastery.js';
+import { loadNodeMastery } from '../core/node-mastery.js';
 import { classify, CATEGORY_LABELS } from '../core/classify.js';
 import { acquisitionOf } from '../core/acquisition.js';
 import { resolveGoal, combineGoals, formatDuration, isRawMaterial, buildNameIndex, formaCost } from '../core/recipes.js';
@@ -324,7 +325,7 @@ let interacting = false;
    Warframe. Nur eine Kennung, kein Zugriff auf den fremden Prozess. */
 let interactReturnTo = null;
 const cache = { catalog: null, profile: null, analysis: null, mods: null, arcanes: null, dropTables: null, cards: null,
-                vault: null, subsumed: null, forma: null };
+                vault: null, subsumed: null, forma: null, nodeTable: null };
 
 /* Wohin geschrieben wird - siehe core/paths.js.
    Im gepackten Build liegt der Programmordner unter Programme und gehoert
@@ -1347,6 +1348,9 @@ function toggleOverlay() {
 
 async function ensureData({ refresh = false, force = false } = {}) {
   const cfg = await loadConfig();
+  /* Neben Katalog und Profil her: nur beim ersten Mal (oder nach einer
+     Woche) ein Abruf, danach liegt die Tabelle im Speicher. */
+  const nodes = loadNodeMastery().catch(() => null);
   if (!cache.catalog) cache.catalog = await loadCatalog();
   if (!cache.mods)    cache.mods    = await loadMods();
   /* Arcanes stecken bereits im Katalog (ExportRelicArcane) - hier wird nur der
@@ -1355,7 +1359,8 @@ async function ensureData({ refresh = false, force = false } = {}) {
 
   const res = await loadProfile(cfg.accountId, cfg.platform, { refresh, force });
   cache.profile = res.profile;
-  cache.analysis = analyze(res.profile, cache.catalog);
+  cache.nodeTable = await nodes;
+  cache.analysis = analyze(res.profile, cache.catalog, cache.nodeTable);
   return { ...res, cfg };
 }
 
@@ -1387,7 +1392,7 @@ async function checkCatalog() {
   cache.arcanes = indexArcanes(cache.catalog);
   cache.forma = null;
   /* Ohne Profil im Speicher rechnet ensureData beim naechsten Aufruf. */
-  cache.analysis = cache.profile ? analyze(cache.profile, cache.catalog) : null;
+  cache.analysis = cache.profile ? analyze(cache.profile, cache.catalog, cache.nodeTable) : null;
 
   /* Fuer die Meldung nur, was in die Mastery eingeht - ein neuer Warframe
      und seine Waffen, nicht seine 40 Bauplaene und Glyphen. Warframes
@@ -1728,7 +1733,7 @@ async function buildDashboard(meta) {
     player: {
       name: displayName(cache.profile),
       mr: s.mr, mrName: masteryRankName(s.mr), reportedMR: s.reportedMR,
-      computedMR: s.computedMR, hiddenXP: s.hiddenXP,
+      computedMR: s.computedMR, hiddenXP: s.hiddenXP, nodesKnown: s.nodesKnown,
       /* Fortschritt gegen den gemeldeten Rang, nicht gegen den errechneten. */
       progress: progressForMR(s.totalXP, s.mr),
       totalXP: s.totalXP, breakdown: s.breakdown,
@@ -2123,6 +2128,7 @@ const EXTERNAL_ALLOWED = [
   'https://docs.warframestat.us',
   'https://tenno.tools',
   'https://browse.wf',
+  'https://github.com/calamity-inc/warframe-public-export-plus',
   'https://wiki.warframe.com',
   'https://overframe.gg',
   /* Einstellungen -> Phone: wie das Koppeln geht, Schritt fuer Schritt. */

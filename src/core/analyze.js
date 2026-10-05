@@ -2,8 +2,8 @@
  * Abgleich Katalog <-> Profil und Empfehlungs-Engine.
  */
 import { classify } from './classify.js';
-import { xpToMR, mrToXP, XP_PER_JUNCTION, XP_PER_INTRINSIC, XP_PER_NODE } from './mastery.js';
-import { ownedXPMap, starChart, intrinsics } from './profile.js';
+import { xpToMR, mrToXP, XP_PER_INTRINSIC, starChartXP } from './mastery.js';
+import { ownedXPMap, intrinsics } from './profile.js';
 import { acquisitionOf, levelingEffort } from './acquisition.js';
 
 const STATUS = { DONE: 'done', PARTIAL: 'partial', MISSING: 'missing' };
@@ -12,27 +12,41 @@ export { STATUS };
 /** Founders-Items sind nicht mehr erhaeltlich - nicht als "fehlend" melden. */
 const UNOBTAINABLE = new Set(['Excalibur Prime', 'Skana Prime', 'Lato Prime']);
 
+/* Gibt Mastery, steht aber in keiner Exportdatei: das Plexus des Railjacks.
+   In XPInfo laeuft es unter dieser Kennung (bei Kaan Rang 30, 6.000 MR-XP). */
+const EXTRA_ITEMS = [
+  { uniqueName: '/Lotus/Types/Game/CrewShip/RailJack/DefaultHarness', name: 'Plexus' }
+];
+
 /**
  * Vergleicht den Katalog mit dem Profil.
  * Liefert je Item Status, aktuellen Rang und offenen MR-Gewinn.
+ *
+ * @param nodeTable  Mastery je Knoten aus node-mastery.js. Ohne sie zaehlen
+ *                   die Knoten 0, und die Summe ist nur eine Untergrenze.
  */
-export function analyze(profile, catalog) {
+export function analyze(profile, catalog, nodeTable = null) {
   const owned = ownedXPMap(profile);
-  const chart = starChart(profile);
+  const chart = starChartXP(profile?.Missions, nodeTable);
   const intr = intrinsics(profile);
 
   const entries = [];
   let earnedFromItems = 0;
 
-  for (const item of catalog.items) {
+  /* Gegen items pruefen, nicht gegen byUniqueName: dort stehen auch die
+     Nachschlage-Eintraege, und die zaehlen nicht. */
+  const listed = new Set(catalog.items.map(i => i.uniqueName));
+  const extra = EXTRA_ITEMS.filter(i => !listed.has(i.uniqueName));
+  for (const item of [...catalog.items, ...extra]) {
     const cls = classify(item);
     if (!cls.countsForMastery) continue;
-    if (UNOBTAINABLE.has(item.name)) continue;
+    const xp = owned.get(item.uniqueName);
+    /* Nur nicht als FEHLEND melden - wer sie hat, bekommt die Mastery. */
+    if (UNOBTAINABLE.has(item.name) && xp === undefined) continue;
 
     const maxLvl = item.maxLevelCap || 30;
     const perRank = cls.xpPerRank;
     const potential = perRank * maxLvl;
-    const xp = owned.get(item.uniqueName);
 
     let status, rank;
     if (xp === undefined) {
@@ -59,25 +73,29 @@ export function analyze(profile, catalog) {
     });
   }
 
-  const xpJunctions = chart.junctions * XP_PER_JUNCTION;
-  const xpNodes = chart.nodes * XP_PER_NODE;
+  const xpJunctions = chart.junctions + chart.steelPathJunctions;
+  const xpNodes = chart.nodes + chart.steelPathNodes;
   const xpIntrinsics = intr * XP_PER_INTRINSIC;
   const totalXP = earnedFromItems + xpJunctions + xpNodes + xpIntrinsics;
 
   const openGain = entries.reduce((s, e) => s + e.gain, 0);
 
+  /* Was in XPInfo steht und trotzdem nicht gezaehlt wurde. Bei Kaan ist die
+     Liste leer - jeder Eintrag dort gibt Mastery. Steht hier etwas, kennt
+     classify.js eine neue Art Gegenstand noch nicht (fuer report.js und den
+     Test, nicht fuer die Oberflaeche). */
+  const counted = new Set(entries.filter(e => e.status !== STATUS.MISSING).map(e => e.uniqueName));
+  const uncounted = [...owned.keys()].filter(u => !counted.has(u));
+
   /**
    * Der Rang kommt aus dem Profil, nicht aus unserer Rechnung.
    *
-   * Gegenprobe an echten Daten: das Spiel meldet MR 27, unsere Summe ergibt 26.
-   * Die 440 XPInfo-Eintraege sind bis auf einen Railjack-Harness vollstaendig
-   * aufgeloest, Intrinsics stimmen (62 Raenge, Railjack und Drifter tragen beide
-   * das Praefix LPS_), alle 322 Missions-Tags sind eindeutig. Es fehlt also eine
-   * Quelle, die das oeffentliche Profil gar nicht ausweist - naheliegend der
-   * Steel Path, belegen laesst es sich an diesen Daten nicht.
-   *
-   * Deshalb: PlayerLevel gewinnt, totalXP gilt als Untergrenze. Lieber eine
-   * ehrliche Luecke ausweisen als dem Nutzer einen falschen Rang anzeigen.
+   * Die Rechnung trifft seit dem 05.10.2026 Kaans Stand auf den Punkt (siehe
+   * mastery.js) - die Luecke von damals war der Steel Path, die Knotenwerte
+   * und eine Handvoll unerkannter Items. Der Rang aus dem Profil bleibt
+   * trotzdem die Wahrheit: ohne Knotentabelle oder mit einem Item, das Argus
+   * noch nicht kennt, faellt die Summe wieder darunter. Dann gilt sie als
+   * Untergrenze, und die Oberflaeche sagt das dazu.
    */
   const computedMR = xpToMR(totalXP);
   const mr = Number.isInteger(profile.PlayerLevel) ? profile.PlayerLevel : computedMR;
@@ -89,6 +107,9 @@ export function analyze(profile, catalog) {
       mr,
       computedMR,
       hiddenXP,
+      /* false: Knotentabelle fehlte, die Knoten zaehlten 0. */
+      nodesKnown: chart.nodesKnown,
+      uncounted,
       reportedMR: profile.PlayerLevel,
       totalXP,
       breakdown: {
@@ -97,6 +118,7 @@ export function analyze(profile, catalog) {
         nodes: xpNodes,
         intrinsics: xpIntrinsics
       },
+      starChart: chart,
       counts: {
         done: entries.filter(e => e.status === STATUS.DONE).length,
         partial: entries.filter(e => e.status === STATUS.PARTIAL).length,
@@ -168,7 +190,9 @@ export function recommend(analysis, catalog, { limit = 10, playerMR = null, cate
     .filter(e => !categories || categories.includes(e.category))
     .filter(e => e.masteryReq <= mr)
     .map(e => {
-      const item = catalog.byUniqueName.get(e.uniqueName) || {};
+      /* Der Eintrag selbst, wenn der Katalog das Item nicht fuehrt (Plexus):
+         Kennung und Name reichen acquisitionOf, um die Quelle zu finden. */
+      const item = catalog.byUniqueName.get(e.uniqueName) || e;
       const { effort, acq, owned, ranksLeft } = scoreEntry(e, catalog, item, mr);
       return {
         ...e,

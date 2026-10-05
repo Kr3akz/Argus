@@ -1303,9 +1303,14 @@ function render(data) {
 
   $('progress-fill').style.width = Math.min(100, p.progress.percent).toFixed(1) + '%';
   /* Bei einer bekannten Luecke ist die Summe eine Untergrenze - das "mind."
-     sagt genau das, statt eine Genauigkeit vorzutaeuschen. */
-  $('progress-text').textContent = (p.hiddenXP > 0 ? 'at least ' : '') + nf(p.progress.current) + ' MR XP';
-  $('progress-next').textContent = nf(p.progress.remaining) + ' to go until MR ' + (p.mr + 1);
+     sagt genau das, statt eine Genauigkeit vorzutaeuschen. Ohne Knotentabelle
+     zaehlen die Knoten 0, auch dann ist sie eine. */
+  const lowerBound = p.hiddenXP > 0 || p.nodesKnown === false;
+  $('progress-text').textContent = (lowerBound ? 'at least ' : '') + nf(p.progress.current) + ' MR XP';
+  /* Ueber der naechsten Schwelle fehlt keine XP mehr, nur der Rangtest. */
+  $('progress-next').textContent = p.progress.ready
+    ? 'Ready for the MR ' + (p.mr + 1) + ' test'
+    : nf(p.progress.remaining) + ' to go until MR ' + (p.mr + 1);
 
   $('stat-done').textContent      = nf(p.counts.done);
   $('stat-partial').textContent   = nf(p.counts.partial);
@@ -1323,12 +1328,15 @@ function render(data) {
     ? 'As of ' + new Date(m.fetchedAt).toLocaleString('en-GB')
     : 'No profile data yet');
   if (m.fromCache) parts.push('local cache');
-  /* Der Rang stammt aus dem Profil. Weicht unsere XP-Summe davon ab, fehlt uns
-     eine Quelle, die das oeffentliche Profil nicht ausweist - das gehoert
-     dazugesagt, sonst wirkt die XP-Zahl praeziser als sie ist. */
+  /* Der Rang stammt aus dem Profil. Liegt unsere XP-Summe unter seiner
+     Schwelle, kennt Argus etwas nicht, das dort mitzaehlt - seit dem
+     05.10.2026 kein Profilproblem mehr, sondern ein unbekanntes Item oder die
+     fehlende Knotentabelle. Das gehoert dazugesagt, sonst wirkt die XP-Zahl
+     praeziser, als sie ist. */
   if (p.hiddenXP > 0) {
-    parts.push(`at least ${nf(p.hiddenXP)} MR XP from sources the profile does not list`);
+    parts.push(`at least ${nf(p.hiddenXP)} MR XP that Argus cannot account for`);
   }
+  if (p.nodesKnown === false) parts.push('star chart nodes not counted yet');
   if (m.message)   parts.push(m.message);
   $('meta-info').textContent = parts.join(' · ');
 

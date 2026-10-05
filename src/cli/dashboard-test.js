@@ -7,6 +7,7 @@ import { loadCatalog, imageUrl } from '../core/catalog.js';
 import { loadProfile, displayName } from '../core/profile.js';
 import { analyze, recommend, diversify, STATUS } from '../core/analyze.js';
 import { masteryRankName, progressForMR } from '../core/mastery.js';
+import { loadNodeMastery } from '../core/node-mastery.js';
 import { CATEGORY_LABELS } from '../core/classify.js';
 import { resolveGoal, combineGoals, formatDuration } from '../core/recipes.js';
 import { loadConfig } from '../core/config.js';
@@ -18,7 +19,7 @@ const ok = (label, cond, extra = '') =>
 const cfg = await loadConfig();
 const catalog = await loadCatalog();
 const { profile, fromCache } = await loadProfile(cfg.accountId, cfg.platform);
-const a = analyze(profile, catalog);
+const a = analyze(profile, catalog, await loadNodeMastery());
 
 console.log('=== Datenquellen ===');
 ok('Katalog geladen', catalog.items.length > 1000, catalog.items.length + ' Items');

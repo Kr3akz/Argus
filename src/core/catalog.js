@@ -425,8 +425,16 @@ export const CATALOG_SUPPLEMENTS = [
 ];
 
 function buildIndex(items, recipes, lookup = [], stamp = stampOf(null)) {
+  /* Je Kennung nur EIN Item. DEs ExportWeapons fuehrt den Mausolon dreimal
+     (05.10.2026), und analyze.js zaehlte ihn entsprechend dreimal: 6.000
+     MR-XP zu viel in Kaans Summe. */
   const byUniqueName = new Map();
-  for (const it of items) if (it.uniqueName) byUniqueName.set(it.uniqueName, it);
+  const unique = [];
+  for (const it of items) {
+    if (!it.uniqueName || byUniqueName.has(it.uniqueName)) continue;
+    byUniqueName.set(it.uniqueName, it);
+    unique.push(it);
+  }
   /* Nachschlage-Eintraege danach, damit ein echtes Item nie ueberschrieben wird. */
   for (const it of lookup) if (!byUniqueName.has(it.uniqueName)) byUniqueName.set(it.uniqueName, it);
   for (const it of CATALOG_SUPPLEMENTS) {
@@ -445,7 +453,7 @@ function buildIndex(items, recipes, lookup = [], stamp = stampOf(null)) {
   const recipeByUniqueName = new Map();
   for (const r of recipes || []) if (r.uniqueName) recipeByUniqueName.set(r.uniqueName, r);
 
-  return { items, byUniqueName, recipes: recipes || [], recipeFor, recipeByUniqueName, lookup, stamp };
+  return { items: unique, byUniqueName, recipes: recipes || [], recipeFor, recipeByUniqueName, lookup, stamp };
 }
 
 /**

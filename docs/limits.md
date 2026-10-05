@@ -7,9 +7,13 @@
 ---
 
 
-- **The MR display can be off by one.** MR XP per star chart node is not publicly
-  documented; the calculation assumes 100. The item lists and the MR gains per item are
-  **not** affected — those come straight from your profile data.
+- **MR XP is exact only for what Argus recognises.** Your rank always comes from your
+  profile; the XP behind it is added up item by item and node by node, and checked
+  against the game it matched to the point. Two things can still pull it below the real
+  figure. How much each star chart node gives is not in DE's Public Export — Argus reads
+  it from an extended export, at most once a week, and until that has loaded once the
+  nodes count as 0 and the figure reads "at least". And a new kind of item counts only
+  once Argus knows that it gives mastery.
 - **Prime Resurgence is invisible to the vault check.** Argus reads which
   relics currently drop and works out from there which prime parts are still
   farmable. Varzia's monthly Aya offering is not in any drop table, so a part

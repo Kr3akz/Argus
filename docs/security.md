@@ -97,6 +97,7 @@ instead* during setup never turns it on in the first place.
 | `api.tenno.tools` | void fissures, and failing that its whole world state — only when DE's feed does not answer and warframestat.us lags behind or is down |
 | `browse.wf/arbys.txt` | the arbitration schedule — at most once a week, only the next 60 days are kept |
 | `browse.wf/sp-incursions.txt` | the Steel Path incursion schedule — at most once a week, only the next 60 days are kept |
+| `raw.githubusercontent.com/calamity-inc/warframe-public-export-plus/…/ExportRegions.json` | how much mastery each star chart node gives — at most once a week, only the nodes that give any are kept |
 | `drops.warframestat.us` | DE's drop tables for relics, mods, arcanes and the Drop tables tab — a small fingerprint at start-up and every six hours, the full tables only when it changed |
 | `api.warframe.market/v2` | platinum prices and ducat values |
 | `wiki.warframe.com` | arcane images, mod frames, polarity symbols |

@@ -230,6 +230,18 @@ the first check; and a month of turned-down states no longer blocks a real one. 
 throwaway folder. No network needed.
 
 ```bash
+npm run mastery-test
+```
+
+Checks how MR XP adds up: which items give mastery and how much (amp prisms but not
+scaffolds or braces, K-Drive boards but not engines, MOA and Hound models and their
+weapons, Venari, the Plexus), reading the node table, Steel Path nodes and junctions
+counting a second time, and "ready for the test" once the XP is there. With a profile
+under `data/` it also checks that every levelled item in it counts and that the total
+reaches the rank the game reports. Offline, except for fetching the node table once if
+`data/` has none.
+
+```bash
 npm run theme-test
 ```
 

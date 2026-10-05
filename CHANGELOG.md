@@ -21,6 +21,20 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **MR XP now matches the game.** "To go until" the next rank could be off by tens of
+  thousands. Steel Path nodes and junctions did not count at all, every star chart node
+  counted a flat 100 instead of what it really gives, and some items that do give mastery
+  were missed: MOAs and Hounds with their weapons, Predasites and Vulpaphylas, Venari and
+  Venari Prime, the Plexus, the Sirocco and every amp prism. The Mausolon counted three
+  times. Checked against the game, the figure is now exact.
+- **Open mastery no longer lists parts that give none.** K-Drive engines, noses and jets,
+  amp scaffolds and braces, and captured Predasites showed up as items still to master;
+  only the board, the prism and the companion itself count.
+- **"Ready for the test" instead of "0 to go".** Once you have the XP for the next rank,
+  the profile says so.
+
 ## [1.24.1] - 2026-10-05
 
 ### Fixed

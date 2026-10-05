@@ -4,6 +4,7 @@ import { loadCatalog } from '../core/catalog.js';
 import { loadProfile, displayName } from '../core/profile.js';
 import { analyze, recommend, diversify, STATUS } from '../core/analyze.js';
 import { masteryRankName } from '../core/mastery.js';
+import { loadNodeMastery } from '../core/node-mastery.js';
 import { CATEGORY_LABELS } from '../core/classify.js';
 import { loadConfig } from '../core/config.js';
 
@@ -23,12 +24,18 @@ const { profile, fromCache, message } = await loadProfile(accountId, cfg.platfor
 if (message) console.log('(' + message + ')');
 else if (fromCache) console.log('(aus lokalem Cache - kein Netzwerkzugriff)');
 
-const a = analyze(profile, catalog);
+const a = analyze(profile, catalog, await loadNodeMastery());
 const s = a.summary;
+const sc = s.starChart;
 
 console.log(`\n=== ${displayName(profile)} ===`);
 console.log(`Mastery Rank ${s.mr} (${masteryRankName(s.mr)})   [Spiel meldet: ${s.reportedMR}]`);
 console.log(`Gesamt-MR-XP: ${n(s.totalXP)}   -   bis MR ${s.mr + 1} noch ${n(s.nextMRneeds)}`);
+console.log(`  Items ${n(s.breakdown.items)} | Intrinsics ${n(s.breakdown.intrinsics)}`
+          + ` | Junctions ${n(sc.junctions)} + ${n(sc.steelPathJunctions)} SP`
+          + ` | Knoten ${sc.nodesKnown ? n(sc.nodes) + ' + ' + n(sc.steelPathNodes) + ' SP' : 'unbekannt (keine Tabelle)'}`);
+if (s.hiddenXP > 0) console.log(`  Unter der Rangschwelle: mindestens ${n(s.hiddenXP)} MR-XP fehlen in der Rechnung`);
+if (s.uncounted.length) console.log(`  In XPInfo, aber nicht gezaehlt: ${s.uncounted.join(', ')}`);
 console.log(`Items: ${s.counts.done} fertig | ${s.counts.partial} angefangen | ${s.counts.missing} offen`);
 console.log(`Offen: ${n(s.openGain)} MR-XP  ->  maximal MR ${s.potentialMR}`);
 
