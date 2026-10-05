@@ -21,6 +21,8 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.24.1] - 2026-10-05
+
 ### Fixed
 
 - **New Warframes and weapons show up after a game update.** Argus downloaded DE's item
