@@ -80,6 +80,7 @@ src/core/     logic, entirely independent of the interface
   scan-worker.js  runs both memory scans off the main thread
   store.js        goals and notes
   foreground.js   hands input focus back to the game
+  game-start.js   notices Warframe starting, for "Start with Warframe"
   logwatch.js     reads Warframe's EE.log (relic rewards)
   rewardscan.js   recognises the four rewards on screen
   relics.js       relic reward tables from DE's drop tables
@@ -106,7 +107,11 @@ src/core/     logic, entirely independent of the interface
   phone-server.js the server a paired phone talks to at home (port 47120, own network only)
   phone-views.js  what the phone gets of the big answers, trimmed for a small screen
   qrcode.js       the pairing QR code (byte mode, all 40 versions)
-src/main/     Electron main process (main window + overlay window)
+src/main/     Electron main process
+  boot.js       entry point: the app or the waiting mode, one Argus at a time
+  launch.js     how this run was started, relaunching, the Windows startup entry
+  waiter.js     "Start with Warframe": waits in the system tray, opens the app
+  main.js       the app: main window, overlay windows and everything behind them
 src/renderer/ interface
   index.html    main window
   overlay.html  overlay window, its own lean interface
@@ -164,6 +169,11 @@ this README are English.
 `ARGUS_DATA_DIR` is useful for testing against a clean state without touching your real
 data.
 
+Running from source, Electron's own profile (caches, the window's local storage) sits in
+`electron/` inside that data folder rather than in `%APPDATA%\Argus`. Argus runs only
+once per profile, so this keeps `npm start` — and a test instance with its own
+`ARGUS_DATA_DIR` — from handing over to the installed app or to each other.
+
 ## Tests
 
 ```bash
@@ -216,6 +226,19 @@ from `EE.log`, that a dodge roll or leaving a squad no longer counts, and which 
 memory wins when two have the same timestamp — the one exactly as long as the game said.
 With an `EE.log` present it also counts how often the trigger would have fired in it.
 No game and no network needed.
+
+```bash
+npm run autostart-test
+```
+
+Checks "Start with Warframe" without the game and without touching Windows' startup list:
+when a Warframe process counts as a start and when it was already running (the waiting
+mode must not reopen Argus you just closed mid-game), that a change in a throwaway folder
+leads to exactly one look at the process list, that a running game writing its log is
+looked at only every 30 seconds, and that a missing folder falls back to the 30-second
+look and is watched once it appears. Then the real process list against `tasklist`.
+`npm run autostart-test:app` runs the same under Electron, plus the start modes and the
+quoted startup entry from `launch.js`.
 
 ```bash
 npm run catalog-test

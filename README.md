@@ -191,6 +191,9 @@ them yourself.
 - **Everything where you want it.** Move and resize each panel Argus draws over the game
   on a stage shaped like your game window, pick your own hotkeys, and switch off whatever
   you do not need. → [Controls](docs/controls.md)
+- **Opens with the game, if you like.** Argus can wait in the system tray and open by
+  itself when Warframe starts — minimized, without taking the focus. Off by default.
+  → [Controls](docs/controls.md#settings)
 
 ---
 

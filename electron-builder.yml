@@ -110,6 +110,9 @@ nsis:
   # Ziele, Builds und Notizen liegen in %APPDATA% und sollen eine
   # Deinstallation ueberleben - wer neu installiert, findet seinen Stand wieder.
   deleteAppDataOnUninstall: false
+  # Der Deinstaller nimmt den Autostart-Eintrag von "Start with Warframe" mit.
+  # Warum die Datei unter tools/ liegt und nicht unter build/, steht in ihr.
+  include: tools/installer.nsh
 
 portable:
   artifactName: ${productName}-${version}-portable.${ext}

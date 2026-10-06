@@ -14796,6 +14796,80 @@ $('set-inventory-autosync')?.addEventListener('change', async e => {
   }
 });
 
+/* ---------------- Start with Warframe ---------------- */
+
+/**
+ * Schalter und die Zeile darunter.
+ *
+ * Die Zeile bleibt im Normalfall leer. Sie meldet sich, wenn es hier keinen
+ * Eintrag bei Windows geben kann, wenn Windows etwas anderes vorhat als der
+ * Schalter sagt (unter Task-Manager -> Autostart abgeschaltet), und einmal
+ * direkt nach dem Einschalten - denn was dann passiert, sieht man erst beim
+ * Schliessen.
+ */
+function applyStartWithWarframe(st, justSwitched = false) {
+  const box = $('set-start-with-warframe');
+  if (!box || !st) return;
+  box.checked = !!st.enabled;
+
+  /* Abschalten bleibt immer moeglich, auch wo Einschalten nicht geht. */
+  const unavailable = st.availability === 'portable' || st.availability === 'unsupported';
+  box.disabled = unavailable && !st.enabled;
+  const row = $('row-start-with-warframe');
+  if (row) row.style.opacity = box.disabled ? '0.4' : '';
+
+  let text = '';
+  let tone = '';
+  if (st.ok === false && st.error) {
+    text = st.error;
+    tone = 'warn';
+  } else if (st.availability === 'portable') {
+    text = 'Only available in the installed version.';
+  } else if (st.availability === 'unsupported') {
+    text = 'Only available on Windows.';
+  } else if (st.enabled && st.availability === 'source') {
+    text = 'Running from source: Windows is not asked to start this at sign-in. '
+         + 'Closing this window still leaves Argus waiting in the system tray.';
+  } else if (st.enabled && st.login && st.login.blocked) {
+    text = 'Windows keeps Argus from starting at sign-in — it is switched off under '
+         + 'Task Manager → Startup apps. It still waits whenever you close it.';
+    tone = 'warn';
+  } else if (st.enabled && justSwitched) {
+    text = 'On. Close Argus and it waits in the system tray; from your next sign-in it '
+         + 'waits right from the start.';
+    tone = 'ok';
+  }
+
+  const note = $('autostart-status');
+  if (note) {
+    note.textContent = text;
+    note.classList.toggle('hidden', !text);
+    note.classList.toggle('warn', tone === 'warn');
+    note.classList.toggle('ok', tone === 'ok');
+  }
+}
+
+async function loadStartWithWarframe() {
+  try {
+    applyStartWithWarframe(await window.api.getStartWithWarframe());
+  } catch { /* Schalter bleibt, wie er steht */ }
+}
+
+$('set-start-with-warframe')?.addEventListener('change', async e => {
+  const on = e.target.checked;
+  try {
+    applyStartWithWarframe(await window.api.setStartWithWarframe(on), true);
+  } catch (err) {
+    e.target.checked = !on;   // zurueckstellen, sonst zeigt der Schalter etwas Falsches
+    const note = $('autostart-status');
+    if (note) {
+      note.textContent = 'Could not save that: ' + err.message;
+      note.classList.remove('hidden', 'ok');
+      note.classList.add('warn');
+    }
+  }
+});
+
 async function loadSettingsTab() {
   try {
     const res = await window.api.getSettings();
@@ -14825,6 +14899,7 @@ async function loadSettingsTab() {
     if (autoRow) autoRow.style.opacity = scanOn ? '1' : '0.4';
   } catch { /* Schalter bleibt, wie er steht */ }
 
+  loadStartWithWarframe();
   renderHotkeys();
   renderNotifToggles();
   refreshScanLogLine();

@@ -21,6 +21,21 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+### Added
+
+- **Argus can start with Warframe.** Switch on *Open Argus when Warframe starts* under
+  **Settings → General**, and Argus waits in the system tray — from the moment you sign in
+  to Windows, and again whenever you close it — and opens by itself as soon as the game
+  starts. It opens minimized and leaves the focus where it is, so it covers neither the
+  launcher nor the game. While waiting it uses no network and next to no CPU; quit it from
+  its tray icon to stop waiting until the next sign-in. Off by default, installed version
+  only, and uninstalling Argus removes the startup entry again.
+
+### Changed
+
+- **Argus runs only once.** Starting it a second time brings the open window to the front
+  instead of opening a second Argus next to it.
+
 ## [1.24.2] - 2026-10-05
 
 ### Fixed

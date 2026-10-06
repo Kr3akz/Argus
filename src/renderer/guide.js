@@ -383,9 +383,9 @@ const Guide = (() => {
       place: 'right',
       title: 'Settings — and this tour',
       body: `
-        <p>Hotkeys, the overlays, notifications for void fissures, open-world cycles
-           and whispers in game, inventory access and which version you are
-           running.</p>
+        <p>Hotkeys, opening Argus together with Warframe, the overlays,
+           notifications for void fissures, open-world cycles and whispers in game,
+           inventory access and which version you are running.</p>
         <p>If you want your inventory, the Baro planner and the weekly tracking to
            do anything, <b>Inventory access</b> under <b>Inventory</b> is the switch
            that turns them on.</p>

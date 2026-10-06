@@ -16,8 +16,9 @@
  *   des Overlays, sodass Windows ihn sofort einblendet.
  *
  * UMFANG:
- *   Aufrufe auf Fensterebene ueber user32.dll, ohne Zugriff auf einen fremden
- *   Prozess und ohne jede Tastatureingabesimulation.
+ *   Aufrufe auf Fensterebene ueber user32.dll - und dwmapi.dll fuer die
+ *   Animation eigener Fenster -, ohne Zugriff auf einen fremden Prozess und
+ *   ohne jede Tastatureingabesimulation.
  *
  * AUSFALL:
  *   Ohne koffi oder ausserhalb von Windows faellt nur der native Rueck- und
@@ -126,6 +127,71 @@ export function bringToForeground(win) {
     return false;
   }
   return false;
+}
+
+/* DwmSetWindowAttribute: Animationen eines Fensters abschalten (dwmapi.h). */
+const DWMWA_TRANSITIONS_FORCEDISABLED = 3;
+
+let dwm = null;
+let dwmUnavailable = false;
+
+function dwmapi() {
+  if (dwm || dwmUnavailable) return dwm;
+  try {
+    const koffi = require('koffi');
+    const lib = koffi.load('dwmapi.dll');
+    dwm = {
+      DwmSetWindowAttribute: lib.func(
+        'long __stdcall DwmSetWindowAttribute(uint64 hwnd, uint32 dwAttribute, _In_ int32 *pvAttribute, uint32 cbAttribute)')
+    };
+  } catch {
+    dwmUnavailable = true;
+  }
+  return dwm;
+}
+
+/** Minimieren und Wiederherstellen eines EIGENEN Fensters mit oder ohne Animation. */
+function setTransitions(win, on) {
+  if (process.platform !== 'win32') return false;
+  const lib = dwmapi();
+  if (!lib) return false;
+  try {
+    const buf = win.getNativeWindowHandle();
+    const handle = buf.readBigUInt64LE ? buf.readBigUInt64LE(0) : buf.readUInt32LE(0);
+    return lib.DwmSetWindowAttribute(handle, DWMWA_TRANSITIONS_FORCEDISABLED, [on ? 0 : 1], 4) === 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Zeigt ein BrowserWindow minimiert in der Taskleiste, ohne es zu aktivieren.
+ *
+ * Fuer den Start durch das Spiel (siehe createWindow in main.js). Electron hat
+ * dafuer keinen Aufruf: show() aktiviert, showInactive() oeffnet das Fenster
+ * obenauf - ueber dem Launcher, oder ueber dem Spiel, wenn dessen Fenster
+ * gerade aufgeht. minimize() auf ein noch verstecktes Fenster zeigt es mit
+ * SHOW_STATE_MINIMIZED (NativeWindowViews::Minimize in Electron 33), also
+ * SW_SHOWMINIMIZED - und das aktiviert.
+ *
+ * Darum erst showInactive(), dann minimize(): ein sichtbares, nicht aktives
+ * Fenster zu minimieren laesst den Fokus, wo er ist. Nachgemessen am
+ * 2026-10-07 mit GetForegroundWindow davor und danach. Die Animation ist
+ * dabei aus, sonst schoesse kurz ein Fenster aus der Bildmitte in die
+ * Taskleiste; eine Sekunde spaeter ist sie wieder an.
+ *
+ * WARUM NICHT DIREKT ShowWindow(SW_SHOWMINNOACTIVE): ging an Electron vorbei,
+ * und dessen isVisible() meldet ein minimiertes Fenster unter Windows als
+ * NICHT sichtbar - ein Rueckweg, der darauf pruefte, holte das Fenster gleich
+ * wieder hervor. Ueber Electrons eigene Aufrufe bleibt dessen Buchfuehrung
+ * stimmig.
+ */
+export function showMinimizedInactive(win) {
+  if (!win || win.isDestroyed()) return;
+  const quiet = setTransitions(win, false);
+  win.showInactive();
+  win.minimize();
+  if (quiet) setTimeout(() => { if (!win.isDestroyed()) setTransitions(win, true); }, 1000);
 }
 
 /**

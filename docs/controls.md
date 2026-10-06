@@ -91,6 +91,12 @@ Under **Settings** are the things that always apply:
   Ctrl, Alt or Shift — a single key would be captured system-wide by Argus, including in
   chat. If the combination is already taken by another program (Discord, GeForce
   Experience, another overlay), the app says so and keeps the previous one.
+- **Start with Warframe** — off by default. Switched on, Argus waits in the system tray
+  from Windows sign-in, and again after you close it, and opens by itself when the game
+  starts: minimized and without taking the focus, so it covers neither the launcher nor
+  the game. **Quit Argus** on the tray icon stops the waiting until the next sign-in.
+  Windows lists the entry under *Task Manager → Startup apps*; if it is switched off
+  there, Argus says so under the switch. Installed version only.
 - **Inventory access** — off by default, see below.
 - **Guided tour** — the walk through every tab that runs once on the first start.
   *Start the tour* runs it again, as often as you like; **Esc** ends it at any point. It

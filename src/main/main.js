@@ -59,7 +59,8 @@ import { searchDrops, DROP_KINDS, REFINEMENTS } from '../core/drop-search.js';
 import { loadCardImages, cardUrl } from '../core/cards.js';
 import { upgradeDetails } from '../core/upgrade-details.js';
 import { matchesFissureFilter } from '../core/fissure-filter.js';
-import { captureForeground, restoreForeground, bringToForeground, moveCursorIntoWindow, moveCursor, foregroundPid, gameWindowRect } from '../core/foreground.js';
+import { captureForeground, restoreForeground, bringToForeground, moveCursorIntoWindow, moveCursor, foregroundPid, gameWindowRect,
+         showMinimizedInactive } from '../core/foreground.js';
 import { LogWatcher } from '../core/logwatch.js';
 import { readWhisperInWorker, isMarketWhisper } from '../core/whispers.js';
 import { loadMarketItems, findMarketItem, findMarketSet, getPrice, getPrices, getRankedPrices,
@@ -116,8 +117,21 @@ import * as phone from '../core/phone.js';
 import { startPhoneServer } from '../core/phone-server.js';
 import { slimDashboard, slimFoundry, slimInventory, slimDrops, dropOptions } from '../core/phone-views.js';
 import { encodeQR, qrToSvg } from '../core/qrcode.js';
+/* Wie dieser Lauf zustande kam, und der Wechsel zum Wartenden fuer "Start
+   with Warframe" - siehe launch.js und waiter.js. */
+import { launchMode, relaunchAs, canWait, autostartAvailability, setOpenAtLogin,
+         loginItemState } from './launch.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+/* 'game': der Wartende hat Argus geoeffnet, weil Warframe gerade startet. */
+const LAUNCH = launchMode();
+
+/* "Start with Warframe": nach dem Schliessen weiter warten. Siehe DEFAULTS in
+   core/config.js. */
+let startWithWarframe = false;
+/* Beenden ohne Wartenden danach - beim Update und wenn Windows herunterfaehrt. */
+let quitForGood = false;
 
 let win = null;
 
@@ -436,7 +450,19 @@ function createWindow() {
   /* Nach einem Neuladen gilt sonst wieder der Wert von oben, nicht der
      zuletzt gewaehlte. */
   win.webContents.on('did-finish-load', applyZoom);
-  win.once('ready-to-show', () => win.show());
+  /* Vom Spiel geoeffnet: minimiert und ohne Fokus. Gerade laeuft der Launcher,
+     gleich geht das Spiel auf - ein Fenster, das sich davorschiebt oder die
+     Eingabe an sich zieht, waere genau das Falsche. In der Taskleiste steht
+     Argus trotzdem, und das Tastenkuerzel fuer das Hauptfenster holt es wie
+     immer nach vorn. */
+  win.once('ready-to-show', () => {
+    if (LAUNCH === 'game') showMinimizedInactive(win);
+    else win.show();
+  });
+
+  /* Windows meldet sich ab oder faehrt herunter: dann nicht noch schnell
+     einen Wartenden starten. */
+  win.on('session-end', () => { quitForGood = true; });
 
   /* Ohne Hauptfenster hat das Overlay keinen Zweck. Und ein nur verstecktes
      Overlay wuerde app.quit() verhindern: die App liefe unsichtbar weiter,
@@ -9865,6 +9891,12 @@ ipcMain.handle('update:install', async () => {
   /* Erst jetzt: bis hierher konnte der Start noch scheitern, und dann stuende
      "Installing" in einem Fenster, in dem nichts installiert wird. */
   pushUpdateState({ status: 'installing', error: null });
+  /* Kein Wartender danach: der Installer ersetzt gleich die Dateien und
+     startet Argus danach selbst - ein Wartender liefe ihm mitten hinein und
+     wuerde per taskkill beendet (allowOnlyOneInstallerInstance.nsh).
+     app.quit() loest window-all-closed zwar gar nicht erst aus; der Merker
+     haelt es trotzdem fest, falls das Fenster hier einmal anders zugeht. */
+  quitForGood = true;
   setTimeout(() => app.quit(), INSTALL_QUIT_DELAY);
   return { ok: true, silent: true };
 });
@@ -9889,26 +9921,91 @@ ipcMain.handle('app:info', async () => {
   };
 });
 
+/* ------------------------ Start with Warframe ------------------------ */
+
+/**
+ * Settings -> General. Der Schalter steht in config.json; was Windows daraus
+ * macht, steht in launch.js, und was der Wartende tut, in waiter.js.
+ * login ist null, wo es keinen Eintrag bei Windows geben kann (Quellordner,
+ * portabel).
+ */
+function startWithWarframeView() {
+  let login = null;
+  try { login = loginItemState(); } catch { /* nicht lesbar - dann kein Hinweis */ }
+  return { ok: true, enabled: startWithWarframe, availability: autostartAvailability(), login };
+}
+
+ipcMain.handle('autostart:get', async () => startWithWarframeView());
+
+ipcMain.handle('autostart:set', async (_e, on) => {
+  const want = !!on;
+  /* Ausschalten geht immer - auch dort, wo es nie haette angehen koennen,
+     etwa in der portablen Fassung mit der config.json der installierten. */
+  if (want && !canWait()) {
+    return { ...startWithWarframeView(), ok: false, error: 'Only available in the installed version' };
+  }
+  try {
+    const cfg = await loadConfig();
+    await saveConfig({ ...cfg, startWithWarframe: want });
+  } catch (err) {
+    return { ...startWithWarframeView(), ok: false, error: 'Could not save that: ' + err.message };
+  }
+  startWithWarframe = want;
+  try {
+    setOpenAtLogin(want);
+  } catch (err) {
+    console.error('[Start mit Warframe] Eintrag bei Windows:', err.message);
+    return { ...startWithWarframeView(), ok: false, error: 'Windows did not take the startup entry: ' + err.message };
+  }
+  console.log(`[Start mit Warframe] ${want ? 'an' : 'aus'}`);
+  return startWithWarframeView();
+});
+
 /* ---------------------------- App ---------------------------- */
 
-if (process.platform === 'win32') {
-  /* Woran Windows die Anwendung wiedererkennt - Taskleiste, Gruppierung und
-     die Zustellung der Benachrichtigungen haengen daran.
-     Behaelt bewusst den alten Namen - siehe appId in electron-builder.yml.
+/* Die AppUserModelId setzt boot.js, fuer jede Art zu starten - siehe
+   applyAppUserModelId in launch.js. */
 
-     NUR IM GEPACKTEN BUILD:
-       Die Kennung verweist auf eine INSTALLIERTE Anwendung. Aus dem
-       Quellordner heraus gibt es die nicht - Windows findet dann weder
-       Namen noch Symbol dazu und laesst in der Taskleiste beides weg
-       (Rechtsklick auf ein namenloses, leeres Feld). Der Pfad der
-       laufenden .exe ist dort die ehrlichere Kennung: dann steht
-       wenigstens Electron mit seinem Symbol da, statt gar nichts. */
-  app.setAppUserModelId(app.isPackaged ? 'com.kr3akz.cephalonargus' : process.execPath);
+/**
+ * "Start with Warframe" beim Start lesen und den Eintrag bei Windows
+ * nachziehen, falls er fehlt.
+ *
+ * WANN ER FEHLT, OBWOHL DER SCHALTER AN IST: nach Deinstallieren und
+ * Neuinstallieren - der Deinstaller nimmt ihn mit (tools/installer.nsh), die
+ * Einstellungen bleiben. Unter Task-Manager -> Autostart abgeschaltet ist
+ * etwas anderes: dann steht der Eintrag noch da, und diese Entscheidung bleibt
+ * unangetastet (blocked in loginItemState).
+ */
+async function initStartWithWarframe() {
+  try {
+    startWithWarframe = (await loadConfig()).startWithWarframe === true;
+  } catch {
+    startWithWarframe = false;
+  }
+  if (LAUNCH === 'game') console.log('[Start] Von Warframe geoeffnet - minimiert, ohne Fokus');
+  if (!startWithWarframe) return;
+  try {
+    const st = loginItemState();
+    if (st && !st.registered && setOpenAtLogin(true)) {
+      console.log('[Start mit Warframe] Eintrag bei Windows fehlte - neu angelegt');
+    }
+  } catch (err) {
+    console.error('[Start mit Warframe] Eintrag nicht pruefbar:', err.message);
+  }
 }
+
+/* Ein zweiter Start - boot.js hat ihn schon wieder beendet. Von Hand: Fenster
+   nach vorn. Ein Wartender, den Windows bei der Anmeldung startet, waehrend
+   Argus schon offen ist, will nichts; er ist schon wieder weg. */
+app.on('second-instance', (_e, argv, _cwd, data) => {
+  if (((data && data.mode) || launchMode(argv)) !== 'normal') return;
+  showMainWindow();
+});
 
 app.whenReady().then(async () => {
   await loadOverlayPrefs();
   await loadAppearance();
+  await initStartWithWarframe();
   createWindow();
   // Hotkey zum Ein-/Ausblenden waehrend des Spielens
   applyHotkeys();
@@ -9928,10 +10025,16 @@ app.whenReady().then(async () => {
      sieht der Log-Beobachter nicht mehr (er beginnt am Dateiende). Einmal
      nachlesen, statt bis zum naechsten Missionsende den alten Stand zu
      zeigen. Frueher erledigte das die erste Spielzeile nach dem Start
-     (siehe requestAutoSync). */
-  findGameProcessIds()
-    .then(pids => { if (pids.length) requestAutoSync('Start von Argus'); })
-    .catch(() => {});
+     (siehe requestAutoSync).
+     Nicht, wenn das Spiel Argus geoeffnet hat: dann startet es gerade erst,
+     eine Ankunft gab es noch nicht, und die erste kommt nach der Anmeldung
+     ganz normal ueber das Log. Ein Scan jetzt fuende hoechstens den Vorlauf
+     des Launchers - und laege mitten in den Ladebildschirm. */
+  if (LAUNCH !== 'game') {
+    findGameProcessIds()
+      .then(pids => { if (pids.length) requestAutoSync('Start von Argus'); })
+      .catch(() => {});
+  }
 
   // Hintergrund-Überwachung für Void-Risse starten (alle 45 Sekunden)
   pollFissureTracker();
@@ -9973,5 +10076,15 @@ app.on('will-quit', () => {
   stopPhoneServer();
   globalShortcut.unregisterAll();
 });
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+app.on('window-all-closed', () => {
+  if (process.platform === 'darwin') return;
+  /* "Start with Warframe": weiter warten - als frischer, schlanker Prozess
+     statt dieser App, siehe waiter.js. Electron startet ihn erst, wenn dieser
+     hier ganz beendet ist. */
+  if (startWithWarframe && !quitForGood && canWait()) {
+    relaunchAs('wait');
+    console.log('[Start mit Warframe] Fenster zu - Argus wartet im Infobereich weiter');
+  }
+  app.quit();
+});
 

@@ -38,11 +38,18 @@ export const DEFAULT_HOTKEYS = { overlay: 'Ctrl+R', interact: 'Ctrl+E', main: 'C
    Geprueft und aufgefuellt wird es in core/themes.js (normalizeAppearance):
    ein kaputter Eintrag faellt dort auf Argus zurueck, statt den Start zu
    verhindern. */
+/* startWithWarframe: Argus wartet im Infobereich - ab der Windows-Anmeldung
+   und nach jedem Schliessen - und geht auf, sobald das Spiel startet
+   (src/main/waiter.js). AUS, weil der Schalter etwas tut, das man sonst
+   nirgends sieht: einen Eintrag im Autostart von Windows und einen Prozess,
+   der auch an Tagen ohne Spiel laeuft. Darum bittet man, das bekommt man
+   nicht untergeschoben. */
 const DEFAULTS = {
   accountId: '', platform: 'pc', notes: {},
   overlayBounds: null, overlayOpacity: 0.94, overlayClickThrough: false,
   overlayEnabled: true,
   updateCheck: true,
+  startWithWarframe: false,
   wfmAutoStatus: false,
   guideSeen: false,
   appearance: null,

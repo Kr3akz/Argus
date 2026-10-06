@@ -1733,6 +1733,32 @@
         </div>
       </div>
 
+      <!-- Start mit Warframe. Eigene Gruppe, weil der Schalter etwas tut, das
+           man sonst nirgends sieht: einen Eintrag im Autostart von Windows
+           und einen kleinen Prozess im Infobereich (src/main/waiter.js). Das
+           gehoert ausgesprochen, nicht nur eingeschaltet. -->
+      <div class="settings-group" id="autostart-group">
+        <div class="settings-group-head">
+          <h3>Start with Warframe</h3>
+          <p>Argus opens by itself when you start the game.</p>
+        </div>
+
+        <label class="setting-row" id="row-start-with-warframe">
+          <div class="setting-info">
+            <b>Open Argus when Warframe starts</b>
+            <span>Off by default. Argus then waits in the system tray — from Windows
+                  sign-in, and again whenever you close it — and opens minimized as
+                  soon as the game starts, without taking focus from it. Waiting uses
+                  no network and next to no CPU. Quit it from its tray icon to stop
+                  until the next sign-in.</span>
+          </div>
+          <input type="checkbox" id="set-start-with-warframe" class="toggle-checkbox">
+          <span class="toggle-switch"></span>
+        </label>
+
+        <div id="autostart-status" class="settings-note hidden"></div>
+      </div>
+
       </div>
       <div class="settings-col">
 

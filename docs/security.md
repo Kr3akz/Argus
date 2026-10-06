@@ -29,6 +29,12 @@
   also shuts down the recognition process.
 - **A focus change** via `SetForegroundWindow` for cursor mode — a window operation, not
   access to the game.
+- **An entry in Windows' startup list, and only if you switch on *Start with Warframe*.**
+  It is the ordinary per-user entry (`HKCU\…\CurrentVersion\Run`), visible and switchable
+  under *Task Manager → Startup apps*. It starts Argus in a waiting mode: no window, no
+  network, no hotkeys. It watches Warframe's log folder for changes and then reads the
+  names in the process list — no process is opened, the game included. Switching it off
+  or uninstalling Argus removes the entry.
 - **A login to warframe.market**, and only if you use the trading tab. Your password goes
   to warframe.market's own endpoint once and is never stored; only the session token stays
   on this machine. Nothing about this touches the game or your Warframe account.

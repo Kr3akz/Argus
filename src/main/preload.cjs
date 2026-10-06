@@ -392,6 +392,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('update:changed', handler);
     return () => ipcRenderer.removeListener('update:changed', handler);
   },
+  /* "Start with Warframe" - nur ein Ja/Nein. Welche .exe Windows dafuer
+     eintraegt, bestimmt allein der Hauptprozess (launch.js). */
+  getStartWithWarframe: ()     => ipcRenderer.invoke('autostart:get'),
+  setStartWithWarframe: (on)   => ipcRenderer.invoke('autostart:set', on),
   minimize:        ()          => ipcRenderer.invoke('window:minimize'),
   close:           ()          => ipcRenderer.invoke('window:close')
 });
