@@ -81,6 +81,7 @@ src/core/     logic, entirely independent of the interface
   store.js        goals and notes
   foreground.js   hands input focus back to the game
   game-start.js   notices Warframe starting, for "Start with Warframe"
+  window-place.js where the main window opens: the remembered place, if a screen still has it
   logwatch.js     reads Warframe's EE.log (relic rewards)
   rewardscan.js   recognises the four rewards on screen
   relics.js       relic reward tables from DE's drop tables
@@ -239,6 +240,15 @@ looked at only every 30 seconds, and that a missing folder falls back to the 30-
 look and is watched once it appears. Then the real process list against `tasklist`.
 `npm run autostart-test:app` runs the same under Electron, plus the start modes and the
 quoted startup entry from `launch.js`.
+
+```bash
+npm run window-test
+```
+
+Checks where the main window opens, against made-up screens: the remembered place on the
+primary screen and on a second one to its left (negative coordinates), the fallback when
+that screen is unplugged or the title bar would be off-screen, a remembered size larger
+than a smaller monitor's work area, and a broken `window.json`.
 
 ```bash
 npm run catalog-test

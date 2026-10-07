@@ -24,6 +24,10 @@ Both shortcuts are freely assignable under **Settings**.
 
 The **main window** is the full interface with all twelve tabs — meant for a second
 monitor. It stays open when the overlay appears: both run at once, on separate screens.
+It remembers its place — position, size and whether it was maximized, on whichever monitor
+you left it. If that monitor is no longer connected, or the title bar would end up
+off-screen, it opens in the middle of the primary screen instead, so it can always be
+grabbed.
 
 The **overlay** is a window of its own with its own interface (`overlay.html`), not a
 shrunken dashboard. It is 380 px wide, meant for the screen the game runs on, and shows
@@ -52,7 +56,8 @@ while the main window stays on the second monitor. Once you drag it somewhere el
 stays there, across restarts.
 
 Hiding it does not close it, only hides it — so the next keypress is instant. Only when
-the main window closes does the overlay go away and the app quit.
+the main window closes does the overlay go away and the app quit — or, with *Start with
+Warframe* switched on, go back to waiting in the system tray.
 
 The footer sets the **opacity** (35–100%). The crosshair button toggles **click-through**:
 clicks then go to the game instead of landing in the overlay. The header stays usable —

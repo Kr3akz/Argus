@@ -17,7 +17,7 @@
 import { app, BrowserWindow, ipcMain, globalShortcut, shell, Notification, screen, clipboard } from 'electron';
 import path from 'node:path';
 import os from 'node:os';
-import { existsSync, mkdirSync, renameSync, cpSync, createWriteStream } from 'node:fs';
+import { existsSync, mkdirSync, renameSync, cpSync, createWriteStream, readFileSync, writeFileSync } from 'node:fs';
 import { readFile, writeFile, readdir } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -121,6 +121,7 @@ import { encodeQR, qrToSvg } from '../core/qrcode.js';
    with Warframe" - siehe launch.js und waiter.js. */
 import { launchMode, relaunchAs, canWait, autostartAvailability, setOpenAtLogin,
          loginItemState } from './launch.js';
+import { parseWindowState, placeWindow } from '../core/window-place.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -145,7 +146,8 @@ let overlayWin = null;
 let clickThrough = false;
 let overlayOpacity = 0.94;
 
-/* Nur das Overlay merkt sich seine Lage; das Hauptfenster bleibt, wo es ist. */
+/* Lage des Overlays, in config.json. Die des Hauptfensters steht fuer sich in
+   window.json - siehe "Lage des Hauptfensters". */
 let overlayBounds = null;
 let layoutSaveTimer = null;
 
@@ -424,9 +426,81 @@ function startFileLog() {
 }
 startFileLog();
 
+/* ---------------------- Lage des Hauptfensters ---------------------- */
+
+/**
+ * Das Hauptfenster merkt sich Lage, Groesse und ob es maximiert war. Es
+ * gehoert auf den zweiten Monitor, und dorthin soll man es einmal ziehen
+ * muessen, nicht bei jedem Start - mit "Start with Warframe" ginge es sonst
+ * bei jedem Spielstart wieder mitten auf dem Hauptbildschirm auf. Ob die
+ * gemerkte Lage noch passt, entscheidet core/window-place.js.
+ *
+ * EIGENE DATEI (window.json) und nicht config.json wie beim Overlay, weil
+ * beim Schliessen SYNCHRON geschrieben wird: ein asynchroner Schreibvorgang
+ * kaeme womoeglich nicht mehr an, bevor sich der Prozess beendet - und die
+ * Lage von eben ist genau die, die man beim naechsten Start erwartet. In
+ * config.json schreiben viele Stellen; dort synchron dazwischenzufahren,
+ * koennte eine gerade laufende Aenderung ueberschreiben.
+ *
+ * Gemerkt wird die NORMALE Lage (getNormalBounds), auch aus dem maximierten
+ * oder minimierten Fenster heraus. Maximiert wird danach auf dem Bildschirm,
+ * auf dem diese Lage liegt.
+ */
+const MAIN_STATE_FILE = () => dataFile('window.json');
+
+let mainState = null;            // { x, y, width, height, maximized }
+let mainStateTimer = null;
+/* Vom Spiel geoeffnet und zuletzt maximiert: ein minimiertes Fenster laesst
+   sich nicht maximieren, ohne es zu aktivieren. Also beim ersten Hervorholen. */
+let maximizeOnRestore = false;
+
+function loadMainState() {
+  try {
+    return parseWindowState(JSON.parse(readFileSync(MAIN_STATE_FILE(), 'utf8')));
+  } catch {
+    return null;   // noch keine Datei, oder eine kaputte - dann der Standardplatz
+  }
+}
+
+function writeMainState() {
+  clearTimeout(mainStateTimer);
+  mainStateTimer = null;
+  if (!mainState) return;
+  try {
+    mkdirSync(dataFile('.'), { recursive: true });
+    writeFileSync(MAIN_STATE_FILE(), JSON.stringify(mainState));
+  } catch {
+    /* Eine nicht gemerkte Fensterlage ist ein Schoenheitsfehler, kein Grund,
+       das Schliessen aufzuhalten. */
+  }
+}
+
+/* Den Stand des Fensters festhalten. Beim Ziehen kommen Dutzende Ereignisse
+   pro Sekunde - in die Datei geht der Stand, nach dem es still wird, und
+   beim Schliessen der letzte. Ob es maximiert ist, zaehlt nur, solange es
+   offen steht: fuer ein minimiertes Fenster meldet Windows nie "maximiert",
+   und ein vom Spiel geoeffnetes stand noch gar nicht so da, wie man es
+   zuletzt verlassen hat. */
+function noteMainState(w, { flush = false } = {}) {
+  if (w.isDestroyed()) return;
+  if (!w.isMinimized() && !maximizeOnRestore) mainState = { ...w.getNormalBounds(), maximized: w.isMaximized() };
+  else if (mainState) mainState = { ...mainState, ...w.getNormalBounds() };
+  if (flush) { writeMainState(); return; }
+  clearTimeout(mainStateTimer);
+  mainStateTimer = setTimeout(writeMainState, 800);
+}
+
 function createWindow() {
+  mainState = loadMainState();
+  const placed = placeWindow(mainState, screen.getAllDisplays().map(d => d.workArea));
+  /* Bildschirm weg oder Lage unbrauchbar: auch "maximiert" gilt dann nicht
+     mehr - es haette sich auf den Bildschirm bezogen, der fehlt. */
+  const maximized = !!(placed && mainState.maximized);
+
   win = new BrowserWindow({
-    width: WINDOW_SIZE.width, height: WINDOW_SIZE.height,
+    /* Ohne gemerkte Lage setzt Electron das Fenster mittig auf den
+       Hauptbildschirm. */
+    ...(placed || { width: WINDOW_SIZE.width, height: WINDOW_SIZE.height }),
     minWidth: WINDOW_MIN.width, minHeight: WINDOW_MIN.height,
     /* Steht da, bevor die Seite gezeichnet ist - deshalb aus dem Theme, sonst
        blitzt beim Start kurz das Blau von Argus auf. */
@@ -456,13 +530,36 @@ function createWindow() {
      Argus trotzdem, und das Tastenkuerzel fuer das Hauptfenster holt es wie
      immer nach vorn. */
   win.once('ready-to-show', () => {
-    if (LAUNCH === 'game') showMinimizedInactive(win);
-    else win.show();
+    if (LAUNCH === 'game') {
+      /* Vorher setzen: Zeigen und Minimieren melden sich schon waehrend der
+         Aufrufe mit 'move' und 'resize'. */
+      maximizeOnRestore = maximized;
+      showMinimizedInactive(win);
+    } else {
+      /* Auf einem noch versteckten Fenster zeigt maximize() es gleich
+         maximiert - show() danach aendert daran nichts mehr. */
+      if (maximized) win.maximize();
+      win.show();
+    }
+  });
+
+  const w = win;
+  const note = () => noteMainState(w);
+  for (const ev of ['move', 'resize', 'maximize', 'unmaximize']) w.on(ev, note);
+  w.on('close', () => noteMainState(w, { flush: true }));
+  w.on('restore', () => {
+    if (!maximizeOnRestore) return;
+    maximizeOnRestore = false;
+    w.maximize();
   });
 
   /* Windows meldet sich ab oder faehrt herunter: dann nicht noch schnell
-     einen Wartenden starten. */
-  win.on('session-end', () => { quitForGood = true; });
+     einen Wartenden starten - und die Lage sichern, ein 'close' kommt dann
+     womoeglich nicht mehr. */
+  w.on('session-end', () => {
+    quitForGood = true;
+    noteMainState(w, { flush: true });
+  });
 
   /* Ohne Hauptfenster hat das Overlay keinen Zweck. Und ein nur verstecktes
      Overlay wuerde app.quit() verhindern: die App liefe unsichtbar weiter,

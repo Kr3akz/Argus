@@ -38,6 +38,7 @@
     "catalog-test": "node src/cli/catalog-test.js",
     "autostart-test": "node src/cli/autostart-test.js",
     "autostart-test:app": "electron src/cli/app-test.cjs autostart-test",
+    "window-test": "node src/cli/window-test.js",
     "mastery-test": "node src/cli/mastery-test.js",
     "relic-pick-test": "node src/cli/relic-pick-test.js",
     "drop-search-test": "node src/cli/drop-search-test.js",

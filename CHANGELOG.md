@@ -30,6 +30,9 @@ follow [semantic versioning](https://semver.org/lang/en/).
   launcher nor the game. While waiting it uses no network and next to no CPU; quit it from
   its tray icon to stop waiting until the next sign-in. Off by default, installed version
   only, and uninstalling Argus removes the startup entry again.
+- **The main window remembers where you left it** — position, size and whether it was
+  maximized, across restarts and on your second monitor too. If that monitor is no longer
+  connected, it opens in the middle of the primary screen as before.
 
 ### Changed
 
