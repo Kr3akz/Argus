@@ -21,6 +21,8 @@ follow [semantic versioning](https://semver.org/lang/en/).
 
 ## [Unreleased]
 
+## [1.25.0] - 2026-10-07
+
 ### Added
 
 - **Argus can start with Warframe.** Switch on *Open Argus when Warframe starts* under
